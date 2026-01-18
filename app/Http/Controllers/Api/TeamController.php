@@ -1028,7 +1028,7 @@ class TeamController extends Controller
             Str::random(40).'.webp'
         );
 
-        return response()->json($team->fresh());
+        return response()->json($team->fresh()->load('owner'));
     }
 
     /**
@@ -1040,6 +1040,6 @@ class TeamController extends Controller
 
         $team->clearMediaCollection('avatars');
 
-        return response()->json($team->fresh());
+        return response()->json($team->fresh()->load('owner'));
     }
 }

@@ -54,9 +54,17 @@ class Team extends Model implements HasMedia
         'member_count',
         'initials',
         'avatar_url',
-        'storage_used',
         'storage_limit',
+        'has_avatar',
     ];
+
+    /**
+     * Check if the team has a custom avatar.
+     */
+    public function getHasAvatarAttribute(): bool
+    {
+        return $this->hasMedia('avatars');
+    }
 
     /**
      * Get the total storage used by team files in bytes.

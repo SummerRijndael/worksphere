@@ -926,6 +926,7 @@ const canRemoveMember = (member) => {
                                         <Upload v-else class="h-5 w-5" />
                                     </div>
                                     <div
+                                        v-if="team.has_avatar"
                                         class="p-2 hover:bg-red-500/80 rounded-full cursor-pointer transition-colors text-red-200 hover:text-white"
                                         @click.stop="removeAvatar"
                                         title="Remove avatar"
