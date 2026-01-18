@@ -1,7 +1,9 @@
-<script setup>
 import { ref, onMounted, computed, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { storeToRefs } from "pinia";
 import axios from "axios";
+import { useTeamStore } from "@/stores/team";
+import { useConfirm } from "@/composables/useConfirm";
 import {
     Users,
     Folder,
@@ -141,6 +143,78 @@ function handleEventClick(info) {
             name: "admin-project-detail",
             params: { id: props.project_id },
         });
+    }
+}
+
+const teamStore = useTeamStore();
+// Note: team is already defined locally as a ref (line 51) and populated via fetchTeam.
+// But useTeamStore might be better source of truth if available.
+// However, the existing code uses a local `team` ref.
+// Let's stick to the local `team` ref but add the missing variables.
+
+const avatarInput = ref(null);
+const isUploadingAvatar = ref(false);
+const confirm = useConfirm();
+
+const isOwner = computed(() => {
+    return team.value && authStore.user && team.value.owner_id === authStore.user.id;
+});
+
+function triggerAvatarUpload() {
+    avatarInput.value.click();
+}
+
+async function handleAvatarUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+        toast.error("Avatar must be less than 2MB");
+        return;
+    }
+
+    isUploadingAvatar.value = true;
+    const formData = new FormData();
+    formData.append("avatar", file);
+
+    try {
+        const response = await axios.post(
+            `/api/teams/${team.value.public_id}/avatar`,
+            formData,
+            {
+                headers: { "Content-Type": "multipart/form-data" },
+            },
+        );
+        team.value = response.data;
+        toast.success("Team avatar updated");
+    } catch (error) {
+        console.error('Failed to upload avatar:', error);
+        toast.error("Failed to update avatar");
+    } finally {
+        isUploadingAvatar.value = false;
+        event.target.value = ""; // Reset input
+    }
+}
+
+async function removeAvatar() {
+    if (!team.value) return;
+
+    const confirmed = await confirm.open({
+        title: 'Remove Team Avatar',
+        message: 'Are you sure you want to remove the team avatar? This cannot be undone.',
+        confirmText: 'Remove',
+        type: 'danger',
+    });
+
+    if (confirmed) {
+        try {
+            const response = await axios.delete(`/api/teams/${team.value.public_id}/avatar`);
+            team.value = response.data;
+            toast.success('Team avatar removed');
+        } catch (error) {
+            console.error('Failed to remove avatar:', error);
+            toast.error('Failed to remove avatar');
+        }
     }
 }
 
