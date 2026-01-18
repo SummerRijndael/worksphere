@@ -413,6 +413,7 @@ class Team extends Model implements HasMedia
     public function registerMediaCollections(): void
     {
         $this->addMediaCollection('avatar')
+            ->useDisk('public') // Force public disk
             ->singleFile() // Ensures only one avatar exists
             ->useFallbackUrl(config('app.url').'/images/defaults/team-avatar.png'); // Optional: Add default fallback
     }
