@@ -2,7 +2,6 @@
 import { ref, onMounted, computed, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import axios from "axios";
-import { useConfirm } from "@/composables/useConfirm";
 import {
     Users,
     Folder,
@@ -147,7 +146,6 @@ function handleEventClick(info) {
 
 const avatarInput = ref(null);
 const isUploadingAvatar = ref(false);
-const confirm = useConfirm();
 
 function triggerAvatarUpload() {
     avatarInput.value.click();
@@ -188,25 +186,23 @@ async function handleAvatarUpload(event) {
 async function removeAvatar() {
     if (!team.value) return;
 
-    const confirmed = await confirm.open({
-        title: "Remove Team Avatar",
-        message:
+    if (
+        !confirm(
             "Are you sure you want to remove the team avatar? This cannot be undone.",
-        confirmText: "Remove",
-        type: "danger",
-    });
+        )
+    ) {
+        return;
+    }
 
-    if (confirmed) {
-        try {
-            const response = await axios.delete(
-                `/api/teams/${team.value.public_id}/avatar`,
-            );
-            team.value = response.data;
-            toast.success("Team avatar removed");
-        } catch (error) {
-            console.error("Failed to remove avatar:", error);
-            toast.error("Failed to remove avatar");
-        }
+    try {
+        const response = await axios.delete(
+            `/api/teams/${team.value.public_id}/avatar`,
+        );
+        team.value = response.data;
+        toast.success("Team avatar removed");
+    } catch (error) {
+        console.error("Failed to remove avatar:", error);
+        toast.error("Failed to remove avatar");
     }
 }
 
