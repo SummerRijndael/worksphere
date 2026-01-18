@@ -5,6 +5,9 @@ namespace Tests\Feature;
 use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\WithFaker;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class TeamMemberProfileTest extends TestCase
