@@ -1024,7 +1024,7 @@ class TeamController extends Controller
         $this->mediaService->attachFromRequest(
             $team,
             'avatar',
-            'avatar',
+            'avatars',
             Str::random(40).'.webp'
         );
 

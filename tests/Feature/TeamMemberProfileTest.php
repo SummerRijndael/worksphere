@@ -137,7 +137,9 @@ class TeamMemberProfileTest extends TestCase
 
         $response->assertStatus(200);
         
-        // Assert file exists in storage/media
-        $this->assertCount(1, $team->fresh()->getMedia('avatar'));
+        // Assert file exists in storage/media and is on public disk
+        $media = $team->fresh()->getMedia('avatars')->first();
+        $this->assertNotNull($media);
+        $this->assertEquals('public', $media->disk);
     }
 }
