@@ -1,0 +1,55 @@
+<?php
+
+namespace App\Events\Chat;
+
+use App\Models\Chat\Chat;
+use Illuminate\Broadcasting\InteractsWithSockets;
+use Illuminate\Broadcasting\PrivateChannel;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
+use Illuminate\Foundation\Events\Dispatchable;
+use Illuminate\Queue\SerializesModels;
+
+class ChatDeleted implements ShouldBroadcastNow
+{
+    use Dispatchable, InteractsWithSockets, SerializesModels;
+
+    public string $chatPublicId;
+
+    public string $chatType;
+
+    public function __construct(Chat $chat)
+    {
+        $this->chatPublicId = $chat->public_id;
+        $this->chatType = $chat->type;
+    }
+
+    /**
+     * Get the data to broadcast.
+     *
+     * @return array<string, mixed>
+     */
+    public function broadcastWith(): array
+    {
+        return [
+            'chat_public_id' => $this->chatPublicId,
+        ];
+    }
+
+    /**
+     * Get the channels the event should broadcast on.
+     */
+    public function broadcastOn(): PrivateChannel
+    {
+        $prefix = $this->chatType === 'dm' ? 'dm' : 'group';
+
+        return new PrivateChannel("{$prefix}.{$this->chatPublicId}");
+    }
+
+    /**
+     * The event's broadcast name.
+     */
+    public function broadcastAs(): string
+    {
+        return 'ChatDeleted';
+    }
+}

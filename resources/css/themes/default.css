@@ -1,0 +1,20 @@
+/* Default Theme (Blue/Blurple) - Based on current app.css */
+:root,
+.theme-default {
+    /* Primary Color Palette */
+    --color-primary-50: oklch(0.97 0.02 250);
+    --color-primary-100: oklch(0.94 0.04 250);
+    --color-primary-200: oklch(0.88 0.08 250);
+    --color-primary-300: oklch(0.78 0.12 250);
+    --color-primary-400: oklch(0.68 0.16 250);
+    --color-primary-500: oklch(0.55 0.2 250);
+    --color-primary-600: oklch(0.48 0.2 250);
+    --color-primary-700: oklch(0.4 0.18 250);
+    --color-primary-800: oklch(0.35 0.15 250);
+    --color-primary-900: oklch(0.3 0.12 250);
+
+    /* Interactive Colors - Default mapping */
+    --interactive-primary: var(--color-primary-500);
+    --interactive-primary-hover: var(--color-primary-600);
+    --interactive-primary-active: var(--color-primary-700);
+}

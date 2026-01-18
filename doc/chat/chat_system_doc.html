@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Chat System Documentation - Coresync V2</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+            rel="stylesheet"
+        />
+        <style>
+            body {
+                font-family: "Inter", sans-serif;
+            }
+        </style>
+    </head>
+    <body class="bg-slate-50 min-h-screen text-slate-800">
+        <!-- Header -->
+        <header
+            class="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm"
+        >
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between h-16">
+                    <div class="flex items-center gap-4">
+                        <a
+                            href="../../coresync_v2_doc.html"
+                            class="flex items-center text-slate-500 hover:text-indigo-600 transition-colors"
+                        >
+                            <svg
+                                class="h-5 w-5 mr-1"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M10 19l-7-7m0 0l7-7m-7 7h18"
+                                />
+                            </svg>
+                            Back
+                        </a>
+                        <div class="h-6 w-px bg-slate-200"></div>
+                        <div class="flex items-center gap-2">
+                            <div class="bg-indigo-100 rounded-md p-1.5">
+                                <svg
+                                    class="h-5 w-5 text-indigo-600"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
+                                    />
+                                </svg>
+                            </div>
+                            <h1 class="text-lg font-bold text-slate-900">
+                                Chat System Documentation
+                            </h1>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div class="flex flex-col lg:flex-row gap-8">
+                <!-- Sidebar Navigation -->
+                <nav class="lg:w-64 flex-shrink-0">
+                    <div class="sticky top-24 space-y-1">
+                        <a
+                            href="#overview"
+                            class="block px-3 py-2 text-sm font-medium rounded-md text-indigo-700 bg-indigo-50 hover:bg-indigo-100"
+                            >Overview</a
+                        >
+                        <a
+                            href="#frontend-map"
+                            class="block px-3 py-2 text-sm font-medium rounded-md text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                            >Frontend Structure</a
+                        >
+                        <a
+                            href="#backend-map"
+                            class="block px-3 py-2 text-sm font-medium rounded-md text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                            >Backend Structure</a
+                        >
+                        <a
+                            href="#api-map"
+                            class="block px-3 py-2 text-sm font-medium rounded-md text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                            >API Map</a
+                        >
+                        <a
+                            href="#database"
+                            class="block px-3 py-2 text-sm font-medium rounded-md text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                            >Database & Migrations</a
+                        >
+                        <a
+                            href="#features"
+                            class="block px-3 py-2 text-sm font-medium rounded-md text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                            >Key Features</a
+                        >
+                        <a
+                            href="#limitations"
+                            class="block px-3 py-2 text-sm font-medium rounded-md text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                            >Limitations & TODO</a
+                        >
+                    </div>
+                </nav>
+
+                <!-- Content -->
+                <main class="flex-1 min-w-0">
+                    <!-- Overview -->
+                    <section id="overview" class="mb-12">
+                        <h2 class="text-2xl font-bold text-slate-900 mb-4">
+                            System Overview
+                        </h2>
+                        <p class="text-slate-600 leading-relaxed mb-4">
+                            The Coresync V2 Chat System is a real-time messaging
+                            engine built on
+                            <strong>Laravel Reverb</strong> (WebSockets) and
+                            <strong>Vue 3</strong>. It supports 1-on-1 Direct
+                            Messages (DMs) and multi-user Group Chats with file
+                            attachments, read receipts, and typing indicators.
+                        </p>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
+                            <div
+                                class="bg-white p-4 rounded-lg border border-slate-200"
+                            >
+                                <h3 class="font-semibold text-slate-900 mb-2">
+                                    Tech Stack
+                                </h3>
+                                <ul class="text-sm text-slate-600 space-y-1">
+                                    <li>
+                                        ⚡ <strong>Protocol:</strong> WebSocket
+                                        (Laravel Reverb)
+                                    </li>
+                                    <li>
+                                        🗄️ <strong>Storage:</strong> MySQL +
+                                        Redis (Cache/Queue)
+                                    </li>
+                                    <li>
+                                        🔍 <strong>Search:</strong> Laravel
+                                        Scout (Database/Collection Driver)
+                                    </li>
+                                    <li>
+                                        🎨 <strong>UI:</strong> TailwindCSS +
+                                        Rekaui
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </section>
+
+                    <hr class="my-8 border-slate-200" />
+
+                    <!-- Frontend Map -->
+                    <section id="frontend-map" class="mb-12">
+                        <h2 class="text-2xl font-bold text-slate-900 mb-6">
+                            Frontend Architecture
+                        </h2>
+                        <div
+                            class="bg-slate-900 rounded-lg overflow-hidden shadow-lg"
+                        >
+                            <div
+                                class="p-4 bg-slate-800 border-b border-slate-700"
+                            >
+                                <h3 class="font-mono text-sm text-indigo-400">
+                                    resources/js/
+                                </h3>
+                            </div>
+                            <div
+                                class="p-6 font-mono text-sm text-slate-300 space-y-4"
+                            >
+                                <div>
+                                    <div class="text-emerald-400 mb-1">
+                                        ▼ views/chat/
+                                    </div>
+                                    <div
+                                        class="pl-4 border-l border-slate-700 space-y-1"
+                                    >
+                                        <div class="flex gap-2">
+                                            <span class="text-white"
+                                                >ChatPage.vue</span
+                                            >
+                                            <span class="text-slate-500"
+                                                >// Main Entry, orchestrates
+                                                layout</span
+                                            >
+                                        </div>
+                                        <div class="flex gap-2">
+                                            <span class="text-white"
+                                                >components/sidebar/ChatSidebar.vue</span
+                                            >
+                                            <span class="text-slate-500"
+                                                >// Navigation & User List</span
+                                            >
+                                        </div>
+                                        <div class="flex gap-2">
+                                            <span class="text-white"
+                                                >components/chat/ChatHeader.vue</span
+                                            >
+                                            <span class="text-slate-500"
+                                                >// Header & Actions</span
+                                            >
+                                        </div>
+                                        <div class="flex gap-2">
+                                            <span class="text-white"
+                                                >components/chat/ChatComposer.vue</span
+                                            >
+                                            <span class="text-slate-500"
+                                                >// Message Input Area</span
+                                            >
+                                        </div>
+                                        <div class="flex gap-2">
+                                            <span class="text-white"
+                                                >components/chat/MessageList.vue</span
+                                            >
+                                            <span class="text-slate-500"
+                                                >// Message Bubbles &
+                                                Scroll</span
+                                            >
+                                        </div>
+                                        <div class="flex gap-2">
+                                            <span class="text-white"
+                                                >components/chat/ChatSearchModal.vue</span
+                                            >
+                                            <span class="text-slate-500"
+                                                >// Message Search UI</span
+                                            >
+                                        </div>
+                                        <div class="flex gap-2">
+                                            <span class="text-white"
+                                                >components/chat/GiphyPicker.vue</span
+                                            >
+                                            <span class="text-slate-500"
+                                                >// Giphy Integration</span
+                                            >
+                                        </div>
+                                        <div class="flex gap-2">
+                                            <span class="text-white"
+                                                >components/minichat/MiniChatWindow.vue</span
+                                            >
+                                            <span class="text-slate-500"
+                                                >// Global Mini Chat</span
+                                            >
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div class="text-emerald-400 mb-1">
+                                        ▼ services/
+                                    </div>
+                                    <div class="pl-4 border-l border-slate-700">
+                                        <div class="flex gap-2">
+                                            <span class="text-white"
+                                                >chat.service.ts</span
+                                            >
+                                            <span class="text-slate-500"
+                                                >// API Communication
+                                                Layer</span
+                                            >
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div class="text-emerald-400 mb-1">
+                                        ▼ stores/
+                                    </div>
+                                    <div class="pl-4 border-l border-slate-700">
+                                        <div class="flex gap-2">
+                                            <span class="text-white"
+                                                >chat.ts</span
+                                            >
+                                            <span class="text-slate-500"
+                                                >// State Management
+                                                (Pinia)</span
+                                            >
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div class="text-emerald-400 mb-1">
+                                        ▼ composables/
+                                    </div>
+                                    <div class="pl-4 border-l border-slate-700">
+                                        <div class="flex gap-2">
+                                            <span class="text-white"
+                                                >useChat.ts</span
+                                            >
+                                            <span class="text-slate-500"
+                                                >// Reactive UI logic</span
+                                            >
+                                        </div>
+                                        <div class="flex gap-2">
+                                            <span class="text-white"
+                                                >useChatRealtime.ts</span
+                                            >
+                                            <span class="text-slate-500"
+                                                >// WebSocket Listener
+                                                Setup</span
+                                            >
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Backend Map -->
+                    <section id="backend-map" class="mb-12">
+                        <h2 class="text-2xl font-bold text-slate-900 mb-6">
+                            Backend Architecture
+                        </h2>
+                        <div class="space-y-4">
+                            <div
+                                class="border border-slate-200 rounded-lg p-4 bg-white"
+                            >
+                                <h3 class="font-bold text-slate-900 mb-2">
+                                    Controller Layer
+                                </h3>
+                                <p class="text-sm text-slate-600 mb-2">
+                                    <code
+                                        >app/Http/Controllers/Api/ChatApiController.php</code
+                                    >
+                                </p>
+                                <p class="text-sm text-slate-600 mb-2">
+                                    <code
+                                        >app/Http/Controllers/Api/Chat/GiphyController.php</code
+                                    >
+                                </p>
+                                <p class="text-sm text-slate-500">
+                                    Handling 22+ API endpoints. Validates
+                                    requests, authorizes actions via Policies,
+                                    and returns standardized JSON responses.
+                                </p>
+                            </div>
+
+                            <div
+                                class="border border-slate-200 rounded-lg p-4 bg-white"
+                            >
+                                <h3 class="font-bold text-slate-900 mb-2">
+                                    Service Layer (The Engine)
+                                </h3>
+                                <p class="text-sm text-slate-600 mb-2">
+                                    <code>app/Services/ChatEngine.php</code>
+                            </p>
+                            <p class="text-sm text-slate-600 mb-2">
+                                <code>app/Services/Chat/GiphyService.php</code>
+                                </p>
+                                <p class="text-sm text-slate-500">
+                                    Core logic domain. Handles message
+                                    persistence, sanitization (HTML entities),
+                                    read status calculation, and response
+                                    normalization.
+                                </p>
+                            </div>
+
+                            <div
+                                class="border border-slate-200 rounded-lg p-4 bg-white"
+                            >
+                                <h3 class="font-bold text-slate-900 mb-2">
+                                    Event System
+                                </h3>
+                                <p class="text-sm text-slate-600 mb-2">
+                                    <code>app/Services/ChatEvents.php</code> &
+                                    <code>app/Events/*</code>
+                                </p>
+                                <p class="text-sm text-slate-500">
+                                    Abstracts broadcasting. Events:
+                                    `MessageCreated`, `MessageRead`,
+                                    `UserTyping`, `ChatBadgeUpdated`.
+                                </p>
+                            </div>
+
+                            <div
+                                class="border border-slate-200 rounded-lg p-4 bg-white"
+                            >
+                                <h3 class="font-bold text-slate-900 mb-2">
+                                    Asynchronous Jobs
+                                </h3>
+                                <p class="text-sm text-slate-600 mb-2">
+                                    <code>app/Jobs/ProcessChatMessage.php</code>
+                                </p>
+                                <p class="text-sm text-slate-500">
+                                    Offloads heavy lifting (broadcasting, unread
+                                    count updates) to the queue to keep the API
+                                    fast.
+                                </p>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- API Map -->
+                    <section id="api-map" class="mb-12">
+                        <h2 class="text-2xl font-bold text-slate-900 mb-6">
+                            API Endpoint Map
+                        </h2>
+                        <div
+                            class="overflow-x-auto border border-slate-200 rounded-lg"
+                        >
+                            <table class="min-w-full divide-y divide-slate-200">
+                                <thead class="bg-slate-50">
+                                    <tr>
+                                        <th
+                                            class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider"
+                                        >
+                                            Method
+                                        </th>
+                                        <th
+                                            class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider"
+                                        >
+                                            Endpoint
+                                        </th>
+                                        <th
+                                            class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider"
+                                        >
+                                            Description
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody
+                                    class="bg-white divide-y divide-slate-200"
+                                >
+                                    <!-- Core -->
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span
+                                                class="px-2 py-1 text-xs font-bold bg-blue-100 text-blue-800 rounded"
+                                                >GET</span
+                                            >
+                                        </td>
+                                        <td class="px-6 py-4 font-mono text-sm">
+                                            /api/chat
+                                        </td>
+                                        <td
+                                            class="px-6 py-4 text-sm text-slate-500"
+                                        >
+                                            List all user chats
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span
+                                                class="px-2 py-1 text-xs font-bold bg-green-100 text-green-800 rounded"
+                                                >POST</span
+                                            >
+                                        </td>
+                                        <td class="px-6 py-4 font-mono text-sm">
+                                            /api/chat/{id}/send
+                                        </td>
+                                        <td
+                                            class="px-6 py-4 text-sm text-slate-500"
+                                        >
+                                            Send text message
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span
+                                                class="px-2 py-1 text-xs font-bold bg-green-100 text-green-800 rounded"
+                                                >POST</span
+                                            >
+                                        </td>
+                                        <td class="px-6 py-4 font-mono text-sm">
+                                            /api/chat/{id}/upload
+                                        </td>
+                                        <td
+                                            class="px-6 py-4 text-sm text-slate-500"
+                                        >
+                                            Upload files/media
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span
+                                                class="px-2 py-1 text-xs font-bold bg-blue-100 text-blue-800 rounded"
+                                                >GET</span
+                                            >
+                                        </td>
+                                        <td class="px-6 py-4 font-mono text-sm">
+                                            /api/chat/{id}/messages/search
+                                        </td>
+                                        <td
+                                            class="px-6 py-4 text-sm text-slate-500"
+                                        >
+                                            Search messages in chat
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span
+                                                class="px-2 py-1 text-xs font-bold bg-blue-100 text-blue-800 rounded"
+                                                >GET</span
+                                            >
+                                        </td>
+                                        <td class="px-6 py-4 font-mono text-sm">
+                                            /api/chat/{id}/messages/{msg}/around
+                                        </td>
+                                        <td
+                                            class="px-6 py-4 text-sm text-slate-500"
+                                        >
+                                            Fetch message context (jump)
+                                        </td>
+                                    </tr>
+
+                                    <!-- Interaction -->
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span
+                                                class="px-2 py-1 text-xs font-bold bg-green-100 text-green-800 rounded"
+                                                >POST</span
+                                            >
+                                        </td>
+                                        <td class="px-6 py-4 font-mono text-sm">
+                                            /api/chat/{id}/read
+                                        </td>
+                                        <td
+                                            class="px-6 py-4 text-sm text-slate-500"
+                                        >
+                                            Mark chat as read
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span
+                                                class="px-2 py-1 text-xs font-bold bg-green-100 text-green-800 rounded"
+                                                >POST</span
+                                            >
+                                        </td>
+                                        <td class="px-6 py-4 font-mono text-sm">
+                                            /api/chat/{id}/typing
+                                        </td>
+                                        <td
+                                            class="px-6 py-4 text-sm text-slate-500"
+                                        >
+                                            Broadcast typing event
+                                        </td>
+                                    </tr>
+
+                                    <!-- Management -->
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span
+                                                class="px-2 py-1 text-xs font-bold bg-purple-100 text-purple-800 rounded"
+                                                >PUT</span
+                                            >
+                                        </td>
+                                        <td class="px-6 py-4 font-mono text-sm">
+                                            /api/chat/{id}/rename
+                                        </td>
+                                        <td
+                                            class="px-6 py-4 text-sm text-slate-500"
+                                        >
+                                            Rename group chat
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span
+                                                class="px-2 py-1 text-xs font-bold bg-green-100 text-green-800 rounded"
+                                                >POST</span
+                                            >
+                                        </td>
+                                        <td class="px-6 py-4 font-mono text-sm">
+                                            /api/chat/groups
+                                        </td>
+                                        <td
+                                            class="px-6 py-4 text-sm text-slate-500"
+                                        >
+                                            Create new group
+                                        </td>
+                                    </tr>
+
+                                    <!-- Integrations -->
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span
+                                                class="px-2 py-1 text-xs font-bold bg-blue-100 text-blue-800 rounded"
+                                                >GET</span
+                                            >
+                                        </td>
+                                        <td class="px-6 py-4 font-mono text-sm">
+                                            /api/chat/giphy/search
+                                        </td>
+                                        <td
+                                            class="px-6 py-4 text-sm text-slate-500"
+                                        >
+                                            Search Giphy API
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span
+                                                class="px-2 py-1 text-xs font-bold bg-blue-100 text-blue-800 rounded"
+                                                >GET</span
+                                            >
+                                        </td>
+                                        <td class="px-6 py-4 font-mono text-sm">
+                                            /api/chat/giphy/trending
+                                        </td>
+                                        <td
+                                            class="px-6 py-4 text-sm text-slate-500"
+                                        >
+                                            Get trending GIFs
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <!-- Database -->
+                    <section id="database" class="mb-12">
+                        <h2 class="text-2xl font-bold text-slate-900 mb-6">
+                            Database Schema
+                        </h2>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div
+                                class="bg-white p-4 rounded-lg border border-slate-200"
+                            >
+                                <h3
+                                    class="font-bold text-slate-900 border-b pb-2 mb-3"
+                                >
+                                    chats
+                                </h3>
+                                <ul
+                                    class="text-sm text-slate-600 space-y-1 font-mono"
+                                >
+                                    <li>id (int)</li>
+                                    <li>public_id (ulid)</li>
+                                    <li>type (enum: dm/group)</li>
+                                    <li>name (string, nullable)</li>
+                                </ul>
+                            </div>
+                            <div
+                                class="bg-white p-4 rounded-lg border border-slate-200"
+                            >
+                                <h3
+                                    class="font-bold text-slate-900 border-b pb-2 mb-3"
+                                >
+                                    chat_messages
+                                </h3>
+                                <ul
+                                    class="text-sm text-slate-600 space-y-1 font-mono"
+                                >
+                                    <li>id (int)</li>
+                                    <li>chat_id (fk)</li>
+                                    <li>user_id (fk)</li>
+                                    <li>content (text)</li>
+                                    <li>metadata (json, nullable)</li>
+                                    <li>reply_to_message_id (fk)</li>
+                                </ul>
+                            </div>
+                            <div
+                                class="bg-white p-4 rounded-lg border border-slate-200"
+                            >
+                                <h3
+                                    class="font-bold text-slate-900 border-b pb-2 mb-3"
+                                >
+                                    chat_participants
+                                </h3>
+                                <ul
+                                    class="text-sm text-slate-600 space-y-1 font-mono"
+                                >
+                                    <li>chat_id (fk)</li>
+                                    <li>user_id (fk)</li>
+                                    <li>role (enum: owner/member)</li>
+                                    <li>last_read_message_id (int)</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Features -->
+                    <section id="features" class="mb-12">
+                        <h2 class="text-2xl font-bold text-slate-900 mb-4">
+                            Core Features
+                        </h2>
+                        <ul class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <li class="flex items-start">
+                                <svg
+                                    class="h-6 w-6 text-green-500 mr-2"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M5 13l4 4L19 7"
+                                    />
+                                </svg>
+                                <div>
+                                    <strong class="text-slate-900 block"
+                                        >Real-time Messaging</strong
+                                    >
+                                    <span class="text-sm text-slate-500"
+                                        >Users receive messages instantly via
+                                        WebSocket without reloading.</span
+                                    >
+                                </div>
+                            </li>
+                            <li class="flex items-start">
+                                <svg
+                                    class="h-6 w-6 text-green-500 mr-2"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M5 13l4 4L19 7"
+                                    />
+                                </svg>
+                                <div>
+                                    <strong class="text-slate-900 block"
+                                        >Optimistic UI</strong
+                                    >
+                                    <span class="text-sm text-slate-500"
+                                        >Messages appear instantly in the UI
+                                        before server confirmation.</span
+                                    >
+                                </div>
+                            </li>
+                            <li class="flex items-start">
+                                <svg
+                                    class="h-6 w-6 text-green-500 mr-2"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M5 13l4 4L19 7"
+                                    />
+                                </svg>
+                                <div>
+                                    <strong class="text-slate-900 block"
+                                        >Read Receipts & Unread Counts</strong
+                                    >
+                                    <span class="text-sm text-slate-500"
+                                        >Tracks per-user read status and
+                                        badging.</span
+                                    >
+                                </div>
+                            </li>
+                            <li class="flex items-start">
+                                <svg
+                                    class="h-6 w-6 text-green-500 mr-2"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M5 13l4 4L19 7"
+                                    />
+                                </svg>
+                                <div>
+                                    <strong class="text-slate-900 block"
+                                        >Media & File Sharing</strong
+                                    >
+                                    <span class="text-sm text-slate-500"
+                                        >Upload images/docs with image
+                                        optimization.</span
+                                    >
+                                </div>
+                            </li>
+                        </ul>
+                    </section>
+
+                    <!-- Limitations -->
+                    <section
+                        id="limitations"
+                        class="mb-12 bg-amber-50 rounded-xl p-6 border border-amber-200"
+                    >
+                        <h2 class="text-xl font-bold text-amber-900 mb-3">
+                            Limitations & Future Todo
+                        </h2>
+                        <ul
+                            class="list-disc list-inside text-amber-800 space-y-1"
+                        >
+                            <li>
+                                <strong>Push Notifications:</strong> Not yet
+                                integrated (mobile/web push).
+                            </li>
+                            <li>
+                                <strong>End-to-End Encryption:</strong> Messages
+                                are stored in plaintext in the database
+                                (standard HTTPS encryption in transit).
+                            </li>
+                            <li>
+                                <strong>Reactions:</strong> Emoji reactions to
+                                messages are planned but not implemented.
+                            </li>
+                            <li>
+                                <strong>Message Editing:</strong> Currently
+                                messages are immutable after sending.
+                            </li>
+                        </ul>
+                    </section>
+                </main>
+            </div>
+        </div>
+
+        <footer class="bg-white border-t border-slate-200 mt-12 py-8">
+            <div
+                class="max-w-7xl mx-auto px-4 text-center text-sm text-slate-400"
+            >
+                Coresync V2 Documentation &bull; Generated by Audit Tool
+            </div>
+        </footer>
+    </body>
+</html>

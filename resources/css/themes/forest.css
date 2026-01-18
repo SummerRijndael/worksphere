@@ -1,0 +1,19 @@
+/* Forest Theme (Emerald/Green) */
+.theme-forest {
+    /* Primary Color Palette - Emerald/Green Range (Hue ~150-160) */
+    --color-primary-50: oklch(0.97 0.04 150);
+    --color-primary-100: oklch(0.94 0.07 150);
+    --color-primary-200: oklch(0.88 0.12 150);
+    --color-primary-300: oklch(0.78 0.16 150);
+    --color-primary-400: oklch(0.68 0.19 150);
+    --color-primary-500: oklch(0.55 0.2 150);
+    --color-primary-600: oklch(0.48 0.2 150);
+    --color-primary-700: oklch(0.4 0.18 150);
+    --color-primary-800: oklch(0.35 0.15 150);
+    --color-primary-900: oklch(0.3 0.12 150);
+
+    /* Interactive Colors */
+    --interactive-primary: var(--color-primary-500);
+    --interactive-primary-hover: var(--color-primary-600);
+    --interactive-primary-active: var(--color-primary-700);
+}

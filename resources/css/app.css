@@ -1,0 +1,995 @@
+@import "tailwindcss";
+
+@import "./themes/default.css";
+@import "./themes/ocean.css";
+@import "./themes/forest.css";
+@import "./themes/wine.css";
+@import "./themes/sunset.css";
+@import "./themes/midnight.css";
+
+@source '../js/**/*.vue';
+@source '../js/**/*.js';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ============================================
+   DESIGN SYSTEM - CORESYNC
+   Professional Modern Minimalist Theme
+   ============================================ */
+
+@theme {
+    /* Font Family */
+    --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+
+    --font-display: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+    /* Semantic Colors */
+
+    /* Neutral Colors */
+    --color-neutral-50: oklch(0.985 0 0);
+    --color-neutral-100: oklch(0.965 0 0);
+    --color-neutral-200: oklch(0.925 0 0);
+    --color-neutral-300: oklch(0.87 0 0);
+    --color-neutral-400: oklch(0.7 0 0);
+    --color-neutral-500: oklch(0.55 0 0);
+    --color-neutral-600: oklch(0.45 0 0);
+    --color-neutral-700: oklch(0.37 0 0);
+    --color-neutral-800: oklch(0.27 0 0);
+    --color-neutral-900: oklch(0.2 0 0);
+    --color-neutral-950: oklch(0.14 0 0);
+
+    /* Semantic Colors */
+    --color-success: oklch(0.65 0.18 145);
+    --color-warning: oklch(0.75 0.18 75);
+    --color-error: oklch(0.6 0.22 25);
+    --color-info: oklch(0.65 0.18 230);
+
+    /* Spacing Scale */
+    --spacing-0: 0;
+    --spacing-px: 1px;
+    --spacing-0\.5: 0.125rem;
+    --spacing-1: 0.25rem;
+    --spacing-1\.5: 0.375rem;
+    --spacing-2: 0.5rem;
+    --spacing-2\.5: 0.625rem;
+    --spacing-3: 0.75rem;
+    --spacing-3\.5: 0.875rem;
+    --spacing-4: 1rem;
+    --spacing-5: 1.25rem;
+    --spacing-6: 1.5rem;
+    --spacing-7: 1.75rem;
+    --spacing-8: 2rem;
+    --spacing-9: 2.25rem;
+    --spacing-10: 2.5rem;
+    --spacing-12: 3rem;
+    --spacing-14: 3.5rem;
+    --spacing-16: 4rem;
+    --spacing-20: 5rem;
+    --spacing-24: 6rem;
+    --spacing-28: 7rem;
+    --spacing-32: 8rem;
+
+    /* Border Radius */
+    --radius-none: 0;
+    --radius-sm: 0.25rem;
+    --radius-md: 0.375rem;
+    --radius-lg: 0.5rem;
+    --radius-xl: 0.75rem;
+    --radius-2xl: 1rem;
+    --radius-3xl: 1.5rem;
+    --radius-full: 9999px;
+
+    /* Shadows */
+    --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1),
+        0 2px 4px -2px rgb(0 0 0 / 0.1);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1),
+        0 4px 6px -4px rgb(0 0 0 / 0.1);
+    --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1),
+        0 8px 10px -6px rgb(0 0 0 / 0.1);
+    --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+
+    /* Z-index Scale */
+    --z-dropdown: 1000;
+    --z-sticky: 1020;
+    --z-fixed: 1030;
+    --z-modal-backdrop: 1040;
+    --z-modal: 1050;
+    --z-popover: 1060;
+    --z-tooltip: 1070;
+
+    /* Transitions */
+    --ease-default: cubic-bezier(0.4, 0, 0.2, 1);
+    --ease-in: cubic-bezier(0.4, 0, 1, 1);
+    --ease-out: cubic-bezier(0, 0, 0.2, 1);
+    --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+    --ease-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+
+    --duration-75: 75ms;
+    --duration-100: 100ms;
+    --duration-150: 150ms;
+    --duration-200: 200ms;
+    --duration-300: 300ms;
+    --duration-500: 500ms;
+    --duration-700: 700ms;
+    --duration-1000: 1000ms;
+}
+
+/* ============================================
+   CSS CUSTOM PROPERTIES FOR THEMING
+   ============================================ */
+
+:root {
+    /* Surface Colors */
+    --surface-primary: var(--color-neutral-50);
+    --surface-secondary: var(--color-neutral-100);
+    --surface-tertiary: var(--color-neutral-200);
+    --surface-elevated: white;
+    --surface-overlay: rgb(0 0 0 / 0.5);
+
+    /* Text Colors */
+    --text-primary: var(--color-neutral-900);
+    --text-secondary: var(--color-neutral-600);
+    --text-tertiary: var(--color-neutral-500);
+    --text-muted: var(--color-neutral-400);
+    --text-inverse: white;
+
+    /* Border Colors */
+    --border-default: var(--color-neutral-200);
+    --border-subtle: rgb(0 0 0 / 0.06);
+    --border-muted: var(--color-neutral-100);
+    --border-strong: var(--color-neutral-300);
+
+    /* Interactive Colors */
+    /* Handled by themes */
+
+    /* Semantic Colors - Backgrounds & Foregrounds */
+    --color-success-bg: oklch(0.96 0.03 145);
+    --color-success-fg: oklch(0.4 0.15 145);
+
+    --color-warning-bg: oklch(0.97 0.04 75);
+    --color-warning-fg: oklch(0.45 0.15 75);
+
+    --color-error-bg: oklch(0.97 0.04 25);
+    --color-error-fg: oklch(0.45 0.18 25);
+
+    --color-info-bg: oklch(0.96 0.03 230);
+    --color-info-fg: oklch(0.45 0.15 230);
+
+    /* Status Colors for Avatar */
+    --status-online: oklch(0.65 0.18 145);
+    --status-offline: oklch(0.55 0 0);
+    --status-away: oklch(0.75 0.18 75);
+    --status-busy: oklch(0.6 0.22 25);
+
+    /* Password Strength Colors */
+    --strength-very-weak: oklch(0.6 0.22 25);
+    --strength-weak: oklch(0.75 0.18 50);
+    --strength-fair: oklch(0.75 0.18 75);
+    --strength-good: oklch(0.75 0.15 120);
+    --strength-strong: oklch(0.65 0.18 145);
+
+    /* Sidebar */
+    --sidebar-width: 260px;
+    --sidebar-width-collapsed: 72px;
+
+    /* Content */
+    --content-max-width: 1280px;
+
+    /* Scrollbar */
+    --scrollbar-width: 6px;
+    --scrollbar-track: transparent;
+    --scrollbar-thumb: var(--color-neutral-300);
+    --scrollbar-thumb-hover: var(--color-neutral-400);
+}
+
+/* Dark Mode */
+.dark {
+    --surface-primary: var(--color-neutral-950);
+    --surface-secondary: var(--color-neutral-900);
+    --surface-tertiary: var(--color-neutral-800);
+    --surface-elevated: var(--color-neutral-900);
+    --surface-overlay: rgb(0 0 0 / 0.7);
+
+    --text-primary: var(--color-neutral-50);
+    --text-secondary: var(--color-neutral-400);
+    --text-tertiary: var(--color-neutral-500);
+    --text-muted: var(--color-neutral-600);
+    --text-inverse: var(--color-neutral-900);
+
+    --border-default: var(--color-neutral-800);
+    --border-subtle: rgb(255 255 255 / 0.06);
+    --border-muted: var(--color-neutral-900);
+    --border-strong: var(--color-neutral-700);
+
+    /* Semantic Colors - Dark Mode Override */
+    --color-success-bg: oklch(0.25 0.08 145);
+    --color-success-fg: oklch(0.85 0.12 145);
+
+    --color-warning-bg: oklch(0.25 0.08 75);
+    --color-warning-fg: oklch(0.85 0.12 75);
+
+    --color-error-bg: oklch(0.25 0.1 25);
+    --color-error-fg: oklch(0.85 0.14 25);
+
+    --color-info-bg: oklch(0.25 0.08 230);
+    --color-info-fg: oklch(0.85 0.12 230);
+
+    /* Dark Mode Status Colors */
+    --status-online: oklch(0.75 0.15 145);
+    --status-offline: oklch(0.45 0 0);
+    --status-away: oklch(0.8 0.15 75);
+    --status-busy: oklch(0.7 0.18 25);
+
+    /* Dark Mode Password Strength Colors */
+    --strength-very-weak: oklch(0.7 0.18 25);
+    --strength-weak: oklch(0.8 0.15 50);
+    --strength-fair: oklch(0.8 0.15 75);
+    --strength-good: oklch(0.8 0.12 120);
+    --strength-strong: oklch(0.75 0.15 145);
+
+    --scrollbar-thumb: var(--color-neutral-700);
+    --scrollbar-thumb-hover: var(--color-neutral-600);
+}
+
+/* ============================================
+   BASE STYLES & RESET
+   ============================================ */
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html {
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    scroll-behavior: smooth;
+}
+
+body {
+    margin: 0;
+    font-family: var(--font-sans);
+    background-color: var(--surface-primary);
+    color: var(--text-primary);
+    line-height: 1.6;
+    min-height: 100vh;
+}
+
+#app {
+    min-height: 100vh;
+}
+
+/* ============================================
+   THIN SCROLLBARS
+   ============================================ */
+
+* {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+    transition: scrollbar-color 0.3s ease;
+}
+
+*:hover {
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar {
+    width: var(--scrollbar-width);
+    height: var(--scrollbar-width);
+}
+
+*::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+    border-radius: var(--radius-full);
+}
+
+*::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: var(--radius-full);
+    transition: background 0.3s ease;
+}
+
+*:hover::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
+}
+
+*::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+/* ============================================
+   TYPOGRAPHY
+   ============================================ */
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    line-height: 1.25;
+    margin: 0;
+    color: var(--text-primary);
+}
+
+h1 {
+    font-size: 2.25rem;
+    letter-spacing: -0.025em;
+}
+h2 {
+    font-size: 1.875rem;
+    letter-spacing: -0.025em;
+}
+h3 {
+    font-size: 1.5rem;
+}
+h4 {
+    font-size: 1.25rem;
+}
+h5 {
+    font-size: 1.125rem;
+}
+h6 {
+    font-size: 1rem;
+}
+
+p {
+    margin: 0;
+    color: var(--text-secondary);
+}
+
+a {
+    color: var(--interactive-primary);
+    text-decoration: none;
+    transition: color 0.15s ease;
+}
+
+a:hover {
+    color: var(--interactive-primary-hover);
+}
+
+/* ============================================
+   FOCUS STYLES
+   ============================================ */
+
+:focus-visible {
+    outline: 2px solid var(--interactive-primary);
+    outline-offset: 2px;
+}
+
+/* ============================================
+   PAGE TRANSITION ANIMATIONS
+   ============================================ */
+
+/* Fade */
+.fade-enter-active,
+.fade-leave-active {
+    transition: opacity 0.2s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+    opacity: 0;
+}
+
+/* Slide Up */
+.slide-up-enter-active,
+.slide-up-leave-active {
+    transition: all 0.3s var(--ease-out);
+}
+
+.slide-up-enter-from {
+    opacity: 0;
+    transform: translateY(20px);
+}
+
+.slide-up-leave-to {
+    opacity: 0;
+    transform: translateY(-10px);
+}
+
+/* Slide Fade */
+.slide-fade-enter-active {
+    transition: all 0.3s var(--ease-out);
+}
+
+.slide-fade-leave-active {
+    transition: all 0.2s var(--ease-in);
+}
+
+.slide-fade-enter-from {
+    opacity: 0;
+    transform: translateX(20px);
+}
+
+.slide-fade-leave-to {
+    opacity: 0;
+    transform: translateX(-10px);
+}
+
+/* Scale Fade */
+.scale-fade-enter-active,
+.scale-fade-leave-active {
+    transition: all 0.2s var(--ease-out);
+}
+
+.scale-fade-enter-from,
+.scale-fade-leave-to {
+    opacity: 0;
+    transform: scale(0.95);
+}
+
+/* Auth Form Transitions */
+.auth-slide-enter-active,
+.auth-slide-leave-active {
+    transition: all 0.4s var(--ease-out);
+    position: absolute;
+    width: 100%;
+}
+
+.auth-slide-enter-from {
+    opacity: 0;
+    transform: translateX(30px);
+}
+
+.auth-slide-leave-to {
+    opacity: 0;
+    transform: translateX(-30px);
+}
+
+/* List Transition */
+.list-enter-active,
+.list-leave-active {
+    transition: all 0.3s var(--ease-out);
+}
+
+.list-enter-from,
+.list-leave-to {
+    opacity: 0;
+    transform: translateY(15px);
+}
+
+.list-move {
+    transition: transform 0.3s var(--ease-out);
+}
+
+/* ============================================
+   UTILITY CLASSES
+   ============================================ */
+
+.text-gradient {
+    background: linear-gradient(
+        135deg,
+        var(--color-primary-500),
+        var(--color-primary-700)
+    );
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.glass {
+    background: rgb(255 255 255 / 0.8);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+.dark .glass {
+    background: rgb(0 0 0 / 0.5);
+}
+
+/* ============================================
+   COMPONENT BASE STYLES
+   ============================================ */
+
+/* Button Base */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.625rem 1.25rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.25;
+    border-radius: var(--radius-lg);
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-primary {
+    background: var(--interactive-primary);
+    color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+    background: var(--interactive-primary-hover);
+}
+
+.btn-secondary {
+    background: var(--surface-tertiary);
+    color: var(--text-primary);
+}
+
+.btn-secondary:hover:not(:disabled) {
+    background: var(--border-strong);
+}
+
+.btn-ghost {
+    background: transparent;
+    color: var(--text-secondary);
+}
+
+.btn-ghost:hover:not(:disabled) {
+    background: var(--surface-secondary);
+    color: var(--text-primary);
+}
+
+/* Input Base */
+.input {
+    width: 100%;
+    padding: 0.625rem 0.875rem;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: var(--text-primary);
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    transition: all 0.15s ease;
+}
+
+.input::placeholder {
+    color: var(--text-muted);
+}
+
+.input:hover:not(:disabled) {
+    border-color: var(--border-strong);
+}
+
+.input:focus {
+    outline: none;
+    border-color: var(--interactive-primary);
+    box-shadow: 0 0 0 3px rgb(from var(--interactive-primary) r g b / 0.1);
+}
+
+.input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Card Base */
+.card {
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+}
+
+/* Modal Overlay */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--surface-overlay);
+    z-index: var(--z-modal-backdrop);
+}
+
+/* Modal Content */
+.modal-content {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--surface-elevated);
+    border-radius: var(--radius-2xl);
+    box-shadow: var(--shadow-2xl);
+    z-index: var(--z-modal);
+    max-height: 85vh;
+    overflow: auto;
+}
+
+/* Drawer */
+.drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 400px;
+    max-width: 100%;
+    background: var(--surface-elevated);
+    box-shadow: var(--shadow-2xl);
+    z-index: var(--z-modal);
+    overflow: auto;
+}
+
+/* ============================================
+   RECAPTCHA BADGE
+   ============================================ */
+.grecaptcha-badge {
+    visibility: hidden;
+}
+
+/* ============================================
+   CHAT THEMES
+   ============================================ */
+
+/* Modern (Default) - Sleek Grid */
+.chat-theme-modern {
+    /* Inherits global variables, we just enhance the background */
+    --interactive-primary: var(
+        --color-primary-600
+    ); /* Slightly more vibrant standard */
+}
+
+.chat-theme-modern .chat-main-area {
+    background-color: var(--surface-primary);
+    background-image: linear-gradient(
+            to right,
+            rgba(0, 0, 0, 0.03) 1px,
+            transparent 1px
+        ),
+        linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+}
+
+.dark .chat-theme-modern .chat-main-area {
+    background-color: var(--surface-primary);
+    background-image: linear-gradient(
+            to right,
+            rgba(255, 255, 255, 0.03) 1px,
+            transparent 1px
+        ),
+        linear-gradient(
+            to bottom,
+            rgba(255, 255, 255, 0.03) 1px,
+            transparent 1px
+        );
+    background-size: 40px 40px;
+}
+
+/* Ocean Theme - Blue/Teal & Cool Grays */
+.chat-theme-ocean {
+    --interactive-primary: oklch(0.5 0.2 240); /* Darker Blue for contrast */
+    --interactive-primary-hover: oklch(0.45 0.2 240);
+    --interactive-primary-active: oklch(0.4 0.18 240);
+
+    /* Backgrounds */
+    --surface-primary: oklch(0.97 0.02 240); /* Very light blue tint */
+    --surface-secondary: oklch(0.94 0.03 240);
+    --surface-tertiary: oklch(0.9 0.04 240);
+}
+
+.dark .chat-theme-ocean {
+    --interactive-primary: oklch(
+        0.55 0.18 240
+    ); /* Readable blue in dark mode */
+    --surface-primary: oklch(0.15 0.05 240); /* Dark blue background */
+    --surface-elevated: oklch(0.18 0.05 240); /* Slightly lighter for headers */
+    --surface-secondary: oklch(0.2 0.05 240);
+    --surface-tertiary: oklch(0.25 0.06 240);
+}
+
+/* Nature Theme - Emerald/Green & Warm Neutrals */
+.chat-theme-nature {
+    --interactive-primary: oklch(
+        0.5 0.18 150
+    ); /* Darker Emerald for contrast */
+    --interactive-primary-hover: oklch(0.45 0.18 150);
+    --interactive-primary-active: oklch(0.4 0.16 150);
+
+    /* Backgrounds */
+    --surface-primary: oklch(0.98 0.02 110); /* Warm/Organic tint */
+    --surface-secondary: oklch(0.95 0.03 110);
+    --surface-tertiary: oklch(0.92 0.04 110);
+}
+
+.dark .chat-theme-nature {
+    --interactive-primary: oklch(
+        0.55 0.15 150
+    ); /* Readable green in dark mode */
+    --surface-primary: oklch(0.16 0.04 110); /* Dark organic background */
+    --surface-elevated: oklch(0.19 0.04 110);
+    --surface-secondary: oklch(0.21 0.04 110);
+    --surface-tertiary: oklch(0.26 0.05 110);
+}
+
+/* refined gradients for both main and mini chat */
+
+/* Ocean: Deep gradient + Subtle "Bubble" pattern */
+.chat-theme-ocean .chat-main-area {
+    background-color: var(--surface-primary);
+    background-image: radial-gradient(
+            circle at 50% 100%,
+            rgba(14, 165, 233, 0.1) 0%,
+            transparent 50%
+        ),
+        radial-gradient(
+            circle at 80% 20%,
+            rgba(14, 165, 233, 0.05) 0%,
+            transparent 20%
+        ),
+        linear-gradient(
+            180deg,
+            var(--surface-primary) 0%,
+            var(--surface-secondary) 100%
+        );
+}
+
+.dark .chat-theme-ocean .chat-main-area {
+    background-color: oklch(0.15 0.05 240);
+    background-image: radial-gradient(
+            circle at 50% 100%,
+            rgba(14, 165, 233, 0.15) 0%,
+            transparent 60%
+        ),
+        radial-gradient(
+            circle at 80% 20%,
+            rgba(14, 165, 233, 0.1) 0%,
+            transparent 25%
+        ),
+        linear-gradient(
+            180deg,
+            oklch(0.15 0.05 240) 0%,
+            oklch(0.12 0.04 240) 100%
+        );
+}
+
+/* Nature: Organic gradient + "Dotted/Spore" pattern */
+.chat-theme-nature .chat-main-area {
+    background-color: var(--surface-primary);
+    background-image: radial-gradient(
+            rgba(16, 185, 129, 0.1) 1px,
+            transparent 1px
+        ),
+        linear-gradient(
+            135deg,
+            var(--surface-primary) 0%,
+            var(--surface-secondary) 100%
+        );
+    background-size: 20px 20px, 100% 100%; /* Dots repeat every 20px */
+}
+
+.dark .chat-theme-nature .chat-main-area {
+    background-color: oklch(0.16 0.04 110);
+    background-image: radial-gradient(
+            rgba(16, 185, 129, 0.15) 1px,
+            transparent 1px
+        ),
+        linear-gradient(
+            135deg,
+            oklch(0.16 0.04 110) 0%,
+            oklch(0.13 0.03 110) 100%
+        );
+    background-size: 20px 20px, 100% 100%;
+}
+
+/* ============================================
+   FULLCALENDAR PREMIUM THEME
+   ============================================ */
+.fullcalendar-wrapper {
+    --fc-border-color: var(--border-subtle);
+    --fc-button-bg-color: var(--surface-elevated);
+    --fc-button-border-color: var(--border-default);
+    --fc-button-text-color: var(--text-primary);
+    --fc-button-hover-bg-color: var(--surface-secondary);
+    --fc-button-hover-border-color: var(--border-default);
+    --fc-button-active-bg-color: var(--interactive-primary);
+    --fc-button-active-border-color: var(--interactive-primary);
+    --fc-today-bg-color: transparent;
+    --fc-event-bg-color: var(--interactive-primary);
+    --fc-event-border-color: var(--interactive-primary);
+    --fc-event-text-color: white;
+    --fc-page-bg-color: var(--surface-elevated);
+    --fc-neutral-bg-color: var(--surface-secondary);
+    --fc-list-event-hover-bg-color: var(--surface-secondary);
+}
+
+.fullcalendar-wrapper .fc {
+    font-family: inherit;
+}
+
+.fullcalendar-wrapper .fc-theme-standard td,
+.fullcalendar-wrapper .fc-theme-standard th,
+.fullcalendar-wrapper .fc-theme-standard .fc-scrollgrid {
+    border-color: var(--border-subtle);
+}
+
+.fullcalendar-wrapper .fc-col-header-cell-cushion {
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+    color: var(--text-secondary);
+    padding: 1rem 0;
+}
+
+.fullcalendar-wrapper .fc-daygrid-day-number {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    padding: 0.5rem 0.75rem;
+    margin: 0.25rem;
+    border-radius: 9999px;
+    width: 2rem;
+    height: 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.fullcalendar-wrapper .fc-daygrid-day.fc-day-today .fc-daygrid-day-number {
+    background-color: var(--interactive-primary);
+    color: white;
+    box-shadow: 0 2px 8px rgba(var(--interactive-primary-rgb), 0.4);
+}
+
+.fullcalendar-wrapper .fc-daygrid-day-frame {
+    transition: background-color 0.15s ease;
+}
+
+.fullcalendar-wrapper .fc-daygrid-day:hover .fc-daygrid-day-frame {
+    background-color: var(--surface-secondary);
+}
+
+/* Base Event Style - The "Pill" */
+.fullcalendar-wrapper .fc-event {
+    border: none !important;
+    border-radius: 6px !important;
+    padding: 2px 4px !important;
+    font-size: 0.75rem !important;
+    font-weight: 500 !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); /* Subtle depth */
+    transition: transform 0.15s, box-shadow 0.15s;
+    margin-bottom: 2px !important;
+}
+
+.fullcalendar-wrapper .fc-event:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    z-index: 10;
+}
+
+/* User Events (Blue Gradient by Default) */
+.fullcalendar-wrapper .fc-event.user-event {
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    color: white !important;
+}
+
+.dark .fullcalendar-wrapper .fc-event.user-event {
+    background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+    box-shadow: 0 1px 4px rgba(96, 165, 250, 0.25);
+}
+
+/* Holiday Events (Red tag style) */
+.fullcalendar-wrapper .fc-event.holiday-event {
+    background: linear-gradient(135deg, #f87171 0%, #ef4444 100%);
+    color: white !important;
+    font-size: 0.7rem !important;
+    opacity: 0.9;
+}
+
+/* Selection Mode Styling */
+.fullcalendar-wrapper.selection-mode .fc-event {
+    cursor: pointer;
+}
+
+.fullcalendar-wrapper.selection-mode .fc-event.selected-for-export {
+    ring: 2px solid white;
+    outline: 2px solid var(--interactive-primary);
+    transform: scale(0.98);
+}
+
+.dark .fullcalendar-wrapper.selection-mode .fc-event.selected-for-export {
+    ring: 2px solid var(--surface-elevated);
+}
+
+/* ============================================
+   TRIBUTE.JS (MENTION) STYLES
+   ============================================ */
+.tribute-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: auto;
+    max-height: 300px;
+    max-width: 500px;
+    overflow: auto;
+    display: block;
+    z-index: 999999;
+    border-radius: 8px;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-default);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    padding: 0.25rem;
+}
+
+.tribute-container ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.tribute-container li {
+    padding: 6px 8px;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: all 0.1s ease;
+}
+
+.tribute-container li span {
+    font-weight: 500;
+}
+
+.tribute-container li.highlight,
+.tribute-container li:hover {
+    background: var(--surface-secondary);
+}
+
+.tribute-container .menu-highlighted {
+    font-weight: bold;
+}
+
+/* ============================================
+   PROSE (RICH TEXT) CUSTOMIZATIONS
+   ============================================ */
+.prose pre {
+    background-color: #1a1b1e;
+    color: #e5e5e5;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    overflow-x: auto;
+    margin-top: 1.5em;
+    margin-bottom: 1.5em;
+    border: 1px solid var(--border-subtle);
+}
+
+.prose code {
+    background-color: var(--surface-tertiary);
+    color: var(--color-primary-600);
+    padding: 0.2em 0.4em;
+    border-radius: 0.25rem;
+    font-size: 0.875em;
+    font-weight: 500;
+}
+
+.prose pre code {
+    background-color: transparent;
+    padding: 0;
+    color: inherit;
+    font-size: 0.9em;
+    font-weight: 400;
+}
+
+.dark .prose pre {
+    background-color: #111;
+    border-color: var(--border-default);
+}
+
+.dark .prose code {
+     background-color: rgba(255,255,255,0.1);
+     color: var(--color-primary-400);
+}
+
+.dark .prose pre code {
+    background-color: transparent;
+    color: inherit;
+}

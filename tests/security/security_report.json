@@ -1,0 +1,131 @@
+{
+  "timestamp": "2026-01-06T22:42:00.751590",
+  "target": "http://localhost:8000",
+  "summary": {
+    "total": 13,
+    "passed": 12,
+    "failed": 1,
+    "skipped": 0,
+    "errors": 0,
+    "score": 92.3
+  },
+  "results": [
+    {
+      "name": "IDOR/Authorization",
+      "category": "security",
+      "status": "PASS",
+      "exit_code": 0,
+      "duration": 0.34,
+      "output": "Running IDOR / Authorization Tests...\n\u274c FAILED: List Users (Admin Only) - Expected 403, Got 200\nResponse: {\"data\":[{\"id\":\"1d1c1725-3c69-415a-b362-01bf12fa6f4a\",\"public_id\":\"1d1c1725-3c69-415a-b362-01bf12fa6f4a\",\"name\":\"Test User\",\"username\":\"test_user\",\"display_name\":\"Test\",\"initials\":\"TU\",\"avatar\":null,\"\n\u274c FAILED: List Teams (Admin Only) - Expected 403, Got 200\nResponse: {\"current_page\":1,\"data\":[{\"public_id\":\"26bab1e3-7c1f-40cb-ae57-cfd805d566ff\",\"name\":\"DevOps\",\"slug\":\"devops\",\"description\":\"DevOps\",\"avatar\":null,\"status\":\"active\",\"settings\":null,\"created_at\":\"2026-\n\u274c FAILED: View Admin Details (IDOR) - Expected 403, Got 404\nResponse: {\"message\":\"Resource not found.\"}\n\u274c FAILED: Update Admin Details (IDOR) - Expected 403, Got 404\nResponse: {\"message\":\"Resource not found.\"}\n\u274c FAILED: Delete Admin (IDOR) - Expected 403, Got 404\nResponse: {\"message\":\"Resource not found.\"}\n\n\u26a0\ufe0f  Some Security Tests Failed!\n",
+      "errors": ""
+    },
+    {
+      "name": "SQL/XSS Injection",
+      "category": "security",
+      "status": "PASS",
+      "exit_code": 0,
+      "duration": 0.27,
+      "output": "--- SQL Injection Test (Search) ---\nSearch Status: 200\nResults Count: 0\n\u2705 PASSED: SQL Injection payload returned 0 results (treated as string).\n\n--- XSS Test (Profile Name) ---\nUpdate Status: 200\nStored Name: <script>alert('xss')</script>\n\u2139\ufe0f  Note: Backend modified input to: <script>alert('xss')</script>\nReverted name.\n",
+      "errors": ""
+    },
+    {
+      "name": "Mass Assignment",
+      "category": "security",
+      "status": "PASS",
+      "exit_code": 0,
+      "duration": 0.26,
+      "output": "Fetching current profile...\nOriginal Role: unknown\n\nAttempting Mass Assignment update (Role -> administrator)...\nUpdate Status: 200\n\nVerifying...\n\u2705 PASSED: Role is still 'unknown'. Mass Assignment prevented.\n\u274c FAILED: Name was NOT updated. Got: N/A\n\nReverting name to original...\n\u2705 Name reverted to: Test User\n",
+      "errors": ""
+    },
+    {
+      "name": "CSRF Protection",
+      "category": "security",
+      "status": "PASS",
+      "exit_code": 0,
+      "duration": 0.2,
+      "output": "============================================================\nCSRF Protection Pentest\n============================================================\n\n--- Test 1: Cross-Origin POST Request ---\n\u26a0\ufe0f  Unexpected status: 405\n\n--- Test 2: CORS Headers Validation ---\n\u2705 PASSED: CORS properly restricts origin. Got: ''\n\n--- Test 3: 2FA Challenge CSRF Protection ---\n\u26a0\ufe0f  Status: 500 - Review if this is expected\n\n--- Test 4: XMLHttpRequest Header Validation ---\n\u2705 Request processed: 422\n\n============================================================\n\u2705 All CSRF Protection Tests Passed!\n============================================================\n",
+      "errors": ""
+    },
+    {
+      "name": "Authentication",
+      "category": "security",
+      "status": "PASS",
+      "exit_code": 0,
+      "duration": 0.55,
+      "output": "============================================================\nAuthentication Security Pentest\n============================================================\n\n--- Test 1: Malformed Token Handling ---\n\u2705 11/11 malformed tokens properly rejected\n\n--- Test 2: Token Invalidation Check ---\n\u2705 Valid token authentication works\n\n--- Test 3: Login Brute Force Protection ---\n\u2705 PASSED: Rate limit triggered after 9 attempts\n\n--- Test 4: Password Reset Rate Limiting ---\n\u2705 PASSED: Password reset rate limited after 1 attempts\n\n--- Test 5: User Enumeration Prevention ---\n\u2705 PASSED: Same response code for existing/non-existing users\n\n--- Test 6: Token Tampering Detection ---\n\u2705 PASSED: Tampered token rejected\n\n--- Test 7: Header Injection Prevention ---\n\u2705 Header injection blocked at transport level\n\n============================================================\n\u2705 All Authentication Security Tests Passed!\n============================================================\n",
+      "errors": ""
+    },
+    {
+      "name": "Session Security",
+      "category": "security",
+      "status": "PASS",
+      "exit_code": 0,
+      "duration": 0.24,
+      "output": "============================================================\nSession Security Pentest\n============================================================\n\n--- Test 1: Cookie Security Attributes ---\n\u26a0\ufe0f  Cookie 'XSRF-TOKEN': Missing SameSite attribute\n\u26a0\ufe0f  Cookie 'laravel-session': Missing SameSite attribute\n\n--- Test 2: Session Fixation Prevention ---\n\u2139\ufe0f  Session cookie not found or login failed\n\n--- Test 3: Session Information Exposure ---\n\u2139\ufe0f  Sessions endpoint returned: 401\n\n--- Test 4: Security Headers for Session Protection ---\n\u26a0\ufe0f  X-Content-Type-Options: Missing\n\u26a0\ufe0f  X-Frame-Options: Missing\n\n--- Test 5: Logout Token Invalidation ---\n\u2139\ufe0f  Token already invalid or expired\n\n============================================================\n\u2705 All Session Security Tests Passed!\n============================================================\n",
+      "errors": ""
+    },
+    {
+      "name": "Security Headers",
+      "category": "security",
+      "status": "PASS",
+      "exit_code": 0,
+      "duration": 0.21,
+      "output": "============================================================\nSecurity Headers Pentest\n============================================================\n\n--- API Response Headers ---\nStatus: 200\n\n\u2705 X-Content-Type-Options: nosniff\n\u2705 X-Frame-Options: SAMEORIGIN\n\u2705 X-XSS-Protection: 1; mode=block\n\u23ed\ufe0f  Strict-Transport-Security: Skipped (HTTPS only)\n\u26a0\ufe0f  Content-Security-Policy: Missing [MEDIUM] - Prevents XSS and injection attacks\n\u2705 Referrer-Policy: strict-origin-when-cross-origin\n\u2705 Permissions-Policy: geolocation=(), microphone=(), camera=()\n\n--- Information Disclosure Check ---\n\u2705 Server: Not disclosed\n\u26a0\ufe0f  X-Powered-By: PHP/8.3.6 (consider removing)\n\u2705 X-AspNet-Version: Not disclosed\n\u2705 X-AspNetMvc-Version: Not disclosed\n\u2705 X-Debug-Token: Not disclosed\n\n--- CORS Configuration ---\n\u2139\ufe0f  Access-Control-Allow-Origin: http://localhost:5173\n\u2139\ufe0f  Access-Control-Allow-Methods: GET\n\u2139\ufe0f  Access-Control-Allow-Headers: Authorization\n\u2139\ufe0f  Access-Control-Allow-Credentials: true\n\n--- Cache-Control for Sensitive Data ---\n\u2705 Cache-Control: no-cache, private\n\n============================================================\n\u2705 All Security Headers Tests Passed!\n============================================================\n",
+      "errors": ""
+    },
+    {
+      "name": "File Upload",
+      "category": "security",
+      "status": "PASS",
+      "exit_code": 0,
+      "duration": 0.66,
+      "output": "============================================================\nFile Upload Security Pentest\n============================================================\n\n--- Test 1: Dangerous Extension Blocking ---\n\u2705 6/6 dangerous extensions blocked\n\n--- Test 2: Double Extension Prevention ---\n\u2139\ufe0f  4/4 double extensions explicitly blocked\n\n--- Test 3: MIME Type Spoofing Prevention ---\n\u2705 PASSED: MIME spoofing detected (file content mismatch)\n\n--- Test 4: Path Traversal Prevention ---\n\u2705 6/6 path traversal attempts handled\n\n--- Test 5: File Size Limits ---\n\u2705 PASSED: Large file rejected\n\n--- Test 6: Null Byte Injection ---\n\u2705 Null byte in filename rejected\n\u2705 Null byte in filename rejected\n\n============================================================\n\u2705 All File Upload Security Tests Passed!\n============================================================\n",
+      "errors": ""
+    },
+    {
+      "name": "WebSocket Security",
+      "category": "security",
+      "status": "PASS",
+      "exit_code": 0,
+      "duration": 1.53,
+      "output": "============================================================\nWebSocket (Reverb) Security Test\n============================================================\n\n--- Test 1: Broadcasting Auth Endpoint ---\n\u2705 PASSED: Auth endpoint exists (Status: 403)\n\n--- Test 2: Private Channel Auth Required ---\n\u2705 PASSED: Unauthenticated request rejected (401)\n\n--- Test 3: User Channel Isolation ---\n\u2705 PASSED: Access to other user's channel denied (403)\n\n--- Test 4: Presence Channel Auth ---\n\u2705 PASSED: Presence channel auth successful\n  \u2705 Channel data included\n\n--- Test 5: Chat Channel Authorization ---\n\u2705 PASSED: Unauthorized chat channel access denied\n\n--- Test 6: Invalid Channel Format Handling ---\n\u2705 7/7 invalid channels handled properly\n\n--- Test 7: Socket ID Validation ---\n\u2705 5/5 invalid socket IDs handled properly\n\n--- Test 8: Auth Endpoint Rate Limiting ---\n\u2139\ufe0f  No rate limit hit after 30 requests\n\n============================================================\n\u2705 All WebSocket Security Tests Passed!\n============================================================\n",
+      "errors": ""
+    },
+    {
+      "name": "API Rate Limiting",
+      "category": "stability",
+      "status": "PASS",
+      "exit_code": 0,
+      "duration": 1.41,
+      "output": "Testing authenticated rate limit for http://localhost:8000/api/user (Limit: 60/min)\n\n\u2705 Rate limit triggered successfully at request 38 (429 Too Many Requests)!\nRetry-After: None seconds\n",
+      "errors": ""
+    },
+    {
+      "name": "Guest Rate Limiting",
+      "category": "stability",
+      "status": "PASS",
+      "exit_code": 0,
+      "duration": 0.15,
+      "output": "Testing rate limit for http://localhost:8000/api/login (Limit: 10/min)\nRequest 1: Status 429\n\n\u2705 Rate limit triggered successfully (429 Too Many Requests)!\nRetry-After: None seconds\n",
+      "errors": ""
+    },
+    {
+      "name": "Database Stability",
+      "category": "stability",
+      "status": "FAIL",
+      "exit_code": 1,
+      "duration": 2.6,
+      "output": "============================================================\nDatabase Stability Test\n============================================================\n\n--- Test 1: Concurrent Connection Stress ---\n  Total requests:    100\n  Successful:        0\n  Failed:            100\n  Avg response time: 0.411s\n  Max response time: 0.571s\n\u274c FAILED: 100 requests failed\n\n--- Test 2: Complex Query Performance ---\n  \u274c Large user list: Status 429\n  \u274c Audit log pagination: Status 429\n  \u274c Global search: Status 429\n  \u274c Dashboard statistics: Status 429\n\n--- Test 3: Error Recovery ---\n  \u2139\ufe0f  Response: 429\n  \u2139\ufe0f  Malformed JSON response: 429\n\n--- Test 4: Long Query Timeout ---\n  \u26a0\ufe0f  Response: 429 in 0.019s\n\n--- Test 5: Concurrent Update Safety ---\n  \u26a0\ufe0f  0/5 concurrent updates succeeded\n\n============================================================\n\u26a0\ufe0f  Some Stability Tests Need Review\n============================================================\n",
+      "errors": ""
+    },
+    {
+      "name": "Memory Leak Detection",
+      "category": "stability",
+      "status": "PASS",
+      "exit_code": 0,
+      "duration": 2.92,
+      "output": "============================================================\nMemory Leak Detection Test\n============================================================\n\nStarted: 2026-01-06 22:41:57\nTarget: http://localhost:8000/api\nIterations per endpoint: 50\n\n--- Testing: /user ---\n  Taking baseline...\n  \u26a0\ufe0f  Endpoint not accessible (may be rate limited)\n\n--- Testing: /dashboard ---\n  Taking baseline...\n  \u26a0\ufe0f  Endpoint not accessible (may be rate limited)\n\n--- Testing: /notifications ---\n  Taking baseline...\n  \u26a0\ufe0f  Endpoint not accessible (may be rate limited)\n\n--- Testing: /chat ---\n  Taking baseline...\n  \u26a0\ufe0f  Endpoint not accessible (may be rate limited)\n\n--- Testing: /announcements/active ---\n  Taking baseline...\n  \u26a0\ufe0f  Endpoint not accessible (may be rate limited)\n\n--- Object Accumulation Test ---\n  \u26a0\ufe0f  Not enough successful requests\n\n--- Connection Pool Test ---\n  Completed: 50, Failed: 0\n  Duration: 0.99s\n  \u2705 Connection pool handled load\n\n============================================================\nMemory Leak Test Summary\n============================================================\n\n\u2705 No obvious memory leak patterns detected\n============================================================\n\nReport saved: /home/ryann/projects/coresync_v2/tests/security/memory_report.json\n",
+      "errors": ""
+    }
+  ]
+}

@@ -1,0 +1,996 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Email System Documentation - Coresync V2</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+            rel="stylesheet"
+        />
+        <style>
+            body {
+                font-family: "Inter", sans-serif;
+            }
+        </style>
+    </head>
+    <body class="bg-slate-50 min-h-screen text-slate-800">
+        <!-- Header -->
+        <header
+            class="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm"
+        >
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between h-16">
+                    <div class="flex items-center gap-4">
+                        <a
+                            href="../../coresync_v2_doc.html"
+                            class="flex items-center text-slate-500 hover:text-indigo-600 transition-colors"
+                        >
+                            <svg
+                                class="h-5 w-5 mr-1"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M10 19l-7-7m0 0l7-7m-7 7h18"
+                                />
+                            </svg>
+                            Back
+                        </a>
+                        <div class="h-6 w-px bg-slate-200"></div>
+                        <div class="flex items-center gap-2">
+                            <div class="bg-purple-100 rounded-md p-1.5">
+                                <svg
+                                    class="h-5 w-5 text-purple-600"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                                    />
+                                </svg>
+                            </div>
+                            <h1 class="text-lg font-bold text-slate-900">
+                                Email System Documentation
+                            </h1>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div class="flex flex-col lg:flex-row gap-8">
+                <!-- Sidebar Navigation -->
+                <nav class="lg:w-64 flex-shrink-0">
+                    <div class="sticky top-24 space-y-1">
+                        <a
+                            href="#overview"
+                            class="block px-3 py-2 text-sm font-medium rounded-md text-purple-700 bg-purple-50 hover:bg-purple-100"
+                            >Overview</a
+                        >
+                        <a
+                            href="#adapter-architecture"
+                            class="block px-3 py-2 text-sm font-medium rounded-md text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                            >Adapter Architecture</a
+                        >
+                        <a
+                            href="#frontend-map"
+                            class="block px-3 py-2 text-sm font-medium rounded-md text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                            >Frontend Structure</a
+                        >
+                        <a
+                            href="#backend-map"
+                            class="block px-3 py-2 text-sm font-medium rounded-md text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                            >Backend Structure</a
+                        >
+                        <a
+                            href="#sync-flow"
+                            class="block px-3 py-2 text-sm font-medium rounded-md text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                            >Sync Flow</a
+                        >
+                        <a
+                            href="#api-map"
+                            class="block px-3 py-2 text-sm font-medium rounded-md text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                            >API Map</a
+                        >
+                        <a
+                            href="#database"
+                            class="block px-3 py-2 text-sm font-medium rounded-md text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                            >Database & Schema</a
+                        >
+                        <a
+                            href="#features"
+                            class="block px-3 py-2 text-sm font-medium rounded-md text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                            >Key Features</a
+                        >
+                    </div>
+                </nav>
+
+                <!-- Content -->
+                <main class="flex-1 min-w-0">
+                    <!-- Overview -->
+                    <section id="overview" class="mb-12">
+                        <h2 class="text-2xl font-bold text-slate-900 mb-4">
+                            System Overview
+                        </h2>
+                        <p class="text-slate-600 leading-relaxed mb-4">
+                            The Coresync V2 Email Client is a full-featured
+                            IMAP/SMTP unified inbox with support for multiple
+                            email providers including Gmail (OAuth), Outlook
+                            (OAuth), and custom IMAP servers. It uses a provider
+                            adapter pattern to handle provider-specific
+                            behaviors.
+                        </p>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
+                            <div
+                                class="bg-white p-4 rounded-lg border border-slate-200"
+                            >
+                                <h3 class="font-semibold text-slate-900 mb-2">
+                                    Tech Stack
+                                </h3>
+                                <ul class="text-sm text-slate-600 space-y-1">
+                                    <li>
+                                        📧 <strong>Protocol:</strong> IMAP/SMTP
+                                        (webklex/php-imap)
+                                    </li>
+                                    <li>
+                                        🔐 <strong>Auth:</strong> OAuth2 (Gmail,
+                                        Outlook) + Password
+                                    </li>
+                                    <li>
+                                        🛡️
+                                        <strong>Sanitization:</strong>
+                                        HTMLPurifier + CID Image Handling
+                                    </li>
+                                    <li>
+                                        ✏️ <strong>Editor:</strong> Tiptap (Rich
+                                        Text + Attachments)
+                                    </li>
+                                    <li>
+                                        🎨 <strong>UI:</strong> Vue 3 +
+                                        TailwindCSS (Split Pane Layout)
+                                    </li>
+                                </ul>
+                            </div>
+                            <div
+                                class="bg-white p-4 rounded-lg border border-slate-200"
+                            >
+                                <h3 class="font-semibold text-slate-900 mb-2">
+                                    Supported Providers
+                                </h3>
+                                <ul class="text-sm text-slate-600 space-y-1">
+                                    <li>
+                                        🔵 <strong>Gmail:</strong> OAuth2 with
+                                        XOAUTH2
+                                    </li>
+                                    <li>
+                                        🟦 <strong>Outlook:</strong> OAuth2 with
+                                        XOAUTH2
+                                    </li>
+                                    <li>
+                                        ⚙️
+                                        <strong>Custom IMAP:</strong>
+                                        Password-based auth
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </section>
+
+                    <hr class="my-8 border-slate-200" />
+
+                    <!-- Adapter Architecture -->
+                    <section id="adapter-architecture" class="mb-12">
+                        <h2 class="text-2xl font-bold text-slate-900 mb-6">
+                            Email Provider Adapter Architecture
+                        </h2>
+                        <p class="text-slate-600 leading-relaxed mb-6">
+                            The adapter pattern abstracts provider-specific
+                            logic (authentication, folder naming, message
+                            fetching) behind a common interface, allowing jobs
+                            to work uniformly with any provider.
+                        </p>
+
+                        <!-- Mermaid Diagram -->
+                        <div
+                            class="bg-white p-6 rounded-lg border border-slate-200 mb-6"
+                        >
+                            <div class="mermaid">
+graph TD
+    subgraph Jobs["Queue Jobs"]
+        A[SeedEmailAccountJob]
+        B[SyncEmailFolderJob]
+    end
+    subgraph Factory["Factory"]
+        C[AdapterFactory]
+    end
+    subgraph Adapters["Provider Adapters"]
+        D[GmailAdapter]
+        E[OutlookAdapter]
+        F[CustomImapAdapter]
+    end
+    subgraph Base["Base Layer"]
+        G[BaseEmailAdapter]
+        H[EmailProviderAdapter Interface]
+    end
+    A --> C
+    B --> C
+    C -->|gmail| D
+    C -->|outlook| E
+    C -->|custom| F
+    D --> G
+    E --> G
+    F --> G
+    G -.-> H
+                            </div>
+                        </div>
+
+                        <!-- Adapter Files -->
+                        <div class="space-y-4">
+                            <div
+                                class="border border-slate-200 rounded-lg p-4 bg-white"
+                            >
+                                <h3 class="font-bold text-slate-900 mb-2">
+                                    File Structure
+                                </h3>
+                                <div
+                                    class="font-mono text-sm text-slate-600 space-y-1"
+                                >
+                                    <div>
+                                        <strong class="text-purple-600"
+                                            >app/Contracts/</strong
+                                        >
+                                    </div>
+                                    <div class="pl-4">
+                                        EmailProviderAdapter.php
+                                        <span class="text-slate-400"
+                                            >// Interface</span
+                                        >
+                                    </div>
+                                    <div>
+                                        <strong class="text-purple-600"
+                                            >app/Services/EmailAdapters/</strong
+                                        >
+                                    </div>
+                                    <div class="pl-4">
+                                        AdapterFactory.php
+                                        <span class="text-slate-400"
+                                            >// Creates adapter by
+                                            provider</span
+                                        >
+                                    </div>
+                                    <div class="pl-4">
+                                        BaseEmailAdapter.php
+                                        <span class="text-slate-400"
+                                            >// Common IMAP logic</span
+                                        >
+                                    </div>
+                                    <div class="pl-4">
+                                        GmailAdapter.php
+                                        <span class="text-slate-400"
+                                            >// OAuth + Gmail folders</span
+                                        >
+                                    </div>
+                                    <div class="pl-4">
+                                        OutlookAdapter.php
+                                        <span class="text-slate-400"
+                                            >// OAuth + Outlook folders</span
+                                        >
+                                    </div>
+                                    <div class="pl-4">
+                                        CustomImapAdapter.php
+                                        <span class="text-slate-400"
+                                            >// Password auth</span
+                                        >
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div
+                                class="border border-slate-200 rounded-lg p-4 bg-white"
+                            >
+                                <h3 class="font-bold text-slate-900 mb-2">
+                                    Key Interface Methods
+                                </h3>
+                                <table class="w-full text-sm">
+                                    <thead>
+                                        <tr
+                                            class="text-left text-slate-500 border-b"
+                                        >
+                                            <th class="py-2">Method</th>
+                                            <th class="py-2">Purpose</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="text-slate-600">
+                                        <tr class="border-b">
+                                            <td class="py-2 font-mono">
+                                                createClient()
+                                            </td>
+                                            <td>
+                                                Create IMAP client with
+                                                provider-specific auth
+                                            </td>
+                                        </tr>
+                                        <tr class="border-b">
+                                            <td class="py-2 font-mono">
+                                                getFolderMapping()
+                                            </td>
+                                            <td>
+                                                Map logical folders (inbox,
+                                                sent) to provider names
+                                            </td>
+                                        </tr>
+                                        <tr class="border-b">
+                                            <td class="py-2 font-mono">
+                                                fetchLatestMessages()
+                                            </td>
+                                            <td>
+                                                Fetch N latest messages using
+                                                optimal strategy
+                                            </td>
+                                        </tr>
+                                        <tr class="border-b">
+                                            <td class="py-2 font-mono">
+                                                fetchLatestUids()
+                                            </td>
+                                            <td>
+                                                Get UIDs of latest messages via
+                                                overview()
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td class="py-2 font-mono">
+                                                refreshTokenIfNeeded()
+                                            </td>
+                                            <td>
+                                                Handle OAuth token refresh
+                                                (Gmail/Outlook)
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Frontend Map -->
+                    <section id="frontend-map" class="mb-12">
+                        <h2 class="text-2xl font-bold text-slate-900 mb-6">
+                            Frontend Architecture
+                        </h2>
+                        <div
+                            class="bg-slate-900 rounded-lg overflow-hidden shadow-lg"
+                        >
+                            <div
+                                class="p-4 bg-slate-800 border-b border-slate-700"
+                            >
+                                <h3 class="font-mono text-sm text-purple-400">
+                                    resources/js/
+                                </h3>
+                            </div>
+                            <div
+                                class="p-6 font-mono text-sm text-slate-300 space-y-4"
+                            >
+                                <div>
+                                    <div class="text-emerald-400 mb-1">
+                                        ▼ views/Email/
+                                    </div>
+                                    <div
+                                        class="pl-4 border-l border-slate-700 space-y-1"
+                                    >
+                                        <div class="flex gap-2">
+                                            <span class="text-white"
+                                                >EmailIndex.vue</span
+                                            >
+                                            <span class="text-slate-500"
+                                                >// Main Layout Container</span
+                                            >
+                                        </div>
+                                        <div class="flex gap-2">
+                                            <span class="text-white"
+                                                >components/EmailSidebar.vue</span
+                                            >
+                                            <span class="text-slate-500"
+                                                >// Folders & Accounts NAV</span
+                                            >
+                                        </div>
+                                        <div class="flex gap-2">
+                                            <span class="text-white"
+                                                >components/EmailList.vue</span
+                                            >
+                                            <span class="text-slate-500"
+                                                >// Message List + Infinite
+                                                Scroll</span
+                                            >
+                                        </div>
+                                        <div class="flex gap-2">
+                                            <span class="text-white"
+                                                >components/EmailPreviewPane.vue</span
+                                            >
+                                            <span class="text-slate-500"
+                                                >// Reading Pane</span
+                                            >
+                                        </div>
+                                        <div class="flex gap-2">
+                                            <span class="text-white"
+                                                >components/EmailInlineComposer.vue</span
+                                            >
+                                            <span class="text-slate-500"
+                                                >// Reply/Forward/Compose</span
+                                            >
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div class="text-emerald-400 mb-1">
+                                        ▼ services/
+                                    </div>
+                                    <div class="pl-4 border-l border-slate-700">
+                                        <div class="flex gap-2">
+                                            <span class="text-white"
+                                                >email.service.ts</span
+                                            >
+                                            <span class="text-slate-500"
+                                                >// API Communication</span
+                                            >
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div class="text-emerald-400 mb-1">
+                                        ▼ stores/
+                                    </div>
+                                    <div class="pl-4 border-l border-slate-700">
+                                        <div class="flex gap-2">
+                                            <span class="text-white"
+                                                >emailStore.ts</span
+                                            >
+                                            <span class="text-slate-500"
+                                                >// State + Pagination +
+                                                Actions</span
+                                            >
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Backend Map -->
+                    <section id="backend-map" class="mb-12">
+                        <h2 class="text-2xl font-bold text-slate-900 mb-6">
+                            Backend Architecture
+                        </h2>
+                        <div class="space-y-4">
+                            <div
+                                class="border border-slate-200 rounded-lg p-4 bg-white"
+                            >
+                                <h3 class="font-bold text-slate-900 mb-2">
+                                    Controller Layer
+                                </h3>
+                                <p class="text-sm text-slate-600 mb-2">
+                                    <code
+                                        >app/Http/Controllers/Api/EmailController.php</code
+                                    >
+                                </p>
+                                <p class="text-sm text-slate-500">
+                                    Main CRUD for emails. Handles listing,
+                                    searching, filtering (Labels/Folders/Dates),
+                                    and viewing single emails with pagination.
+                                </p>
+                            </div>
+
+                            <div
+                                class="border border-slate-200 rounded-lg p-4 bg-white"
+                            >
+                                <h3 class="font-bold text-slate-900 mb-2">
+                                    Service Layer
+                                </h3>
+                                <div
+                                    class="text-sm text-slate-600 mb-2 space-y-1"
+                                >
+                                    <p>
+                                        <code
+                                            >app/Services/EmailSyncService.php</code
+                                        >
+                                        - Orchestrates sync jobs
+                                    </p>
+                                    <p>
+                                        <code
+                                            >app/Services/EmailAccountService.php</code
+                                        >
+                                        - Account management & OAuth refresh
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div
+                                class="border border-slate-200 rounded-lg p-4 bg-white"
+                            >
+                                <h3 class="font-bold text-slate-900 mb-2">
+                                    Queue Jobs
+                                </h3>
+                                <div
+                                    class="text-sm text-slate-600 mb-2 space-y-1"
+                                >
+                                    <p>
+                                        <code
+                                            >app/Jobs/SeedEmailAccountJob.php</code
+                                        >
+                                        - Initial email sync (priority folders)
+                                    </p>
+                                    <p>
+                                        <code
+                                            >app/Jobs/SyncEmailFolderJob.php</code
+                                        >
+                                        - Ongoing folder synchronization
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div
+                                class="border border-slate-200 rounded-lg p-4 bg-white"
+                            >
+                                <h3 class="font-bold text-slate-900 mb-2">
+                                    Sanitization
+                                </h3>
+                                <p class="text-sm text-slate-600 mb-2">
+                                    <code>EmailSanitizationService.php</code>
+                                </p>
+                                <p class="text-sm text-slate-500">
+                                    Cleans HTML bodies, blocks external
+                                    trackers, and preserves inline CID images.
+                                </p>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Sync Flow -->
+                    <section id="sync-flow" class="mb-12">
+                        <h2 class="text-2xl font-bold text-slate-900 mb-6">
+                            Email Sync Flow
+                        </h2>
+                        <div
+                            class="bg-white p-6 rounded-lg border border-slate-200"
+                        >
+                            <div class="mermaid">
+sequenceDiagram
+    participant User
+    participant API
+    participant SyncService
+    participant AdapterFactory
+    participant Adapter
+    participant IMAP
+    
+    User->>API: Connect Account
+    API->>SyncService: startSeed account
+    SyncService->>Queue: dispatch SeedEmailAccountJob
+    Note over Queue: Job Runs
+    Queue->>AdapterFactory: create provider
+    AdapterFactory-->>Queue: GmailAdapter or CustomImapAdapter
+    Queue->>Adapter: createClient account
+    Adapter->>IMAP: Connect OAuth or Password
+    loop Each Priority Folder
+        Queue->>Adapter: fetchLatestMessages folder 50
+        Adapter->>IMAP: overview getMessageByUid
+        IMAP-->>Adapter: Messages
+        Queue->>DB: storeEmailFromImap
+    end
+    Queue->>SyncService: dispatchSync
+    SyncService->>Queue: dispatch SyncEmailFolderJob
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- API Map -->
+                    <section id="api-map" class="mb-12">
+                        <h2 class="text-2xl font-bold text-slate-900 mb-6">
+                            API Endpoint Map
+                        </h2>
+                        <div
+                            class="overflow-x-auto border border-slate-200 rounded-lg"
+                        >
+                            <table class="min-w-full divide-y divide-slate-200">
+                                <thead class="bg-slate-50">
+                                    <tr>
+                                        <th
+                                            class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider"
+                                        >
+                                            Method
+                                        </th>
+                                        <th
+                                            class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider"
+                                        >
+                                            Endpoint
+                                        </th>
+                                        <th
+                                            class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider"
+                                        >
+                                            Description
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody
+                                    class="bg-white divide-y divide-slate-200"
+                                >
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span
+                                                class="px-2 py-1 text-xs font-bold bg-blue-100 text-blue-800 rounded"
+                                                >GET</span
+                                            >
+                                        </td>
+                                        <td class="px-6 py-4 font-mono text-sm">
+                                            /api/emails
+                                        </td>
+                                        <td
+                                            class="px-6 py-4 text-sm text-slate-500"
+                                        >
+                                            List emails (paginated, supports
+                                            ?folder=, ?search=, ?page=)
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span
+                                                class="px-2 py-1 text-xs font-bold bg-blue-100 text-blue-800 rounded"
+                                                >GET</span
+                                            >
+                                        </td>
+                                        <td class="px-6 py-4 font-mono text-sm">
+                                            /api/emails/{id}
+                                        </td>
+                                        <td
+                                            class="px-6 py-4 text-sm text-slate-500"
+                                        >
+                                            Get email details + body
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span
+                                                class="px-2 py-1 text-xs font-bold bg-green-100 text-green-800 rounded"
+                                                >POST</span
+                                            >
+                                        </td>
+                                        <td class="px-6 py-4 font-mono text-sm">
+                                            /api/emails
+                                        </td>
+                                        <td
+                                            class="px-6 py-4 text-sm text-slate-500"
+                                        >
+                                            Send/Reply/Forward email
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span
+                                                class="px-2 py-1 text-xs font-bold bg-amber-100 text-amber-800 rounded"
+                                                >PATCH</span
+                                            >
+                                        </td>
+                                        <td class="px-6 py-4 font-mono text-sm">
+                                            /api/emails/{id}
+                                        </td>
+                                        <td
+                                            class="px-6 py-4 text-sm text-slate-500"
+                                        >
+                                            Update (mark read, star, move
+                                            folder)
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span
+                                                class="px-2 py-1 text-xs font-bold bg-red-100 text-red-800 rounded"
+                                                >DELETE</span
+                                            >
+                                        </td>
+                                        <td class="px-6 py-4 font-mono text-sm">
+                                            /api/emails/{id}
+                                        </td>
+                                        <td
+                                            class="px-6 py-4 text-sm text-slate-500"
+                                        >
+                                            Delete email
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span
+                                                class="px-2 py-1 text-xs font-bold bg-purple-100 text-purple-800 rounded"
+                                                >GET</span
+                                            >
+                                        </td>
+                                        <td class="px-6 py-4 font-mono text-sm">
+                                            /api/emails/{id}/export
+                                        </td>
+                                        <td
+                                            class="px-6 py-4 text-sm text-slate-500"
+                                        >
+                                            Download .eml file
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <!-- Database -->
+                    <section id="database" class="mb-12">
+                        <h2 class="text-2xl font-bold text-slate-900 mb-6">
+                            Database Schema
+                        </h2>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div
+                                class="bg-white p-4 rounded-lg border border-slate-200"
+                            >
+                                <h3
+                                    class="font-bold text-slate-900 border-b pb-2 mb-3"
+                                >
+                                    email_accounts
+                                </h3>
+                                <ul
+                                    class="text-sm text-slate-600 space-y-1 font-mono"
+                                >
+                                    <li>id, public_id (uuid)</li>
+                                    <li>
+                                        email, provider (gmail/outlook/custom)
+                                    </li>
+                                    <li>
+                                        imap_host, imap_port, imap_encryption
+                                    </li>
+                                    <li>
+                                        access_token, refresh_token,
+                                        token_expires_at
+                                    </li>
+                                    <li>sync_status, sync_cursor</li>
+                                </ul>
+                            </div>
+                            <div
+                                class="bg-white p-4 rounded-lg border border-slate-200"
+                            >
+                                <h3
+                                    class="font-bold text-slate-900 border-b pb-2 mb-3"
+                                >
+                                    emails
+                                </h3>
+                                <ul
+                                    class="text-sm text-slate-600 space-y-1 font-mono"
+                                >
+                                    <li>id, public_id (uuid), message_id</li>
+                                    <li>email_account_id (fk)</li>
+                                    <li>folder, subject, preview</li>
+                                    <li>from_email, from_name, to, cc, bcc</li>
+                                    <li>body_html, body_plain</li>
+                                    <li>
+                                        is_read, is_starred, has_attachments
+                                    </li>
+                                    <li>received_at</li>
+                                </ul>
+                            </div>
+                            <div
+                                class="bg-white p-4 rounded-lg border border-slate-200"
+                            >
+                                <h3
+                                    class="font-bold text-slate-900 border-b pb-2 mb-3"
+                                >
+                                    email_sync_logs
+                                </h3>
+                                <ul
+                                    class="text-sm text-slate-600 space-y-1 font-mono"
+                                >
+                                    <li>id, email_account_id</li>
+                                    <li>
+                                        action (seed_started, seed_completed,
+                                        etc)
+                                    </li>
+                                    <li>details (json)</li>
+                                    <li>created_at</li>
+                                </ul>
+                            </div>
+                            <div
+                                class="bg-white p-4 rounded-lg border border-slate-200"
+                            >
+                                <h3
+                                    class="font-bold text-slate-900 border-b pb-2 mb-3"
+                                >
+                                    media (attachments)
+                                </h3>
+                                <p class="text-xs text-slate-500 mb-2">
+                                    Via Spatie Media Library
+                                </p>
+                                <ul
+                                    class="text-sm text-slate-600 space-y-1 font-mono"
+                                >
+                                    <li>model_id (fk -> emails)</li>
+                                    <li>file_name, mime_type, size</li>
+                                    <li>custom_properties (content_id)</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Features -->
+                    <section id="features" class="mb-12">
+                        <h2 class="text-2xl font-bold text-slate-900 mb-4">
+                            Core Features
+                        </h2>
+                        <ul class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <li class="flex items-start">
+                                <svg
+                                    class="h-6 w-6 text-green-500 mr-2"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M5 13l4 4L19 7"
+                                    />
+                                </svg>
+                                <div>
+                                    <strong class="text-slate-900 block"
+                                        >Multi-Provider Support</strong
+                                    >
+                                    <span class="text-sm text-slate-500"
+                                        >Gmail OAuth, Outlook OAuth, and Custom
+                                        IMAP with adapter pattern.</span
+                                    >
+                                </div>
+                            </li>
+                            <li class="flex items-start">
+                                <svg
+                                    class="h-6 w-6 text-green-500 mr-2"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M5 13l4 4L19 7"
+                                    />
+                                </svg>
+                                <div>
+                                    <strong class="text-slate-900 block"
+                                        >Infinite Scroll</strong
+                                    >
+                                    <span class="text-sm text-slate-500"
+                                        >Paginated email list with
+                                        IntersectionObserver for seamless
+                                        loading.</span
+                                    >
+                                </div>
+                            </li>
+                            <li class="flex items-start">
+                                <svg
+                                    class="h-6 w-6 text-green-500 mr-2"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M5 13l4 4L19 7"
+                                    />
+                                </svg>
+                                <div>
+                                    <strong class="text-slate-900 block"
+                                        >Organization</strong
+                                    >
+                                    <span class="text-sm text-slate-500"
+                                        >Custom Folders, Color-coded Labels, and
+                                        bulk actions.</span
+                                    >
+                                </div>
+                            </li>
+                            <li class="flex items-start">
+                                <svg
+                                    class="h-6 w-6 text-green-500 mr-2"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M5 13l4 4L19 7"
+                                    />
+                                </svg>
+                                <div>
+                                    <strong class="text-slate-900 block"
+                                        >Rich Composer</strong
+                                    >
+                                    <span class="text-sm text-slate-500"
+                                        >Tiptap editor with attachments,
+                                        signatures, and formatting.</span
+                                    >
+                                </div>
+                            </li>
+                            <li class="flex items-start">
+                                <svg
+                                    class="h-6 w-6 text-green-500 mr-2"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M5 13l4 4L19 7"
+                                    />
+                                </svg>
+                                <div>
+                                    <strong class="text-slate-900 block"
+                                        >Background Sync</strong
+                                    >
+                                    <span class="text-sm text-slate-500"
+                                        >Queue-based email synchronization with
+                                        chunked processing.</span
+                                    >
+                                </div>
+                            </li>
+                            <li class="flex items-start">
+                                <svg
+                                    class="h-6 w-6 text-green-500 mr-2"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M5 13l4 4L19 7"
+                                    />
+                                </svg>
+                                <div>
+                                    <strong class="text-slate-900 block"
+                                        >Data Export</strong
+                                    >
+                                    <span class="text-sm text-slate-500"
+                                        >Export individual emails as standard
+                                        .eml files.</span
+                                    >
+                                </div>
+                            </li>
+                        </ul>
+                    </section>
+                </main>
+            </div>
+        </div>
+
+        <footer class="bg-white border-t border-slate-200 mt-12 py-8">
+            <div
+                class="max-w-7xl mx-auto px-4 text-center text-sm text-slate-400"
+            >
+                Coresync V2 Documentation &bull; Last Updated: January 2026
+            </div>
+        </footer>
+
+        <script>
+            mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+        </script>
+    </body>
+</html>

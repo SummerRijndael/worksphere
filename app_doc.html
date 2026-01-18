@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coresync V2 - Project Documentation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>body { font-family: 'Inter', sans-serif; }</style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-900">
+
+    <!-- Header -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center gap-3">
+                    <div class="bg-indigo-600 rounded-lg p-2">
+                        <svg class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold text-slate-900">Coresync V2</h1>
+                        <p class="text-xs text-slate-500 font-medium">System Documentation Hub</p>
+                    </div>
+                </div>
+                <div class="flex items-center text-sm text-slate-500">
+                    Last Updated: Jan 6, 2026
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        
+        <!-- Welcome Section -->
+        <div class="mb-12">
+            <h2 class="text-3xl font-bold text-slate-900 mb-4">Welcome to Coresync V2</h2>
+            <p class="text-lg text-slate-600 max-w-3xl">
+                This is the central documentation hub for the Coresync V2 application architecture. 
+                Use this dashboard to navigate through different system modules and understand the codebase structure.
+            </p>
+        </div>
+
+        <!-- Modules Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            
+            <!-- Chat System Module -->
+            <a href="doc/chat/chat_system_doc.html" class="group block p-6 bg-white rounded-xl border border-slate-200 hover:border-indigo-400 hover:shadow-md transition-all">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="h-10 w-10 bg-indigo-50 rounded-lg flex items-center justify-center group-hover:bg-indigo-600 transition-colors">
+                        <svg class="h-6 w-6 text-indigo-600 group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                        </svg>
+                    </div>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        Audited
+                    </span>
+                </div>
+                <h3 class="text-lg font-semibold text-slate-900 mb-2 group-hover:text-indigo-600">Chat System</h3>
+                <p class="text-slate-500 text-sm mb-4">
+                    Real-time messaging engine, media handling, Direct Messages, and Group Chats architecture.
+                </p>
+                <div class="flex items-center text-indigo-600 text-sm font-medium">
+                    Read Documentation 
+                    <svg class="ml-1 h-4 w-4 transform group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                    </svg>
+                </div>
+            </a>
+
+            <!-- Support & Tickets Module -->
+            <a href="#" class="group block p-6 bg-white rounded-xl border border-slate-200 hover:border-emerald-400 hover:shadow-md transition-all">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="h-10 w-10 bg-emerald-50 rounded-lg flex items-center justify-center group-hover:bg-emerald-600 transition-colors">
+                        <svg class="h-6 w-6 text-emerald-600 group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z" />
+                        </svg>
+                    </div>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        Verified
+                    </span>
+                </div>
+                <h3 class="text-lg font-semibold text-slate-900 mb-2 group-hover:text-emerald-600">Support Tickets</h3>
+                <p class="text-slate-500 text-sm mb-4">
+                    Ticketing workflow, internal notes, linking, and status automation policies.
+                </p>
+            </a>
+
+            <!-- Project Management Module -->
+            <a href="#" class="group block p-6 bg-white rounded-xl border border-slate-200 hover:border-blue-400 hover:shadow-md transition-all">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="h-10 w-10 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-600 transition-colors">
+                        <svg class="h-6 w-6 text-blue-600 group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                        </svg>
+                    </div>
+                </div>
+                <h3 class="text-lg font-semibold text-slate-900 mb-2 group-hover:text-blue-600">Project Management</h3>
+                <p class="text-slate-500 text-sm mb-4">
+                    Task tracking, Kanban boards, Quality Assurance flows, and Client Approvals.
+                </p>
+            </a>
+
+            <!-- Authentication & Security -->
+            <a href="#" class="group block p-6 bg-white rounded-xl border border-slate-200 hover:border-red-400 hover:shadow-md transition-all">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="h-10 w-10 bg-red-50 rounded-lg flex items-center justify-center group-hover:bg-red-600 transition-colors">
+                        <svg class="h-6 w-6 text-red-600 group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                        </svg>
+                    </div>
+                </div>
+                <h3 class="text-lg font-semibold text-slate-900 mb-2 group-hover:text-red-600">Auth & Security</h3>
+                <p class="text-slate-500 text-sm mb-4">
+                    Fortify/Sanctum configuration, 2FA enforcement, RBAC policies, and Session control.
+                </p>
+            </a>
+
+            <!-- Email Client -->
+            <a href="doc/email/email_system_doc.html" class="group block p-6 bg-white rounded-xl border border-slate-200 hover:border-purple-400 hover:shadow-md transition-all">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="h-10 w-10 bg-purple-50 rounded-lg flex items-center justify-center group-hover:bg-purple-600 transition-colors">
+                        <svg class="h-6 w-6 text-purple-600 group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2v10a2 2 0 002 2z" />
+                        </svg>
+                    </div>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        Audited
+                    </span>
+                </div>
+                <h3 class="text-lg font-semibold text-slate-900 mb-2 group-hover:text-purple-600">Email System</h3>
+                <p class="text-slate-500 text-sm mb-4">
+                    IMAP/SMTP integrations, OAuth providers, and Unified Inbox architecture.
+                </p>
+                <div class="flex items-center text-purple-600 text-sm font-medium">
+                    Read Documentation 
+                    <svg class="ml-1 h-4 w-4 transform group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                    </svg>
+                </div>
+            </a>
+
+            <!-- Calendar System Module -->
+            <a href="doc/calendar/calendar_system_doc.html" class="group block p-6 bg-white rounded-xl border border-slate-200 hover:border-amber-400 hover:shadow-md transition-all">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="h-10 w-10 bg-amber-50 rounded-lg flex items-center justify-center group-hover:bg-amber-600 transition-colors">
+                        <svg class="h-6 w-6 text-amber-600 group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                    </div>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        Audited
+                    </span>
+                </div>
+                <h3 class="text-lg font-semibold text-slate-900 mb-2 group-hover:text-amber-600">Calendar System</h3>
+                <p class="text-slate-500 text-sm mb-4">
+                    Team scheduling, Google Calendar sync, ICS export, and shared event permissions.
+                </p>
+                <div class="flex items-center text-amber-600 text-sm font-medium">
+                    Read Documentation 
+                    <svg class="ml-1 h-4 w-4 transform group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                    </svg>
+                </div>
+            </a>
+
+            <!-- FAQ / Knowledge Base Module -->
+            <a href="doc/faq/faq_system_doc.html" class="group block p-6 bg-white rounded-xl border border-slate-200 hover:border-cyan-400 hover:shadow-md transition-all">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="h-10 w-10 bg-cyan-50 rounded-lg flex items-center justify-center group-hover:bg-cyan-600 transition-colors">
+                        <svg class="h-6 w-6 text-cyan-600 group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.833 5.477 9.169 5 7.5 5S4.167 5.477 3 6.253v13C4.167 18.477 5.831 18 7.5 18s3.333.477 4.5 1.253m0-13C13.167 5.477 14.831 5 16.5 5c1.669 0 3.333.477 4.5 1.253v13C19.833 18.477 18.169 18 16.5 18c-1.669 0-3.333.477-4.5 1.253" />
+                        </svg>
+                    </div>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        Audited
+                    </span>
+                </div>
+                <h3 class="text-lg font-semibold text-slate-900 mb-2 group-hover:text-cyan-600">FAQ / Knowledge Base</h3>
+                <p class="text-slate-500 text-sm mb-4">
+                    Self-service help center with categories, articles, voting, comments, and admin management.
+                </p>
+                <div class="flex items-center text-cyan-600 text-sm font-medium">
+                    Read Documentation 
+                    <svg class="ml-1 h-4 w-4 transform group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                    </svg>
+                </div>
+            </a>
+
+        </div>
+
+        <!-- System Architecture Summary -->
+        <div class="mt-16 bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-100 bg-slate-50">
+                <h3 class="text-lg font-semibold text-slate-900">System Architecture Overview</h3>
+            </div>
+            <div class="p-6">
+                <div class="grid md:grid-cols-2 gap-8">
+                    <div>
+                        <h4 class="font-medium text-slate-900 mb-2 flex items-center">
+                            <span class="w-2 h-2 bg-indigo-500 rounded-full mr-2"></span>
+                            Backend Stack
+                        </h4>
+                        <ul class="list-disc list-inside text-sm text-slate-600 space-y-1 ml-4">
+                            <li><strong>Framework:</strong> Laravel 11.x</li>
+                            <li><strong>Real-time:</strong> Laravel Reverb (WebSocket)</li>
+                            <li><strong>Queue:</strong> Redis / Horizon</li>
+                            <li><strong>Database:</strong> MySQL + Scout (database)</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h4 class="font-medium text-slate-900 mb-2 flex items-center">
+                            <span class="w-2 h-2 bg-emerald-500 rounded-full mr-2"></span>
+                            Frontend Stack
+                        </h4>
+                        <ul class="list-disc list-inside text-sm text-slate-600 space-y-1 ml-4">
+                            <li><strong>Framework:</strong> Vue 3 (Composition API)</li>
+                            <li><strong>Build Tool:</strong> Vite</li>
+                            <li><strong>State:</strong> Pinia</li>
+                            <li><strong>Styling:</strong> TailwindCSS + Rekaui</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <footer class="bg-white border-t border-slate-200 mt-12">
+        <div class="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+            <p class="text-center text-sm text-slate-400">
+                &copy; 2026 Coresync V2. Internal Development Documentation.
+            </p>
+        </div>
+    </footer>
+
+</body>
+</html>

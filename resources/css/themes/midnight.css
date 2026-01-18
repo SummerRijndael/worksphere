@@ -1,0 +1,19 @@
+/* Midnight Theme (Violet/Indigo) */
+.theme-midnight {
+    /* Primary Color Palette - Violet/Indigo Range (Hue ~270-290) */
+    --color-primary-50: oklch(0.97 0.03 280);
+    --color-primary-100: oklch(0.94 0.06 280);
+    --color-primary-200: oklch(0.88 0.12 280);
+    --color-primary-300: oklch(0.78 0.17 280);
+    --color-primary-400: oklch(0.68 0.21 280);
+    --color-primary-500: oklch(0.55 0.25 280);
+    --color-primary-600: oklch(0.48 0.25 280);
+    --color-primary-700: oklch(0.4 0.22 280);
+    --color-primary-800: oklch(0.35 0.18 280);
+    --color-primary-900: oklch(0.3 0.15 280);
+
+    /* Interactive Colors */
+    --interactive-primary: var(--color-primary-500);
+    --interactive-primary-hover: var(--color-primary-600);
+    --interactive-primary-active: var(--color-primary-700);
+}

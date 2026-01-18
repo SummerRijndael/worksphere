@@ -1,0 +1,7 @@
+{
+  "timestamp": "2026-01-06T22:42:00.728314",
+  "target": "http://localhost:8000/api",
+  "iterations": 50,
+  "results": [],
+  "leak_detected": false
+}

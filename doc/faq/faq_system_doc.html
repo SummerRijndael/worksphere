@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>FAQ / Knowledge Base Documentation - Coresync V2</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+            rel="stylesheet"
+        />
+        <style>
+            body {
+                font-family: "Inter", sans-serif;
+            }
+        </style>
+    </head>
+    <body class="bg-slate-50 min-h-screen text-slate-800">
+        <!-- Header -->
+        <header
+            class="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm"
+        >
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between h-16">
+                    <div class="flex items-center gap-4">
+                        <a
+                            href="../../coresync_v2_doc.html"
+                            class="flex items-center text-slate-500 hover:text-cyan-600 transition-colors"
+                        >
+                            <svg
+                                class="h-5 w-5 mr-1"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M10 19l-7-7m0 0l7-7m-7 7h18"
+                                />
+                            </svg>
+                            Back
+                        </a>
+                        <div class="h-6 w-px bg-slate-200"></div>
+                        <div class="flex items-center gap-2">
+                            <div class="bg-cyan-100 rounded-md p-1.5">
+                                <svg
+                                    class="h-5 w-5 text-cyan-600"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M12 6.253v13m0-13C10.833 5.477 9.169 5 7.5 5S4.167 5.477 3 6.253v13C4.167 18.477 5.831 18 7.5 18s3.333.477 4.5 1.253m0-13C13.167 5.477 14.831 5 16.5 5c1.669 0 3.333.477 4.5 1.253v13C19.833 18.477 18.169 18 16.5 18c-1.669 0-3.333.477-4.5 1.253"
+                                    />
+                                </svg>
+                            </div>
+                            <h1 class="text-lg font-bold text-slate-900">
+                                FAQ / Knowledge Base Documentation
+                            </h1>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div class="flex flex-col lg:flex-row gap-8">
+                <!-- Sidebar Navigation -->
+                <nav class="lg:w-64 flex-shrink-0">
+                    <div class="sticky top-24 space-y-1">
+                        <a
+                            href="#overview"
+                            class="block px-3 py-2 text-sm font-medium rounded-md text-cyan-700 bg-cyan-50 hover:bg-cyan-100"
+                            >Overview</a
+                        >
+                        <a
+                            href="#frontend-map"
+                            class="block px-3 py-2 text-sm font-medium rounded-md text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                            >Frontend Structure</a
+                        >
+                        <a
+                            href="#backend-map"
+                            class="block px-3 py-2 text-sm font-medium rounded-md text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                            >Backend Structure</a
+                        >
+                        <a
+                            href="#api-map"
+                            class="block px-3 py-2 text-sm font-medium rounded-md text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                            >API Map</a
+                        >
+                        <a
+                            href="#database"
+                            class="block px-3 py-2 text-sm font-medium rounded-md text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                            >Database & Migrations</a
+                        >
+                        <a
+                            href="#features"
+                            class="block px-3 py-2 text-sm font-medium rounded-md text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                            >Key Features</a
+                        >
+                        <a
+                            href="#limitations"
+                            class="block px-3 py-2 text-sm font-medium rounded-md text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                            >Limitations & TODO</a
+                        >
+                    </div>
+                </nav>
+
+                <!-- Content -->
+                <main class="flex-1 min-w-0">
+                    <!-- Overview -->
+                    <section id="overview" class="mb-12">
+                        <h2 class="text-2xl font-bold text-slate-900 mb-4">
+                            System Overview
+                        </h2>
+                        <p class="text-slate-600 leading-relaxed mb-4">
+                            The Coresync V2 FAQ / Knowledge Base system provides a
+                            self-service help center for users. It supports
+                            <strong>Categories</strong> and <strong>Articles</strong> with
+                            rich text content, voting (helpful/unhelpful), comments, and
+                            an admin management interface with sorting, filtering, and
+                            pagination.
+                        </p>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
+                            <div
+                                class="bg-white p-4 rounded-lg border border-slate-200"
+                            >
+                                <h3 class="font-semibold text-slate-900 mb-2">
+                                    Tech Stack
+                                </h3>
+                                <ul class="text-sm text-slate-600 space-y-1">
+                                    <li>
+                                        📚 <strong>Content:</strong> TipTap Rich Text Editor
+                                    </li>
+                                    <li>
+                                        🗄️ <strong>Storage:</strong> MySQL + Soft Deletes
+                                    </li>
+                                    <li>
+                                        🔍 <strong>Filtering:</strong> Dynamic Sort, Date Range
+                                    </li>
+                                    <li>
+                                        💾 <strong>State:</strong> Pinia (Persistent)
+                                    </li>
+                                </ul>
+                            </div>
+                            <div
+                                class="bg-white p-4 rounded-lg border border-slate-200"
+                            >
+                                <h3 class="font-semibold text-slate-900 mb-2">
+                                    User Roles
+                                </h3>
+                                <ul class="text-sm text-slate-600 space-y-1">
+                                    <li>
+                                        👤 <strong>Public:</strong> View published articles, vote, comment
+                                    </li>
+                                    <li>
+                                        🛡️ <strong>Admin:</strong> Full CRUD, manage categories, moderate comments
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </section>
+
+                    <hr class="my-8 border-slate-200" />
+
+                    <!-- Frontend Map -->
+                    <section id="frontend-map" class="mb-12">
+                        <h2 class="text-2xl font-bold text-slate-900 mb-6">
+                            Frontend Architecture
+                        </h2>
+                        <div
+                            class="bg-slate-900 rounded-lg overflow-hidden shadow-lg"
+                        >
+                            <div
+                                class="p-4 bg-slate-800 border-b border-slate-700"
+                            >
+                                <h3 class="font-mono text-sm text-cyan-400">
+                                    resources/js/
+                                </h3>
+                            </div>
+                            <div
+                                class="p-6 font-mono text-sm text-slate-300 space-y-4"
+                            >
+                                <div>
+                                    <div class="text-emerald-400 mb-1">
+                                        ▼ views/admin/
+                                    </div>
+                                    <div
+                                        class="pl-4 border-l border-slate-700 space-y-1"
+                                    >
+                                        <div class="flex gap-2">
+                                            <span class="text-white"
+                                                >FaqManageView.vue</span
+                                            >
+                                            <span class="text-slate-500"
+                                                >// Admin Dashboard for Categories & Articles</span
+                                            >
+                                        </div>
+                                        <div class="flex gap-2">
+                                            <span class="text-white"
+                                                >FaqArticleEditorView.vue</span
+                                            >
+                                            <span class="text-slate-500"
+                                                >// Rich Text Article Editor</span
+                                            >
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div class="text-emerald-400 mb-1">
+                                        ▼ views/faq/
+                                    </div>
+                                    <div class="pl-4 border-l border-slate-700 space-y-1">
+                                        <div class="flex gap-2">
+                                            <span class="text-white"
+                                                >FaqIndexView.vue</span
+                                            >
+                                            <span class="text-slate-500"
+                                                >// Public FAQ Listing Page</span
+                                            >
+                                        </div>
+                                        <div class="flex gap-2">
+                                            <span class="text-white"
+                                                >FaqArticleView.vue</span
+                                            >
+                                            <span class="text-slate-500"
+                                                >// Public Article Detail</span
+                                            >
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div class="text-emerald-400 mb-1">
+                                        ▼ stores/
+                                    </div>
+                                    <div class="pl-4 border-l border-slate-700">
+                                        <div class="flex gap-2">
+                                            <span class="text-white"
+                                                >faq.ts</span
+                                            >
+                                            <span class="text-slate-500"
+                                                >// Pinia Store (Persistent State)</span
+                                            >
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Backend Map -->
+                    <section id="backend-map" class="mb-12">
+                        <h2 class="text-2xl font-bold text-slate-900 mb-6">
+                            Backend Architecture
+                        </h2>
+                        <div class="space-y-4">
+                            <div
+                                class="border border-slate-200 rounded-lg p-4 bg-white"
+                            >
+                                <h3 class="font-bold text-slate-900 mb-2">
+                                    Controller Layer
+                                </h3>
+                                <p class="text-sm text-slate-600 mb-2">
+                                    <code
+                                        >app/Http/Controllers/Api/FaqManageController.php</code
+                                    >
+                                </p>
+                                <p class="text-sm text-slate-600 mb-2">
+                                    <code
+                                        >app/Http/Controllers/FaqController.php</code
+                                    >
+                                </p>
+                                <p class="text-sm text-slate-500">
+                                    Admin CRUD and public-facing endpoints for categories, articles, voting, and comments.
+                                </p>
+                            </div>
+
+                            <div
+                                class="border border-slate-200 rounded-lg p-4 bg-white"
+                            >
+                                <h3 class="font-bold text-slate-900 mb-2">
+                                    Service Layer
+                                </h3>
+                                <p class="text-sm text-slate-600 mb-2">
+                                    <code>app/Services/FaqService.php</code>
+                                </p>
+                                <p class="text-sm text-slate-500">
+                                    Core business logic: sorting, filtering, date ranges, author/category joins, pagination, and stats aggregation.
+                                </p>
+                            </div>
+
+                            <div
+                                class="border border-slate-200 rounded-lg p-4 bg-white"
+                            >
+                                <h3 class="font-bold text-slate-900 mb-2">
+                                    Models
+                                </h3>
+                                <p class="text-sm text-slate-600 mb-2">
+                                    <code>app/Models/FaqCategory.php</code> &
+                                    <code>app/Models/FaqArticle.php</code>
+                                </p>
+                                <p class="text-sm text-slate-500">
+                                    Eloquent models with relationships, soft deletes, and public ID traits.
+                                </p>
+                            </div>
+
+                            <div
+                                class="border border-slate-200 rounded-lg p-4 bg-white"
+                            >
+                                <h3 class="font-bold text-slate-900 mb-2">
+                                    API Resources
+                                </h3>
+                                <p class="text-sm text-slate-600 mb-2">
+                                    <code>app/Http/Resources/Faq/FaqCategoryResource.php</code>
+                                </p>
+                                <p class="text-sm text-slate-600 mb-2">
+                                    <code>app/Http/Resources/Faq/FaqArticleResource.php</code>
+                                </p>
+                                <p class="text-sm text-slate-500">
+                                    Standardized JSON responses with computed fields (views, votes, author info).
+                                </p>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- API Map -->
+                    <section id="api-map" class="mb-12">
+                        <h2 class="text-2xl font-bold text-slate-900 mb-6">
+                            API Endpoint Map
+                        </h2>
+                        <div
+                            class="overflow-x-auto border border-slate-200 rounded-lg"
+                        >
+                            <table class="min-w-full divide-y divide-slate-200">
+                                <thead class="bg-slate-50">
+                                    <tr>
+                                        <th
+                                            class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider"
+                                        >
+                                            Method
+                                        </th>
+                                        <th
+                                            class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider"
+                                        >
+                                            Endpoint
+                                        </th>
+                                        <th
+                                            class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider"
+                                        >
+                                            Description
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody
+                                    class="bg-white divide-y divide-slate-200"
+                                >
+                                    <!-- Admin Endpoints -->
+                                    <tr class="bg-cyan-50">
+                                        <td colspan="3" class="px-6 py-2 text-xs font-bold text-cyan-800 uppercase">Admin Endpoints</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span class="px-2 py-1 text-xs font-bold bg-blue-100 text-blue-800 rounded">GET</span>
+                                        </td>
+                                        <td class="px-6 py-4 font-mono text-sm">/api/admin/faq/categories</td>
+                                        <td class="px-6 py-4 text-sm text-slate-500">List categories (paginated, sortable, date range)</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span class="px-2 py-1 text-xs font-bold bg-green-100 text-green-800 rounded">POST</span>
+                                        </td>
+                                        <td class="px-6 py-4 font-mono text-sm">/api/admin/faq/categories</td>
+                                        <td class="px-6 py-4 text-sm text-slate-500">Create category</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span class="px-2 py-1 text-xs font-bold bg-purple-100 text-purple-800 rounded">PUT</span>
+                                        </td>
+                                        <td class="px-6 py-4 font-mono text-sm">/api/admin/faq/categories/{id}</td>
+                                        <td class="px-6 py-4 text-sm text-slate-500">Update category</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span class="px-2 py-1 text-xs font-bold bg-red-100 text-red-800 rounded">DELETE</span>
+                                        </td>
+                                        <td class="px-6 py-4 font-mono text-sm">/api/admin/faq/categories/{id}</td>
+                                        <td class="px-6 py-4 text-sm text-slate-500">Delete category (soft delete)</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span class="px-2 py-1 text-xs font-bold bg-blue-100 text-blue-800 rounded">GET</span>
+                                        </td>
+                                        <td class="px-6 py-4 font-mono text-sm">/api/admin/faq/articles</td>
+                                        <td class="px-6 py-4 text-sm text-slate-500">List articles (paginated, sortable, date range)</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span class="px-2 py-1 text-xs font-bold bg-green-100 text-green-800 rounded">POST</span>
+                                        </td>
+                                        <td class="px-6 py-4 font-mono text-sm">/api/admin/faq/articles</td>
+                                        <td class="px-6 py-4 text-sm text-slate-500">Create article</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span class="px-2 py-1 text-xs font-bold bg-purple-100 text-purple-800 rounded">PUT</span>
+                                        </td>
+                                        <td class="px-6 py-4 font-mono text-sm">/api/admin/faq/articles/{id}</td>
+                                        <td class="px-6 py-4 text-sm text-slate-500">Update article</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span class="px-2 py-1 text-xs font-bold bg-red-100 text-red-800 rounded">DELETE</span>
+                                        </td>
+                                        <td class="px-6 py-4 font-mono text-sm">/api/admin/faq/articles/{id}</td>
+                                        <td class="px-6 py-4 text-sm text-slate-500">Delete article (soft delete)</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span class="px-2 py-1 text-xs font-bold bg-blue-100 text-blue-800 rounded">GET</span>
+                                        </td>
+                                        <td class="px-6 py-4 font-mono text-sm">/api/admin/faq/stats</td>
+                                        <td class="px-6 py-4 text-sm text-slate-500">Get FAQ stats (views, votes, most viewed)</td>
+                                    </tr>
+
+                                    <!-- Public Endpoints -->
+                                    <tr class="bg-emerald-50">
+                                        <td colspan="3" class="px-6 py-2 text-xs font-bold text-emerald-800 uppercase">Public Endpoints</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span class="px-2 py-1 text-xs font-bold bg-blue-100 text-blue-800 rounded">GET</span>
+                                        </td>
+                                        <td class="px-6 py-4 font-mono text-sm">/api/faq/categories</td>
+                                        <td class="px-6 py-4 text-sm text-slate-500">List public categories</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span class="px-2 py-1 text-xs font-bold bg-blue-100 text-blue-800 rounded">GET</span>
+                                        </td>
+                                        <td class="px-6 py-4 font-mono text-sm">/api/faq/articles/{slug}</td>
+                                        <td class="px-6 py-4 text-sm text-slate-500">Get article by slug</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span class="px-2 py-1 text-xs font-bold bg-green-100 text-green-800 rounded">POST</span>
+                                        </td>
+                                        <td class="px-6 py-4 font-mono text-sm">/api/faq/articles/{slug}/vote</td>
+                                        <td class="px-6 py-4 text-sm text-slate-500">Vote (helpful/unhelpful)</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <!-- Database -->
+                    <section id="database" class="mb-12">
+                        <h2 class="text-2xl font-bold text-slate-900 mb-6">
+                            Database Schema
+                        </h2>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div
+                                class="bg-white p-4 rounded-lg border border-slate-200"
+                            >
+                                <h3
+                                    class="font-bold text-slate-900 border-b pb-2 mb-3"
+                                >
+                                    faq_categories
+                                </h3>
+                                <ul
+                                    class="text-sm text-slate-600 space-y-1 font-mono"
+                                >
+                                    <li>id (int, PK)</li>
+                                    <li>public_id (ulid)</li>
+                                    <li>name (string)</li>
+                                    <li>slug (string, unique)</li>
+                                    <li>description (text, nullable)</li>
+                                    <li>icon (string, nullable)</li>
+                                    <li>order (int)</li>
+                                    <li>is_public (bool)</li>
+                                    <li>author_id (fk → users)</li>
+                                    <li>deleted_at (timestamp, nullable)</li>
+                                </ul>
+                            </div>
+                            <div
+                                class="bg-white p-4 rounded-lg border border-slate-200"
+                            >
+                                <h3
+                                    class="font-bold text-slate-900 border-b pb-2 mb-3"
+                                >
+                                    faq_articles
+                                </h3>
+                                <ul
+                                    class="text-sm text-slate-600 space-y-1 font-mono"
+                                >
+                                    <li>id (int, PK)</li>
+                                    <li>public_id (ulid)</li>
+                                    <li>category_id (fk → faq_categories)</li>
+                                    <li>author_id (fk → users)</li>
+                                    <li>title (string)</li>
+                                    <li>slug (string, unique)</li>
+                                    <li>content (longtext)</li>
+                                    <li>views (int, default 0)</li>
+                                    <li>helpful_count (int, default 0)</li>
+                                    <li>unhelpful_count (int, default 0)</li>
+                                    <li>is_published (bool)</li>
+                                    <li>deleted_at (timestamp, nullable)</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Features -->
+                    <section id="features" class="mb-12">
+                        <h2 class="text-2xl font-bold text-slate-900 mb-4">
+                            Core Features
+                        </h2>
+                        <ul class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <li class="flex items-start">
+                                <svg
+                                    class="h-6 w-6 text-green-500 mr-2"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M5 13l4 4L19 7"
+                                    />
+                                </svg>
+                                <div>
+                                    <strong class="text-slate-900 block">Rich Text Editor</strong>
+                                    <span class="text-sm text-slate-500">TipTap-powered article editing with formatting, images, and code blocks.</span>
+                                </div>
+                            </li>
+                            <li class="flex items-start">
+                                <svg
+                                    class="h-6 w-6 text-green-500 mr-2"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M5 13l4 4L19 7"
+                                    />
+                                </svg>
+                                <div>
+                                    <strong class="text-slate-900 block">Dynamic Sorting</strong>
+                                    <span class="text-sm text-slate-500">Sort by any column (name, views, votes, date, author, category).</span>
+                                </div>
+                            </li>
+                            <li class="flex items-start">
+                                <svg
+                                    class="h-6 w-6 text-green-500 mr-2"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M5 13l4 4L19 7"
+                                    />
+                                </svg>
+                                <div>
+                                    <strong class="text-slate-900 block">Date Range Filtering</strong>
+                                    <span class="text-sm text-slate-500">Filter categories and articles by creation date range.</span>
+                                </div>
+                            </li>
+                            <li class="flex items-start">
+                                <svg
+                                    class="h-6 w-6 text-green-500 mr-2"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M5 13l4 4L19 7"
+                                    />
+                                </svg>
+                                <div>
+                                    <strong class="text-slate-900 block">Voting System</strong>
+                                    <span class="text-sm text-slate-500">Helpful/Unhelpful voting with visual score indicators.</span>
+                                </div>
+                            </li>
+                            <li class="flex items-start">
+                                <svg
+                                    class="h-6 w-6 text-green-500 mr-2"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M5 13l4 4L19 7"
+                                    />
+                                </svg>
+                                <div>
+                                    <strong class="text-slate-900 block">State Persistence</strong>
+                                    <span class="text-sm text-slate-500">User preferences (tab, view mode, sort order) persist across sessions.</span>
+                                </div>
+                            </li>
+                            <li class="flex items-start">
+                                <svg
+                                    class="h-6 w-6 text-green-500 mr-2"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M5 13l4 4L19 7"
+                                    />
+                                </svg>
+                                <div>
+                                    <strong class="text-slate-900 block">List & Grid Views</strong>
+                                    <span class="text-sm text-slate-500">Toggle between table and card layouts for both tabs.</span>
+                                </div>
+                            </li>
+                        </ul>
+                    </section>
+
+                    <!-- Limitations -->
+                    <section
+                        id="limitations"
+                        class="mb-12 bg-amber-50 rounded-xl p-6 border border-amber-200"
+                    >
+                        <h2 class="text-xl font-bold text-amber-900 mb-3">
+                            Limitations & Future Todo
+                        </h2>
+                        <ul
+                            class="list-disc list-inside text-amber-800 space-y-1"
+                        >
+                            <li>
+                                <strong>Full-text Search:</strong> Basic SQL search implemented (Review Scout for scaling).
+                            </li>
+                            <li>
+                                <strong>Article Versioning:</strong> Revision history and restore functionality (Planned).
+                            </li>
+                            <li>
+                                <strong>Hard Delete:</strong> Currently only Soft Delete is supported. Hard delete requires implementing manual media cleanup to avoid orphaned files.
+                            </li>
+                            <li>
+                                <strong>SEO Metadata:</strong> Custom meta descriptions per article not yet supported.
+                            </li>
+                        </ul>
+                    </section>
+                </main>
+            </div>
+        </div>
+
+        <footer class="bg-white border-t border-slate-200 mt-12">
+            <div class="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+                <p class="text-center text-sm text-slate-400">
+                    &copy; 2026 Coresync V2. Internal Development Documentation.
+                </p>
+            </div>
+        </footer>
+    </body>
+</html>

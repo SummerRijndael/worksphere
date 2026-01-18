@@ -1,0 +1,19 @@
+/* Wine Theme (Rose/Maroon) */
+.theme-wine {
+    /* Primary Color Palette - Rose/Maroon Range (Hue ~350-10) */
+    --color-primary-50: oklch(0.98 0.02 0);
+    --color-primary-100: oklch(0.95 0.05 0);
+    --color-primary-200: oklch(0.9 0.1 0);
+    --color-primary-300: oklch(0.8 0.15 0);
+    --color-primary-400: oklch(0.7 0.19 0);
+    --color-primary-500: oklch(0.58 0.22 0);
+    --color-primary-600: oklch(0.5 0.22 0);
+    --color-primary-700: oklch(0.42 0.2 0);
+    --color-primary-800: oklch(0.35 0.16 0);
+    --color-primary-900: oklch(0.3 0.13 0);
+
+    /* Interactive Colors */
+    --interactive-primary: var(--color-primary-500);
+    --interactive-primary-hover: var(--color-primary-600);
+    --interactive-primary-active: var(--color-primary-700);
+}

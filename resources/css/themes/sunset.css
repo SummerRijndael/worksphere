@@ -1,0 +1,19 @@
+/* Sunset Theme (Orange/Amber) */
+.theme-sunset {
+    /* Primary Color Palette - Orange/Amber Range (Hue ~40-60) */
+    --color-primary-50: oklch(0.98 0.03 50);
+    --color-primary-100: oklch(0.95 0.06 50);
+    --color-primary-200: oklch(0.9 0.12 50);
+    --color-primary-300: oklch(0.82 0.17 50);
+    --color-primary-400: oklch(0.72 0.2 50);
+    --color-primary-500: oklch(0.62 0.22 50);
+    --color-primary-600: oklch(0.54 0.21 50);
+    --color-primary-700: oklch(0.45 0.18 50);
+    --color-primary-800: oklch(0.38 0.15 50);
+    --color-primary-900: oklch(0.32 0.12 50);
+
+    /* Interactive Colors */
+    --interactive-primary: var(--color-primary-500);
+    --interactive-primary-hover: var(--color-primary-600);
+    --interactive-primary-active: var(--color-primary-700);
+}

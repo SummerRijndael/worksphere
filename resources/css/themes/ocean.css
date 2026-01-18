@@ -1,0 +1,19 @@
+/* Ocean Theme (Deep Cyan/Blue) */
+.theme-ocean {
+    /* Primary Color Palette - Cyan/Blue Range (Hue ~230-240) */
+    --color-primary-50: oklch(0.97 0.03 230);
+    --color-primary-100: oklch(0.94 0.05 230);
+    --color-primary-200: oklch(0.88 0.09 230);
+    --color-primary-300: oklch(0.78 0.13 230);
+    --color-primary-400: oklch(0.68 0.17 230);
+    --color-primary-500: oklch(0.55 0.21 230);
+    --color-primary-600: oklch(0.48 0.21 230);
+    --color-primary-700: oklch(0.4 0.19 230);
+    --color-primary-800: oklch(0.35 0.16 230);
+    --color-primary-900: oklch(0.3 0.13 230);
+
+    /* Interactive Colors */
+    --interactive-primary: var(--color-primary-500);
+    --interactive-primary-hover: var(--color-primary-600);
+    --interactive-primary-active: var(--color-primary-700);
+}

@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Calendar System Documentation - Coresync V2</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+            rel="stylesheet"
+        />
+        <style>
+            body {
+                font-family: "Inter", sans-serif;
+            }
+        </style>
+    </head>
+    <body class="bg-slate-50 min-h-screen text-slate-800">
+        <!-- Header -->
+        <header
+            class="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm"
+        >
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between h-16">
+                    <div class="flex items-center gap-4">
+                        <a
+                            href="../../coresync_v2_doc.html"
+                            class="flex items-center text-slate-500 hover:text-indigo-600 transition-colors"
+                        >
+                            <svg
+                                class="h-5 w-5 mr-1"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M10 19l-7-7m0 0l7-7m-7 7h18"
+                                />
+                            </svg>
+                            Back
+                        </a>
+                        <div class="h-6 w-px bg-slate-200"></div>
+                        <div class="flex items-center gap-2">
+                            <div class="bg-amber-100 rounded-md p-1.5">
+                                <svg
+                                    class="h-5 w-5 text-amber-600"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                                    />
+                                </svg>
+                            </div>
+                            <h1 class="text-lg font-bold text-slate-900">
+                                Calendar System Documentation
+                            </h1>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div class="flex flex-col lg:flex-row gap-8">
+                <!-- Sidebar Navigation -->
+                <nav class="lg:w-64 flex-shrink-0">
+                    <div class="sticky top-24 space-y-1">
+                        <a
+                            href="#overview"
+                            class="block px-3 py-2 text-sm font-medium rounded-md text-amber-700 bg-amber-50 hover:bg-amber-100"
+                            >Overview</a
+                        >
+                        <a
+                            href="#frontend-map"
+                            class="block px-3 py-2 text-sm font-medium rounded-md text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                            >Frontend Structure</a
+                        >
+                        <a
+                            href="#backend-map"
+                            class="block px-3 py-2 text-sm font-medium rounded-md text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                            >Backend Structure</a
+                        >
+                        <a
+                            href="#api-map"
+                            class="block px-3 py-2 text-sm font-medium rounded-md text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                            >API Map</a
+                        >
+                        <a
+                            href="#database"
+                            class="block px-3 py-2 text-sm font-medium rounded-md text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                            >Database & Schema</a
+                        >
+                        <a
+                            href="#features"
+                            class="block px-3 py-2 text-sm font-medium rounded-md text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                            >Key Features</a
+                        >
+                    </div>
+                </nav>
+
+                <!-- Content -->
+                <main class="flex-1 min-w-0">
+                    <!-- Overview -->
+                    <section id="overview" class="mb-12">
+                        <h2 class="text-2xl font-bold text-slate-900 mb-4">
+                            System Overview
+                        </h2>
+                        <p class="text-slate-600 leading-relaxed mb-4">
+                            The Coresync V2 Calendar System is a robust scheduling tool that integrates directly with 
+                            Teams and supports Google Calendar synchronization. It offers drag-and-drop event management,
+                            ICS exports, and multi-user event sharing.
+                        </p>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
+                            <div
+                                class="bg-white p-4 rounded-lg border border-slate-200"
+                            >
+                                <h3 class="font-semibold text-slate-900 mb-2">
+                                    Tech Stack
+                                </h3>
+                                <ul class="text-sm text-slate-600 space-y-1">
+                                    <li>
+                                        📅 <strong>Library:</strong> FullCalendar (Vue 3 Adapter)
+                                    </li>
+                                    <li>
+                                        🔄 <strong>Sync:</strong> Google Calendar API (OAuth2)
+                                    </li>
+                                    <li>
+                                        📤 <strong>Export:</strong> ICS Generation (spatie/icalendar-generator)
+                                    </li>
+                                    <li>
+                                        🎨 <strong>UI:</strong> TailwindCSS + Rekaui
+                                    </li>
+                                </ul>
+                            </div>
+                            <div
+                                class="bg-white p-4 rounded-lg border border-slate-200"
+                            >
+                                <h3 class="font-semibold text-slate-900 mb-2">
+                                    Core Capabilities
+                                </h3>
+                                <ul class="text-sm text-slate-600 space-y-1">
+                                    <li>
+                                        👥 <strong>Team Events:</strong> Shared calendars for teams
+                                    </li>
+                                    <li>
+                                        🔗 <strong>External Sync:</strong> Two-way Google Calendar sync
+                                    </li>
+                                    <li>
+                                        📨 <strong>Invites:</strong> Email invitations with .ics attachments
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </section>
+                    
+                    <hr class="my-8 border-slate-200" />
+
+                    <!-- Frontend Map -->
+                    <section id="frontend-map" class="mb-12">
+                        <h2 class="text-2xl font-bold text-slate-900 mb-6">
+                            Frontend Architecture
+                        </h2>
+                        <div
+                            class="bg-slate-900 rounded-lg overflow-hidden shadow-lg"
+                        >
+                            <div
+                                class="p-4 bg-slate-800 border-b border-slate-700"
+                            >
+                                <h3 class="font-mono text-sm text-amber-400">
+                                    resources/js/
+                                </h3>
+                            </div>
+                            <div
+                                class="p-6 font-mono text-sm text-slate-300 space-y-4"
+                            >
+                                <div>
+                                    <div class="text-emerald-400 mb-1">
+                                        ▼ views/Calendar/
+                                    </div>
+                                    <div
+                                        class="pl-4 border-l border-slate-700 space-y-1"
+                                    >
+                                        <div class="flex gap-2">
+                                            <span class="text-white"
+                                                >Index.vue</span
+                                            >
+                                            <span class="text-slate-500"
+                                                >// Main Page (FullCalendar Instance)</span
+                                            >
+                                        </div>
+                                        <div class="flex gap-2">
+                                            <span class="text-white"
+                                                >Partials/CalendarShareModal.vue</span
+                                            >
+                                            <span class="text-slate-500"
+                                                >// Share settings modal</span
+                                            >
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div class="text-emerald-400 mb-1">
+                                        ▼ components/
+                                    </div>
+                                    <div class="pl-4 border-l border-slate-700">
+                                        <div class="flex gap-2">
+                                            <span class="text-white"
+                                                >GoogleCalendarConnect.vue</span
+                                            >
+                                            <span class="text-slate-500"
+                                                >// OAuth Connection UI</span
+                                            >
+                                        </div>
+                                        <div class="flex gap-2">
+                                            <span class="text-white"
+                                                >ui/MiniCalendar.vue</span
+                                            >
+                                            <span class="text-slate-500"
+                                                >// Date picker / Sidebar widget</span
+                                            >
+                                        </div>
+                                        <div class="flex gap-2">
+                                            <span class="text-white"
+                                                >tools/TeamCalendar.vue</span
+                                            >
+                                            <span class="text-slate-500"
+                                                >// Team dashboard widget</span
+                                            >
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Backend Map -->
+                    <section id="backend-map" class="mb-12">
+                        <h2 class="text-2xl font-bold text-slate-900 mb-6">
+                            Backend Architecture
+                        </h2>
+                        <div class="space-y-4">
+                            <div
+                                class="border border-slate-200 rounded-lg p-4 bg-white"
+                            >
+                                <h3 class="font-bold text-slate-900 mb-2">
+                                    Controller Layer
+                                </h3>
+                                <div class="text-sm text-slate-600 mb-2 space-y-1">
+                                    <p>
+                                        <code>app/Http/Controllers/Api/TeamController.php</code>
+                                        - Handles shared team events
+                                    </p>
+                                    <p>
+                                        <code>app/Http/Controllers/Api/CalendarShareController.php</code>
+                                        - Manages public/private sharing
+                                    </p>
+                                    <p>
+                                        <code>app/Http/Controllers/Api/CalendarOAuthController.php</code>
+                                        - Handles Google Auth flow
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div
+                                class="border border-slate-200 rounded-lg p-4 bg-white"
+                            >
+                                <h3 class="font-bold text-slate-900 mb-2">
+                                    Service Layer
+                                </h3>
+                                <div
+                                    class="text-sm text-slate-600 mb-2 space-y-1"
+                                >
+                                    <p>
+                                        <code
+                                            >app/Services/GoogleCalendarService.php</code
+                                        >
+                                        - Sync logic with Google API
+                                    </p>
+                                    <p>
+                                        <code
+                                            >app/Services/CalendarExportService.php</code
+                                        >
+                                        - Generates .ics files
+                                    </p>
+                                    <p>
+                                        <code
+                                            >app/Services/CalendarShareService.php</code
+                                        >
+                                        - Logic for sharing permissions
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- API Map -->
+                    <section id="api-map" class="mb-12">
+                        <h2 class="text-2xl font-bold text-slate-900 mb-6">
+                            API Endpoint Map (Team Context)
+                        </h2>
+                        <div
+                            class="overflow-x-auto border border-slate-200 rounded-lg"
+                        >
+                            <table class="min-w-full divide-y divide-slate-200">
+                                <thead class="bg-slate-50">
+                                    <tr>
+                                        <th
+                                            class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider"
+                                        >
+                                            Method
+                                        </th>
+                                        <th
+                                            class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider"
+                                        >
+                                            Endpoint
+                                        </th>
+                                        <th
+                                            class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider"
+                                        >
+                                            Description
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody
+                                    class="bg-white divide-y divide-slate-200"
+                                >
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span
+                                                class="px-2 py-1 text-xs font-bold bg-blue-100 text-blue-800 rounded"
+                                                >GET</span
+                                            >
+                                        </td>
+                                        <td class="px-6 py-4 font-mono text-sm">
+                                            /api/teams/{team}/calendar
+                                        </td>
+                                        <td
+                                            class="px-6 py-4 text-sm text-slate-500"
+                                        >
+                                            List team events
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span
+                                                class="px-2 py-1 text-xs font-bold bg-green-100 text-green-800 rounded"
+                                                >POST</span
+                                            >
+                                        </td>
+                                        <td class="px-6 py-4 font-mono text-sm">
+                                            /api/teams/{team}/events
+                                        </td>
+                                        <td
+                                            class="px-6 py-4 text-sm text-slate-500"
+                                        >
+                                            Create new event
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span
+                                                class="px-2 py-1 text-xs font-bold bg-amber-100 text-amber-800 rounded"
+                                                >PUT</span
+                                            >
+                                        </td>
+                                        <td class="px-6 py-4 font-mono text-sm">
+                                            /api/teams/{team}/events/{event}
+                                        </td>
+                                        <td
+                                            class="px-6 py-4 text-sm text-slate-500"
+                                        >
+                                            Update event
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span
+                                                class="px-2 py-1 text-xs font-bold bg-red-100 text-red-800 rounded"
+                                                >DELETE</span
+                                            >
+                                        </td>
+                                        <td class="px-6 py-4 font-mono text-sm">
+                                            /api/teams/{team}/events/{event}
+                                        </td>
+                                        <td
+                                            class="px-6 py-4 text-sm text-slate-500"
+                                        >
+                                            Delete event
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span
+                                                class="px-2 py-1 text-xs font-bold bg-blue-100 text-blue-800 rounded"
+                                                >GET</span
+                                            >
+                                        </td>
+                                        <td class="px-6 py-4 font-mono text-sm">
+                                            /api/teams/{team}/events/{event}/ics
+                                        </td>
+                                        <td
+                                            class="px-6 py-4 text-sm text-slate-500"
+                                        >
+                                            Download .ics file
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <!-- Database -->
+                    <section id="database" class="mb-12">
+                        <h2 class="text-2xl font-bold text-slate-900 mb-6">
+                            Database Schema
+                        </h2>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div
+                                class="bg-white p-4 rounded-lg border border-slate-200"
+                            >
+                                <h3
+                                    class="font-bold text-slate-900 border-b pb-2 mb-3"
+                                >
+                                    events
+                                </h3>
+                                <ul
+                                    class="text-sm text-slate-600 space-y-1 font-mono"
+                                >
+                                    <li>id, public_id (ulid)</li>
+                                    <li>title, description</li>
+                                    <li>start_at, end_at (timestamp)</li>
+                                    <li>is_all_day (boolean)</li>
+                                    <li>location (string)</li>
+                                    <li>color (hex)</li>
+                                </ul>
+                            </div>
+                            <div
+                                class="bg-white p-4 rounded-lg border border-slate-200"
+                            >
+                                <h3
+                                    class="font-bold text-slate-900 border-b pb-2 mb-3"
+                                >
+                                    event_attendees
+                                </h3>
+                                <ul
+                                    class="text-sm text-slate-600 space-y-1 font-mono"
+                                >
+                                    <li>event_id (fk)</li>
+                                    <li>user_id (fk)</li>
+                                    <li>status (pending/accepted/declined)</li>
+                                </ul>
+                            </div>
+                            <div
+                                class="bg-white p-4 rounded-lg border border-slate-200"
+                            >
+                                <h3
+                                    class="font-bold text-slate-900 border-b pb-2 mb-3"
+                                >
+                                    calendar_shares
+                                </h3>
+                                <ul
+                                    class="text-sm text-slate-600 space-y-1 font-mono"
+                                >
+                                    <li>id</li>
+                                    <li>user_id (owner)</li>
+                                    <li>shared_with_user_id (recipient)</li>
+                                    <li>permissions (read/write)</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Features -->
+                    <section id="features" class="mb-12">
+                        <h2 class="text-2xl font-bold text-slate-900 mb-4">
+                            Key Features
+                        </h2>
+                        <ul class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <li class="flex items-start">
+                                <svg
+                                    class="h-6 w-6 text-green-500 mr-2"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M5 13l4 4L19 7"
+                                    />
+                                </svg>
+                                <div>
+                                    <strong class="text-slate-900 block"
+                                        >Drag & Drop</strong
+                                    >
+                                    <span class="text-sm text-slate-500"
+                                        >Intuitively reschedule events by dragging them on the view.</span
+                                    >
+                                </div>
+                            </li>
+                            <li class="flex items-start">
+                                <svg
+                                    class="h-6 w-6 text-green-500 mr-2"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M5 13l4 4L19 7"
+                                    />
+                                </svg>
+                                <div>
+                                    <strong class="text-slate-900 block"
+                                        >Google Sync</strong
+                                    >
+                                    <span class="text-sm text-slate-500"
+                                        >Two-way synchronization with personal Google Calendars.</span
+                                    >
+                                </div>
+                            </li>
+                            <li class="flex items-start">
+                                <svg
+                                    class="h-6 w-6 text-green-500 mr-2"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M5 13l4 4L19 7"
+                                    />
+                                </svg>
+                                <div>
+                                    <strong class="text-slate-900 block"
+                                        >ICS Export</strong
+                                    >
+                                    <span class="text-sm text-slate-500"
+                                        >Download events as standard .ics files for external use.</span
+                                    >
+                                </div>
+                            </li>
+                        </ul>
+                    </section>
+                </main>
+            </div>
+        </div>
+
+        <footer class="bg-white border-t border-slate-200 mt-12 py-8">
+            <div
+                class="max-w-7xl mx-auto px-4 text-center text-sm text-slate-400"
+            >
+                Coresync V2 Documentation &bull; Generated by Audit Tool
+            </div>
+        </footer>
+    </body>
+</html>
