@@ -196,7 +196,7 @@ const getFileIcon = (mimeType) => {
 const toggleSelection = (id) => {
     if (selectedItems.value.includes(id)) {
         selectedItems.value = selectedItems.value.filter(
-            (itemId) => itemId !== id
+            (itemId) => itemId !== id,
         );
     } else {
         if (selectedItems.value.length >= 10) {
@@ -211,7 +211,7 @@ const usagePercentage = computed(() => {
     if (!props.storageLimit) return 0;
     return Math.min(
         Math.round((props.storageUsed / props.storageLimit) * 100),
-        100
+        100,
     );
 });
 
@@ -549,6 +549,13 @@ const clearSelection = () => {
                             class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2"
                         >
                             <button
+                                @click.stop="emit('download', item)"
+                                class="p-1.5 rounded-md bg-white/20 text-white hover:bg-white/30 transition-colors backdrop-blur-sm"
+                                title="Download"
+                            >
+                                <Download class="w-4 h-4" />
+                            </button>
+                            <button
                                 @click.stop="emit('delete', item.id)"
                                 class="p-1.5 rounded-md bg-red-500/80 text-white hover:bg-red-600 transition-colors"
                                 title="Delete"
@@ -574,16 +581,12 @@ const clearSelection = () => {
                         "
                         :title="item.name"
                     >
-                         <div
+                        <div
                             class="py-0 px-1 cursor-pointer"
                             @click.stop="toggleSelection(item.id)"
                         >
                             <component
-                                :is="
-                                    isSelected(item.id)
-                                        ? CheckSquare
-                                        : Square
-                                "
+                                :is="isSelected(item.id) ? CheckSquare : Square"
                                 class="h-4 w-4"
                                 :class="
                                     isSelected(item.id)
@@ -630,14 +633,25 @@ const clearSelection = () => {
                         </div>
 
                         <!-- Actions -->
-                        <button
-                            v-if="canDelete"
-                            @click.stop="emit('delete', item.id)"
-                            class="p-1.5 rounded-md text-[var(--text-muted)] hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all"
-                            title="Delete"
+                        <div
+                            class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all"
                         >
-                            <Trash2 class="w-4 h-4" />
-                        </button>
+                            <button
+                                @click.stop="emit('download', item)"
+                                class="p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-tertiary)]"
+                                title="Download"
+                            >
+                                <Download class="w-4 h-4" />
+                            </button>
+                            <button
+                                v-if="canDelete"
+                                @click.stop="emit('delete', item.id)"
+                                class="p-1.5 rounded-md text-[var(--text-muted)] hover:text-red-500 hover:bg-red-50"
+                                title="Delete"
+                            >
+                                <Trash2 class="w-4 h-4" />
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1094,7 +1108,7 @@ const clearSelection = () => {
                                             <img
                                                 v-if="
                                                     item.mime_type?.startsWith(
-                                                        'image/'
+                                                        'image/',
                                                     ) || item.thumbnail_url
                                                 "
                                                 :src="

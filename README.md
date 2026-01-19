@@ -193,7 +193,7 @@ test@example.com - Xachgamb@01
 
 ## Documentation
 
-For detailed internal documentation, open `worksphere_doc.html` in your browser.
+For detailed internal documentation, open `app_doc.html` in your browser.
 
 ## License
 

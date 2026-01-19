@@ -57,14 +57,16 @@ const authStore = useAuthStore();
 
 // Route params
 const projectId = computed(
-    () => (route.params.projectId as string) || (route.params.id as string)
+    () => (route.params.projectId as string) || (route.params.id as string),
 );
 const taskId = computed(() => route.params.taskId as string);
 
 // State
 const isLoading = ref(true);
 const task = ref<any>(null);
-const activeTab = ref<"checklist" | "comments" | "history" | "attachments">("comments");
+const activeTab = ref<"checklist" | "comments" | "history" | "attachments">(
+    "comments",
+);
 
 // Comments
 const comments = ref<any[]>([]);
@@ -192,14 +194,41 @@ const priorityConfig: Record<
     number,
     { label: string; color: string; bg: string; border: string }
 > = {
-    1: { label: "Low", color: "text-slate-600 dark:text-slate-400", bg: "bg-slate-100 dark:bg-slate-800", border: "border-slate-200 dark:border-slate-700" },
-    2: { label: "Medium", color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-50 dark:bg-blue-500/10", border: "border-blue-200 dark:border-blue-900" },
-    3: { label: "High", color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-500/10", border: "border-amber-200 dark:border-amber-900" },
-    4: { label: "Urgent", color: "text-red-600 dark:text-red-400", bg: "bg-red-50 dark:bg-red-500/10", border: "border-red-200 dark:border-red-900" },
+    1: {
+        label: "Low",
+        color: "text-slate-600 dark:text-slate-400",
+        bg: "bg-slate-100 dark:bg-slate-800",
+        border: "border-slate-200 dark:border-slate-700",
+    },
+    2: {
+        label: "Medium",
+        color: "text-blue-600 dark:text-blue-400",
+        bg: "bg-blue-50 dark:bg-blue-500/10",
+        border: "border-blue-200 dark:border-blue-900",
+    },
+    3: {
+        label: "High",
+        color: "text-amber-600 dark:text-amber-400",
+        bg: "bg-amber-50 dark:bg-amber-500/10",
+        border: "border-amber-200 dark:border-amber-900",
+    },
+    4: {
+        label: "Urgent",
+        color: "text-red-600 dark:text-red-400",
+        bg: "bg-red-50 dark:bg-red-500/10",
+        border: "border-red-200 dark:border-red-900",
+    },
 };
 
 // Full workflow for stepper visualization
-const workflowStatuses = ["open", "in_progress", "in_qa", "pm_review", "sent_to_client", "completed"];
+const workflowStatuses = [
+    "open",
+    "in_progress",
+    "in_qa",
+    "pm_review",
+    "sent_to_client",
+    "completed",
+];
 
 const getStatus = (s: string) => statusConfig[s] || statusConfig["open"];
 const getStatusValue = (t: any) => t?.status?.value || t?.status || "open";
@@ -229,7 +258,7 @@ const fetchTask = async () => {
     try {
         isLoading.value = true;
         const response = await axios.get(
-            `/api/teams/${currentTeamId.value}/projects/${projectId.value}/tasks/${taskId.value}`
+            `/api/teams/${currentTeamId.value}/projects/${projectId.value}/tasks/${taskId.value}`,
         );
         task.value = response.data.data || response.data;
         await Promise.all([
@@ -250,7 +279,7 @@ const fetchComments = async () => {
     if (!task.value) return;
     try {
         const response = await axios.get(
-            `/api/teams/${currentTeamId.value}/projects/${projectId.value}/tasks/${taskId.value}/comments`
+            `/api/teams/${currentTeamId.value}/projects/${projectId.value}/tasks/${taskId.value}/comments`,
         );
         comments.value = response.data.data || [];
     } catch (err) {
@@ -262,7 +291,7 @@ const fetchStatusHistory = async () => {
     if (!task.value) return;
     try {
         const response = await axios.get(
-            `/api/teams/${currentTeamId.value}/projects/${projectId.value}/tasks/${taskId.value}/status-history`
+            `/api/teams/${currentTeamId.value}/projects/${projectId.value}/tasks/${taskId.value}/status-history`,
         );
         statusHistory.value = response.data.data || [];
     } catch (err) {
@@ -274,7 +303,7 @@ const fetchChecklistItems = async () => {
     if (!task.value) return;
     try {
         const response = await axios.get(
-            `/api/teams/${currentTeamId.value}/projects/${projectId.value}/tasks/${taskId.value}/checklist`
+            `/api/teams/${currentTeamId.value}/projects/${projectId.value}/tasks/${taskId.value}/checklist`,
         );
         checklistItems.value = response.data.data || [];
         canSubmitForReview.value =
@@ -290,7 +319,7 @@ const submitComment = async () => {
         isSubmittingComment.value = true;
         await axios.post(
             `/api/teams/${currentTeamId.value}/projects/${projectId.value}/tasks/${taskId.value}/comments`,
-            { content: newComment.value }
+            { content: newComment.value },
         );
         newComment.value = "";
         await fetchComments();
@@ -308,7 +337,7 @@ const addChecklistItem = async () => {
         isAddingItem.value = true;
         await axios.post(
             `/api/teams/${currentTeamId.value}/projects/${projectId.value}/tasks/${taskId.value}/checklist`,
-            { text: newChecklistText.value }
+            { text: newChecklistText.value },
         );
         newChecklistText.value = "";
         await fetchChecklistItems();
@@ -328,7 +357,7 @@ const updateChecklistItemStatus = async (item: any, newStatus: string) => {
     try {
         await axios.put(
             `/api/teams/${currentTeamId.value}/projects/${projectId.value}/tasks/${taskId.value}/checklist/${item.public_id}`,
-            { status: newStatus }
+            { status: newStatus },
         );
         await fetchChecklistItems();
     } catch (err: any) {
@@ -339,7 +368,7 @@ const updateChecklistItemStatus = async (item: any, newStatus: string) => {
 const deleteChecklistItem = async (item: any) => {
     try {
         await axios.delete(
-            `/api/teams/${currentTeamId.value}/projects/${projectId.value}/tasks/${taskId.value}/checklist/${item.public_id}`
+            `/api/teams/${currentTeamId.value}/projects/${projectId.value}/tasks/${taskId.value}/checklist/${item.public_id}`,
         );
         await fetchChecklistItems();
         toast.success("Item removed");
@@ -358,7 +387,7 @@ const onChecklistReorder = async () => {
     try {
         await axios.post(
             `/api/teams/${currentTeamId.value}/projects/${projectId.value}/tasks/${taskId.value}/checklist/reorder`,
-            { items }
+            { items },
         );
     } catch (err: any) {
         toast.error("Failed to reorder items");
@@ -371,7 +400,7 @@ const updateStatus = async (status: string) => {
     try {
         const response = await axios.put(
             `/api/teams/${currentTeamId.value}/projects/${projectId.value}/tasks/${taskId.value}`,
-            { status }
+            { status },
         );
         task.value = response.data.data || response.data;
         toast.success(`Status updated to ${getStatus(status).label}`);
@@ -428,12 +457,14 @@ const fetchTaskFiles = async () => {
     filesLoading.value = true;
     try {
         const response = await axios.get(
-            `/api/teams/${currentTeamId.value}/projects/${projectId.value}/tasks/${taskId.value}/files`
+            `/api/teams/${currentTeamId.value}/projects/${projectId.value}/tasks/${taskId.value}/files`,
         );
-        taskFiles.value = (response.data.data || response.data || []).map((f: any) => ({
-            ...f,
-            name: f.name || f.file_name,
-        }));
+        taskFiles.value = (response.data.data || response.data || []).map(
+            (f: any) => ({
+                ...f,
+                name: f.name || f.file_name,
+            }),
+        );
     } catch (err) {
         console.error("Failed to fetch files", err);
     } finally {
@@ -456,7 +487,7 @@ const handleUpload = (files: FileList | File[]) => {
 };
 
 const processUploadQueue = async () => {
-    const pending = uploadQueue.value.filter(f => f.status === "pending");
+    const pending = uploadQueue.value.filter((f) => f.status === "pending");
     if (!pending.length) return;
 
     isUploading.value = true;
@@ -468,17 +499,19 @@ const processUploadQueue = async () => {
             await axios.post(
                 `/api/teams/${currentTeamId.value}/projects/${projectId.value}/tasks/${taskId.value}/files`,
                 formData,
-                { headers: { "Content-Type": "multipart/form-data" } }
+                { headers: { "Content-Type": "multipart/form-data" } },
             );
             item.status = "done";
             toast.success(`${item.name} uploaded`);
         } catch (e: any) {
             item.status = "error";
-            toast.error(e.response?.data?.message || `Failed to upload ${item.name}`);
+            toast.error(
+                e.response?.data?.message || `Failed to upload ${item.name}`,
+            );
         }
     }
     isUploading.value = false;
-    uploadQueue.value = uploadQueue.value.filter(f => f.status !== "done");
+    uploadQueue.value = uploadQueue.value.filter((f) => f.status !== "done");
     await fetchTaskFiles();
 };
 
@@ -502,7 +535,7 @@ const confirmDeleteFile = async () => {
     isDeleting.value = true;
     try {
         await axios.delete(
-            `/api/teams/${currentTeamId.value}/projects/${projectId.value}/tasks/${taskId.value}/files/${fileToDelete.value.id}`
+            `/api/teams/${currentTeamId.value}/projects/${projectId.value}/tasks/${taskId.value}/files/${fileToDelete.value.id}`,
         );
         toast.success("File deleted");
         await fetchTaskFiles();
@@ -515,16 +548,31 @@ const confirmDeleteFile = async () => {
     }
 };
 
-const handleDownload = (fileId: number | string) => {
-    // MediaManager emits just the ID
-    const file = taskFiles.value.find((f: any) => f.id === fileId);
+const handleDownload = (fileOrId: number | string | any) => {
+    // MediaManager might emit just ID or the whole object
+    let file = null;
+
+    if (typeof fileOrId === "object" && fileOrId !== null) {
+        file = fileOrId;
+    } else {
+        file = taskFiles.value.find((f: any) => f.id === fileOrId);
+    }
+
     if (!file) {
         toast.error("File not found");
         return;
     }
     // Use download_url which forces download, fallback to url
     const downloadUrl = file.download_url || file.url;
-    window.open(downloadUrl, '_blank');
+
+    // Create hidden link to force download event if it's a direct link
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = file.name || "download";
+    link.target = "_blank";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 };
 
 const handleViewMedia = (file: any) => {
@@ -536,29 +584,29 @@ const handleBulkDownload = async (ids: number[]) => {
         toast.error("No files selected");
         return;
     }
-    
+
     toast.info(`Preparing zip for ${ids.length} file(s)...`);
-    
+
     try {
         // Call backend endpoint that returns a zip file
         const response = await axios.post(
             `/api/teams/${currentTeamId.value}/projects/${projectId.value}/tasks/${taskId.value}/files/download`,
             { ids },
-            { responseType: 'blob' }
+            { responseType: "blob" },
         );
-        
+
         // Create download link from blob
-        const blob = new Blob([response.data], { type: 'application/zip' });
+        const blob = new Blob([response.data], { type: "application/zip" });
         const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
+        const link = document.createElement("a");
         link.href = url;
         link.download = `task-files-${taskId.value}.zip`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
         window.URL.revokeObjectURL(url);
-        
-        toast.success('Download started');
+
+        toast.success("Download started");
     } catch (e: any) {
         toast.error(e.response?.data?.message || "Failed to download files");
     }
@@ -578,11 +626,11 @@ const handleBulkDelete = (ids: number[]) => {
 const confirmBulkDelete = async () => {
     if (!filesToBulkDelete.value.length) return;
     isBulkDeleting.value = true;
-    
+
     try {
         for (const id of filesToBulkDelete.value) {
             await axios.delete(
-                `/api/teams/${currentTeamId.value}/projects/${projectId.value}/tasks/${taskId.value}/files/${id}`
+                `/api/teams/${currentTeamId.value}/projects/${projectId.value}/tasks/${taskId.value}/files/${id}`,
             );
         }
         toast.success(`Deleted ${filesToBulkDelete.value.length} file(s)`);
@@ -604,7 +652,18 @@ watch(
             fetchTask();
         }
     },
-    { immediate: true }
+    { immediate: true },
+);
+
+// Keep task checklist in sync with local checklistItems
+watch(
+    checklistItems,
+    (newItems) => {
+        if (task.value) {
+            task.value.checklist = newItems;
+        }
+    },
+    { deep: true },
 );
 </script>
 
@@ -623,107 +682,182 @@ watch(
             <div class="flex items-center gap-3 mb-6">
                 <Button variant="ghost" size="sm" @click="goBack">
                     <ChevronLeft class="w-4 h-4 mr-1" />
-                    Back to {{ task.project?.name || 'Project' }}
+                    Back to {{ task.project?.name || "Project" }}
                 </Button>
             </div>
 
             <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
                 <!-- Main Content Column -->
                 <div class="lg:col-span-3 space-y-6">
-                    
                     <!-- Status Stepper -->
                     <Card padding="lg">
-                            <div class="flex items-center justify-between mb-6">
-                                <div>
-                                    <h1 class="text-2xl font-bold text-[var(--text-primary)] mb-1">
-                                        {{ task.title }}
-                                    </h1>
-                                    <div class="flex items-center gap-3 text-sm text-[var(--text-secondary)]">
-                                        <span class="font-mono bg-[var(--surface-tertiary)] px-1.5 py-0.5 rounded text-xs">{{ task.public_id?.substring(0, 8) }}</span>
-                                        <span>&bull;</span>
-                                        <span>Created by {{ task.creator?.name }} {{ timeAgo(task.created_at) }}</span>
-                                    </div>
-                                </div>
-                                <div class="flex items-center gap-2">
-                                     <Button
-                                        variant="outline"
-                                        size="sm"
-                                        @click="showEditModal = true"
+                        <div class="flex items-center justify-between mb-6">
+                            <div>
+                                <h1
+                                    class="text-2xl font-bold text-[var(--text-primary)] mb-1"
+                                >
+                                    {{ task.title }}
+                                </h1>
+                                <div
+                                    class="flex items-center gap-3 text-sm text-[var(--text-secondary)]"
+                                >
+                                    <span
+                                        class="font-mono bg-[var(--surface-tertiary)] px-1.5 py-0.5 rounded text-xs"
+                                        >{{
+                                            task.public_id?.substring(0, 8)
+                                        }}</span
                                     >
-                                        <Edit3 class="w-4 h-4 mr-2" />
-                                        Edit
-                                    </Button>
+                                    <span>&bull;</span>
+                                    <span
+                                        >Created by {{ task.creator?.name }}
+                                        {{ timeAgo(task.created_at) }}</span
+                                    >
                                 </div>
                             </div>
+                            <div class="flex items-center gap-2">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    @click="showEditModal = true"
+                                >
+                                    <Edit3 class="w-4 h-4 mr-2" />
+                                    Edit
+                                </Button>
+                            </div>
+                        </div>
 
-                            <!-- Progress Flow (Reka Style Stepper) -->
-                            <div class="mb-6 pt-4">
-                                <div class="relative">
-                                    <!-- Connectors -->
-                                    <div class="absolute top-4 left-0 right-0 h-[2px] bg-[var(--border-default)]"></div>
-                                    <div 
-                                        class="absolute top-4 left-0 h-[2px] bg-[var(--interactive-primary)] transition-all"
-                                        :style="{ width: `${(workflowStatuses.indexOf(getStatusValue(task)) / 5) * 100}%` }"
-                                    ></div>
-                                    
-                                    <!-- Steps -->
-                                    <div class="relative grid grid-cols-6 gap-0">
-                                        <div 
-                                            v-for="(step, index) in ['open', 'in_progress', 'in_qa', 'pm_review', 'sent_to_client', 'completed']" 
-                                            :key="step"
-                                            class="flex flex-col items-center"
+                        <!-- Progress Flow (Reka Style Stepper) -->
+                        <div class="mb-6 pt-4">
+                            <div class="relative">
+                                <!-- Connectors -->
+                                <div
+                                    class="absolute top-4 left-0 right-0 h-[2px] bg-[var(--border-default)]"
+                                ></div>
+                                <div
+                                    class="absolute top-4 left-0 h-[2px] bg-[var(--interactive-primary)] transition-all"
+                                    :style="{
+                                        width: `${(workflowStatuses.indexOf(getStatusValue(task)) / 5) * 100}%`,
+                                    }"
+                                ></div>
+
+                                <!-- Steps -->
+                                <div class="relative grid grid-cols-6 gap-0">
+                                    <div
+                                        v-for="(step, index) in [
+                                            'open',
+                                            'in_progress',
+                                            'in_qa',
+                                            'pm_review',
+                                            'sent_to_client',
+                                            'completed',
+                                        ]"
+                                        :key="step"
+                                        class="flex flex-col items-center"
+                                    >
+                                        <!-- Indicator -->
+                                        <div
+                                            class="flex items-center justify-center w-8 h-8 rounded-full border-2 transition-all bg-[var(--surface-primary)]"
+                                            :class="[
+                                                workflowStatuses.indexOf(
+                                                    getStatusValue(task),
+                                                ) > index
+                                                    ? 'bg-[var(--interactive-primary)] border-[var(--interactive-primary)] text-white'
+                                                    : workflowStatuses.indexOf(
+                                                            getStatusValue(
+                                                                task,
+                                                            ),
+                                                        ) === index
+                                                      ? 'border-[var(--interactive-primary)] text-[var(--interactive-primary)]'
+                                                      : 'border-[var(--border-default)] text-[var(--text-muted)]',
+                                            ]"
                                         >
-                                            <!-- Indicator -->
-                                            <div 
-                                                class="flex items-center justify-center w-8 h-8 rounded-full border-2 transition-all bg-[var(--surface-primary)]"
-                                                :class="[
-                                                    workflowStatuses.indexOf(getStatusValue(task)) > index
-                                                        ? 'bg-[var(--interactive-primary)] border-[var(--interactive-primary)] text-white' 
-                                                        : (workflowStatuses.indexOf(getStatusValue(task)) === index 
-                                                            ? 'border-[var(--interactive-primary)] text-[var(--interactive-primary)]' 
-                                                            : 'border-[var(--border-default)] text-[var(--text-muted)]')
-                                                ]"
+                                            <CheckCircle2
+                                                v-if="
+                                                    workflowStatuses.indexOf(
+                                                        getStatusValue(task),
+                                                    ) > index
+                                                "
+                                                class="w-5 h-5"
+                                            />
+                                            <Circle
+                                                v-else-if="
+                                                    workflowStatuses.indexOf(
+                                                        getStatusValue(task),
+                                                    ) === index
+                                                "
+                                                class="w-4 h-4 fill-current"
+                                            />
+                                            <span
+                                                v-else
+                                                class="text-xs font-medium"
+                                                >{{ index + 1 }}</span
                                             >
-                                                <CheckCircle2 v-if="workflowStatuses.indexOf(getStatusValue(task)) > index" class="w-5 h-5" />
-                                                <Circle v-else-if="workflowStatuses.indexOf(getStatusValue(task)) === index" class="w-4 h-4 fill-current" />
-                                                <span v-else class="text-xs font-medium">{{ index + 1 }}</span>
-                                            </div>
-                                            
-                                            <!-- Label -->
-                                            <span 
-                                                class="mt-3 text-xs font-medium uppercase tracking-wide text-center transition-colors"
-                                                :class="[
-                                                    workflowStatuses.indexOf(getStatusValue(task)) >= index 
-                                                        ? 'text-[var(--text-primary)]' 
-                                                        : 'text-[var(--text-muted)]'
-                                                ]"
-                                            >
-                                                {{ getStatus(step).label.replace('Client Review', 'Client').replace('In QA Review', 'QA') }}
-                                            </span>
                                         </div>
+
+                                        <!-- Label -->
+                                        <span
+                                            class="mt-3 text-xs font-medium uppercase tracking-wide text-center transition-colors"
+                                            :class="[
+                                                workflowStatuses.indexOf(
+                                                    getStatusValue(task),
+                                                ) >= index
+                                                    ? 'text-[var(--text-primary)]'
+                                                    : 'text-[var(--text-muted)]',
+                                            ]"
+                                        >
+                                            {{
+                                                getStatus(step)
+                                                    .label.replace(
+                                                        "Client Review",
+                                                        "Client",
+                                                    )
+                                                    .replace(
+                                                        "In QA Review",
+                                                        "QA",
+                                                    )
+                                            }}
+                                        </span>
                                     </div>
                                 </div>
                             </div>
-                            
-                            <!-- Actions Bar -->
-                            <div class="bg-[var(--surface-secondary)] rounded-lg p-4 border border-[var(--border-default)] flex flex-wrap items-center justify-between gap-4">
-                                <div class="flex items-center gap-2">
-                                    <span class="text-sm font-medium text-[var(--text-secondary)]">Current Status:</span>
-                                    <Badge :variant="getStatus(getStatusValue(task)).color.includes('slate') ? 'secondary' : 'default'">
-                                        {{ getStatus(getStatusValue(task)).label }}
-                                    </Badge>
-                                </div>
-                                <TaskWorkflowActions 
-                                    :task="task" 
-                                    @task-updated="onTaskUpdated" 
-                                    @error="toast.error($event)" 
-                                />
+                        </div>
+
+                        <!-- Actions Bar -->
+                        <div
+                            class="bg-[var(--surface-secondary)] rounded-lg p-4 border border-[var(--border-default)] flex flex-wrap items-center justify-between gap-4"
+                        >
+                            <div class="flex items-center gap-2">
+                                <span
+                                    class="text-sm font-medium text-[var(--text-secondary)]"
+                                    >Current Status:</span
+                                >
+                                <Badge
+                                    :variant="
+                                        getStatus(
+                                            getStatusValue(task),
+                                        ).color.includes('slate')
+                                            ? 'secondary'
+                                            : 'default'
+                                    "
+                                >
+                                    {{ getStatus(getStatusValue(task)).label }}
+                                </Badge>
                             </div>
+                            <TaskWorkflowActions
+                                :task="task"
+                                @task-updated="onTaskUpdated"
+                                @error="toast.error($event)"
+                            />
+                        </div>
                     </Card>
 
                     <!-- Description -->
                     <Card padding="lg">
-                        <h3 class="text-sm font-semibold uppercase text-[var(--text-muted)] mb-3">Description</h3>
+                        <h3
+                            class="text-sm font-semibold uppercase text-[var(--text-muted)] mb-3"
+                        >
+                            Description
+                        </h3>
                         <div
                             v-if="task.description"
                             class="prose prose-sm dark:prose-invert max-w-none text-[var(--text-primary)] leading-relaxed whitespace-pre-wrap"
@@ -808,7 +942,7 @@ watch(
                                             @click="
                                                 updateChecklistItemStatus(
                                                     item,
-                                                    getNextStatus(item.status)
+                                                    getNextStatus(item.status),
                                                 )
                                             "
                                             :disabled="!isAssignee"
@@ -827,7 +961,7 @@ watch(
                                             <component
                                                 :is="
                                                     getItemStatusIcon(
-                                                        item.status
+                                                        item.status,
                                                     )
                                                 "
                                                 class="w-5 h-5"
@@ -967,7 +1101,10 @@ watch(
                         </div>
 
                         <!-- Attachments Tab -->
-                        <div v-if="activeTab === 'attachments'" class="h-[400px]">
+                        <div
+                            v-if="activeTab === 'attachments'"
+                            class="h-[400px]"
+                        >
                             <MediaManager
                                 :items="taskFiles"
                                 :total="taskFiles.length"
@@ -1092,17 +1229,17 @@ watch(
                                         <span
                                             :class="[
                                                 getStatus(
-                                                    entry.from_status || 'open'
+                                                    entry.from_status || 'open',
                                                 ).bg,
                                                 getStatus(
-                                                    entry.from_status || 'open'
+                                                    entry.from_status || 'open',
                                                 ).color,
                                                 'px-1.5 py-0.5 rounded text-xs font-medium mx-1',
                                             ]"
                                         >
                                             {{
                                                 getStatus(
-                                                    entry.from_status || "open"
+                                                    entry.from_status || "open",
                                                 ).label
                                             }}
                                         </span>
@@ -1139,29 +1276,71 @@ watch(
 
                 <!-- Sidebar Column -->
                 <div class="space-y-6">
-                    
                     <!-- Progress Card (if checklist exists) -->
                     <Card v-if="checklistItems.length > 0" padding="lg">
-                         <div class="flex items-center justify-between mb-4">
-                            <h3 class="font-semibold text-[var(--text-primary)]">Progress</h3>
-                            <Badge variant="secondary">{{ Math.round((completedItemsCount / checklistItems.length) * 100) }}%</Badge>
-                         </div>
-                         <div class="flex items-center gap-4">
-                             <div class="relative w-16 h-16 flex items-center justify-center shrink-0">
-                                 <svg class="w-full h-full transform -rotate-90">
-                                     <circle cx="32" cy="32" r="28" stroke="currentColor" stroke-width="4" fill="transparent" class="text-[var(--surface-tertiary)]" />
-                                     <circle cx="32" cy="32" r="28" stroke="currentColor" stroke-width="4" fill="transparent" class="text-[var(--interactive-primary)]" 
-                                        :stroke-dasharray="2 * Math.PI * 28" 
-                                        :stroke-dashoffset="2 * Math.PI * 28 * (1 - completedItemsCount / checklistItems.length)" 
+                        <div class="flex items-center justify-between mb-4">
+                            <h3
+                                class="font-semibold text-[var(--text-primary)]"
+                            >
+                                Progress
+                            </h3>
+                            <Badge variant="secondary"
+                                >{{
+                                    Math.round(
+                                        (completedItemsCount /
+                                            checklistItems.length) *
+                                            100,
+                                    )
+                                }}%</Badge
+                            >
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <div
+                                class="relative w-16 h-16 flex items-center justify-center shrink-0"
+                            >
+                                <svg class="w-full h-full transform -rotate-90">
+                                    <circle
+                                        cx="32"
+                                        cy="32"
+                                        r="28"
+                                        stroke="currentColor"
+                                        stroke-width="4"
+                                        fill="transparent"
+                                        class="text-[var(--surface-tertiary)]"
+                                    />
+                                    <circle
+                                        cx="32"
+                                        cy="32"
+                                        r="28"
+                                        stroke="currentColor"
+                                        stroke-width="4"
+                                        fill="transparent"
+                                        class="text-[var(--interactive-primary)]"
+                                        :stroke-dasharray="2 * Math.PI * 28"
+                                        :stroke-dashoffset="
+                                            2 *
+                                            Math.PI *
+                                            28 *
+                                            (1 -
+                                                completedItemsCount /
+                                                    checklistItems.length)
+                                        "
                                         stroke-linecap="round"
-                                     />
-                                 </svg>
-                             </div>
-                             <div class="text-sm">
-                                <div class="font-medium text-[var(--text-primary)]">{{ completedItemsCount }} of {{ checklistItems.length }} items</div>
-                                <div class="text-[var(--text-secondary)]">completed so far</div>
-                             </div>
-                         </div>
+                                    />
+                                </svg>
+                            </div>
+                            <div class="text-sm">
+                                <div
+                                    class="font-medium text-[var(--text-primary)]"
+                                >
+                                    {{ completedItemsCount }} of
+                                    {{ checklistItems.length }} items
+                                </div>
+                                <div class="text-[var(--text-secondary)]">
+                                    completed so far
+                                </div>
+                            </div>
+                        </div>
                     </Card>
 
                     <!-- Details Card -->
@@ -1174,7 +1353,11 @@ watch(
                         <dl class="space-y-5">
                             <!-- Assignee -->
                             <div>
-                                <dt class="text-xs font-medium text-[var(--text-secondary)] mb-1.5">Assignee</dt>
+                                <dt
+                                    class="text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+                                >
+                                    Assignee
+                                </dt>
                                 <dd class="flex items-center gap-2">
                                     <Avatar
                                         v-if="task.assignee"
@@ -1192,21 +1375,38 @@ watch(
                                     </div>
                                     <span
                                         class="text-sm font-medium"
-                                        :class="task.assignee ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)] italic'"
+                                        :class="
+                                            task.assignee
+                                                ? 'text-[var(--text-primary)]'
+                                                : 'text-[var(--text-muted)] italic'
+                                        "
                                     >
-                                        {{ task.assignee?.name || "Unassigned" }}
+                                        {{
+                                            task.assignee?.name || "Unassigned"
+                                        }}
                                     </span>
                                 </dd>
                             </div>
 
                             <!-- Due Date -->
                             <div>
-                                <dt class="text-xs font-medium text-[var(--text-secondary)] mb-1.5">Due Date</dt>
+                                <dt
+                                    class="text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+                                >
+                                    Due Date
+                                </dt>
                                 <dd class="flex items-center gap-2 text-sm">
                                     <Calendar
                                         class="w-4 h-4 text-[var(--text-muted)]"
                                     />
-                                    <span :class="{ 'text-[var(--color-error)] font-medium': task.is_overdue, 'text-[var(--text-primary)]': !task.is_overdue }">
+                                    <span
+                                        :class="{
+                                            'text-[var(--color-error)] font-medium':
+                                                task.is_overdue,
+                                            'text-[var(--text-primary)]':
+                                                !task.is_overdue,
+                                        }"
+                                    >
                                         {{
                                             task.due_date
                                                 ? formatDate(task.due_date)
@@ -1218,7 +1418,11 @@ watch(
 
                             <!-- Reporter -->
                             <div>
-                                <dt class="text-xs font-medium text-[var(--text-secondary)] mb-1.5">Reporter</dt>
+                                <dt
+                                    class="text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+                                >
+                                    Reporter
+                                </dt>
                                 <dd class="flex items-center gap-2">
                                     <Avatar
                                         v-if="task.creator"
@@ -1236,17 +1440,25 @@ watch(
 
                             <!-- Estimated Hours -->
                             <div v-if="task.estimated_hours">
-                                <dt class="text-xs font-medium text-[var(--text-secondary)] mb-1.5">Time Estimate</dt>
-                                <dd class="flex items-center gap-2 text-sm text-[var(--text-primary)]">
+                                <dt
+                                    class="text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+                                >
+                                    Time Estimate
+                                </dt>
+                                <dd
+                                    class="flex items-center gap-2 text-sm text-[var(--text-primary)]"
+                                >
                                     <Clock
                                         class="w-4 h-4 text-[var(--text-muted)]"
                                     />
                                     {{ task.estimated_hours }} hours
                                 </dd>
                             </div>
-                            
+
                             <!-- Internal Meta -->
-                            <div class="pt-4 mt-4 border-t border-[var(--border-default)]">
+                            <div
+                                class="pt-4 mt-4 border-t border-[var(--border-default)]"
+                            >
                                 <div
                                     class="text-xs text-[var(--text-muted)] space-y-1"
                                 >
@@ -1285,36 +1497,52 @@ watch(
         />
 
         <!-- Delete File Confirmation Modal -->
-        <Modal 
-            :open="showDeleteConfirmModal" 
+        <Modal
+            :open="showDeleteConfirmModal"
             @update:open="showDeleteConfirmModal = $event"
             title="Delete File"
             :description="`Are you sure you want to delete ${fileToDelete?.name || fileToDelete?.file_name}? This action cannot be undone.`"
             size="sm"
         >
             <template #footer>
-                <Button variant="ghost" @click="showDeleteConfirmModal = false" :disabled="isDeleting">
+                <Button
+                    variant="ghost"
+                    @click="showDeleteConfirmModal = false"
+                    :disabled="isDeleting"
+                >
                     Cancel
                 </Button>
-                <Button variant="danger" @click="confirmDeleteFile" :loading="isDeleting">
+                <Button
+                    variant="danger"
+                    @click="confirmDeleteFile"
+                    :loading="isDeleting"
+                >
                     Delete
                 </Button>
             </template>
         </Modal>
 
         <!-- Bulk Delete Confirmation Modal -->
-        <Modal 
-            :open="showBulkDeleteModal" 
+        <Modal
+            :open="showBulkDeleteModal"
             @update:open="showBulkDeleteModal = $event"
             title="Delete Files"
             :description="`Are you sure you want to delete ${filesToBulkDelete.length} file(s)? This action cannot be undone.`"
             size="sm"
         >
             <template #footer>
-                <Button variant="ghost" @click="showBulkDeleteModal = false" :disabled="isBulkDeleting">
+                <Button
+                    variant="ghost"
+                    @click="showBulkDeleteModal = false"
+                    :disabled="isBulkDeleting"
+                >
                     Cancel
                 </Button>
-                <Button variant="danger" @click="confirmBulkDelete" :loading="isBulkDeleting">
+                <Button
+                    variant="danger"
+                    @click="confirmBulkDelete"
+                    :loading="isBulkDeleting"
+                >
                     Delete {{ filesToBulkDelete.length }} File(s)
                 </Button>
             </template>

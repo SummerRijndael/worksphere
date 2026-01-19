@@ -292,8 +292,28 @@ class TeamRoleController extends Controller
 
         $permissions = config('roles.permissions', []);
 
+        // Modules that are relevant for team roles
+        $allowedModules = [
+            'projects',
+            'tasks',
+            'tickets',
+            'teams',
+            'team_roles',
+            'reports',
+            'task_templates',
+            'qa_checks',
+            'clients',
+            'invoices',
+            'invoice_templates',
+        ];
+
         $teamPermissions = [];
         foreach ($permissions as $module => $modulePermissions) {
+            // Skip modules that are not relevant for teams
+            if (! in_array($module, $allowedModules)) {
+                continue;
+            }
+
             $teamPermissions[$module] = [];
             foreach ($modulePermissions as $key => $label) {
                 $teamPermissions[$module][] = [
