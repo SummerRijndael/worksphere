@@ -26,29 +26,16 @@ class MediaController extends Controller
 
     public function secureDownload(Media $media)
     {
-        // This method is protected by 'signed' middleware in routes/api.php
-        // but we double check valid signature in authorizeMediaAccess anyway
-        // or we can skip authorizeMediaAccess if middleware 'signed' is trusted.
-        // However, authorizeMediaAccess has logic: if(request()->hasValidSignature()) return;
-        // So safe to call it.
-
         $this->authorizeMediaAccess($media);
 
-        // Force download with correct filename and headers
-        $disk = $media->disk;
-        $path = $media->getPath();
-
-        // Ensure we are getting the absolute path for the download response
-        if (config("filesystems.disks.$disk.driver") === 'local') {
-            $fullPath = \Illuminate\Support\Facades\Storage::disk($disk)->path($path);
-        } else {
-            // Fallback/Support for cloud if ever changed, though download() handles urls poorly usually need redirect or stream
-            $fullPath = $media->getPath();
-        }
-
-        return response()->download($fullPath, $media->file_name, [
-            'Content-Type' => $media->mime_type,
-        ]);
+        // Use Spatie's built-in toResponse which handles path resolution correctly
+        // This avoids manual path building issues with getPath()
+        $response = $media->toResponse(request());
+        
+        // Set Content-Disposition header for download instead of inline view
+        $response->headers->set('Content-Disposition', 'attachment; filename="' . $media->file_name . '"');
+        
+        return $response;
     }
 
     /**

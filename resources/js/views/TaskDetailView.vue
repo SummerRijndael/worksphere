@@ -9,6 +9,7 @@ import {
     Card,
     Input,
     Dropdown,
+    Modal,
 } from "@/components/ui";
 import {
     Calendar,
@@ -34,11 +35,15 @@ import {
     X,
     Trash2,
     GripVertical,
+    Paperclip,
 } from "lucide-vue-next";
 import axios from "axios";
 import { useAuthStore } from "@/stores/auth";
 import { toast } from "vue-sonner";
+import TaskWorkflowActions from "@/components/tasks/TaskWorkflowActions.vue";
+import MediaManager from "@/components/tools/MediaManager.vue";
 import TaskFormModal from "@/components/tasks/TaskFormModal.vue";
+
 import draggable from "vuedraggable";
 import DOMPurify from "dompurify";
 
@@ -59,7 +64,7 @@ const taskId = computed(() => route.params.taskId as string);
 // State
 const isLoading = ref(true);
 const task = ref<any>(null);
-const activeTab = ref<"checklist" | "comments" | "history">("comments");
+const activeTab = ref<"checklist" | "comments" | "history" | "attachments">("comments");
 
 // Comments
 const comments = ref<any[]>([]);
@@ -72,6 +77,19 @@ const checklistItems = ref<any[]>([]);
 const newChecklistText = ref("");
 const isAddingItem = ref(false);
 const canSubmitForReview = ref(false);
+
+// File Management (MediaManager)
+const taskFiles = ref<any[]>([]);
+const filesLoading = ref(false);
+const isUploading = ref(false);
+const uploadQueue = ref<any[]>([]);
+const fileToDelete = ref<any>(null);
+const showDeleteConfirmModal = ref(false);
+const isDeleting = ref(false);
+// Bulk delete
+const filesToBulkDelete = ref<number[]>([]);
+const showBulkDeleteModal = ref(false);
+const isBulkDeleting = ref(false);
 
 // Edit modal
 const showEditModal = ref(false);
@@ -180,8 +198,8 @@ const priorityConfig: Record<
     4: { label: "Urgent", color: "text-red-600 dark:text-red-400", bg: "bg-red-50 dark:bg-red-500/10", border: "border-red-200 dark:border-red-900" },
 };
 
-// Simplified workflow for quick status changes (users should use specific actions for full workflow)
-const workflowStatuses = ["open", "in_progress", "completed"];
+// Full workflow for stepper visualization
+const workflowStatuses = ["open", "in_progress", "in_qa", "pm_review", "sent_to_client", "completed"];
 
 const getStatus = (s: string) => statusConfig[s] || statusConfig["open"];
 const getStatusValue = (t: any) => t?.status?.value || t?.status || "open";
@@ -218,6 +236,7 @@ const fetchTask = async () => {
             fetchComments(),
             fetchStatusHistory(),
             fetchChecklistItems(),
+            fetchTaskFiles(),
         ]);
     } catch (err) {
         toast.error("Failed to load task");
@@ -403,9 +422,178 @@ const getNextStatus = (status: string) => {
     return "todo";
 };
 
+// File Management Handlers
+const fetchTaskFiles = async () => {
+    if (!task.value) return;
+    filesLoading.value = true;
+    try {
+        const response = await axios.get(
+            `/api/teams/${currentTeamId.value}/projects/${projectId.value}/tasks/${taskId.value}/files`
+        );
+        taskFiles.value = (response.data.data || response.data || []).map((f: any) => ({
+            ...f,
+            name: f.name || f.file_name,
+        }));
+    } catch (err) {
+        console.error("Failed to fetch files", err);
+    } finally {
+        filesLoading.value = false;
+    }
+};
+
+const handleUpload = (files: FileList | File[]) => {
+    for (const file of Array.from(files)) {
+        uploadQueue.value.push({
+            id: Math.random().toString(36).substr(2, 9),
+            file,
+            name: file.name,
+            size: file.size,
+            progress: 0,
+            status: "pending",
+        });
+    }
+    // Don't auto-upload - user clicks "Start Upload" in MediaManager
+};
+
+const processUploadQueue = async () => {
+    const pending = uploadQueue.value.filter(f => f.status === "pending");
+    if (!pending.length) return;
+
+    isUploading.value = true;
+    for (const item of pending) {
+        item.status = "uploading";
+        try {
+            const formData = new FormData();
+            formData.append("file", item.file);
+            await axios.post(
+                `/api/teams/${currentTeamId.value}/projects/${projectId.value}/tasks/${taskId.value}/files`,
+                formData,
+                { headers: { "Content-Type": "multipart/form-data" } }
+            );
+            item.status = "done";
+            toast.success(`${item.name} uploaded`);
+        } catch (e: any) {
+            item.status = "error";
+            toast.error(e.response?.data?.message || `Failed to upload ${item.name}`);
+        }
+    }
+    isUploading.value = false;
+    uploadQueue.value = uploadQueue.value.filter(f => f.status !== "done");
+    await fetchTaskFiles();
+};
+
+const removeFileFromQueue = (index: number) => {
+    uploadQueue.value.splice(index, 1);
+};
+
+const handleDeleteFile = (fileId: number | string) => {
+    // MediaManager emits just the ID, so find the file object
+    const file = taskFiles.value.find((f: any) => f.id === fileId);
+    if (!file) {
+        toast.error("File not found");
+        return;
+    }
+    fileToDelete.value = file;
+    showDeleteConfirmModal.value = true;
+};
+
+const confirmDeleteFile = async () => {
+    if (!fileToDelete.value) return;
+    isDeleting.value = true;
+    try {
+        await axios.delete(
+            `/api/teams/${currentTeamId.value}/projects/${projectId.value}/tasks/${taskId.value}/files/${fileToDelete.value.id}`
+        );
+        toast.success("File deleted");
+        await fetchTaskFiles();
+    } catch (e: any) {
+        toast.error(e.response?.data?.message || "Failed to delete file");
+    } finally {
+        isDeleting.value = false;
+        showDeleteConfirmModal.value = false;
+        fileToDelete.value = null;
+    }
+};
+
+const handleDownload = (fileId: number | string) => {
+    // MediaManager emits just the ID
+    const file = taskFiles.value.find((f: any) => f.id === fileId);
+    if (!file) {
+        toast.error("File not found");
+        return;
+    }
+    // Use download_url which forces download, fallback to url
+    const downloadUrl = file.download_url || file.url;
+    window.open(downloadUrl, '_blank');
+};
+
+const handleViewMedia = (file: any) => {
+    window.open(file.url, "_blank");
+};
+
+const handleBulkDownload = async (ids: number[]) => {
+    if (!ids.length) {
+        toast.error("No files selected");
+        return;
+    }
+    
+    toast.info(`Preparing zip for ${ids.length} file(s)...`);
+    
+    try {
+        // Call backend endpoint that returns a zip file
+        const response = await axios.post(
+            `/api/teams/${currentTeamId.value}/projects/${projectId.value}/tasks/${taskId.value}/files/download`,
+            { ids },
+            { responseType: 'blob' }
+        );
+        
+        // Create download link from blob
+        const blob = new Blob([response.data], { type: 'application/zip' });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `task-files-${taskId.value}.zip`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        
+        toast.success('Download started');
+    } catch (e: any) {
+        toast.error(e.response?.data?.message || "Failed to download files");
+    }
+};
+
 const onTaskUpdated = () => {
     fetchTask();
     showEditModal.value = false;
+};
+
+const handleBulkDelete = (ids: number[]) => {
+    if (!ids.length) return;
+    filesToBulkDelete.value = ids;
+    showBulkDeleteModal.value = true;
+};
+
+const confirmBulkDelete = async () => {
+    if (!filesToBulkDelete.value.length) return;
+    isBulkDeleting.value = true;
+    
+    try {
+        for (const id of filesToBulkDelete.value) {
+            await axios.delete(
+                `/api/teams/${currentTeamId.value}/projects/${projectId.value}/tasks/${taskId.value}/files/${id}`
+            );
+        }
+        toast.success(`Deleted ${filesToBulkDelete.value.length} file(s)`);
+        await fetchTaskFiles();
+    } catch (e: any) {
+        toast.error(e.response?.data?.message || "Failed to delete files");
+    } finally {
+        isBulkDeleting.value = false;
+        showBulkDeleteModal.value = false;
+        filesToBulkDelete.value = [];
+    }
 };
 
 // Watch for route changes
@@ -421,7 +609,7 @@ watch(
 </script>
 
 <template>
-    <div class="min-h-screen bg-[var(--surface-secondary)]">
+    <div class="min-h-screen">
         <!-- Loading State -->
         <div v-if="isLoading" class="flex items-center justify-center py-20">
             <Loader2
@@ -430,70 +618,118 @@ watch(
         </div>
 
         <!-- Task Content -->
-        <div v-else-if="task" class="max-w-7xl mx-auto p-6">
+        <div v-else-if="task" class="w-full p-6">
             <!-- Breadcrumb & Back -->
             <div class="flex items-center gap-3 mb-6">
                 <Button variant="ghost" size="sm" @click="goBack">
                     <ChevronLeft class="w-4 h-4 mr-1" />
-                    Back to Project
+                    Back to {{ task.project?.name || 'Project' }}
                 </Button>
-                <span class="text-[var(--text-muted)]">/</span>
-                <span class="text-sm text-[var(--text-muted)] font-mono">
-                    {{ task.public_id?.substring(0, 8) }}
-                </span>
             </div>
 
             <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
                 <!-- Main Content Column -->
                 <div class="lg:col-span-3 space-y-6">
-                    <!-- Header Card -->
+                    
+                    <!-- Status Stepper -->
                     <Card padding="lg">
-                        <div class="flex items-start justify-between mb-4">
-                            <div class="flex items-center gap-3">
-                                <span
-                                    :class="[
-                                        getStatus(getStatusValue(task)).bg,
-                                        getStatus(getStatusValue(task)).color,
-                                        getStatus(getStatusValue(task)).border,
-                                        'px-3 py-1 rounded-full text-sm font-medium border flex items-center gap-2',
-                                    ]"
-                                >
-                                    <component :is="getStatus(getStatusValue(task)).icon" class="w-4 h-4" />
-                                    {{ getStatus(getStatusValue(task)).label }}
-                                </span>
-                                <span
-                                    :class="[
-                                        getPriority(task.priority).bg,
-                                        getPriority(task.priority).color,
-                                        getPriority(task.priority).border,
-                                        'px-3 py-1 rounded-full text-sm font-medium border',
-                                    ]"
-                                >
-                                    {{ getPriority(task.priority).label }}
-                                </span>
+                            <div class="flex items-center justify-between mb-6">
+                                <div>
+                                    <h1 class="text-2xl font-bold text-[var(--text-primary)] mb-1">
+                                        {{ task.title }}
+                                    </h1>
+                                    <div class="flex items-center gap-3 text-sm text-[var(--text-secondary)]">
+                                        <span class="font-mono bg-[var(--surface-tertiary)] px-1.5 py-0.5 rounded text-xs">{{ task.public_id?.substring(0, 8) }}</span>
+                                        <span>&bull;</span>
+                                        <span>Created by {{ task.creator?.name }} {{ timeAgo(task.created_at) }}</span>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                     <Button
+                                        variant="outline"
+                                        size="sm"
+                                        @click="showEditModal = true"
+                                    >
+                                        <Edit3 class="w-4 h-4 mr-2" />
+                                        Edit
+                                    </Button>
+                                </div>
                             </div>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                @click="showEditModal = true"
-                            >
-                                <Edit3 class="w-4 h-4 mr-2" />
-                                Edit
-                            </Button>
-                        </div>
 
-                        <h1
-                            class="text-2xl font-bold text-[var(--text-primary)] mb-3"
-                        >
-                            {{ task.title }}
-                        </h1>
+                            <!-- Progress Flow (Reka Style Stepper) -->
+                            <div class="mb-6 pt-4">
+                                <div class="relative">
+                                    <!-- Connectors -->
+                                    <div class="absolute top-4 left-0 right-0 h-[2px] bg-[var(--border-default)]"></div>
+                                    <div 
+                                        class="absolute top-4 left-0 h-[2px] bg-[var(--interactive-primary)] transition-all"
+                                        :style="{ width: `${(workflowStatuses.indexOf(getStatusValue(task)) / 5) * 100}%` }"
+                                    ></div>
+                                    
+                                    <!-- Steps -->
+                                    <div class="relative grid grid-cols-6 gap-0">
+                                        <div 
+                                            v-for="(step, index) in ['open', 'in_progress', 'in_qa', 'pm_review', 'sent_to_client', 'completed']" 
+                                            :key="step"
+                                            class="flex flex-col items-center"
+                                        >
+                                            <!-- Indicator -->
+                                            <div 
+                                                class="flex items-center justify-center w-8 h-8 rounded-full border-2 transition-all bg-[var(--surface-primary)]"
+                                                :class="[
+                                                    workflowStatuses.indexOf(getStatusValue(task)) > index
+                                                        ? 'bg-[var(--interactive-primary)] border-[var(--interactive-primary)] text-white' 
+                                                        : (workflowStatuses.indexOf(getStatusValue(task)) === index 
+                                                            ? 'border-[var(--interactive-primary)] text-[var(--interactive-primary)]' 
+                                                            : 'border-[var(--border-default)] text-[var(--text-muted)]')
+                                                ]"
+                                            >
+                                                <CheckCircle2 v-if="workflowStatuses.indexOf(getStatusValue(task)) > index" class="w-5 h-5" />
+                                                <Circle v-else-if="workflowStatuses.indexOf(getStatusValue(task)) === index" class="w-4 h-4 fill-current" />
+                                                <span v-else class="text-xs font-medium">{{ index + 1 }}</span>
+                                            </div>
+                                            
+                                            <!-- Label -->
+                                            <span 
+                                                class="mt-3 text-xs font-medium uppercase tracking-wide text-center transition-colors"
+                                                :class="[
+                                                    workflowStatuses.indexOf(getStatusValue(task)) >= index 
+                                                        ? 'text-[var(--text-primary)]' 
+                                                        : 'text-[var(--text-muted)]'
+                                                ]"
+                                            >
+                                                {{ getStatus(step).label.replace('Client Review', 'Client').replace('In QA Review', 'QA') }}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Actions Bar -->
+                            <div class="bg-[var(--surface-secondary)] rounded-lg p-4 border border-[var(--border-default)] flex flex-wrap items-center justify-between gap-4">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-sm font-medium text-[var(--text-secondary)]">Current Status:</span>
+                                    <Badge :variant="getStatus(getStatusValue(task)).color.includes('slate') ? 'secondary' : 'default'">
+                                        {{ getStatus(getStatusValue(task)).label }}
+                                    </Badge>
+                                </div>
+                                <TaskWorkflowActions 
+                                    :task="task" 
+                                    @task-updated="onTaskUpdated" 
+                                    @error="toast.error($event)" 
+                                />
+                            </div>
+                    </Card>
 
-                        <p
+                    <!-- Description -->
+                    <Card padding="lg">
+                        <h3 class="text-sm font-semibold uppercase text-[var(--text-muted)] mb-3">Description</h3>
+                        <div
                             v-if="task.description"
-                            class="text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap"
+                            class="prose prose-sm dark:prose-invert max-w-none text-[var(--text-primary)] leading-relaxed whitespace-pre-wrap"
                         >
                             {{ task.description }}
-                        </p>
+                        </div>
                         <p v-else class="text-[var(--text-muted)] italic">
                             No description provided
                         </p>
@@ -521,14 +757,6 @@ watch(
                                     }}
                                 </Badge>
                             </div>
-                            <Button
-                                v-if="canSubmitForReview && isAssignee"
-                                size="sm"
-                                @click="submitForReview"
-                            >
-                                <Send class="w-4 h-4 mr-2" />
-                                Submit for Review
-                            </Button>
                         </div>
 
                         <!-- Progress Bar -->
@@ -718,6 +946,47 @@ watch(
                                 <History class="w-4 h-4" />
                                 Activity
                             </button>
+                            <button
+                                @click="activeTab = 'attachments'"
+                                class="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all"
+                                :class="
+                                    activeTab === 'attachments'
+                                        ? 'bg-[var(--surface-elevated)] text-[var(--text-primary)] shadow-sm'
+                                        : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                                "
+                            >
+                                <Paperclip class="w-4 h-4" />
+                                Files
+                                <span
+                                    v-if="taskFiles.length"
+                                    class="bg-[var(--surface-tertiary)] text-xs px-1.5 py-0.5 rounded-full"
+                                >
+                                    {{ taskFiles.length }}
+                                </span>
+                            </button>
+                        </div>
+
+                        <!-- Attachments Tab -->
+                        <div v-if="activeTab === 'attachments'" class="h-[400px]">
+                            <MediaManager
+                                :items="taskFiles"
+                                :total="taskFiles.length"
+                                :current-page="1"
+                                :per-page="20"
+                                :loading="filesLoading"
+                                :can-upload="true"
+                                :can-delete="true"
+                                :uploading="isUploading"
+                                :upload-queue="uploadQueue"
+                                @upload="handleUpload"
+                                @delete="handleDeleteFile"
+                                @download="handleDownload"
+                                @view="handleViewMedia"
+                                @remove-upload="removeFileFromQueue"
+                                @process-queue="processUploadQueue"
+                                @bulk-delete="handleBulkDelete"
+                                @bulk-download="handleBulkDownload"
+                            />
                         </div>
 
                         <!-- Comments Tab -->
@@ -870,53 +1139,43 @@ watch(
 
                 <!-- Sidebar Column -->
                 <div class="space-y-6">
-                    <!-- Status Card -->
-                    <Card padding="lg">
-                        <label
-                            class="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-3 block"
-                            >Status</label
-                        >
-                        <div class="space-y-1.5">
-                            <button
-                                v-for="status in workflowStatuses"
-                                :key="status"
-                                @click="updateStatus(status)"
-                                class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-left"
-                                :class="
-                                    getStatusValue(task) === status
-                                        ? 'bg-[var(--interactive-primary)] text-white shadow-sm'
-                                        : 'text-[var(--text-secondary)] hover:bg-[var(--surface-tertiary)]'
-                                "
-                            >
-                                <component
-                                    :is="statusConfig[status]?.icon || Circle"
-                                    class="w-4 h-4"
-                                    :class="
-                                        getStatusValue(task) === status
-                                            ? 'text-white'
-                                            : 'text-[var(--text-muted)]'
-                                    "
-                                />
-                                {{ statusConfig[status]?.label || status }}
-                            </button>
-                        </div>
+                    
+                    <!-- Progress Card (if checklist exists) -->
+                    <Card v-if="checklistItems.length > 0" padding="lg">
+                         <div class="flex items-center justify-between mb-4">
+                            <h3 class="font-semibold text-[var(--text-primary)]">Progress</h3>
+                            <Badge variant="secondary">{{ Math.round((completedItemsCount / checklistItems.length) * 100) }}%</Badge>
+                         </div>
+                         <div class="flex items-center gap-4">
+                             <div class="relative w-16 h-16 flex items-center justify-center shrink-0">
+                                 <svg class="w-full h-full transform -rotate-90">
+                                     <circle cx="32" cy="32" r="28" stroke="currentColor" stroke-width="4" fill="transparent" class="text-[var(--surface-tertiary)]" />
+                                     <circle cx="32" cy="32" r="28" stroke="currentColor" stroke-width="4" fill="transparent" class="text-[var(--interactive-primary)]" 
+                                        :stroke-dasharray="2 * Math.PI * 28" 
+                                        :stroke-dashoffset="2 * Math.PI * 28 * (1 - completedItemsCount / checklistItems.length)" 
+                                        stroke-linecap="round"
+                                     />
+                                 </svg>
+                             </div>
+                             <div class="text-sm">
+                                <div class="font-medium text-[var(--text-primary)]">{{ completedItemsCount }} of {{ checklistItems.length }} items</div>
+                                <div class="text-[var(--text-secondary)]">completed so far</div>
+                             </div>
+                         </div>
                     </Card>
 
                     <!-- Details Card -->
                     <Card padding="lg">
                         <label
-                            class="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-3 block"
-                            >Details</label
+                            class="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-4 block"
+                            >Task Details</label
                         >
 
-                        <div class="space-y-4">
+                        <dl class="space-y-5">
                             <!-- Assignee -->
                             <div>
-                                <label
-                                    class="text-xs text-[var(--text-muted)] block mb-1"
-                                    >Assignee</label
-                                >
-                                <div class="flex items-center gap-2">
+                                <dt class="text-xs font-medium text-[var(--text-secondary)] mb-1.5">Assignee</dt>
+                                <dd class="flex items-center gap-2">
                                     <Avatar
                                         v-if="task.assignee"
                                         :name="task.assignee.name"
@@ -925,49 +1184,42 @@ watch(
                                     />
                                     <div
                                         v-else
-                                        class="w-8 h-8 rounded-full bg-[var(--surface-tertiary)] flex items-center justify-center"
+                                        class="w-8 h-8 rounded-full bg-[var(--surface-tertiary)] flex items-center justify-center border border-[var(--border-subtle)]"
                                     >
                                         <UserPlus
                                             class="w-3.5 h-3.5 text-[var(--text-muted)]"
                                         />
                                     </div>
                                     <span
-                                        class="text-sm text-[var(--text-primary)]"
+                                        class="text-sm font-medium"
+                                        :class="task.assignee ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)] italic'"
                                     >
-                                        {{
-                                            task.assignee?.name || "Unassigned"
-                                        }}
+                                        {{ task.assignee?.name || "Unassigned" }}
                                     </span>
-                                </div>
+                                </dd>
                             </div>
 
                             <!-- Due Date -->
                             <div>
-                                <label
-                                    class="text-xs text-[var(--text-muted)] block mb-1"
-                                    >Due Date</label
-                                >
-                                <div
-                                    class="flex items-center gap-2 text-sm text-[var(--text-primary)]"
-                                >
+                                <dt class="text-xs font-medium text-[var(--text-secondary)] mb-1.5">Due Date</dt>
+                                <dd class="flex items-center gap-2 text-sm">
                                     <Calendar
                                         class="w-4 h-4 text-[var(--text-muted)]"
                                     />
-                                    {{
-                                        task.due_date
-                                            ? formatDate(task.due_date)
-                                            : "Not set"
-                                    }}
-                                </div>
+                                    <span :class="{ 'text-[var(--color-error)] font-medium': task.is_overdue, 'text-[var(--text-primary)]': !task.is_overdue }">
+                                        {{
+                                            task.due_date
+                                                ? formatDate(task.due_date)
+                                                : "Not set"
+                                        }}
+                                    </span>
+                                </dd>
                             </div>
 
                             <!-- Reporter -->
                             <div>
-                                <label
-                                    class="text-xs text-[var(--text-muted)] block mb-1"
-                                    >Reporter</label
-                                >
-                                <div class="flex items-center gap-2">
+                                <dt class="text-xs font-medium text-[var(--text-secondary)] mb-1.5">Reporter</dt>
+                                <dd class="flex items-center gap-2">
                                     <Avatar
                                         v-if="task.creator"
                                         :name="task.creator.name"
@@ -979,43 +1231,34 @@ watch(
                                     >
                                         {{ task.creator?.name || "Unknown" }}
                                     </span>
-                                </div>
+                                </dd>
                             </div>
 
                             <!-- Estimated Hours -->
-                            <div>
-                                <label
-                                    class="text-xs text-[var(--text-muted)] block mb-1"
-                                    >Time Estimate</label
-                                >
-                                <div
-                                    class="flex items-center gap-2 text-sm text-[var(--text-primary)]"
-                                >
+                            <div v-if="task.estimated_hours">
+                                <dt class="text-xs font-medium text-[var(--text-secondary)] mb-1.5">Time Estimate</dt>
+                                <dd class="flex items-center gap-2 text-sm text-[var(--text-primary)]">
                                     <Clock
                                         class="w-4 h-4 text-[var(--text-muted)]"
                                     />
-                                    {{
-                                        task.estimated_hours
-                                            ? `${task.estimated_hours} hours`
-                                            : "Not estimated"
-                                    }}
+                                    {{ task.estimated_hours }} hours
+                                </dd>
+                            </div>
+                            
+                            <!-- Internal Meta -->
+                            <div class="pt-4 mt-4 border-t border-[var(--border-default)]">
+                                <div
+                                    class="text-xs text-[var(--text-muted)] space-y-1"
+                                >
+                                    <p v-if="task.created_at">
+                                        Created {{ timeAgo(task.created_at) }}
+                                    </p>
+                                    <p v-if="task.updated_at">
+                                        Updated {{ timeAgo(task.updated_at) }}
+                                    </p>
                                 </div>
                             </div>
-                        </div>
-                    </Card>
-
-                    <!-- Meta Card -->
-                    <Card padding="lg">
-                        <div
-                            class="text-xs text-[var(--text-muted)] space-y-1.5"
-                        >
-                            <p v-if="task.created_at">
-                                Created {{ timeAgo(task.created_at) }}
-                            </p>
-                            <p v-if="task.updated_at">
-                                Updated {{ timeAgo(task.updated_at) }}
-                            </p>
-                        </div>
+                        </dl>
                     </Card>
                 </div>
             </div>
@@ -1040,5 +1283,41 @@ watch(
             @update:open="showEditModal = $event"
             @saved="onTaskUpdated"
         />
+
+        <!-- Delete File Confirmation Modal -->
+        <Modal 
+            :open="showDeleteConfirmModal" 
+            @update:open="showDeleteConfirmModal = $event"
+            title="Delete File"
+            :description="`Are you sure you want to delete ${fileToDelete?.name || fileToDelete?.file_name}? This action cannot be undone.`"
+            size="sm"
+        >
+            <template #footer>
+                <Button variant="ghost" @click="showDeleteConfirmModal = false" :disabled="isDeleting">
+                    Cancel
+                </Button>
+                <Button variant="danger" @click="confirmDeleteFile" :loading="isDeleting">
+                    Delete
+                </Button>
+            </template>
+        </Modal>
+
+        <!-- Bulk Delete Confirmation Modal -->
+        <Modal 
+            :open="showBulkDeleteModal" 
+            @update:open="showBulkDeleteModal = $event"
+            title="Delete Files"
+            :description="`Are you sure you want to delete ${filesToBulkDelete.length} file(s)? This action cannot be undone.`"
+            size="sm"
+        >
+            <template #footer>
+                <Button variant="ghost" @click="showBulkDeleteModal = false" :disabled="isBulkDeleting">
+                    Cancel
+                </Button>
+                <Button variant="danger" @click="confirmBulkDelete" :loading="isBulkDeleting">
+                    Delete {{ filesToBulkDelete.length }} File(s)
+                </Button>
+            </template>
+        </Modal>
     </div>
 </template>

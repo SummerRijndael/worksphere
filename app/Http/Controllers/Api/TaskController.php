@@ -150,6 +150,37 @@ class TaskController extends Controller
 
         $task = Task::create($taskData);
 
+        // Process checklist items to create interactive rows
+        if (! empty($taskData['checklist']) && is_array($taskData['checklist'])) {
+            foreach ($taskData['checklist'] as $index => $item) {
+                // If item is string, use it as text. If object, look for text property.
+                $text = is_array($item) ? ($item['text'] ?? '') : $item;
+                $isCompleted = is_array($item) ? ($item['is_completed'] ?? false) : false;
+                
+                if (! empty($text)) {
+                    $task->checklistItems()->create([
+                        'text' => $text,
+                        'position' => $index,
+                        'status' => $isCompleted ? 'done' : 'todo',
+                    ]);
+                }
+            }
+        }
+
+        // Handle Save as Template
+        if ($request->boolean('save_as_template')) {
+            TaskTemplate::create([
+                'team_id' => $team->id,
+                'name' => $task->title . ' (Template)',
+                'description' => $task->description,
+                'default_priority' => $task->priority ?? 2,
+                'default_estimated_hours' => $task->estimated_hours ?? 0,
+                'checklist_template' => $taskData['checklist'],
+                'is_active' => true,
+                'created_by' => $request->user()->id,
+            ]);
+        }
+
         $this->auditService->log(
             action: AuditAction::Created,
             category: AuditCategory::TaskManagement,
@@ -236,6 +267,11 @@ class TaskController extends Controller
         }
 
         $task->update($updateData);
+        
+        // Note: For update, we are NOT syncing the checklists automatically here to avoid overwriting progress
+        // unless specifically requested. Usually the checklist items are managed via separate endpoints.
+        // If the user adds items in the modal during edit, checking if we should append?
+        // For now, sticking to Creation-time generation as planned.
 
         $this->auditService->log(
             action: AuditAction::Updated,
@@ -333,9 +369,15 @@ class TaskController extends Controller
      */
     public function submitForQa(Request $request, Team $team, Project $project, Task $task): JsonResponse
     {
-        $this->authorizeTeamPermission($team, 'tasks.submit_qa');
+        $this->authorizeTeamPermission($team, 'tasks.submit');
         $this->ensureProjectBelongsToTeam($team, $project);
         $this->ensureTaskBelongsToProject($project, $task);
+
+        if (! $task->hasAllChecklistItemsComplete()) {
+            return response()->json([
+                'message' => 'Cannot submit for QA. All checklist items must be completed.',
+            ], 422);
+        }
 
         $notes = $request->input('notes');
 
@@ -349,6 +391,56 @@ class TaskController extends Controller
 
         return response()->json([
             'message' => 'Task submitted for QA successfully.',
+            'task' => new TaskResource($task),
+        ]);
+    }
+
+    /**
+     * Send task to PM for review.
+     */
+    public function sendToPm(Request $request, Team $team, Project $project, Task $task): JsonResponse
+    {
+        $this->authorizeTeamPermission($team, 'tasks.update'); // Or a specific permission
+        $this->ensureProjectBelongsToTeam($team, $project);
+        $this->ensureTaskBelongsToProject($project, $task);
+
+        $notes = $request->input('notes');
+
+        if (! $this->workflowService->sendToPm($task, $request->user(), $notes)) {
+            return response()->json([
+                'message' => 'Cannot send this task to PM. Invalid status transition.',
+            ], 422);
+        }
+
+        $task->load(['assignee', 'creator', 'project']);
+
+        return response()->json([
+            'message' => 'Task sent to PM successfully.',
+            'task' => new TaskResource($task),
+        ]);
+    }
+
+    /**
+     * Toggle On Hold status.
+     */
+    public function toggleHold(Request $request, Team $team, Project $project, Task $task): JsonResponse
+    {
+        $this->authorizeTeamPermission($team, 'tasks.update');
+        $this->ensureProjectBelongsToTeam($team, $project);
+        $this->ensureTaskBelongsToProject($project, $task);
+
+        $notes = $request->input('notes');
+
+        if (! $this->workflowService->toggleHold($task, $request->user(), $notes)) {
+            return response()->json([
+                'message' => 'Cannot toggle hold status for this task.',
+            ], 422);
+        }
+
+        $task->load(['assignee', 'creator', 'project']);
+
+        return response()->json([
+            'message' => $task->status === TaskStatus::OnHold ? 'Task paused/on-hold.' : 'Task resumed.',
             'task' => new TaskResource($task),
         ]);
     }
@@ -660,6 +752,42 @@ class TaskController extends Controller
     }
 
     /**
+     * Get files attached to a task.
+     */
+    public function getFiles(Request $request, Team $team, Project $project, Task $task): JsonResponse
+    {
+        $this->authorizeTeamPermission($team, 'tasks.view');
+        $this->ensureProjectBelongsToTeam($team, $project);
+        $this->ensureTaskBelongsToProject($project, $task);
+
+        $media = $task->getMedia('attachments');
+
+        $files = $media->map(function ($item) {
+            return [
+                'id' => $item->id,
+                'uuid' => $item->uuid,
+                'name' => $item->name,
+                'file_name' => $item->file_name,
+                'mime_type' => $item->mime_type,
+                'size' => $item->size,
+                'created_at' => $item->created_at,
+                'url' => \Illuminate\Support\Facades\URL::temporarySignedRoute(
+                    'media.show',
+                    now()->addMinutes(60),
+                    ['media' => $item->id]
+                ),
+                'download_url' => \Illuminate\Support\Facades\URL::temporarySignedRoute(
+                    'api.media.secure-download',
+                    now()->addMinutes(60),
+                    ['media' => $item->id]
+                ),
+            ];
+        });
+
+        return response()->json(['data' => $files]);
+    }
+
+    /**
      * Upload a file to a task.
      */
     public function uploadFile(Request $request, Team $team, Project $project, Task $task): JsonResponse
@@ -692,7 +820,11 @@ class TaskController extends Controller
                 'file_name' => $media->file_name,
                 'mime_type' => $media->mime_type,
                 'size' => $media->size,
-                'url' => $media->getTemporaryUrl(now()->addHour()),
+                'url' => \Illuminate\Support\Facades\URL::temporarySignedRoute(
+                    'media.show',
+                    now()->addMinutes(60),
+                    ['media' => $media->id]
+                ),
             ],
         ], 201);
     }
@@ -700,13 +832,13 @@ class TaskController extends Controller
     /**
      * Delete a file from a task.
      */
-    public function deleteFile(Request $request, Team $team, Project $project, Task $task, int $mediaId): JsonResponse
+    public function deleteFile(Request $request, Team $team, Project $project, Task $task, mixed $mediaId): JsonResponse
     {
         $this->authorizeTeamPermission($team, 'tasks.manage_files');
         $this->ensureProjectBelongsToTeam($team, $project);
         $this->ensureTaskBelongsToProject($project, $task);
 
-        $media = $task->media()->where('id', $mediaId)->first();
+        $media = $task->media()->where('id', $mediaId)->where('collection_name', 'attachments')->first();
 
         if (! $media) {
             return response()->json([
@@ -729,6 +861,39 @@ class TaskController extends Controller
         return response()->json([
             'message' => 'File deleted successfully.',
         ]);
+    }
+
+    /**
+     * Download multiple task files as a zip archive.
+     */
+    public function downloadFiles(Request $request, Team $team, Project $project, Task $task)
+    {
+        $this->authorizeTeamPermission($team, 'tasks.view');
+        $this->ensureProjectBelongsToTeam($team, $project);
+        $this->ensureTaskBelongsToProject($project, $task);
+
+        $validated = $request->validate([
+            'ids' => 'required|array|min:1',
+            'ids.*' => 'required|integer',
+        ]);
+
+        $mediaIds = $validated['ids'];
+
+        // Get the media items that belong to this task
+        $mediaItems = $task->media()
+            ->where('collection_name', 'attachments')
+            ->whereIn('id', $mediaIds)
+            ->get();
+
+        if ($mediaItems->isEmpty()) {
+            abort(404, 'No files found');
+        }
+
+        // Use Spatie's MediaStream to create a zip on-the-fly
+        $zipName = sprintf('task-%s-files-%s.zip', $task->public_id, now()->format('Ymd-His'));
+
+        return \Spatie\MediaLibrary\Support\MediaStream::create($zipName)
+            ->addMedia($mediaItems);
     }
 
     /**

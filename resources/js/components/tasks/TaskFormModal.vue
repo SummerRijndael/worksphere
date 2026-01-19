@@ -63,12 +63,60 @@ const formValues = ref({
     due_date: '',
     assigned_to: '',
     estimated_hours: 0,
+    checklist: [] as any[],
+    save_as_template: false,
 });
+
+// Checklist state
+const newChecklistItem = ref('');
+
+const addChecklistItem = () => {
+    if (!newChecklistItem.value.trim()) return;
+    formValues.value.checklist.push({
+        text: newChecklistItem.value.trim(),
+        is_completed: false
+    });
+    newChecklistItem.value = '';
+};
+
+const removeChecklistItem = (index: number) => {
+    formValues.value.checklist.splice(index, 1);
+};
+
+const resetFormValues = () => {
+    setValues({
+        status: 'open',
+        priority: 2,
+    });
+    formValues.value = {
+        title: '',
+        description: '',
+        status: 'open',
+        priority: 2,
+        due_date: '',
+        assigned_to: '',
+        estimated_hours: 0,
+        checklist: [],
+        save_as_template: false,
+    };
+    newChecklistItem.value = '';
+    selectedTemplateId.value = '';
+};
+// ...
+
 
 const statusOptions = [
     { value: 'open', label: 'To Do' },
     { value: 'in_progress', label: 'In Progress' },
+    { value: 'on_hold', label: 'On Hold' },
+    { value: 'submitted', label: 'Submitted' },
     { value: 'in_qa', label: 'In QA' },
+    { value: 'approved', label: 'QA Approved' },
+    { value: 'rejected', label: 'QA Rejected' },
+    { value: 'pm_review', label: 'PM Review' },
+    { value: 'sent_to_client', label: 'Sent to Client' },
+    { value: 'client_approved', label: 'Client Approved' },
+    { value: 'client_rejected', label: 'Client Rejected' },
     { value: 'completed', label: 'Done' },
 ];
 
@@ -200,29 +248,27 @@ watch(() => selectedTemplateId.value, (newVal) => {
     const template = templates.value.find(t => t.public_id === newVal);
     if (template) {
         setValues({
-            ...formValues.value, // Keep existing values if compatible? No, overwrite supported fields.
-            // But we might want to keep status/due_date/assignee if previously set.
-            // Let's overwrite fields defined in template.
-            title: template.name, // Use template name as default title
-            description: template.description || formValues.value.description,
+            status: 'open',
             priority: template.default_priority === 'low' ? 1 
                     : template.default_priority === 'medium' ? 2 
                     : template.default_priority === 'high' ? 3 
                     : template.default_priority === 'urgent' ? 4 : 2,
-            estimated_hours: template.default_estimated_hours || 0,
         });
 
-        // Also update local formValues for v-model binding
-        formValues.value.title = template.name;
-        if (template.description) formValues.value.description = template.description;
-        if (template.default_priority) {
-            formValues.value.priority = template.default_priority === 'low' ? 1 
-                                      : template.default_priority === 'medium' ? 2 
-                                      : template.default_priority === 'high' ? 3 
-                                      : template.default_priority === 'urgent' ? 4 : 2;
-        }
-        if (template.default_estimated_hours) formValues.value.estimated_hours = template.default_estimated_hours;
+        // Update formValues
+        formValues.value.title = template.name.replace(' (Template)', '');
+        formValues.value.description = template.description || formValues.value.description;
+        formValues.value.priority = template.default_priority === 'low' ? 1 
+                                  : template.default_priority === 'medium' ? 2 
+                                  : template.default_priority === 'high' ? 3 
+                                  : template.default_priority === 'urgent' ? 4 : 2;
+        formValues.value.estimated_hours = template.default_estimated_hours || 0;
         
+        // Clone checklist
+        if (template.checklist_template) {
+            formValues.value.checklist = JSON.parse(JSON.stringify(template.checklist_template));
+        }
+
         toast.success("Template loaded");
     }
 });
@@ -289,9 +335,14 @@ watch(() => props.task, (newTask) => {
             due_date: newTask.due_date ? new Date(newTask.due_date).toISOString().split('T')[0] : '',
             assigned_to: newTask.assigned_to?.public_id || '',
             estimated_hours: Number(newTask.estimated_hours) || 0,
+            checklist: newTask.checklist?.map((item: any) => ({
+                text: typeof item === 'string' ? item : item.text,
+                is_completed: typeof item === 'string' ? false : (item.is_completed || item.status === 'done' || false)
+            })) || [],
+            save_as_template: false,
         };
     } else {
-        resetForm();
+        resetFormValues();
         formValues.value = {
             title: '',
             description: '',
@@ -300,6 +351,8 @@ watch(() => props.task, (newTask) => {
             due_date: '',
             assigned_to: '',
             estimated_hours: 0,
+            checklist: [],
+            save_as_template: false,
         };
     }
 }, { immediate: true });
@@ -316,6 +369,12 @@ const onSubmit = async () => {
         
         const payload = {
             ...formValues.value,
+            checklist: formValues.value.checklist.map(item => {
+                if (typeof item === 'string') {
+                    return { text: item, is_completed: false };
+                }
+                return item;
+            })
         };
 
         // Resolve team and project IDs with fallbacks
@@ -443,6 +502,47 @@ const onSubmit = async () => {
                      <label class="block text-sm font-medium text-[var(--text-primary)]">Estimated Hours</label>
                      <Input type="number" step="0.5" v-model="formValues.estimated_hours" placeholder="e.g. 2.5" />
                 </div>
+
+                <!-- Checklist Section -->
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-[var(--text-primary)]">Checklist</label>
+                    
+                    <div class="flex gap-2">
+                        <Input 
+                            v-model="newChecklistItem" 
+                            placeholder="Add item..." 
+                            @keydown.enter.prevent="addChecklistItem"
+                            class="flex-1"
+                        />
+                        <Button type="button" size="sm" variant="secondary" @click="addChecklistItem">Add</Button>
+                    </div>
+
+                    <div v-if="formValues.checklist.length > 0" class="space-y-2 mt-2 max-h-40 overflow-y-auto pr-1">
+                        <div 
+                            v-for="(item, index) in formValues.checklist" 
+                            :key="index"
+                            class="flex items-center gap-2 p-2 rounded-md bg-[var(--surface-secondary)] group"
+                        >
+                            <span class="text-sm flex-1">{{ typeof item === 'string' ? item : item.text }}</span>
+                            <button 
+                                type="button" 
+                                @click="removeChecklistItem(index)" 
+                                class="text-[var(--text-muted)] hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash-2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Save as Template logic -->
+                <div v-if="!isEditing" class="pt-2 border-t border-[var(--border-subtle)]">
+                    <label class="flex items-center gap-2 cursor-pointer select-none">
+                        <input type="checkbox" v-model="formValues.save_as_template" class="rounded border-[var(--border-default)] text-[var(--brand-primary)] focus:ring-[var(--brand-ring)]" />
+                        <span class="text-sm text-[var(--text-primary)]">Save this task structure as a new template</span>
+                    </label>
+                </div>
+
             </form>
         </template>
         

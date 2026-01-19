@@ -187,13 +187,12 @@ onMounted(() => {
                     </svg>
                 </div>
                 <div
-             
                     :class="
                         cn(
-                            'flex flex-col transition-all duration-300',
+                            'flex flex-col transition-all duration-300 ease-in-out overflow-hidden whitespace-nowrap',
                             !showExpanded
-                                ? 'max-lg:opacity-100 max-lg:w-auto lg:hidden lg:opacity-0 lg:w-0 overflow-hidden'
-                                : 'opacity-100'
+                                ? 'max-lg:opacity-100 max-lg:w-auto lg:max-w-0 lg:opacity-0'
+                                : 'max-w-[200px] opacity-100'
                         )
                     "
                 >
@@ -215,8 +214,7 @@ onMounted(() => {
                 <template v-for="item in navStore.pinnedItems" :key="item.id">
                     <!-- Parent Item -->
                     <Tooltip
-                        :content="!showExpanded ? item.label : ''"
-                        :disabled="showExpanded"
+                        :content="item.label"
                         side="right"
                         :delay-duration="200"
                         :side-offset="10"
@@ -254,10 +252,10 @@ onMounted(() => {
                                 <span
                                     :class="
                                         cn(
-                                            'flex-1 text-left whitespace-nowrap overflow-hidden text-[13.5px]',
+                                            'flex-1 text-left whitespace-nowrap overflow-hidden text-[13.5px] transition-all duration-300 ease-in-out',
                                             !showExpanded
-                                                ? 'w-0 opacity-0 hidden'
-                                                : 'w-auto opacity-100 block'
+                                                ? 'max-w-0 opacity-0'
+                                                : 'max-w-[200px] opacity-100'
                                         )
                                     "
                                 >
@@ -353,8 +351,7 @@ onMounted(() => {
                 </p>
                 <template v-for="item in navStore.unpinnedItems" :key="item.id">
                     <Tooltip
-                        :content="!showExpanded ? item.label : ''"
-                        :disabled="showExpanded"
+                        :content="item.label"
                         side="right"
                         :delay-duration="200"
                         :side-offset="10"
@@ -392,10 +389,10 @@ onMounted(() => {
                                 <span
                                     :class="
                                         cn(
-                                            'flex-1 text-left whitespace-nowrap overflow-hidden text-[13.5px]',
+                                            'flex-1 text-left whitespace-nowrap overflow-hidden text-[13.5px] transition-all duration-300 ease-in-out',
                                             !showExpanded
-                                                ? 'w-0 opacity-0 hidden'
-                                                : 'w-auto opacity-100 block'
+                                                ? 'max-w-0 opacity-0'
+                                                : 'max-w-[200px] opacity-100'
                                         )
                                     "
                                 >
@@ -484,7 +481,7 @@ onMounted(() => {
 
         <!-- Sidebar Toggle -->
         <button
-            class="hidden lg:flex absolute -right-3 top-[1.9em] -translate-y-1/2 z-50 h-8 w-8 items-center justify-center rounded-full border border-[var(--border-muted)] bg-[var(--surface-primary)] text-[var(--text-secondary)] shadow-md hover:text-[var(--text-primary)] hover:border-[var(--border-default)] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--interactive-primary)] cursor-pointer"
+            class="hidden lg:flex absolute -right-3 bottom-[0.5em] -translate-y-1/2 z-50 h-8 w-8 items-center justify-center rounded-full border border-[var(--border-muted)] bg-[var(--surface-primary)] text-[var(--text-secondary)] shadow-md hover:text-[var(--text-primary)] hover:border-[var(--border-default)] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--interactive-primary)] cursor-pointer"
             @click="navStore.toggleSidebar"
         >
             <ChevronRight
@@ -524,10 +521,10 @@ onMounted(() => {
                         <div
                             :class="
                                 cn(
-                                    'flex-1 text-left min-w-0 transition-opacity duration-200',
+                                    'flex-1 text-left min-w-0 transition-all duration-300 ease-in-out overflow-hidden whitespace-nowrap',
                                     !showExpanded
-                                        ? 'hidden opacity-0'
-                                        : 'block opacity-100'
+                                        ? 'max-w-0 opacity-0'
+                                        : 'max-w-[200px] opacity-100'
                                 )
                             "
                         >
@@ -545,10 +542,10 @@ onMounted(() => {
                         <MoreVertical
                             :class="
                                 cn(
-                                    'h-4 w-4 text-[var(--text-muted)] transition-opacity duration-200',
+                                    'h-4 w-4 text-[var(--text-muted)] transition-all duration-300 ease-in-out shrink-0',
                                     !showExpanded
-                                        ? 'hidden opacity-0'
-                                        : 'block opacity-100'
+                                        ? 'w-0 opacity-0'
+                                        : 'w-4 opacity-100'
                                 )
                             "
                         />

@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { Button, SelectFilter } from "@/components/ui";
-import { Plus, Search, Grid, List as ListIcon } from "lucide-vue-next";
+import { Plus, Search, Grid, List as ListIcon, User } from "lucide-vue-next";
 import TaskBoard from "@/components/tasks/TaskBoard.vue";
 import TaskList from "@/components/tasks/TaskList.vue";
 import TaskFormModal from "@/components/tasks/TaskFormModal.vue";
@@ -23,75 +23,117 @@ const statusFilter = ref("");
 const priorityFilter = ref("");
 const scopeFilter = ref("assigned"); // 'all', 'assigned', 'created'
 
-// Modals
+// Tabs
+const currentTab = ref("my_tasks");
+const tabs = [
+    { id: "my_tasks", label: "My Tasks", icon: ListIcon },
+    { id: "qa_queue", label: "QA Queue", icon: Search },
+    { id: "pm_queue", label: "PM Queue", icon: User },
+    { id: "all_tasks", label: "All Tasks", icon: Grid },
+];
+
+// Filter Options
+const scopeOptions = [
+    { label: "Assigned to me", value: "assigned" },
+    { label: "Created by me", value: "created" },
+    { label: "All Tasks", value: "all" },
+];
+
+const statusOptions = [
+    { label: "Open", value: "open" },
+    { label: "In Progress", value: "in_progress" },
+    { label: "Submitted", value: "submitted" },
+    { label: "In QA", value: "in_qa" },
+    { label: "Approved", value: "approved" },
+    { label: "Client Review", value: "sent_to_client" },
+    { label: "Completed", value: "completed" },
+];
+
+const priorityOptions = [
+    { label: "Low", value: "1" },
+    { label: "Medium", value: "2" },
+    { label: "High", value: "3" },
+    { label: "Urgent", value: "4" },
+];
+
+// Project Filter Logic
+const projectFilter = ref("");
+const projectOptions = ref<any[]>([]);
+const teamOptions = ref<any[]>([]);
+const selectedTeamId = ref("");
+
+// Modal State
 const showCreateModal = ref(false);
 const showEditModal = ref(false);
 const selectedTask = ref<any>(null);
 
-const teamOptions = computed(() => {
-    return (
-        authStore.user?.teams?.map((t) => ({
-            value: t.public_id,
-            label: t.name,
-        })) || []
-    );
-});
-
-const projects = ref<any[]>([]);
-const projectFilter = ref("");
-const projectOptions = computed(() => {
-    return projects.value.map((p) => ({
-        value: p.public_id,
-        label: p.name,
-    }));
-});
-
-const selectedTeamId = computed({
-    get: () => authStore.currentTeam?.public_id || "",
-    set: (val: string) => {
-        if (val) authStore.switchTeam(val);
-    },
-});
-
-// Scope Options
-const scopeOptions = [
-    { value: "assigned", label: "My Tasks" },
-    { value: "created", label: "Created by Me" },
-    { value: "all", label: "All Tasks" },
-];
-
-// Status Options
-const statusOptions = [
-    { value: "open", label: "Open" },
-    { value: "in_progress", label: "In Progress" },
-    { value: "submitted", label: "Submitted" },
-    { value: "in_qa", label: "In QA" },
-    { value: "completed", label: "Done" },
-];
-
-// Priority Options
-const priorityOptions = [
-    { value: "low", label: "Low" },
-    { value: "medium", label: "Medium" },
-    { value: "high", label: "High" },
-    { value: "urgent", label: "Urgent" },
-];
-
-// Fetch Projects
 const fetchProjects = async () => {
-    if (!authStore.currentTeamId) {
-        projects.value = [];
-        return;
-    }
+    if (!authStore.currentTeamId) return;
     try {
         const response = await axios.get(
             `/api/teams/${authStore.currentTeamId}/projects`
         );
-        projects.value = response.data.data;
-    } catch (error) {
-        console.error("Failed to fetch projects:", error);
+        projectOptions.value = response.data.data.map((p: any) => ({
+            label: p.name,
+            value: p.id,
+        }));
+    } catch (e) {
+        console.error("Failed to fetch projects");
     }
 };
+
+const onCreateTask = () => {
+    selectedTask.value = null;
+    showCreateModal.value = true;
+};
+
+const onTaskClick = (task: any) => {
+    // Navigate to full detail page
+    router.push(
+        `/projects/${task.project.id}/tasks/${task.public_id}`
+    );
+};
+
+const onEditTask = (task: any) => {
+    selectedTask.value = task;
+    showEditModal.value = true;
+};
+
+const onTaskCreated = () => {
+    fetchTasks();
+    showCreateModal.value = false;
+};
+
+const onTaskSaved = () => {
+    fetchTasks();
+    showEditModal.value = false;
+};
+
+// ... (Modals/options logic same)
+
+// Watch Tab Changes to update filters
+watch(currentTab, (newTab) => {
+    // Reset filters first
+    statusFilter.value = "";
+    priorityFilter.value = "";
+    scopeFilter.value = "all"; // Default to all usually, overridden by specific tab logic
+
+    switch (newTab) {
+        case "my_tasks":
+            scopeFilter.value = "assigned";
+            break;
+        case "qa_queue":
+            statusFilter.value = "submitted,in_qa";
+            break;
+        case "pm_queue":
+            statusFilter.value = "pm_review";
+            break;
+        case "all_tasks":
+            scopeFilter.value = "all";
+            break;
+    }
+    // Fetch triggered by watchers on filters
+});
 
 // Fetch Tasks
 const fetchTasks = async () => {
@@ -103,9 +145,17 @@ const fetchTasks = async () => {
             status: statusFilter.value,
             priority: priorityFilter.value,
             include_archived: false,
-            team_id: authStore.currentTeamId, // Filter by current team if set
+            team_id: authStore.currentTeamId,
             project_id: projectFilter.value,
         };
+        
+        // Specific sorts or additional filters per tab can go here
+        if (currentTab.value === 'qa_queue') {
+             // For QA, maybe we want to see oldest submitted first?
+             params.sort = 'submitted_at';
+             params.direction = 'asc';
+        }
+
         const response = await axios.get("/api/user/tasks", { params });
         tasks.value = response.data.data;
     } catch (error) {
@@ -114,93 +164,24 @@ const fetchTasks = async () => {
         loading.value = false;
     }
 };
+// ... (rest of handlers)
 
-// Handlers
-const onTaskClick = (task: any) => {
-    // Navigate to full page task detail view
-    const taskPublicId = task.public_id || task.id;
-    // We need project ID. In /api/user/tasks, project should be included.
-    const projectPublicId =
-        task.project?.public_id || task.project_id || task.project?.id;
-
-    if (projectPublicId && taskPublicId) {
-        // Find team ID if possible, but route is /projects/:projectId/tasks/:taskId
-        // The view will handle fetching based on route params.
-        // Wait, route is /projects/:projectId/tasks/:taskId
-        // But ProjectDetailView is /projects/:id
-        // My new route is: path: 'projects/:projectId/tasks/:taskId'
-        // Actually, let's check router/index.ts. I added 'projects/:projectId/tasks/:taskId'.
-        // Wait, 'projects/:id' acts as a prefix? No, they are sibling routes in 'admin' children.
-        // So I should navigate to /admin/projects/:projectId/tasks/:taskId
-        // But the router handles relative paths.
-
-        // Let's assume standard router push.
-        // Note: The task.project might be an object or ID.
-        router.push(`/projects/${projectPublicId}/tasks/${taskPublicId}`);
-    } else {
-        console.error("Cannot navigate to task: missing project ID", task);
-        // Fallback or error handling
-    }
-};
-
-const onCreateTask = () => {
-    selectedTask.value = null; // Ensure no task is selected for create
-    showCreateModal.value = true;
-};
-
-const onEditTask = (task: any) => {
-    selectedTask.value = task;
-    showEditModal.value = true;
-};
-
-const onTaskSaved = () => {
+// Initial Load
+onMounted(() => {
+    // Check route filters? 
+    // For now default to my_tasks
+    currentTab.value = "my_tasks"; 
+    
+    // Explicitly fetch tasks on mount to ensure data loads even if currentTab doesn't change
     fetchTasks();
-    showCreateModal.value = false;
-    showEditModal.value = false;
-    // If detail modal is open, refresh it or close it?
-    // Usually close and refresh list.
-    // If detail modal is open, refresh it or close it?
-    // usually close and refresh list.
-    // showDetailModal was removed.
-};
-
-const onTaskCreated = () => {
-    fetchTasks();
-    showCreateModal.value = false;
-};
-
-const onTaskDeleted = () => {
-    fetchTasks();
-};
+    fetchProjects();
+});
 
 // Watchers
 watch([scopeFilter, statusFilter, priorityFilter, projectFilter], () => {
     fetchTasks();
 });
 
-// Debounced Search
-let searchTimeout: any;
-watch(searchQuery, () => {
-    clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(fetchTasks, 300);
-});
-
-// Initial Load
-onMounted(() => {
-    // Check route for initial view mode or filter
-    if (route.path.includes("/board")) {
-        viewMode.value = "board";
-    }
-    if (route.path.includes("/my")) {
-        scopeFilter.value = "assigned";
-    } else {
-        // Default to assigned or all? Let's default to assigned for personal view
-        scopeFilter.value = "assigned";
-    }
-
-    fetchTasks();
-    fetchProjects();
-});
 
 // Watch current team changes to refetch
 watch(
@@ -283,6 +264,24 @@ const onTaskMoved = async (taskId: string, newStatus: string) => {
                     New Task
                 </Button>
             </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="flex items-center gap-1 border-b border-[var(--border-default)] mb-4">
+            <button
+                v-for="tab in tabs"
+                :key="tab.id"
+                @click="currentTab = tab.id"
+                class="flex items-center gap-2 px-4 py-2 border-b-2 text-sm font-medium transition-all"
+                :class="
+                    currentTab === tab.id
+                        ? 'border-[var(--interactive-primary)] text-[var(--interactive-primary)]'
+                        : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-default)]'
+                "
+            >
+                <component :is="tab.icon" class="w-4 h-4" />
+                {{ tab.label }}
+            </button>
         </div>
 
         <!-- Toolbar -->

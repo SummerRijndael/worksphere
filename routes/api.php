@@ -271,9 +271,11 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce'])->group(functi
                 Route::post('/{task}/submit-qa', [\App\Http\Controllers\Api\TaskController::class, 'submitForQa']);
                 Route::post('/{task}/start-qa-review', [\App\Http\Controllers\Api\TaskController::class, 'startQaReview']);
                 Route::post('/{task}/complete-qa-review', [\App\Http\Controllers\Api\TaskController::class, 'completeQaReview']);
+                Route::post('/{task}/send-to-pm', [\App\Http\Controllers\Api\TaskController::class, 'sendToPm']);
                 Route::post('/{task}/send-to-client', [\App\Http\Controllers\Api\TaskController::class, 'sendToClient']);
                 Route::post('/{task}/client-approve', [\App\Http\Controllers\Api\TaskController::class, 'clientApprove']);
                 Route::post('/{task}/client-reject', [\App\Http\Controllers\Api\TaskController::class, 'clientReject']);
+                Route::post('/{task}/toggle-hold', [\App\Http\Controllers\Api\TaskController::class, 'toggleHold']);
                 Route::post('/{task}/return-to-progress', [\App\Http\Controllers\Api\TaskController::class, 'returnToProgress']);
                 Route::post('/{task}/complete', [\App\Http\Controllers\Api\TaskController::class, 'complete']);
                 Route::post('/{task}/archive', [\App\Http\Controllers\Api\TaskController::class, 'archive']);
@@ -286,8 +288,10 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce'])->group(functi
                 Route::get('/{task}/status-history', [\App\Http\Controllers\Api\TaskController::class, 'statusHistory']);
 
                 // Task Files
+                Route::get('/{task}/files', [\App\Http\Controllers\Api\TaskController::class, 'getFiles']);
                 Route::post('/{task}/files', [\App\Http\Controllers\Api\TaskController::class, 'uploadFile']);
                 Route::delete('/{task}/files/{mediaId}', [\App\Http\Controllers\Api\TaskController::class, 'deleteFile']);
+                Route::post('/{task}/files/download', [\App\Http\Controllers\Api\TaskController::class, 'downloadFiles']);
 
                 // Task Checklist Items
                 Route::get('/{task}/checklist', [\App\Http\Controllers\Api\TaskChecklistItemController::class, 'index']);

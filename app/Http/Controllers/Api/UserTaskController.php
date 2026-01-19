@@ -29,9 +29,14 @@ class UserTaskController extends Controller
                 });
             });
 
-        // Filter by scope
+        // Filter by scope with optimized queries
         if ($request->input('scope') === 'assigned') {
-            $query->where('assigned_to', $user->id);
+            // Optimized: User's assigned tasks imply visibility, skip deep project checks
+            // We still eager load project.team for the UI
+             $query = Task::query()
+                ->with(['project.team', 'assignee', 'creator'])
+                ->where('assigned_to', $user->id);
+            // We don't need the deep whereHas check here because assignment implies visibility
         } elseif ($request->input('scope') === 'created') {
             $query->where('created_by', $user->id);
         }

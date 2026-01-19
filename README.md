@@ -174,6 +174,10 @@ _System health monitoring, queue management, and backups._
     ```
     _This command runs Laravel Serve, Reverb, Queue Worker, and Vite concurrently._
 
+Test users
+admin@example.com - Xachgamb@01
+test@example.com - Xachgamb@01
+
 ## Architecture
 
 - **API-First**: The backend serves as a headless API (`routes/api.php`) protected by Sanctum.

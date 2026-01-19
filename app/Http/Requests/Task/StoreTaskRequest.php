@@ -35,11 +35,11 @@ class StoreTaskRequest extends FormRequest
             'estimated_hours' => ['nullable', 'numeric', 'min:0', 'max:9999.99'],
             'sort_order' => ['sometimes', 'integer', 'min:0'],
             'checklist' => ['nullable', 'array'],
-            'checklist.*.title' => ['required_with:checklist', 'string', 'max:255'],
-            'checklist.*.completed' => ['sometimes', 'boolean'],
+            'checklist.*.text' => ['required_with:checklist', 'string', 'max:255'],
+            'checklist.*.is_completed' => ['sometimes', 'boolean'],
         ];
     }
-
+    
     /**
      * Get custom messages for validator errors.
      *
@@ -50,6 +50,7 @@ class StoreTaskRequest extends FormRequest
         return [
             'title.required' => 'Task title is required.',
             'title.max' => 'Task title cannot exceed 255 characters.',
+            'checklist.*.text.required_with' => 'Checklist items must have text.',
             'parent_id.exists' => 'The selected parent task does not exist.',
             'task_template_id.exists' => 'The selected task template does not exist.',
             'assigned_to.exists' => 'The selected assignee does not exist.',
