@@ -108,16 +108,16 @@ onUnmounted(() => {
                     />
                     <!-- Gradient Overlay -->
                     <div :class="['absolute inset-0 bg-gradient-to-br', slide.gradient]" />
-                    <div class="absolute inset-0 bg-black/40" />
+                    <div class="absolute inset-0 !bg-black/70" />
                 </div>
 
                 <!-- Content -->
                 <div class="absolute inset-0 flex flex-col items-center justify-center p-12 text-center text-white">
                     <div class="max-w-2xl space-y-6">
-                        <h2 class="text-4xl font-bold tracking-tight lg:text-5xl">
+                        <h2 class="text-4xl font-bold tracking-tight lg:text-5xl !text-white drop-shadow-lg">
                             {{ slide.title }}
                         </h2>
-                        <p class="text-lg text-white/80 lg:text-xl">
+                        <p class="text-lg lg:text-xl !text-white drop-shadow-md" style="text-shadow: 0 2px 4px rgba(0,0,0,0.8);">
                             {{ slide.description }}
                         </p>
                     </div>
