@@ -124,9 +124,13 @@ export const useNotificationsStore = defineStore('notifications', () => {
         if (!authStore.user?.public_id) return;
 
         // Dynamic import to avoid circular dependencies
-        const { default: echo } = await import('@/echo');
+        // Use isEchoAvailable() to check if Echo is actually initialized
+        const { default: echo, isEchoAvailable } = await import('@/echo');
 
-        if (!echo) return;
+        if (!isEchoAvailable()) {
+            console.debug('[Notifications] Echo not available, skipping realtime listeners');
+            return;
+        }
 
         const channelName = `App.Models.User.${authStore.user.public_id}`;
 
@@ -175,9 +179,9 @@ export const useNotificationsStore = defineStore('notifications', () => {
     async function stopRealtimeListeners(): Promise<void> {
          const { useAuthStore } = await import('@/stores/auth');
          const authStore = useAuthStore();
-         const { default: echo } = await import('@/echo');
+         const { default: echo, isEchoAvailable } = await import('@/echo');
 
-         if (authStore.user?.public_id && echo) {
+         if (authStore.user?.public_id && isEchoAvailable()) {
              echo.leave(`App.Models.User.${authStore.user.public_id}`);
          }
     }

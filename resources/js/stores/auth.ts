@@ -530,8 +530,11 @@ export const useAuthStore = defineStore('auth', () => {
     if (!user.value?.public_id) return;
 
     try {
-      const { default: echo } = await import('@/echo');
-      if (!echo) return;
+      const { default: echo, isEchoAvailable } = await import('@/echo');
+      if (!isEchoAvailable()) {
+        console.debug('[Auth] Echo not available, skipping permission listener');
+        return;
+      }
 
       // Subscribe to user's private channel for permission updates
       permissionChannel = echo.private(`App.Models.User.${user.value.public_id}`);
@@ -576,8 +579,11 @@ export const useAuthStore = defineStore('auth', () => {
     if (!user.value?.public_id) return;
 
     try {
-      const { default: echo } = await import('@/echo');
-      if (!echo) return;
+      const { default: echo, isEchoAvailable } = await import('@/echo');
+      if (!isEchoAvailable()) {
+        console.debug('[Auth] Echo not available, skipping status listener');
+        return;
+      }
 
       // Subscribe to user's private channel for status updates
       statusChannel = echo.private(`App.Models.User.${user.value.public_id}`);

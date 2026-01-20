@@ -70,6 +70,14 @@ api.interceptors.response.use(
         // Handle 401 Unauthorized
         if (error.response?.status === 401) {
             console.warn('[API] 401 Unauthorized - clearing auth and redirecting');
+            
+            // Don't clear auth or redirect if we're on auth pages (login, 2FA challenge, etc.)
+            // This prevents race conditions during 2FA verification flow
+            if (window.location.pathname.startsWith("/auth")) {
+                console.debug('[API] Skipping 401 redirect - on auth page');
+                return Promise.reject(error);
+            }
+            
             // Give a small grace period for any "user blocked/suspended" events to arrive via Echo
             await new Promise((resolve) => setTimeout(resolve, 1000));
 
