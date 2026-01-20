@@ -28,4 +28,5 @@ export { default as TimezoneSelect } from './TimezoneSelect.vue';
 export { default as StatusBadge } from './StatusBadge.vue';
 export { default as ScrollToTop } from './ScrollToTop.vue';
 export { default as PageLoader } from './PageLoader.vue';
+export { default as PinInput } from './PinInput.vue';
 export { default as Separator } from './Separator.vue';

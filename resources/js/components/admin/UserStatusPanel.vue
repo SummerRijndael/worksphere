@@ -14,6 +14,7 @@ import {
     History,
     ChevronDown,
 } from 'lucide-vue-next';
+import { useRoles } from '@/composables/useRoles';
 
 const props = defineProps({
     user: {
@@ -53,12 +54,10 @@ const statusOptions = [
     { value: 'disabled', label: 'Disabled', description: 'Account is disabled' },
 ];
 
-const roleOptions = [
-    { value: 'administrator', label: 'Administrator', description: 'Full system access' },
-    { value: 'project_manager', label: 'Project Manager', description: 'Manage projects and teams' },
-    { value: 'operator', label: 'Operator', description: 'Handle tickets and operations' },
-    { value: 'user', label: 'User', description: 'Basic user access' },
-];
+const { roleOptions, fetchRoles } = useRoles();
+
+// Fetch roles if not already loaded
+fetchRoles();
 
 const statusBadgeVariant = computed(() => {
     const variants = {
@@ -201,7 +200,7 @@ function formatDate(date) {
 }
 
 function getRoleLabel(role) {
-    const option = roleOptions.find(r => r.value === role);
+    const option = roleOptions.value.find(r => r.value === role);
     return option?.label || role;
 }
 

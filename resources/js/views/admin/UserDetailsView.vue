@@ -141,10 +141,10 @@ const editForm = ref({
 import { useAuthStore } from '@/stores/auth';
 const authStore = useAuthStore();
 
-const canEdit = () => authStore.user?.permissions?.includes('users.update') || authStore.user?.roles?.some(r => r.name === 'administrator');
-const canManageRoles = () => authStore.user?.permissions?.includes('users.manage_roles') || authStore.user?.roles?.some(r => r.name === 'administrator');
-const canManageStatus = () => authStore.user?.permissions?.includes('users.manage_status') || authStore.user?.roles?.some(r => r.name === 'administrator');
-const canDelete = () => authStore.user?.permissions?.includes('users.delete') || authStore.user?.roles?.some(r => r.name === 'administrator');
+const canEdit = () => authStore.user?.permissions?.includes('users.update');
+const canManageRoles = () => authStore.user?.permissions?.includes('users.manage_roles');
+const canManageStatus = () => authStore.user?.permissions?.includes('users.manage_status');
+const canDelete = () => authStore.user?.permissions?.includes('users.delete');
 
 const startEditing = () => {
     editForm.value = {

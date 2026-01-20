@@ -61,6 +61,7 @@ class UserResource extends JsonResource
                 'password_last_updated_at' => $this->password_last_updated_at?->toISOString(),
                 'two_factor_enforced' => $this->two_factor_enforced,
                 'has_2fa_enabled' => $this->has2FAConfigured(),
+                'requires_2fa_setup' => (bool) $this->requires2FASetup(), // Checks BOTH user and role-level enforcement
                 'two_factor_confirmed_at' => $this->two_factor_confirmed_at?->toISOString(),
                 'two_factor_allowed_methods' => $this->two_factor_allowed_methods,
                 'social_accounts' => $this->provider ? [

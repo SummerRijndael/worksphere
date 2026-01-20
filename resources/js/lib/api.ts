@@ -69,6 +69,7 @@ api.interceptors.response.use(
 
         // Handle 401 Unauthorized
         if (error.response?.status === 401) {
+            console.warn('[API] 401 Unauthorized - clearing auth and redirecting');
             // Give a small grace period for any "user blocked/suspended" events to arrive via Echo
             await new Promise((resolve) => setTimeout(resolve, 1000));
 
@@ -86,6 +87,17 @@ api.interceptors.response.use(
 
             if (!window.location.pathname.startsWith("/auth")) {
                 window.location.href = "/auth/login";
+            }
+            return Promise.reject(error);
+        }
+
+        // Handle 403 Forbidden - Enforce 2FA
+        if (
+            error.response?.status === 403 &&
+            error.response?.data?.action === "setup_2fa"
+        ) {
+            if (window.location.pathname !== "/auth/setup-2fa") {
+                window.location.href = "/auth/setup-2fa";
             }
             return Promise.reject(error);
         }

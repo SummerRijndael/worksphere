@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { useRouter, onBeforeRouteLeave } from 'vue-router';
-import { Button, Card, Input, Badge, Alert, Modal } from '@/components/ui';
+import { Button, Card, Input, Badge, Alert, Modal, PinInput } from '@/components/ui';
 import { useAuthStore } from '@/stores/auth';
 import api from '@/lib/api';
 import { toast } from 'vue-sonner';
@@ -410,17 +410,11 @@ onBeforeUnmount(() => {
                             </div>
                         </div>
 
-                        <div>
-                            <Input
-                                v-model="verificationCode"
-                                type="text"
-                                inputmode="numeric"
-                                maxlength="6"
-                                placeholder="Enter 6-digit code"
-                                class="text-center text-xl tracking-widest"
-                                @keyup.enter="verifyTOTP"
-                            />
-                        </div>
+                        <PinInput
+                            v-model="verificationCode"
+                            :length="6"
+                            @complete="verifyTOTP"
+                        />
 
                         <div class="flex gap-3">
                             <Button variant="outline" class="flex-1" @click="goBack">
@@ -481,14 +475,10 @@ onBeforeUnmount(() => {
                             </p>
                         </div>
 
-                        <Input
+                        <PinInput
                             v-model="smsCode"
-                            type="text"
-                            inputmode="numeric"
-                            maxlength="6"
-                            placeholder="Enter 6-digit code"
-                            class="text-center text-xl tracking-widest"
-                            @keyup.enter="verifySMS"
+                            :length="6"
+                            @complete="verifySMS"
                         />
 
                         <div class="text-center">

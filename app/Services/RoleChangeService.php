@@ -36,6 +36,16 @@ class RoleChangeService
     }
 
     /**
+     * Check if a role requires approval for changes.
+     */
+    public function requiresApproval(Role $role): bool
+    {
+        $restrictedRoles = config('roles.approval_required_roles', []);
+        
+        return in_array($role->name, $restrictedRoles);
+    }
+
+    /**
      * Request a role title change.
      */
     public function requestRoleTitleChange(

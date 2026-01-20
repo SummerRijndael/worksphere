@@ -18,6 +18,7 @@ import {
     Users as UsersIcon,
     Eye
 } from 'lucide-vue-next';
+import { useRoles } from '@/composables/useRoles';
 
 // State
 const users = ref([]);
@@ -41,6 +42,7 @@ const pagination = ref({
 const showCreateModal = ref(false);
 const currentUser = ref({});
 const router = useRouter();
+const { roleOptions, fetchRoles } = useRoles();
 
 // Stats
 const stats = ref({
@@ -167,9 +169,8 @@ const openCreateModal = () => {
         name: '',
         email: '',
         username: '',
-        role: 'member',
-        status: 'active',
-        role: 'member',
+        username: '',
+        role: 'user',
         status: 'active',
     };
     errors.value = {};
@@ -208,6 +209,7 @@ const deleteUser = async (user) => {
 onMounted(() => {
     fetchUsers();
     fetchStats();
+    fetchRoles();
 });
 </script>
 
@@ -273,11 +275,7 @@ onMounted(() => {
                     <div class="min-w-[140px]">
                         <SelectFilter
                             v-model="roleFilter"
-                            :options="[
-                                { value: 'administrator', label: 'Administrator' },
-                                { value: 'it_support', label: 'IT Support' },
-                                { value: 'user', label: 'User' }
-                            ]"
+                            :options="roleOptions"
                             placeholder="All Roles"
                             size="lg"
                         />
@@ -555,8 +553,9 @@ onMounted(() => {
                         <div class="space-y-1">
                             <label class="text-sm font-medium text-[var(--text-secondary)]">Role</label>
                             <select v-model="formData.role" class="input">
-                                <option value="admin">Admin</option>
-                                <option value="member">Member</option>
+                                <option v-for="role in roleOptions" :key="role.value" :value="role.value">
+                                    {{ role.label }}
+                                </option>
                             </select>
                              <p v-if="errors.role" class="text-xs text-[var(--color-error)]">{{ errors.role[0] }}</p>
                         </div>

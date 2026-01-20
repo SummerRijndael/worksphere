@@ -20,6 +20,10 @@ class DashboardController extends Controller
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
+        \Illuminate\Support\Facades\Log::info('Dashboard Index Called', [
+            'user_id' => $user->id, 
+            'session_id' => $request->session()->getId(),
+        ]);
         $team = $this->resolveTeam($request);
 
         $data = $this->dashboardService->getDashboard($user, $team);

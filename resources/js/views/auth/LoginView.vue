@@ -11,6 +11,7 @@ import {
     Checkbox,
     Avatar,
     PasswordStrengthMeter,
+    PinInput,
 } from "@/components/ui";
 import {
     Mail,
@@ -1088,14 +1089,11 @@ async function animateExit(path: string) {
                                 >
                                     Verification Code
                                 </label>
-                                <input
+                                <PinInput
                                     v-model="twoFactorForm.code"
-                                    type="text"
-                                    maxlength="6"
-                                    class="w-full rounded-lg border border-[var(--border-default)] bg-[var(--surface-elevated)] px-4 py-3 text-center text-2xl font-mono tracking-widest text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--interactive-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--interactive-primary)]/20"
-                                    placeholder="000000"
-                                    autocomplete="one-time-code"
+                                    :length="6"
                                     :disabled="authStore.isLoading"
+                                    @complete="handle2FA"
                                 />
                             </div>
 

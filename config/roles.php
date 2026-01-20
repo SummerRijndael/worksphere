@@ -512,4 +512,20 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Role Change Approval Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Configuration for the multi-admin approval workflow.
+    |
+    */
+
+    'role_change_approval_count' => 2,
+    
+    'approval_required_roles' => [
+        'administrator',
+        'it_support',
+    ],
+
 ];

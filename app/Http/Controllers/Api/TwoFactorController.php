@@ -458,7 +458,7 @@ class TwoFactorController extends Controller
         } else {
             // Verify Code based on Method
             $valid = false;
-            $method = $request->method;
+            $method = $request->input('method');
 
             if ($method === 'totp' || ! $method) {
                 if (! $user->two_factor_secret) {
@@ -478,16 +478,28 @@ class TwoFactorController extends Controller
             }
 
             if (! $valid) {
+                 \Illuminate\Support\Facades\Log::warning('2FA Verify Failed', ['user_id' => $user->id]);
                 throw ValidationException::withMessages(['code' => ['Invalid verification code']]);
             }
         }
+
+        \Illuminate\Support\Facades\Log::info('2FA Verify Success', ['user_id' => $user->id]);
 
         // Login
         Auth::login($user, $request->session()->get('login.remember', false));
         $request->session()->forget('login.id');
         $request->session()->regenerate();
 
-        return response()->json(['message' => 'Two-factor authentication verified', 'redirect' => '/dashboard']);
+        \Illuminate\Support\Facades\Log::info('2FA Session Regenerated', ['new_session_id' => $request->session()->getId()]);
+
+        // Return user data directly to avoid race condition with subsequent fetchUser call
+        $user->load(['roles', 'permissions', 'teams']);
+
+        return response()->json([
+            'message' => 'Two-factor authentication verified',
+            'redirect' => '/dashboard',
+            'user' => new \App\Http\Resources\UserResource($user),
+        ]);
     }
 
     protected function maskPhone(string $phone): string

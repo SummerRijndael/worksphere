@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import { Button, Card, Input } from '@/components/ui';
+import { Button, Card, Input, PinInput } from '@/components/ui';
 import { useAuthStore } from '@/stores/auth';
 import api from '@/lib/api';
 import { toast } from 'vue-sonner';
@@ -180,26 +180,24 @@ async function verify() {
     error.value = '';
 
     try {
-        const payload = useRecoveryCode.value
-            ? { recovery_code: recoveryCode.value }
-            : { code: code.value, method: currentMethod.value };
+        console.log('[TwoFactorView] Verify called', { method: currentMethod.value, useRecovery: useRecoveryCode.value });
+        const result = await authStore.verify2FA(
+             code.value, 
+             currentMethod.value, 
+             useRecoveryCode.value ? recoveryCode.value : null
+        );
 
-        await api.post('/api/two-factor-challenge', payload);
+        console.log('[TwoFactorView] Verify success', result);
 
-        // API checks validation, then logs user in.
-        // We need to fetch user state or just redirect?
-        // Since session is regenerated, we should fetch user.
-        await authStore.fetchUser();
-
-        toast.success('Verified successfully');
-        router.push(route.query.redirect || '/dashboard');
-    } catch (err) {
-        if (err.response?.status === 422) {
-             error.value = err.response.data.errors?.code?.[0] || 'Invalid validation code';
-             if (useRecoveryCode.value) error.value = 'Invalid recovery code';
+        if (result.success) {
+            toast.success('Verified successfully');
+            router.push(route.query.redirect || '/dashboard');
         } else {
-            error.value = 'Verification failed. Please try again.';
+             error.value = result.error || 'Verification failed';
         }
+    } catch (err) {
+        console.error('[TwoFactorView] Verify error', err);
+        error.value = 'Verification failed. Please try again.';
     } finally {
         isLoading.value = false;
     }
@@ -348,16 +346,12 @@ onMounted(() => {
                                 :error="error"
                                 @keyup.enter="verify"
                             />
-                            <Input
+                            <PinInput
                                 v-else
                                 v-model="code"
-                                type="text"
-                                :inputmode="currentConfig?.inputMode"
-                                :placeholder="currentConfig?.placeholder"
-                                :maxlength="currentConfig?.maxLength"
-                                class="text-center text-2xl tracking-[0.5em] font-mono"
+                                :length="6"
                                 :error="error"
-                                @keyup.enter="verify"
+                                @complete="verify"
                             />
                         </div>
 

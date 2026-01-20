@@ -477,7 +477,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce'])->group(functi
         Route::get('/{roleChangeRequest}', [RoleChangeRequestController::class, 'show']);
     });
 
-    Route::middleware('permission:roles.manage')->prefix('role-change-requests')->group(function () {
+    Route::middleware('permission:roles.update')->prefix('role-change-requests')->group(function () {
         Route::post('/', [RoleChangeRequestController::class, 'store']);
         Route::post('/{roleChangeRequest}/approve', [RoleChangeRequestController::class, 'approve']);
         Route::post('/{roleChangeRequest}/reject', [RoleChangeRequestController::class, 'reject']);
@@ -493,7 +493,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce'])->group(functi
         Route::get('permissions', [RoleController::class, 'permissions']);
     });
 
-    Route::middleware('permission:roles.manage')->prefix('roles')->group(function () {
+    Route::middleware('permission:roles.update')->prefix('roles')->group(function () {
         Route::put('/{role}', [RoleController::class, 'update']);
     });
 

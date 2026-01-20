@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { Button, Card, Input, Switch, Badge, Modal } from '@/components/ui';
+import { Button, Card, Input, Switch, Badge, Modal, PinInput } from '@/components/ui';
 import { useAuthStore } from '@/stores/auth';
 import api from '@/lib/api';
 import { toast } from 'vue-sonner';
@@ -528,15 +528,10 @@ onMounted(() => {
                     <label class="text-sm font-medium text-[var(--text-primary)]">
                         Verification Code
                     </label>
-                    <Input
+                    <PinInput
                         v-model="verificationCode"
-                        type="text"
-                        inputmode="numeric"
-                        pattern="[0-9]*"
-                        maxlength="6"
-                        placeholder="000000"
-                        class="text-center text-2xl tracking-widest font-mono"
-                        @keyup.enter="confirmTOTP"
+                        :length="6"
+                        @complete="confirmTOTP"
                     />
                 </div>
 

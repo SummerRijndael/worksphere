@@ -81,6 +81,7 @@ class AppServiceProvider extends ServiceProvider
         // Register Policies
         Gate::policy(\App\Models\FaqCategory::class, \App\Policies\FaqPolicy::class);
         Gate::policy(\App\Models\FaqArticle::class, \App\Policies\FaqPolicy::class);
+        Gate::policy(\Spatie\Permission\Models\Role::class, \App\Policies\RolePolicy::class);
 
         // Pulse authorization - allow users with system.maintenance permission
         Gate::define('viewPulse', function ($user) {

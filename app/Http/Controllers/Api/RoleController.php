@@ -6,6 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\RoleResource;
 use App\Models\RoleChangeRequest;
 use App\Models\User;
+use App\Http\Resources\UserResource;
+use App\Services\RoleChangeService;
+use App\Services\LockoutProtectionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -15,6 +18,10 @@ use Spatie\Permission\Models\Role;
 
 class RoleController extends Controller
 {
+    public function __construct(
+        protected RoleChangeService $roleChangeService,
+        protected LockoutProtectionService $lockoutProtection
+    ) {}
     /**
      * Get all roles with their permissions.
      */
@@ -134,27 +141,60 @@ class RoleController extends Controller
             'permissions.*' => ['string', 'exists:permissions,name'],
         ]);
 
-        // Check if this is a title change (requires approval)
-        if (isset($validated['name']) && $validated['name'] !== $role->name) {
-            return response()->json([
-                'message' => 'Role title changes require multi-admin approval',
-                'requires_approval' => true,
-                'approval_type' => 'role_title_change',
-            ], 422);
+        // 1. Lockout Protection Check
+        if (isset($validated['permissions'])) {
+            $currentPermissions = $role->permissions->pluck('name')->toArray();
+            $newPermissions = $validated['permissions'];
+            $removedPermissions = array_diff($currentPermissions, $newPermissions);
+            
+            try {
+                $this->lockoutProtection->validateRolePermissionChange($role, $removedPermissions);
+            } catch (\Exception $e) {
+                return response()->json(['message' => $e->getMessage()], 422);
+            }
         }
 
-        // Permission changes can be done directly or require approval based on config
-        if (isset($validated['permissions'])) {
-            $requiresApproval = config('roles.permission_changes_require_approval', false);
+        // 2. Check Approval Requirements
+        if ($this->roleChangeService->requiresApproval($role)) {
+            $roleChangeRequest = null;
+            $reason = "Update role " . $role->name; // In a real app, we'd valid 'reason' from request
 
-            if ($requiresApproval) {
-                return response()->json([
-                    'message' => 'Role permission changes require multi-admin approval',
-                    'requires_approval' => true,
-                    'approval_type' => 'role_permission_change',
-                ], 422);
+            // Create request for permission change
+            if (isset($validated['permissions'])) {
+                 $roleChangeRequest = $this->roleChangeService->requestRolePermissionChange(
+                    $role,
+                    $validated['permissions'],
+                    $reason,
+                    $request->user()
+                );
             }
+            // Create request for title change check (if name changed)
+            elseif (isset($validated['name']) && $validated['name'] !== $role->name) {
+                 $roleChangeRequest = $this->roleChangeService->requestRoleTitleChange(
+                    $role,
+                    $validated['name'],
+                    $reason,
+                    $request->user()
+                );
+            }
+            
+            if ($roleChangeRequest) {
+                return response()->json([
+                    'message' => 'Role update requires approval. Request created.',
+                    'data' => [
+                        'request_id' => $roleChangeRequest->id, 
+                        'status' => 'pending_approval'
+                    ]
+                ], 202);
+            }
+        }
 
+        // 3. Direct Update (if no approval required or no sensitive change)
+        if (isset($validated['name']) && $validated['name'] !== $role->name) {
+            $role->update(['name' => $validated['name']]);
+        }
+
+        if (isset($validated['permissions'])) {
             $role->syncPermissions($validated['permissions']);
         }
 

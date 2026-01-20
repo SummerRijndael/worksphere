@@ -133,20 +133,27 @@ export class AuthService extends BaseService {
   }
 
   /**
-   * Verify 2FA code
+   * Verify 2FA code - returns full response including user data
    */
-  async verify2FA(code: string, method: string = 'totp'): Promise<User> {
+  async verify2FA(code: string, method: string = 'totp'): Promise<{ message: string; redirect: string; user: User }> {
     try {
       const validatedData = validateOrThrow(twoFactorSchema, { code, method });
 
       await this.getCsrfCookie();
 
-      const response = await this.api.post<ApiResponse<User>>(
+      const response = await this.api.post<ApiResponse<{ message: string; redirect: string; user: User }>>(
         '/api/two-factor-challenge',
         validatedData
       );
 
-      return this.extractData(response);
+      // Refresh CSRF cookie after successful 2FA verification
+      // Session regeneration on backend creates new CSRF token, 
+      // we need to fetch it before subsequent API calls
+      await this.getCsrfCookie();
+
+      // The response from TwoFactorController is NOT wrapped in a 'data' property
+      // It returns { message, redirect, user } directly.
+      return response.data;
     } catch (error) {
       return this.handleError(error);
     }

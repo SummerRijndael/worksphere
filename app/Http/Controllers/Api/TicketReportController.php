@@ -19,7 +19,7 @@ class TicketReportController extends Controller
         $user = $request->user();
         $filters = $request->all();
 
-        if (! $user->hasPermissionTo('tickets.view') && ! $user->hasRole('administrator')) {
+        if (! $user->hasPermissionTo('tickets.view')) {
             $filters['for_user'] = $user;
         }
 
@@ -31,7 +31,7 @@ class TicketReportController extends Controller
         $user = $request->user();
         $filters = $request->all();
 
-        if (! $user->hasPermissionTo('tickets.view') && ! $user->hasRole('administrator')) {
+        if (! $user->hasPermissionTo('tickets.view')) {
             $filters['for_user'] = $user;
         }
 
@@ -44,7 +44,7 @@ class TicketReportController extends Controller
         $filters = $request->all();
 
         // Ensure user permission is scoped
-        if (! $user->hasPermissionTo('tickets.view') && ! $user->hasRole('administrator')) {
+        if (! $user->hasPermissionTo('tickets.view')) {
             $filters['for_user'] = $user;
         }
 

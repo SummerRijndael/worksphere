@@ -89,15 +89,15 @@ export const useAuthStore = defineStore('auth', () => {
   const requires2FASetup = computed(() => {
     // Check real-time event first
     if (twoFactorEnforcementEvent.value?.enforced) {
+        // Even with real-time event, check if user already has 2FA configured
+        if (user.value?.has_2fa_enabled) {
+            return false;
+        }
         return true;
     }
     
-    // Check user object
-    if (user.value?.two_factor_enforced && !user.value?.two_factor_confirmed_at) {
-        return true;
-    }
-    
-    return false;
+    // Use backend-computed field which checks BOTH user-level AND role-level enforcement
+    return user.value?.requires_2fa_setup ?? false;
   });
 
   const allowed2FAMethods = computed(() => {
@@ -294,10 +294,22 @@ export const useAuthStore = defineStore('auth', () => {
   async function verify2FA(code: string, method: string = 'totp', _recoveryCode: string | null = null): Promise<AuthResult> {
     isLoading.value = true;
     try {
-      await authService.verify2FA(code, method);
+      // verify2FA now returns user data directly from backend to avoid session race condition
+      const result = await authService.verify2FA(code, method);
+      
+      // Use the user data returned from the 2FA verification response
+      if (result && typeof result === 'object' && 'user' in result) {
+        user.value = (result as any).user;
+      } else {
+        // Fallback to fetch if user not returned (shouldn't happen with updated backend)
+        await fetchUser();
+      }
 
-      // Fetch the full user after successful 2FA
-      await fetchUser();
+      console.log('[Auth] verify2FA successful', { user: user.value?.id });
+      // Mark session as verified to prevent router guard from triggering fetchUser
+      // This fixes the redirect loop after 2FA verification
+      isSessionVerified.value = true;
+      console.log('[Auth] isSessionVerified set to true');
 
       // Store hints after 2FA success too
       if (user.value) {
@@ -454,7 +466,9 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function fetchUser(): Promise<User | null> {
     try {
+      console.log('[Auth] fetchUser called');
       user.value = await authService.fetchUser();
+      console.log('[Auth] fetchUser success', { id: user.value?.id });
       
       // Initialize currentTeamId if needed
       if ((!currentTeamId.value || !user.value.teams?.some(t => t.public_id === currentTeamId.value)) && (user.value.teams?.length ?? 0) > 0) {

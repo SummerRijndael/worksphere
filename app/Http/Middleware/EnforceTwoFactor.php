@@ -16,9 +16,14 @@ class EnforceTwoFactor
     protected array $excludedPaths = [
         'api/logout',
         'api/user/two-factor-*',
+        'api/user/confirmed-two-factor-authentication',
+        'api/user/two-factor-recovery-codes',
         'api/user/passkeys*',
         'api/user/confirm-password',
         'api/user/2fa-enforcement-status',
+        'api/user',
+        'api/user/details',
+        'api/presence/*',
         'setup-2fa-required',
     ];
 

@@ -1066,14 +1066,22 @@ router.beforeEach(
             // 1. Not authenticated in store (restore session)
             // 2. Session not yet verified in this load (prevent stale local storage flash)
             // 3. Coming from social login callback (ensure fresh user data)
+            // 3. Coming from social login callback (ensure fresh user data)
             const shouldFetchUser =
                 !authStore.isAuthenticated ||
-                !authStore.isSessionVerified ||
-                from.path.includes("/auth/") ||
-                from.path.includes("/callback");
+                !authStore.isSessionVerified;
+            
+            console.log('[Router] Checking auth', { 
+                path: to.path, 
+                isAuthenticated: authStore.isAuthenticated, 
+                isSessionVerified: authStore.isSessionVerified,
+                shouldFetchUser 
+            });
 
             if (shouldFetchUser) {
+                console.log('[Router] Fetching user...');
                 await authStore.fetchUser();
+                console.log('[Router] User fetched. Auth:', authStore.isAuthenticated);
             }
 
             if (!authStore.isAuthenticated) {

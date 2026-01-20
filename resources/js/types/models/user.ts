@@ -17,6 +17,8 @@ export interface User {
   two_factor_email_confirmed_at?: string | null;
   two_factor_enforced?: boolean;
   two_factor_allowed_methods?: string[];
+  has_2fa_enabled?: boolean;
+  requires_2fa_setup?: boolean;
 }
 
 export interface Role {
