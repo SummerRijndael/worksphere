@@ -96,9 +96,9 @@ class TicketController extends Controller
                 $query->whereHas('roles', function ($q) {
                     $q->whereIn('name', ['administrator', 'support_staff', 'support']);
                 })
-                ->orWhereHas('permissions', function ($q) {
-                    $q->where('name', 'tickets.assign');
-                });
+                    ->orWhereHas('permissions', function ($q) {
+                        $q->where('name', 'tickets.assign');
+                    });
             })
             ->select(['id', 'public_id', 'name', 'email'])
             ->orderBy('name')

@@ -450,14 +450,14 @@ function openAssignModal(ticket) {
 async function fetchAssignableUsers() {
     try {
         isLoadingUsers.value = true;
-        const response = await axios.get("/api/users?per_page=100");
+        const response = await axios.get("/api/tickets/assignable-users");
         assignableUsers.value = response.data.data.map((u) => ({
             value: u.id,
             label: `${u.name} (${u.email})`,
             image: u.avatar_thumb_url,
         }));
     } catch (error) {
-        toast.error("Failed to load users");
+        toast.error("Failed to load assignable users");
     } finally {
         isLoadingUsers.value = false;
     }
@@ -1088,10 +1088,14 @@ function viewTicket(ticketId) {
 
                                         <!-- Ticket Info -->
                                         <div class="min-w-0">
-                                            <div class="flex items-center gap-2 mb-1">
+                                            <div
+                                                class="flex items-center gap-2 mb-1"
+                                            >
                                                 <span
                                                     class="text-[11px] font-mono text-[var(--text-muted)] shrink-0"
-                                                    >{{ ticket.displayId }}</span
+                                                    >{{
+                                                        ticket.displayId
+                                                    }}</span
                                                 >
                                                 <Badge
                                                     :variant="
@@ -1115,7 +1119,7 @@ function viewTicket(ticketId) {
                                             >
                                                 {{ ticket.title }}
                                             </h3>
-                                            
+
                                             <!-- Overdue/SLA indicators -->
                                             <div class="flex gap-2 mt-1">
                                                 <Badge
@@ -1136,36 +1140,40 @@ function viewTicket(ticketId) {
                                 </td>
 
                                 <!-- Status -->
-                                <td class="px-6 py-4" @click="viewTicket(ticket.id)">
+                                <td
+                                    class="px-6 py-4"
+                                    @click="viewTicket(ticket.id)"
+                                >
                                     <Badge
                                         :variant="
-                                            getStatusConfig(
-                                                ticket.status,
-                                            ).variant
+                                            getStatusConfig(ticket.status)
+                                                .variant
                                         "
                                         size="xs"
                                     >
                                         <component
                                             :is="
-                                                getStatusConfig(
-                                                    ticket.status,
-                                                ).icon
+                                                getStatusConfig(ticket.status)
+                                                    .icon
                                             "
                                             class="h-3 w-3 mr-0.5"
                                         />
                                         {{
-                                            getStatusConfig(
-                                                ticket.status,
-                                            ).label
+                                            getStatusConfig(ticket.status).label
                                         }}
                                     </Badge>
                                 </td>
 
                                 <!-- Submitted By (Reporter) -->
-                                <td class="px-6 py-4" @click="viewTicket(ticket.id)">
+                                <td
+                                    class="px-6 py-4"
+                                    @click="viewTicket(ticket.id)"
+                                >
                                     <div
                                         class="flex items-center gap-2"
-                                        :title="ticket.reporter?.name || 'Unknown'"
+                                        :title="
+                                            ticket.reporter?.name || 'Unknown'
+                                        "
                                     >
                                         <Avatar
                                             v-if="ticket.reporter"
@@ -1177,14 +1185,21 @@ function viewTicket(ticketId) {
                                             v-else
                                             class="h-6 w-6 p-1 rounded-full bg-[var(--surface-tertiary)] text-[var(--text-muted)]"
                                         />
-                                        <span class="text-sm text-[var(--text-secondary)] truncate max-w-[120px]">{{
-                                            ticket.reporter?.name || 'Unknown'
-                                        }}</span>
+                                        <span
+                                            class="text-sm text-[var(--text-secondary)] truncate max-w-[120px]"
+                                            >{{
+                                                ticket.reporter?.name ||
+                                                "Unknown"
+                                            }}</span
+                                        >
                                     </div>
                                 </td>
 
                                 <!-- Assigned To -->
-                                <td class="px-6 py-4" @click="viewTicket(ticket.id)">
+                                <td
+                                    class="px-6 py-4"
+                                    @click="viewTicket(ticket.id)"
+                                >
                                     <div
                                         class="flex items-center gap-2"
                                         :title="
@@ -1194,9 +1209,7 @@ function viewTicket(ticketId) {
                                     >
                                         <Avatar
                                             v-if="ticket.assignee"
-                                            :fallback="
-                                                ticket.assignee.initials
-                                            "
+                                            :fallback="ticket.assignee.initials"
                                             :src="ticket.assignee?.avatar_url"
                                             size="xs"
                                         />
@@ -1204,20 +1217,29 @@ function viewTicket(ticketId) {
                                             v-else
                                             class="h-6 w-6 p-1 rounded-full bg-[var(--surface-tertiary)] text-[var(--text-muted)]"
                                         />
-                                        <span class="text-sm text-[var(--text-secondary)] truncate max-w-[120px]">{{
-                                            ticket.assignee?.name ||
-                                            "Unassigned"
-                                        }}</span>
+                                        <span
+                                            class="text-sm text-[var(--text-secondary)] truncate max-w-[120px]"
+                                            >{{
+                                                ticket.assignee?.name ||
+                                                "Unassigned"
+                                            }}</span
+                                        >
                                     </div>
                                 </td>
 
                                 <!-- Created -->
-                                <td class="px-6 py-4 text-sm text-[var(--text-secondary)] whitespace-nowrap" @click="viewTicket(ticket.id)">
+                                <td
+                                    class="px-6 py-4 text-sm text-[var(--text-secondary)] whitespace-nowrap"
+                                    @click="viewTicket(ticket.id)"
+                                >
                                     {{ ticket.createdAt }}
                                 </td>
 
                                 <!-- Updated -->
-                                <td class="px-6 py-4 text-sm text-[var(--text-secondary)] whitespace-nowrap" @click="viewTicket(ticket.id)">
+                                <td
+                                    class="px-6 py-4 text-sm text-[var(--text-secondary)] whitespace-nowrap"
+                                    @click="viewTicket(ticket.id)"
+                                >
                                     {{ ticket.updatedAt }}
                                 </td>
 

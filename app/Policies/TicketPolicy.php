@@ -58,11 +58,10 @@ class TicketPolicy
             return true;
         }
 
-        // Support Staff: Must be the assignee (even if they have tickets.update)
-        // We defer to the assignee check below.
-        // The global 'tickets.update' permission is NO LONGER sufficient for updating specific tickets.
-        // It serves as a base capability, but 'Claim to Act' requires assignment.
-
+        // Users with tickets.update permission can update any ticket
+        if ($user->hasPermissionTo('tickets.update')) {
+            return true;
+        }
 
         // Can update own tickets
         if ($user->hasPermissionTo('tickets.update_own')) {

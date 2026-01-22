@@ -238,6 +238,57 @@ interface ReporterTicket {
 const reporterTickets = ref<ReporterTicket[]>([]);
 const isLoadingReporterTickets = ref(false);
 
+// Inline tag management
+const showTagInput = ref(false);
+const newTagValue = ref("");
+const isSavingTag = ref(false);
+
+async function addTag() {
+    if (!newTagValue.value.trim() || !ticket.value) return;
+
+    const tag = newTagValue.value.trim();
+    if (ticket.value.tags.includes(tag)) {
+        toast.error("Tag already exists");
+        return;
+    }
+
+    isSavingTag.value = true;
+    try {
+        const updatedTags = [...ticket.value.tags, tag];
+        await api.put(`/api/tickets/${ticketId.value}`, {
+            tags: updatedTags,
+            reason: `Added tag: ${tag}`,
+        });
+        ticket.value.tags = updatedTags;
+        newTagValue.value = "";
+        showTagInput.value = false;
+        toast.success("Tag added");
+    } catch (error) {
+        toast.error("Failed to add tag");
+    } finally {
+        isSavingTag.value = false;
+    }
+}
+
+async function removeTag(tag: string) {
+    if (!ticket.value) return;
+
+    isSavingTag.value = true;
+    try {
+        const updatedTags = ticket.value.tags.filter((t) => t !== tag);
+        await api.put(`/api/tickets/${ticketId.value}`, {
+            tags: updatedTags,
+            reason: `Removed tag: ${tag}`,
+        });
+        ticket.value.tags = updatedTags;
+        toast.success("Tag removed");
+    } catch (error) {
+        toast.error("Failed to remove tag");
+    } finally {
+        isSavingTag.value = false;
+    }
+}
+
 onMounted(() => {
     fetchTicket();
 });
@@ -321,7 +372,7 @@ async function fetchTicket() {
 
         isFollowing.value = data.is_following || false;
         canViewInternalNotes.value = data.can_view_internal_notes || false;
-        
+
         // Fetch other tickets by this reporter
         fetchReporterTickets();
     } catch (error: any) {
@@ -338,18 +389,18 @@ async function fetchTicket() {
 // Fetch other tickets by the same reporter
 async function fetchReporterTickets() {
     if (!ticket.value?.reporter?.id) return;
-    
+
     isLoadingReporterTickets.value = true;
     try {
         // Fetch tickets by this reporter, excluding current ticket
-        const response = await api.get('/api/tickets', {
+        const response = await api.get("/api/tickets", {
             params: {
                 reporter_id: ticket.value.reporter.id,
                 exclude: ticketId.value,
                 per_page: 5,
-            }
+            },
         });
-        
+
         reporterTickets.value = (response.data.data || []).map((t: any) => ({
             id: t.public_id,
             displayId: t.display_id,
@@ -359,7 +410,7 @@ async function fetchReporterTickets() {
             createdAt: t.created_at,
         }));
     } catch (error) {
-        console.error('Failed to fetch reporter tickets:', error);
+        console.error("Failed to fetch reporter tickets:", error);
         reporterTickets.value = [];
     } finally {
         isLoadingReporterTickets.value = false;
@@ -861,16 +912,15 @@ function openAssignModal() {
 async function fetchAssignableUsers() {
     try {
         isLoadingUsers.value = true;
-        // In a real app, you might want to filter by permissions or team
-        const response = await api.get("/api/users?per_page=100");
+        const response = await api.get("/api/tickets/assignable-users");
         assignableUsers.value = response.data.data.map((u: any) => ({
             value: u.id,
             label: u.name,
             image: u.avatar_thumb_url,
         }));
     } catch (error) {
-        console.error("Failed to fetch users:", error);
-        toast.error("Failed to load users");
+        console.error("Failed to fetch assignable users:", error);
+        toast.error("Failed to load assignable users");
     } finally {
         isLoadingUsers.value = false;
     }
@@ -2150,20 +2200,34 @@ function isVisualMedia(att: Attachment) {
 
                             <!-- Other Tickets by This User -->
                             <div
-                                v-if="reporterTickets.length > 0 || isLoadingReporterTickets"
+                                v-if="
+                                    reporterTickets.length > 0 ||
+                                    isLoadingReporterTickets
+                                "
                                 class="flex flex-col gap-2 pt-4 border-t border-[var(--border-default)]"
                             >
                                 <div class="flex items-center justify-between">
-                                    <span class="text-sm font-medium text-[var(--text-primary)]">
+                                    <span
+                                        class="text-sm font-medium text-[var(--text-primary)]"
+                                    >
                                         Other Tickets by This User
                                     </span>
-                                    <Badge v-if="!isLoadingReporterTickets" variant="secondary" size="xs">
+                                    <Badge
+                                        v-if="!isLoadingReporterTickets"
+                                        variant="secondary"
+                                        size="xs"
+                                    >
                                         {{ reporterTickets.length }}
                                     </Badge>
                                 </div>
 
-                                <div v-if="isLoadingReporterTickets" class="flex justify-center py-2">
-                                    <Loader2 class="h-4 w-4 animate-spin text-[var(--text-muted)]" />
+                                <div
+                                    v-if="isLoadingReporterTickets"
+                                    class="flex justify-center py-2"
+                                >
+                                    <Loader2
+                                        class="h-4 w-4 animate-spin text-[var(--text-muted)]"
+                                    />
                                 </div>
 
                                 <div v-else class="space-y-2">
@@ -2173,22 +2237,48 @@ function isVisualMedia(att: Attachment) {
                                         :to="`/tickets/${rTicket.id}`"
                                         class="block p-2 rounded-lg bg-[var(--surface-secondary)] hover:bg-[var(--surface-tertiary)] transition-colors"
                                     >
-                                        <div class="flex items-center justify-between mb-1">
-                                            <span class="text-xs text-[var(--text-muted)] font-mono">
+                                        <div
+                                            class="flex items-center justify-between mb-1"
+                                        >
+                                            <span
+                                                class="text-xs text-[var(--text-muted)] font-mono"
+                                            >
                                                 {{ rTicket.displayId }}
                                             </span>
                                             <Badge
-                                                :variant="getStatusConfig(rTicket.status?.value || 'open').variant"
+                                                :variant="
+                                                    getStatusConfig(
+                                                        rTicket.status?.value ||
+                                                            'open',
+                                                    ).variant
+                                                "
                                                 size="xs"
                                             >
-                                                {{ rTicket.status?.label || 'Open' }}
+                                                {{
+                                                    rTicket.status?.label ||
+                                                    "Open"
+                                                }}
                                             </Badge>
                                         </div>
-                                        <p class="text-sm text-[var(--text-primary)] line-clamp-1">
+                                        <p
+                                            class="text-sm text-[var(--text-primary)] line-clamp-1"
+                                        >
                                             {{ rTicket.title }}
                                         </p>
                                     </router-link>
                                 </div>
+
+                                <!-- View All Link -->
+                                <router-link
+                                    v-if="
+                                        ticket.reporter &&
+                                        reporterTickets.length > 0
+                                    "
+                                    :to="`/tickets?reporter_id=${ticket.reporter.id}`"
+                                    class="text-xs text-[var(--interactive-primary)] hover:underline mt-2 inline-block"
+                                >
+                                    View all tickets by this user →
+                                </router-link>
                             </div>
 
                             <!-- Hierarchy -->
@@ -2350,10 +2440,43 @@ function isVisualMedia(att: Attachment) {
                             >
                                 Tags
                             </h2>
-                            <Button variant="ghost" size="icon" class="h-7 w-7">
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                class="h-7 w-7"
+                                @click="showTagInput = !showTagInput"
+                                title="Add Tag"
+                                :disabled="isSavingTag"
+                            >
                                 <Plus class="h-4 w-4" />
                             </Button>
                         </div>
+
+                        <!-- Inline Tag Input -->
+                        <div v-if="showTagInput" class="mb-3">
+                            <div class="flex gap-2">
+                                <input
+                                    v-model="newTagValue"
+                                    type="text"
+                                    class="flex-1 px-3 py-1.5 text-sm rounded-lg border border-[var(--border-default)] bg-[var(--surface-primary)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--interactive-primary)]/50"
+                                    placeholder="Enter tag..."
+                                    @keyup.enter="addTag"
+                                    @keyup.escape="
+                                        showTagInput = false;
+                                        newTagValue = '';
+                                    "
+                                />
+                                <Button
+                                    size="sm"
+                                    @click="addTag"
+                                    :loading="isSavingTag"
+                                    :disabled="!newTagValue.trim()"
+                                >
+                                    Add
+                                </Button>
+                            </div>
+                        </div>
+
                         <div
                             v-if="ticket.tags.length"
                             class="flex flex-wrap gap-2"
@@ -2365,13 +2488,18 @@ function isVisualMedia(att: Attachment) {
                             >
                                 {{ tag }}
                                 <button
+                                    @click="removeTag(tag)"
                                     class="opacity-0 group-hover:opacity-100 hover:text-[var(--color-error)] transition-all"
+                                    :disabled="isSavingTag"
                                 >
                                     <X class="h-3 w-3" />
                                 </button>
                             </span>
                         </div>
-                        <p v-else class="text-sm text-[var(--text-muted)]">
+                        <p
+                            v-else-if="!showTagInput"
+                            class="text-sm text-[var(--text-muted)]"
+                        >
                             No tags
                         </p>
                     </Card>

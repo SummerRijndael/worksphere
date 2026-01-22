@@ -198,6 +198,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce'])->group(functi
 
     Route::get('tickets/stats', [\App\Http\Controllers\Api\TicketController::class, 'stats']);
     Route::get('tickets/search-linkable', [\App\Http\Controllers\Api\TicketController::class, 'searchLinkable']);
+    Route::get('tickets/assignable-users', [\App\Http\Controllers\Api\TicketController::class, 'assignableUsers']);
     Route::post('tickets/archive', [\App\Http\Controllers\Api\TicketController::class, 'bulkArchive']); // Add bulk archive route explicitly if not present
     Route::apiResource('tickets', \App\Http\Controllers\Api\TicketController::class);
 
