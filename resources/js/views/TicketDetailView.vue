@@ -226,6 +226,18 @@ const showDeleteAttachmentModal = ref(false);
 const attachmentToDelete = ref<string | null>(null);
 const isDeletingAttachment = ref(false);
 
+// Reporter's other tickets state
+interface ReporterTicket {
+    id: string;
+    displayId: string;
+    title: string;
+    status: { label: string; value: string };
+    priority: { label: string; value: string };
+    createdAt: string;
+}
+const reporterTickets = ref<ReporterTicket[]>([]);
+const isLoadingReporterTickets = ref(false);
+
 onMounted(() => {
     fetchTicket();
 });
@@ -309,6 +321,9 @@ async function fetchTicket() {
 
         isFollowing.value = data.is_following || false;
         canViewInternalNotes.value = data.can_view_internal_notes || false;
+        
+        // Fetch other tickets by this reporter
+        fetchReporterTickets();
     } catch (error: any) {
         console.error("Failed to fetch ticket:", error);
         loadError.value =
@@ -317,6 +332,37 @@ async function fetchTicket() {
                 : "Failed to load ticket. Please try again.";
     } finally {
         isLoading.value = false;
+    }
+}
+
+// Fetch other tickets by the same reporter
+async function fetchReporterTickets() {
+    if (!ticket.value?.reporter?.id) return;
+    
+    isLoadingReporterTickets.value = true;
+    try {
+        // Fetch tickets by this reporter, excluding current ticket
+        const response = await api.get('/api/tickets', {
+            params: {
+                reporter_id: ticket.value.reporter.id,
+                exclude: ticketId.value,
+                per_page: 5,
+            }
+        });
+        
+        reporterTickets.value = (response.data.data || []).map((t: any) => ({
+            id: t.public_id,
+            displayId: t.display_id,
+            title: t.title,
+            status: t.status,
+            priority: t.priority,
+            createdAt: t.created_at,
+        }));
+    } catch (error) {
+        console.error('Failed to fetch reporter tickets:', error);
+        reporterTickets.value = [];
+    } finally {
+        isLoadingReporterTickets.value = false;
     }
 }
 
@@ -2099,6 +2145,49 @@ function isVisualMedia(att: Attachment) {
                                     >
                                         {{ ticket.reporter?.name || "Unknown" }}
                                     </span>
+                                </div>
+                            </div>
+
+                            <!-- Other Tickets by This User -->
+                            <div
+                                v-if="reporterTickets.length > 0 || isLoadingReporterTickets"
+                                class="flex flex-col gap-2 pt-4 border-t border-[var(--border-default)]"
+                            >
+                                <div class="flex items-center justify-between">
+                                    <span class="text-sm font-medium text-[var(--text-primary)]">
+                                        Other Tickets by This User
+                                    </span>
+                                    <Badge v-if="!isLoadingReporterTickets" variant="secondary" size="xs">
+                                        {{ reporterTickets.length }}
+                                    </Badge>
+                                </div>
+
+                                <div v-if="isLoadingReporterTickets" class="flex justify-center py-2">
+                                    <Loader2 class="h-4 w-4 animate-spin text-[var(--text-muted)]" />
+                                </div>
+
+                                <div v-else class="space-y-2">
+                                    <router-link
+                                        v-for="rTicket in reporterTickets"
+                                        :key="rTicket.id"
+                                        :to="`/tickets/${rTicket.id}`"
+                                        class="block p-2 rounded-lg bg-[var(--surface-secondary)] hover:bg-[var(--surface-tertiary)] transition-colors"
+                                    >
+                                        <div class="flex items-center justify-between mb-1">
+                                            <span class="text-xs text-[var(--text-muted)] font-mono">
+                                                {{ rTicket.displayId }}
+                                            </span>
+                                            <Badge
+                                                :variant="getStatusConfig(rTicket.status?.value || 'open').variant"
+                                                size="xs"
+                                            >
+                                                {{ rTicket.status?.label || 'Open' }}
+                                            </Badge>
+                                        </div>
+                                        <p class="text-sm text-[var(--text-primary)] line-clamp-1">
+                                            {{ rTicket.title }}
+                                        </p>
+                                    </router-link>
                                 </div>
                             </div>
 

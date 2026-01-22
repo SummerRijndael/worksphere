@@ -127,6 +127,11 @@ class TicketService implements TicketServiceContract
             $query->whereDate('created_at', '<=', $filters['date_to']);
         }
 
+        // Exclude specific ticket (by public_id)
+        if (isset($filters['exclude']) && $filters['exclude']) {
+            $query->where('public_id', '!=', $filters['exclude']);
+        }
+
         return $query;
     }
 

@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Contracts\TicketServiceContract;
+use App\Enums\AuditAction;
+use App\Enums\AuditCategory;
 use App\Enums\TicketStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\AuditLogResource;
@@ -12,12 +14,10 @@ use App\Http\Resources\TicketResource;
 use App\Models\AuditLog;
 use App\Models\Ticket;
 use App\Models\User;
+use App\Services\AuditService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
-use App\Services\AuditService;
-use App\Enums\AuditAction;
-use App\Enums\AuditCategory;
 use Illuminate\Support\Facades\Cache;
 
 class TicketController extends Controller
@@ -37,7 +37,7 @@ class TicketController extends Controller
         $filters = $request->only([
             'status', 'priority', 'type', 'assigned_to', 'reporter_id', 'team_id',
             'search', 'date_from', 'date_to', 'overdue', 'sla_breached',
-            'sort_by', 'sort_direction', 'archived',
+            'sort_by', 'sort_direction', 'archived', 'exclude',
         ]);
 
         // Resolve 'me' and public IDs to internal IDs
@@ -175,10 +175,10 @@ class TicketController extends Controller
         $cacheKey = "ticket_viewed:{$ticket->id}:{$user->id}";
 
         if (! Cache::has($cacheKey)) {
-             try {
+            try {
                 $this->auditService->log(
                     AuditAction::TicketViewed,
-                    AuditCategory::DataModification, 
+                    AuditCategory::DataModification,
                     $ticket,
                     $user,
                     null,
@@ -187,13 +187,13 @@ class TicketController extends Controller
                 );
                 // Cache for 1 hour to prevent flooding
                 Cache::put($cacheKey, true, now()->addHour());
-             } catch (\Exception $e) {
-                 // Silently fail logging to not disrupt the user experience
-             }
+            } catch (\Exception $e) {
+                // Silently fail logging to not disrupt the user experience
+            }
         }
 
         $ticket->load(['reporter', 'assignee', 'team', 'comments.author', 'parent', 'children']);
-        
+
         if ($request->user()->can('viewFollowers', $ticket)) {
             $ticket->load('followers');
         }
@@ -239,8 +239,8 @@ class TicketController extends Controller
         }
 
         // Sanitize 'tags' if user doesn't have permission to update (edit tags)
-        // Actually 'update' policy is for the whole ticket. 
-        // If user has 'tickets.update', they can edit everything. 
+        // Actually 'update' policy is for the whole ticket.
+        // If user has 'tickets.update', they can edit everything.
         // If user is Owner (view_own/update_own) but NOT 'tickets.update' (staff), they shouldn't edit tags.
         // We'll check for the specific permission 'tickets.update' or admin.
         if (isset($validated['tags']) && ! ($request->user()->hasPermissionTo('tickets.update') || $request->user()->hasRole('administrator'))) {

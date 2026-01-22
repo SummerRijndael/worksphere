@@ -1002,6 +1002,12 @@ function viewTicket(ticketId) {
                                     scope="col"
                                     class="px-6 py-3 text-left text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider"
                                 >
+                                    Submitted By
+                                </th>
+                                <th
+                                    scope="col"
+                                    class="px-6 py-3 text-left text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider"
+                                >
                                     Assigned To
                                 </th>
                                 <th
@@ -1153,6 +1159,28 @@ function viewTicket(ticketId) {
                                             ).label
                                         }}
                                     </Badge>
+                                </td>
+
+                                <!-- Submitted By (Reporter) -->
+                                <td class="px-6 py-4" @click="viewTicket(ticket.id)">
+                                    <div
+                                        class="flex items-center gap-2"
+                                        :title="ticket.reporter?.name || 'Unknown'"
+                                    >
+                                        <Avatar
+                                            v-if="ticket.reporter"
+                                            :fallback="ticket.reporter.initials"
+                                            :src="ticket.reporter?.avatar_url"
+                                            size="xs"
+                                        />
+                                        <User
+                                            v-else
+                                            class="h-6 w-6 p-1 rounded-full bg-[var(--surface-tertiary)] text-[var(--text-muted)]"
+                                        />
+                                        <span class="text-sm text-[var(--text-secondary)] truncate max-w-[120px]">{{
+                                            ticket.reporter?.name || 'Unknown'
+                                        }}</span>
+                                    </div>
                                 </td>
 
                                 <!-- Assigned To -->
