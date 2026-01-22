@@ -70,7 +70,7 @@ class TicketNotification extends Notification implements ShouldBroadcast, Should
             ->greeting('Hello '.$notifiable->name.'!')
             ->line($this->getMessage())
             ->line('**Ticket:** '.$this->ticket->ticket_number.' - '.$this->ticket->title)
-            ->line('**Status:** '.ucfirst($this->ticket->status->value))
+            ->line('**Status:** '.$this->ticket->status->label())
             ->line('**Priority:** '.ucfirst($this->ticket->priority->value))
             ->action('View Ticket', $actionUrl)
             ->line('Thank you for using '.config('app.name').'!');
@@ -93,8 +93,8 @@ class TicketNotification extends Notification implements ShouldBroadcast, Should
                 'ticket_id' => $this->ticket->public_id,
                 'ticket_number' => $this->ticket->ticket_number,
                 'ticket_title' => $this->ticket->title,
-                'status' => $this->ticket->status->value,
-                'priority' => $this->ticket->priority->value,
+                'status' => $this->ticket->status->label(),
+                'priority' => ucfirst($this->ticket->priority->value),
             ], $this->metadata),
         ];
     }

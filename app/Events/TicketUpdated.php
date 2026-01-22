@@ -33,6 +33,7 @@ class TicketUpdated implements ShouldBroadcastNow
     {
         return [
             new PrivateChannel('tickets.'.$this->publicId),
+            new PrivateChannel('tickets.queue'), // Also notify support staff queue
         ];
     }
 

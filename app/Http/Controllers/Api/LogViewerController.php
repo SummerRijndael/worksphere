@@ -13,7 +13,7 @@ class LogViewerController extends Controller
      */
     public function index()
     {
-        $logPath = storage_path('logs');
+        $logPath = storage_path('app/private/sys/logs');
         $files = File::glob($logPath.'/*.log');
 
         $logs = [];
@@ -43,7 +43,7 @@ class LogViewerController extends Controller
             return response()->json(['message' => 'File parameter is required'], 400);
         }
 
-        $path = storage_path('logs/'.$filename);
+        $path = storage_path('app/private/sys/logs/'.$filename);
 
         if (! File::exists($path)) {
             return response()->json(['message' => 'Log file not found'], 404);
@@ -139,7 +139,7 @@ class LogViewerController extends Controller
             abort(400, 'File parameter is required');
         }
 
-        $path = storage_path('logs/'.$filename);
+        $path = storage_path('app/private/sys/logs/'.$filename);
         if (! File::exists($path)) {
             abort(404);
         }

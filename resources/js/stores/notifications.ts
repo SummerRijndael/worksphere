@@ -177,6 +177,20 @@ export const useNotificationsStore = defineStore('notifications', () => {
                             }
                         }
                     });
+                })
+                .listen('.ticket.updated', (event: any) => {
+                    console.log('[Notifications] Ticket updated:', event);
+                    toast('🔄 Ticket Updated', {
+                        description: `${event.title} - Status: ${event.status}`,
+                        action: {
+                            label: 'View',
+                            onClick: () => {
+                                import('@/router').then(({ default: router }) => {
+                                    router.push(`/tickets/${event.public_id}`);
+                                });
+                            }
+                        }
+                    });
                 });
 
             console.debug('[Notifications] Listening on tickets.queue');
