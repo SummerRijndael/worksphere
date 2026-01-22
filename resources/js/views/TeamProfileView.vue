@@ -83,9 +83,7 @@ const isTeamAdmin = computed(() => {
     const membership = members.value.find(
         (m) => m.public_id === authStore.user?.public_id,
     );
-    return ["team_lead", "subject_matter_expert"].includes(
-        membership?.role,
-    );
+    return ["team_lead", "subject_matter_expert"].includes(membership?.role);
 });
 
 async function fetchCalendarEvents(start, end) {
@@ -831,7 +829,9 @@ watch(team, (newTeam) => {
         newTeam &&
         (authStore.user?.public_id === newTeam.owner?.public_id ||
             members.value.find((m) => m.public_id === authStore.user?.public_id)
-                ?.pivot?.role === "subject_matter_expert" || members.value.find((m) => m.public_id === authStore.user?.public_id)?.pivot?.role === "team_lead")
+                ?.pivot?.role === "subject_matter_expert" ||
+            members.value.find((m) => m.public_id === authStore.user?.public_id)
+                ?.pivot?.role === "team_lead")
     ) {
         fetchPendingInvites();
     }
@@ -878,9 +878,7 @@ const canRemoveMember = (member) => {
     // Admin can remove members, but not other admins or owner
     if (
         isCurrentUserAdmin &&
-        !["team_lead", "subject_matter_expert"].includes(
-            member.pivot?.role,
-        )
+        !["team_lead", "subject_matter_expert"].includes(member.pivot?.role)
     ) {
         return true;
     }
@@ -906,8 +904,10 @@ const canRemoveMember = (member) => {
                     <div
                         class="flex flex-col md:flex-row md:items-center md:justify-between gap-6"
                     >
-                        <div class="flex items-center gap-6">
-                            <div class="relative group">
+                        <div
+                            class="flex flex-col sm:flex-row items-center sm:items-start gap-6 text-center sm:text-left"
+                        >
+                            <div class="relative group shrink-0">
                                 <Avatar
                                     :src="team.avatar_url"
                                     :alt="team.name"
@@ -949,7 +949,7 @@ const canRemoveMember = (member) => {
                             </div>
                             <div class="space-y-2">
                                 <h1
-                                    class="text-3xl font-bold text-[var(--text-primary)]"
+                                    class="text-2xl sm:text-3xl font-bold text-[var(--text-primary)]"
                                 >
                                     {{ team.name }}
                                 </h1>
@@ -959,7 +959,7 @@ const canRemoveMember = (member) => {
                                     {{ team.description }}
                                 </p>
                                 <div
-                                    class="flex items-center gap-4 text-sm text-[var(--text-muted)]"
+                                    class="flex flex-wrap items-center justify-center sm:justify-start gap-4 text-sm text-[var(--text-muted)]"
                                 >
                                     <div class="flex items-center gap-1.5">
                                         <Users class="h-4 w-4" />
@@ -1525,8 +1525,7 @@ const canRemoveMember = (member) => {
                                         <div
                                             v-if="
                                                 isTeamAdmin &&
-                                                member.role !==
-                                                    'team_lead' &&
+                                                member.role !== 'team_lead' &&
                                                 member.public_id !==
                                                     authStore.user?.public_id
                                             "
@@ -1546,10 +1545,14 @@ const canRemoveMember = (member) => {
                                                 <option value="operator">
                                                     Operator
                                                 </option>
-                                                <option value="quality_assessor">
+                                                <option
+                                                    value="quality_assessor"
+                                                >
                                                     QA
                                                 </option>
-                                                <option value="subject_matter_expert">
+                                                <option
+                                                    value="subject_matter_expert"
+                                                >
                                                     SME
                                                 </option>
                                                 <option value="team_lead">
@@ -1566,7 +1569,12 @@ const canRemoveMember = (member) => {
                                                     : 'bg-gray-100 text-gray-800'
                                             "
                                         >
-                                            {{ member.role?.replace('_', ' ') || "operator" }}
+                                            {{
+                                                member.role?.replace(
+                                                    "_",
+                                                    " ",
+                                                ) || "operator"
+                                            }}
                                         </span>
                                     </td>
                                     <td
@@ -1574,9 +1582,7 @@ const canRemoveMember = (member) => {
                                     >
                                         {{
                                             member.joined_at
-                                                ? formatDate(
-                                                      member.joined_at,
-                                                  )
+                                                ? formatDate(member.joined_at)
                                                 : "N/A"
                                         }}
                                     </td>

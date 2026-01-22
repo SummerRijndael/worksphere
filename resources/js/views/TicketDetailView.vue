@@ -2454,11 +2454,11 @@ function isVisualMedia(att: Attachment) {
 
                         <!-- Inline Tag Input -->
                         <div v-if="showTagInput" class="mb-3">
-                            <div class="flex gap-2">
+                            <div class="flex flex-col sm:flex-row gap-2">
                                 <input
                                     v-model="newTagValue"
                                     type="text"
-                                    class="flex-1 px-3 py-1.5 text-sm rounded-lg border border-[var(--border-default)] bg-[var(--surface-primary)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--interactive-primary)]/50"
+                                    class="w-full px-3 py-1.5 text-sm rounded-lg border border-[var(--border-default)] bg-[var(--surface-primary)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--interactive-primary)]/50"
                                     placeholder="Enter tag..."
                                     @keyup.enter="addTag"
                                     @keyup.escape="
@@ -2468,6 +2468,7 @@ function isVisualMedia(att: Attachment) {
                                 />
                                 <Button
                                     size="sm"
+                                    class="w-full sm:w-auto shrink-0"
                                     @click="addTag"
                                     :loading="isSavingTag"
                                     :disabled="!newTagValue.trim()"
