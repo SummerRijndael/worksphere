@@ -1,24 +1,21 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from "vue";
+import { ref, onMounted } from "vue";
 import { RouterLink } from "vue-router";
 import { Button, Card, PageLoader } from "@/components/ui";
 import PublicLayout from "@/layouts/PublicLayout.vue";
 import { animate, stagger } from "animejs";
-import useRecaptcha from "@/composables/useRecaptcha";
-import axios from "axios";
 import {
-    FolderKanban,
+    LayoutGrid,
     Users,
     BarChart3,
-    Shield,
-    Zap,
-    Clock,
-    Check,
-    Star,
-    Mail,
-    MapPin,
-    Phone,
+    ShieldCheck,
+    Repeat,
     ArrowRight,
+    Play,
+    CheckCircle2,
+    Globe,
+    Zap,
+    Star,
 } from "lucide-vue-next";
 import { appConfig } from "@/config/app";
 
@@ -26,950 +23,829 @@ const isLoading = ref(true);
 
 // Animation refs
 const heroRef = ref<HTMLElement | null>(null);
-const servicesRef = ref<HTMLElement | null>(null);
+const logoRef = ref<HTMLElement | null>(null);
+const solutionsRef = ref<HTMLElement | null>(null);
 const pricingRef = ref<HTMLElement | null>(null);
 const reviewsRef = ref<HTMLElement | null>(null);
-const contactRef = ref<HTMLElement | null>(null);
+const scaleRef = ref<HTMLElement | null>(null);
 const ctaRef = ref<HTMLElement | null>(null);
 
-// Store observers for cleanup
-const observers: IntersectionObserver[] = [];
-
-// Services data
-const services = [
+const features = [
     {
-        icon: FolderKanban,
-        title: "Project Management",
+        title: "Unified Workspace",
         description:
-            "Organize and track projects with intuitive boards, timelines, and milestones.",
+            "Bring all your tools into one place. No more switching apps.",
+        icon: LayoutGrid,
     },
     {
+        title: "Real-time Collaboration",
+        description: "Work together with your team in real-time, anywhere.",
         icon: Users,
-        title: "Team Collaboration",
-        description:
-            "Work together seamlessly with real-time updates and shared workspaces.",
     },
     {
+        title: "Advanced Analytics",
+        description:
+            "Get deep insights into your team's performance with generated reports.",
         icon: BarChart3,
-        title: "Analytics & Insights",
-        description:
-            "Make data-driven decisions with comprehensive reporting and analytics.",
     },
     {
-        icon: Shield,
         title: "Enterprise Security",
         description:
-            "Bank-grade security with SSO, 2FA, and role-based access controls.",
-    },
-    {
-        icon: Zap,
-        title: "Automation",
-        description:
-            "Automate repetitive tasks and workflows to boost productivity.",
-    },
-    {
-        icon: Clock,
-        title: "Time Tracking",
-        description:
-            "Track time spent on tasks and generate detailed timesheets.",
+            "Bank-grade security standards to keep your data safe and compliant.",
+        icon: ShieldCheck,
     },
 ];
 
-// Pricing tiers
-const pricingTiers = [
+const plans = [
     {
         name: "Starter",
-        price: "0",
-        period: "forever",
-        description: "Perfect for individuals and small teams getting started.",
+        price: "$0",
+        description: "Perfect for small teams getting started.",
         features: [
-            "Up to 5 team members",
-            "10 projects",
-            "Basic analytics",
-            "Email support",
-            "5GB storage",
+            "Up to 5 users",
+            "Basic Analytics",
+            "Unlimited Projects",
+            "Community Support",
         ],
-        cta: "Get Started Free",
-        popular: false,
+        highlight: false,
     },
     {
-        name: "Professional",
-        price: "29",
-        period: "per user/month",
-        description: "For growing teams that need more power and flexibility.",
+        name: "Pro",
+        price: "$29",
+        description: "For growing teams that need more power.",
         features: [
-            "Unlimited team members",
-            "Unlimited projects",
-            "Advanced analytics",
-            "Priority support",
-            "100GB storage",
-            "Custom workflows",
-            "API access",
+            "Up to 20 users",
+            "Advanced Analytics",
+            "Priority Support",
+            "Custom Workflows",
+            "API Access",
         ],
-        cta: "Start Free Trial",
-        popular: true,
+        highlight: true,
     },
     {
         name: "Enterprise",
         price: "Custom",
-        period: "contact us",
-        description: "For large organizations with custom requirements.",
+        description: "Scalable solutions for large organizations.",
         features: [
-            "Everything in Professional",
-            "Dedicated account manager",
-            "Custom integrations",
-            "On-premise deployment",
-            "Unlimited storage",
-            "SLA guarantee",
-            "24/7 phone support",
+            "Unlimited users",
+            "Dudicated Success Manager",
+            "SAML SSO",
+            "Audit Logs",
+            "SLA Guarantee",
         ],
-        cta: "Contact Sales",
-        popular: false,
+        highlight: false,
     },
 ];
 
-// Testimonials
-const testimonials = [
+const reviews = [
     {
-        quote: `${appConfig.name} transformed how our team works. We've seen a 40% increase in productivity since switching.`,
-        author: "Sarah Chen",
-        role: "Engineering Manager",
-        company: "TechFlow Inc.",
+        content:
+            "WorkSphere has completely transformed how we manage our projects. The real-time collaboration features are a game changer.",
+        author: "Sarah J.",
+        role: "Product Manager at TechFlow",
+        avatar: "SJ",
     },
     {
-        quote: "The best project management tool we've ever used. The interface is intuitive and the features are powerful.",
-        author: "Michael Rodriguez",
-        role: "Product Director",
-        company: "Innovate Labs",
+        content:
+            "The best project management tool we've used. Simple, intuitive, and powerful. Highly recommended for any team.",
+        author: "Michael C.",
+        role: "CTO at StartupInc",
+        avatar: "MC",
     },
     {
-        quote: "Finally, a tool that our entire organization can use. From marketing to engineering, everyone loves it.",
-        author: "Emily Watson",
-        role: "COO",
-        company: "ScaleUp Ventures",
+        content:
+            "We moved from Jira and haven't looked back. The interface is beautiful and the performance is incredible.",
+        author: "Emily R.",
+        role: "Director of Ops at GlobalCorp",
+        avatar: "ER",
     },
 ];
 
-import RecaptchaChallengeModal from "@/components/common/RecaptchaChallengeModal.vue";
-
-// Contact form
-const { executeRecaptcha } = useRecaptcha();
-const showChallenge = ref(false);
-// pendingAction removed
-
-const contactForm = ref({
-    name: "",
-    email: "",
-    message: "",
-});
-const contactLoading = ref(false);
-
-async function handleContactSubmit() {
-    contactLoading.value = true;
-    try {
-        const token = await executeRecaptcha("contact");
-        if (!token) {
-            console.error("ReCAPTCHA failed");
-            return;
-        }
-
-        await axios.post("/api/contact", {
-            ...contactForm.value,
-            recaptcha_token: token,
-        });
-
-        // Reset form and show success (simple alert for now)
-        contactForm.value = { name: "", email: "", message: "" };
-        alert("Message sent successfully!");
-    } catch (error: any) {
-        if (error.response?.data?.requires_challenge) {
-            showChallenge.value = true;
-            return;
-        }
-        console.error("Contact submission failed:", error);
-        alert("Failed to send message.");
-    } finally {
-        contactLoading.value = false;
-    }
-}
-
-async function handleChallengeVerified(v2Token: string) {
-    showChallenge.value = false;
-    contactLoading.value = true;
-    try {
-        await axios.post("/api/contact", {
-            ...contactForm.value,
-            recaptcha_token: "fallback-initiated", // Backend will ignore this if v2 token is present
-            recaptcha_v2_token: v2Token,
-        });
-
-        contactForm.value = { name: "", email: "", message: "" };
-        alert("Message sent successfully!");
-    } catch (error) {
-        console.error("Contact submission failed (fallback):", error);
-        alert("Failed to send message.");
-    } finally {
-        contactLoading.value = false;
-    }
-}
-
-// Scroll animation helper
+// Re-using scroll animation logic from original file
 function createScrollAnimation(
-    element: HTMLElement,
-    target: string | Element | NodeListOf<Element> | null,
+    elements:
+        | HTMLElement
+        | NodeListOf<Element>
+        | HTMLCollection
+        | Element[]
+        | null,
     options: Record<string, unknown>,
-    threshold = 0.15
+    threshold = 0.2,
 ) {
-    if (!target) return;
+    if (!elements) return;
+
+    let targets: Element[] = [];
+    if (elements instanceof HTMLElement) {
+        targets = [elements];
+    } else {
+        targets = Array.from(elements as any);
+    }
+
+    if (targets.length === 0) return;
+
     const observer = new IntersectionObserver(
         (entries) => {
             entries.forEach((entry) => {
                 if (entry.isIntersecting) {
-                    animate(target, options);
+                    animate(entry.target, options);
                     observer.unobserve(entry.target);
                 }
             });
         },
-        { threshold, rootMargin: "0px 0px -50px 0px" }
+        { threshold },
     );
-    observer.observe(element);
-    observers.push(observer);
+
+    targets.forEach((el) => observer.observe(el));
 }
 
-// Initialize animations
 onMounted(() => {
-    // Dismiss loader after brief delay
     setTimeout(() => {
         isLoading.value = false;
-    }, 1200);
 
-    // Hero section - immediate animation
-    if (heroRef.value) {
-        const badge = heroRef.value.querySelector(".hero-badge");
-        const headline = heroRef.value.querySelector(".hero-headline");
-        const subtitle = heroRef.value.querySelector(".hero-subtitle");
-        const ctas = heroRef.value.querySelector(".hero-ctas");
-        const socialProof = heroRef.value.querySelector(".hero-social-proof");
-        const floats = heroRef.value.querySelectorAll(".hero-float");
-
-        // Animate badge
-        if (badge) {
-            animate(badge, {
-                opacity: [0, 1],
-                translateY: [30, 0],
-                duration: 800,
-                easing: "easeOutExpo",
-                delay: 200,
-            });
-        }
-
-        // Animate headline
-        if (headline) {
-            animate(headline, {
-                opacity: [0, 1],
-                translateY: [50, 0],
-                duration: 1000,
-                easing: "easeOutExpo",
-                delay: 400,
-            });
-        }
-
-        // Animate subtitle
-        if (subtitle) {
-            animate(subtitle, {
-                opacity: [0, 1],
-                translateY: [30, 0],
-                duration: 800,
-                easing: "easeOutExpo",
-                delay: 600,
-            });
-        }
-
-        // Animate CTAs
-        if (ctas) {
-            animate(ctas, {
-                opacity: [0, 1],
-                translateY: [30, 0],
-                duration: 800,
-                easing: "easeOutExpo",
-                delay: 800,
-            });
-        }
-
-        // Animate social proof
-        if (socialProof) {
-            animate(socialProof, {
+        // Hero Animation (Immediate)
+        if (heroRef.value) {
+            const elements = heroRef.value.querySelectorAll(".hero-animate");
+            animate(elements, {
                 opacity: [0, 1],
                 translateY: [20, 0],
+                delay: stagger(100),
                 duration: 800,
                 easing: "easeOutExpo",
-                delay: 1000,
             });
         }
 
-        // Floating animation for background shapes
-        if (floats.length > 0) {
-            animate(floats, {
-                translateY: [-15, 15],
-                duration: 3000,
-                easing: "easeInOutSine",
-                alternate: true,
-                loop: true,
-            });
-        }
-    }
-
-    // Services section
-    if (servicesRef.value) {
-        createScrollAnimation(
-            servicesRef.value,
-            servicesRef.value.querySelector(".section-header"),
-            {
+        // Logo Scroll Animation
+        if (logoRef.value) {
+            animate(logoRef.value.children, {
+                // Animate logos
                 opacity: [0, 1],
-                translateY: [40, 0],
-                duration: 800,
-                easing: "easeOutExpo",
-            }
-        );
-
-        createScrollAnimation(
-            servicesRef.value,
-            servicesRef.value.querySelectorAll(".service-card"),
-            {
-                opacity: [0, 1],
-                translateY: [60, 0],
-                scale: [0.9, 1],
-                duration: 800,
-                delay: stagger(100, { start: 200 }),
-                easing: "easeOutExpo",
-            }
-        );
-    }
-
-    // Pricing section
-    if (pricingRef.value) {
-        createScrollAnimation(
-            pricingRef.value,
-            pricingRef.value.querySelector(".section-header"),
-            {
-                opacity: [0, 1],
-                translateY: [40, 0],
-                duration: 800,
-                easing: "easeOutExpo",
-            }
-        );
-
-        createScrollAnimation(
-            pricingRef.value,
-            pricingRef.value.querySelectorAll(".pricing-card"),
-            {
-                opacity: [0, 1],
-                translateY: [80, 0],
-                scale: [0.85, 1],
+                translateY: [20, 0],
+                delay: stagger(100),
                 duration: 1000,
-                delay: stagger(150, { start: 200 }),
                 easing: "easeOutExpo",
-            }
-        );
-    }
+            });
+        }
 
-    // Reviews section
-    if (reviewsRef.value) {
-        createScrollAnimation(
-            reviewsRef.value,
-            reviewsRef.value.querySelector(".section-header"),
-            {
+        // Solutions/Features Scroll Animation
+        if (solutionsRef.value) {
+            const cards = solutionsRef.value.querySelectorAll(".feature-card");
+            const sectionTitle =
+                solutionsRef.value.querySelector(".section-title");
+
+            createScrollAnimation(sectionTitle as HTMLElement, {
                 opacity: [0, 1],
-                translateY: [40, 0],
+                translateY: [30, 0],
                 duration: 800,
                 easing: "easeOutExpo",
-            }
-        );
+            });
 
-        createScrollAnimation(
-            reviewsRef.value,
-            reviewsRef.value.querySelectorAll(".review-card"),
-            {
+            // Stagger animation needs special handling in scroll observer usually,
+            // but we can just use the createScrollAnimation independently or batch them.
+            // Simplified: Animate each card as it comes into view or batch them.
+            // Let's batch them for the stagger effect if the container is visible.
+            const observer = new IntersectionObserver(
+                (entries) => {
+                    if (entries[0].isIntersecting) {
+                        animate(cards, {
+                            opacity: [0, 1],
+                            translateY: [50, 0],
+                            delay: stagger(100),
+                            duration: 800,
+                            easing: "easeOutExpo",
+                        });
+                        observer.disconnect();
+                    }
+                },
+                { threshold: 0.2 },
+            );
+            observer.observe(solutionsRef.value);
+        }
+
+        // Pricing Animation
+        if (pricingRef.value) {
+            const title = pricingRef.value.querySelector(".pricing-title");
+            const cards = pricingRef.value.querySelectorAll(".pricing-card");
+
+            createScrollAnimation(title as HTMLElement, {
+                opacity: [0, 1],
+                translateY: [30, 0],
+                duration: 800,
+                easing: "easeOutExpo",
+            });
+
+            createScrollAnimation(cards, {
+                opacity: [0, 1],
+                translateY: [50, 0],
+                delay: stagger(100),
+                duration: 800,
+                easing: "easeOutExpo",
+            });
+        }
+
+        // Reviews Animation
+        if (reviewsRef.value) {
+            const title = reviewsRef.value.querySelector(".reviews-title");
+            const cards = reviewsRef.value.querySelectorAll(".review-card");
+
+            createScrollAnimation(title as HTMLElement, {
+                opacity: [0, 1],
+                translateY: [30, 0],
+                duration: 800,
+                easing: "easeOutExpo",
+            });
+
+            createScrollAnimation(cards, {
+                opacity: [0, 1],
+                translateY: [50, 0],
+                delay: stagger(100),
+                duration: 800,
+                easing: "easeOutExpo",
+            });
+        }
+
+        // Global Scale Animation
+        if (scaleRef.value) {
+            const content = scaleRef.value.querySelector(".scale-content");
+            const image = scaleRef.value.querySelector(".scale-image");
+
+            createScrollAnimation(content as HTMLElement, {
                 opacity: [0, 1],
                 translateX: [-50, 0],
-                duration: 900,
-                delay: stagger(120, { start: 200 }),
+                duration: 1000,
                 easing: "easeOutExpo",
-            }
-        );
-    }
-
-    // Contact section
-    if (contactRef.value) {
-        createScrollAnimation(
-            contactRef.value,
-            contactRef.value.querySelector(".contact-info"),
-            {
+            });
+            createScrollAnimation(image as HTMLElement, {
                 opacity: [0, 1],
-                translateX: [-60, 0],
-                duration: 900,
-                easing: "easeOutExpo",
-            }
-        );
-
-        createScrollAnimation(
-            contactRef.value,
-            contactRef.value.querySelector(".contact-form"),
-            {
-                opacity: [0, 1],
-                translateX: [60, 0],
-                duration: 900,
+                translateX: [50, 0],
+                duration: 1000,
                 delay: 200,
                 easing: "easeOutExpo",
-            }
-        );
-    }
+            });
+        }
 
-    // CTA section
-    if (ctaRef.value) {
-        createScrollAnimation(
-            ctaRef.value,
-            ctaRef.value.querySelectorAll(".cta-content > *"),
-            {
+        // CTA Animation
+        if (ctaRef.value) {
+            createScrollAnimation(ctaRef.value.children as any, {
                 opacity: [0, 1],
-                translateY: [40, 0],
+                translateY: [30, 0],
+                delay: stagger(100),
                 duration: 800,
-                delay: stagger(150),
                 easing: "easeOutExpo",
-            }
-        );
-    }
-});
-
-onUnmounted(() => {
-    observers.forEach((observer) => observer.disconnect());
+            });
+        }
+    }, 800);
 });
 </script>
 
 <template>
-    <!-- Page Loader -->
     <PageLoader :show="isLoading" />
 
     <PublicLayout>
         <!-- Hero Section -->
-        <section ref="heroRef" class="relative overflow-hidden pt-16">
-            <!-- Animated background elements - More vibrant & complex -->
-            <div class="absolute inset-0 bg-[var(--surface-primary)]">
-                <!-- Main gradient mesh -->
-                <div class="absolute top-0 inset-x-0 h-[600px] bg-gradient-to-b from-[var(--color-primary-50)]/50 to-transparent dark:from-[var(--color-primary-900)]/20 dark:to-transparent" />
-                
-                <!-- Floating orbs with better colors -->
+        <section
+            ref="heroRef"
+            class="relative pt-24 pb-32 overflow-hidden bg-[var(--color-landing-surface)] dark:bg-[var(--surface-primary)]"
+        >
+            <!-- Background Elements -->
+            <div class="absolute inset-0 pointer-events-none">
                 <div
-                    class="hero-float absolute top-[-10%] right-[-5%] w-[500px] h-[500px] bg-[var(--interactive-primary)]/20 rounded-full blur-[100px] dark:bg-[var(--interactive-primary)]/10"
-                />
-                <div
-                    class="hero-float absolute top-[20%] left-[-10%] w-[400px] h-[400px] bg-purple-500/20 rounded-full blur-[100px] dark:bg-purple-900/20"
-                    style="animation-delay: -2s"
-                />
+                    class="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full max-w-7xl"
+                >
+                    <div
+                        class="absolute top-20 right-0 w-[600px] h-[600px] bg-[var(--color-landing-secondary)] rounded-full blur-[120px] opacity-20 dark:opacity-10 animate-pulse-slow"
+                    ></div>
+                    <div
+                        class="absolute bottom-0 left-0 w-[500px] h-[500px] bg-[var(--color-landing-primary)] rounded-full blur-[100px] opacity-10 dark:opacity-5"
+                    ></div>
+                </div>
             </div>
 
             <div
-                class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 sm:py-32 lg:py-40 flex flex-col items-center text-center"
+                class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center z-10"
             >
-                <div class="max-w-4xl mx-auto flex flex-col items-center">
-                    <!-- Badge - Glassmorphism style -->
+                <!-- Trust Badge -->
+                <div class="flex justify-center">
                     <div
-                        class="hero-badge opacity-0 inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/50 dark:bg-white/5 backdrop-blur-md shadow-sm border border-[var(--border-default)] text-sm font-medium text-[var(--text-secondary)] mb-8 hover:bg-[var(--surface-elevated)] transition-colors cursor-default"
+                        class="hero-animate opacity-0 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/60 dark:bg-white/5 border border-[var(--color-neutral-200)] dark:border-white/10 backdrop-blur-sm mb-8 shadow-sm"
                     >
-                        <span class="flex h-2 w-2 rounded-full bg-green-500"></span>
-                        Trusted by 10,000+ teams worldwide
-                    </div>
-
-                    <!-- Headline - Better gradient and tight tracking -->
-                    <h1
-                        class="hero-headline opacity-0 text-5xl sm:text-6xl md:text-7xl font-bold text-[var(--text-primary)] tracking-tight mb-8 leading-[1.1]"
-                    >
-                        Manage Projects with
-                        <span class="text-transparent bg-clip-text bg-gradient-to-r from-[var(--interactive-primary)] to-purple-600 dark:to-purple-400">
-                            Clarity & Speed
+                        <span class="flex h-2 w-2 relative">
+                            <span
+                                class="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--color-landing-cta)] opacity-75"
+                            ></span>
+                            <span
+                                class="relative inline-flex rounded-full h-2 w-2 bg-[var(--color-landing-cta)]"
+                            ></span>
                         </span>
-                    </h1>
+                        <span
+                            class="text-sm font-medium text-[var(--text-secondary)] dark:text-[var(--text-secondary)]"
+                        >
+                            Trusted by 500+ Enterprise Teams
+                        </span>
+                    </div>
+                </div>
 
-                    <!-- Subtitle - Improved readability -->
-                    <p
-                        class="hero-subtitle opacity-0 text-xl text-[var(--text-secondary)] max-w-2xl mx-auto mb-12 leading-relaxed"
+                <!-- Headline -->
+                <h1
+                    class="hero-animate opacity-0 text-5xl md:text-7xl font-bold tracking-tight text-[var(--text-primary)] dark:text-white mb-8 font-landing leading-[1.1]"
+                >
+                    The Operating System for <br class="hidden md:block" />
+                    <span
+                        class="text-transparent bg-clip-text bg-gradient-to-r from-[var(--color-landing-primary)] to-[var(--color-landing-cta)]"
                     >
-                        {{ appConfig.name }} brings your team's work together in one shared
-                        space. Plan, track, and deliver projects of any size
-                        with powerful tools designed for modern teams.
-                    </p>
+                        Modern Work
+                    </span>
+                </h1>
 
-                    <!-- CTAs - Better shadows and hover effects -->
+                <!-- Subheadline -->
+                <p
+                    class="hero-animate opacity-0 text-xl text-[var(--text-secondary)] dark:text-[var(--text-muted)] max-w-2xl mx-auto mb-10 leading-relaxed font-landing"
+                >
+                    {{ appConfig.name }} unifies project management, team
+                    collaboration, and analytics into one intelligent platform.
+                    Stop juggling tools and start delivering.
+                </p>
+
+                <!-- CTAs -->
+                <div
+                    class="hero-animate opacity-0 flex flex-col sm:flex-row items-center justify-center gap-4 mb-20"
+                >
+                    <RouterLink to="/auth/login">
+                        <button
+                            class="btn btn-primary bg-[var(--color-landing-cta)] hover:bg-orange-600 text-white px-8 py-4 text-lg rounded-xl shadow-lg shadow-orange-500/20 hover:shadow-orange-500/30 transition-all hover:-translate-y-1 cursor-pointer"
+                        >
+                            Start Free Trial
+                            <ArrowRight class="w-5 h-5 ml-2" />
+                        </button>
+                    </RouterLink>
+
+                    <button
+                        class="btn btn-secondary bg-white dark:bg-white/10 text-[var(--text-primary)] dark:text-white border border-[var(--color-neutral-200)] dark:border-white/10 px-8 py-4 text-lg rounded-xl hover:bg-[var(--color-neutral-50)] dark:hover:bg-white/20 transition-all cursor-pointer"
+                    >
+                        <Play class="w-5 h-5 mr-2 fill-current" />
+                        Watch Demo
+                    </button>
+                </div>
+
+                <!-- Hero Image/Dashboard Preview -->
+                <div class="hero-animate opacity-0 relative mx-auto max-w-5xl">
                     <div
-                        class="hero-ctas opacity-0 flex flex-col sm:flex-row items-center justify-center gap-4 w-full sm:w-auto"
+                        class="relative rounded-2xl border border-[var(--color-neutral-200)] dark:border-white/10 bg-white/50 dark:bg-black/40 backdrop-blur-xl shadow-2xl overflow-hidden aspect-[16/9] group"
                     >
-                        <RouterLink to="/auth/login" class="w-full sm:w-auto">
-                            <Button
-                                size="lg"
-                                class="w-full sm:w-auto shadow-lg shadow-[var(--interactive-primary)]/25 px-8 h-12 text-base font-semibold transition-all hover:scale-105 active:scale-95"
-                            >
-                                Start for Free
-                                <ArrowRight
-                                    class="h-5 w-5 ml-2 transition-transform group-hover:translate-x-1"
-                                />
-                            </Button>
-                        </RouterLink>
-                        <a href="#services" class="w-full sm:w-auto">
-                            <Button variant="outline" size="lg" class="w-full sm:w-auto px-8 h-12 text-base bg-white/50 dark:bg-black/20 backdrop-blur-sm border-[var(--border-default)] hover:bg-[var(--surface-elevated)] active:scale-95 transition-all">
-                                Learn More
-                            </Button>
-                        </a>
+                        <div
+                            class="absolute inset-0 bg-gradient-to-t from-white/20 to-transparent dark:from-black/40 z-10 pointer-events-none"
+                        ></div>
+                        <!-- Placeholder for Dashboard Image -->
+                        <div
+                            class="w-full h-full bg-[var(--color-neutral-100)] dark:bg-[var(--surface-tertiary)] flex items-center justify-center text-[var(--text-muted)]"
+                        >
+                            <img
+                                src="/doc/screenshots/dashboard.png"
+                                alt="Dashboard Preview"
+                                class="w-full h-full object-cover object-top hover:scale-[1.01] transition-transform duration-700"
+                            />
+                        </div>
                     </div>
 
-                    <!-- Social proof - Refined spacing -->
+                    <!-- Floating Cards Decorations -->
                     <div
-                        class="hero-social-proof opacity-0 mt-16 flex flex-col sm:flex-row items-center justify-center gap-6 text-sm font-medium text-[var(--text-muted)]"
+                        class="absolute -right-12 top-20 p-4 bg-white dark:bg-[var(--surface-elevated)] rounded-xl shadow-xl border border-[var(--color-neutral-100)] dark:border-white/10 animate-bounce-slow hidden lg:block"
                     >
-                        <div class="flex items-center gap-2 px-4 py-2 rounded-full bg-[var(--surface-secondary)]/50 backdrop-blur-sm border border-transparent hover:border-[var(--border-default)] transition-all">
-                            <div class="flex pb-0.5">
-                                <Star
-                                    v-for="i in 5"
-                                    :key="i"
-                                    class="h-3.5 w-3.5 text-yellow-400 fill-current"
-                                />
+                        <div class="flex items-center gap-3">
+                            <div
+                                class="w-10 h-10 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center text-green-600 dark:text-green-400"
+                            >
+                                <CheckCircle2 class="w-6 h-6" />
                             </div>
-                            <span class="text-[var(--text-primary)]">4.9/5 rating</span>
+                            <div>
+                                <div
+                                    class="text-sm font-bold text-[var(--text-primary)] dark:text-white"
+                                >
+                                    Project Complete
+                                </div>
+                                <div class="text-xs text-[var(--text-muted)]">
+                                    Just now
+                                </div>
+                            </div>
                         </div>
-                        <div class="hidden sm:block w-1.5 h-1.5 rounded-full bg-[var(--border-default)]" />
-                        <span>No credit card required</span>
-                        <div class="hidden sm:block w-1.5 h-1.5 rounded-full bg-[var(--border-default)]" />
-                        <span>Free 14-day trial</span>
                     </div>
                 </div>
             </div>
         </section>
 
-        <!-- Services Section -->
+        <!-- Social Proof / Logos -->
+        <section
+            class="py-12 border-y border-[var(--color-neutral-100)] dark:border-white/5 bg-white/50 dark:bg-[var(--surface-secondary)]"
+        >
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8" ref="logoRef">
+                <p
+                    class="text-center text-sm font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-8"
+                >
+                    Powering next-gen companies
+                </p>
+                <div
+                    class="flex flex-wrap justify-center items-center gap-12 opacity-0"
+                >
+                    <!-- Simple Text Placeholders for Logos -->
+                    <span
+                        class="text-xl font-bold font-display text-[var(--text-tertiary)] hover:text-[var(--text-primary)] dark:hover:text-white transition-colors cursor-default"
+                        >Acme Corp</span
+                    >
+                    <span
+                        class="text-xl font-bold font-display text-[var(--text-tertiary)] hover:text-[var(--text-primary)] dark:hover:text-white transition-colors cursor-default"
+                        >GlobalBank</span
+                    >
+                    <span
+                        class="text-xl font-bold font-display text-[var(--text-tertiary)] hover:text-[var(--text-primary)] dark:hover:text-white transition-colors cursor-default"
+                        >TechFlow</span
+                    >
+                    <span
+                        class="text-xl font-bold font-display text-[var(--text-tertiary)] hover:text-[var(--text-primary)] dark:hover:text-white transition-colors cursor-default"
+                        >Innovate</span
+                    >
+                    <span
+                        class="text-xl font-bold font-display text-[var(--text-tertiary)] hover:text-[var(--text-primary)] dark:hover:text-white transition-colors cursor-default"
+                        >StarkInd</span
+                    >
+                </div>
+            </div>
+        </section>
+
+        <!-- Solutions / Features Grid -->
         <section
             id="services"
-            ref="servicesRef"
-            class="py-24 bg-[var(--surface-secondary)]"
+            ref="solutionsRef"
+            class="py-24 bg-white dark:bg-[var(--surface-primary)] relative scroll-mt-28"
         >
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <!-- Section header -->
                 <div
-                    class="section-header opacity-0 text-center max-w-3xl mx-auto mb-16"
+                    class="text-center max-w-3xl mx-auto mb-20 section-title opacity-0"
                 >
                     <h2
-                        class="text-3xl sm:text-4xl font-bold text-[var(--text-primary)] mb-4"
+                        class="text-4xl font-bold text-[var(--text-primary)] dark:text-white mb-6 font-landing"
                     >
-                        Everything You Need to Succeed
+                        Everything needed to run your <br />
+                        <span class="text-[var(--color-landing-primary)]"
+                            >digital empire</span
+                        >.
                     </h2>
-                    <p class="text-lg text-[var(--text-secondary)]">
-                        Powerful features designed to help your team work
-                        smarter, not harder.
+                    <p
+                        class="text-xl text-[var(--text-secondary)] dark:text-[var(--text-muted)]"
+                    >
+                        Replace your disconnected stack with one unified
+                        platform designed for speed and clarity.
                     </p>
                 </div>
 
-                <!-- Services grid -->
-                <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
                     <Card
-                        v-for="service in services"
-                        :key="service.title"
-                        padding="lg"
-                        hover
-                        class="service-card opacity-0 group"
+                        v-for="(feature, idx) in features"
+                        :key="idx"
+                        class="feature-card opacity-0 group hover:border-[var(--color-landing-primary)] transition-all duration-300 hover:shadow-lg cursor-pointer bg-[var(--surface-elevated)] dark:bg-[var(--surface-elevated)] dark:border-white/5"
                     >
-                        <div
-                            class="h-12 w-12 rounded-xl bg-gradient-to-br from-[var(--color-primary-500)] to-[var(--color-primary-600)] flex items-center justify-center mb-5 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300"
-                        >
-                            <component
-                                :is="service.icon"
-                                class="h-6 w-6 text-white"
-                            />
+                        <div class="p-6">
+                            <div
+                                class="w-12 h-12 rounded-lg bg-[var(--color-landing-surface)] dark:bg-[var(--color-landing-primary)]/10 flex items-center justify-center text-[var(--color-landing-primary)] mb-6 group-hover:scale-110 transition-transform"
+                            >
+                                <component :is="feature.icon" class="w-6 h-6" />
+                            </div>
+                            <h3
+                                class="text-xl font-bold text-[var(--text-primary)] dark:text-white mb-3 font-landing"
+                            >
+                                {{ feature.title }}
+                            </h3>
+                            <p
+                                class="text-[var(--text-secondary)] dark:text-[var(--text-secondary)] leading-relaxed"
+                            >
+                                {{ feature.description }}
+                            </p>
                         </div>
-                        <h3
-                            class="text-lg font-semibold text-[var(--text-primary)] mb-2"
-                        >
-                            {{ service.title }}
-                        </h3>
-                        <p class="text-[var(--text-secondary)]">
-                            {{ service.description }}
-                        </p>
                     </Card>
                 </div>
             </div>
         </section>
 
         <!-- Pricing Section -->
-        <section id="pricing" ref="pricingRef" class="py-24">
+        <section
+            id="pricing"
+            ref="pricingRef"
+            class="py-24 bg-[var(--surface-secondary)] dark:bg-[var(--surface-secondary)] relative border-t border-[var(--color-neutral-200)] dark:border-white/5 scroll-mt-28"
+        >
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <!-- Section header -->
                 <div
-                    class="section-header opacity-0 text-center max-w-3xl mx-auto mb-16"
+                    class="text-center max-w-3xl mx-auto mb-16 pricing-title opacity-0"
                 >
                     <h2
-                        class="text-3xl sm:text-4xl font-bold text-[var(--text-primary)] mb-4"
+                        class="text-4xl font-bold text-[var(--text-primary)] dark:text-white mb-6 font-landing"
                     >
-                        Simple, Transparent Pricing
+                        Simple pricing for
+                        <span class="text-[var(--color-landing-primary)]"
+                            >everyone</span
+                        >.
                     </h2>
-                    <p class="text-lg text-[var(--text-secondary)]">
-                        Choose the plan that's right for your team. All plans
-                        include a 14-day free trial.
+                    <p
+                        class="text-xl text-[var(--text-secondary)] dark:text-[var(--text-muted)]"
+                    >
+                        Start for free, scale as you grow. No hidden fees.
                     </p>
                 </div>
 
-                <!-- Pricing cards -->
-                <div class="grid lg:grid-cols-3 gap-8 max-w-5xl mx-auto">
-                    <Card
-                        v-for="tier in pricingTiers"
-                        :key="tier.name"
-                        padding="none"
-                        :class="[
-                            'pricing-card opacity-0 relative overflow-visible',
-                            tier.popular &&
-                                'ring-2 ring-[var(--interactive-primary)] lg:scale-105',
-                        ]"
+                <div class="grid md:grid-cols-3 gap-8">
+                    <div
+                        v-for="(plan, idx) in plans"
+                        :key="idx"
+                        class="pricing-card opacity-0 relative bg-white dark:bg-[var(--surface-elevated)] rounded-2xl p-8 border hover:border-[var(--color-landing-primary)] transition-all duration-300 shadow-sm hover:shadow-xl flex flex-col"
+                        :class="
+                            plan.highlight
+                                ? 'border-[var(--color-landing-primary)] shadow-md ring-1 ring-[var(--color-landing-primary)]'
+                                : 'border-[var(--color-neutral-200)] dark:border-white/10'
+                        "
                     >
-                        <!-- Popular badge -->
                         <div
-                            v-if="tier.popular"
-                            class="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full bg-[var(--interactive-primary)] text-white text-sm font-medium shadow-lg"
+                            v-if="plan.highlight"
+                            class="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-[var(--color-landing-primary)] text-white px-4 py-1 rounded-full text-sm font-bold shadow-lg"
                         >
                             Most Popular
                         </div>
-
-                        <div class="p-6 sm:p-8">
-                            <h3
-                                class="text-xl font-semibold text-[var(--text-primary)] mb-2"
+                        <h3
+                            class="text-2xl font-bold text-[var(--text-primary)] dark:text-white mb-2"
+                        >
+                            {{ plan.name }}
+                        </h3>
+                        <div
+                            class="text-4xl font-bold mb-4 font-landing dark:text-white"
+                        >
+                            {{ plan.price
+                            }}<span
+                                class="text-lg font-normal text-[var(--text-muted)]"
+                                >/mo</span
                             >
-                                {{ tier.name }}
-                            </h3>
-                            <p
-                                class="text-sm text-[var(--text-secondary)] mb-6"
-                            >
-                                {{ tier.description }}
-                            </p>
-
-                            <div class="mb-6">
-                                <span
-                                    class="text-4xl font-bold text-[var(--text-primary)]"
-                                >
-                                    {{ tier.price === "Custom" ? "" : "$"
-                                    }}{{ tier.price }}
-                                </span>
-                                <span class="text-[var(--text-muted)] ml-2">
-                                    {{ tier.period }}
-                                </span>
-                            </div>
-
-                            <RouterLink to="/auth/login">
-                                <Button
-                                    :variant="
-                                        tier.popular ? 'primary' : 'outline'
-                                    "
-                                    full-width
-                                    class="mb-6"
-                                >
-                                    {{ tier.cta }}
-                                </Button>
-                            </RouterLink>
-
-                            <ul class="space-y-3">
-                                <li
-                                    v-for="feature in tier.features"
-                                    :key="feature"
-                                    class="flex items-start gap-3"
-                                >
-                                    <Check
-                                        class="h-5 w-5 text-[var(--color-success)] shrink-0 mt-0.5"
-                                    />
-                                    <span
-                                        class="text-sm text-[var(--text-secondary)]"
-                                        >{{ feature }}</span
-                                    >
-                                </li>
-                            </ul>
                         </div>
-                    </Card>
+                        <p class="text-[var(--text-secondary)] mb-8">
+                            {{ plan.description }}
+                        </p>
+
+                        <ul class="space-y-4 mb-8 flex-1 w-full">
+                            <li
+                                v-for="feat in plan.features"
+                                :key="feat"
+                                class="flex items-center gap-3 text-[var(--text-secondary)] dark:text-gray-300"
+                            >
+                                <CheckCircle2
+                                    class="w-5 h-5 text-green-500 flex-shrink-0"
+                                />
+                                <span class="text-sm font-medium">{{
+                                    feat
+                                }}</span>
+                            </li>
+                        </ul>
+
+                        <button
+                            class="w-full py-3 rounded-xl font-bold transition-all"
+                            :class="
+                                plan.highlight
+                                    ? 'bg-[var(--color-landing-primary)] text-white hover:bg-violet-700 shadow-lg shadow-violet-500/20'
+                                    : 'bg-[var(--surface-secondary)] text-[var(--text-primary)] hover:bg-[var(--border-default)] dark:bg-white/5 dark:text-white dark:hover:bg-white/10'
+                            "
+                        >
+                            Choose {{ plan.name }}
+                        </button>
+                    </div>
                 </div>
             </div>
         </section>
 
-        <!-- Reviews Section -->
+        <!-- Reviews / Testimonials -->
         <section
             id="reviews"
             ref="reviewsRef"
-            class="py-24 bg-[var(--surface-secondary)]"
+            class="py-24 bg-white dark:bg-[var(--surface-primary)] scroll-mt-28"
         >
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <!-- Section header -->
                 <div
-                    class="section-header opacity-0 text-center max-w-3xl mx-auto mb-16"
+                    class="text-center max-w-3xl mx-auto mb-16 reviews-title opacity-0"
                 >
                     <h2
-                        class="text-3xl sm:text-4xl font-bold text-[var(--text-primary)] mb-4"
+                        class="text-4xl font-bold text-[var(--text-primary)] dark:text-white mb-6 font-landing"
                     >
-                        Loved by Teams Everywhere
+                        Loved by
+                        <span class="text-[var(--color-landing-primary)]"
+                            >builders</span
+                        >
+                        worldwide.
                     </h2>
-                    <p class="text-lg text-[var(--text-secondary)]">
-                        See what our customers have to say about {{ appConfig.name }}.
-                    </p>
                 </div>
 
-                <!-- Testimonials grid -->
-                <div class="grid md:grid-cols-3 gap-6">
-                    <Card
-                        v-for="testimonial in testimonials"
-                        :key="testimonial.author"
-                        padding="lg"
-                        class="review-card opacity-0 flex flex-col hover:shadow-xl transition-shadow duration-300"
+                <div class="grid md:grid-cols-3 gap-8">
+                    <div
+                        v-for="(review, idx) in reviews"
+                        :key="idx"
+                        class="review-card opacity-0 bg-[var(--surface-elevated)] p-8 rounded-2xl border border-[var(--color-neutral-100)] dark:border-white/5 shadow-sm hover:shadow-md transition-shadow"
                     >
-                        <!-- Stars -->
-                        <div class="flex gap-1 mb-4">
+                        <div class="flex gap-1 text-orange-400 mb-6">
                             <Star
                                 v-for="i in 5"
                                 :key="i"
-                                class="h-5 w-5 text-yellow-500 fill-current"
+                                class="w-5 h-5 fill-current"
                             />
                         </div>
-
-                        <!-- Quote -->
-                        <blockquote
-                            class="text-[var(--text-primary)] mb-6 flex-1"
+                        <p
+                            class="text-lg text-[var(--text-primary)] dark:text-gray-200 mb-6 italic leading-relaxed"
                         >
-                            "{{ testimonial.quote }}"
-                        </blockquote>
-
-                        <!-- Author -->
-                        <div class="flex items-center gap-3">
+                            "{{ review.content }}"
+                        </p>
+                        <div class="flex items-center gap-4">
                             <div
-                                class="h-10 w-10 rounded-full bg-gradient-to-br from-[var(--color-primary-400)] to-[var(--color-primary-600)] flex items-center justify-center text-white font-semibold"
+                                class="w-12 h-12 rounded-full bg-[var(--color-landing-secondary)] flex items-center justify-center text-[var(--text-primary)] font-bold text-lg"
                             >
-                                {{ testimonial.author.charAt(0) }}
+                                {{ review.avatar }}
                             </div>
                             <div>
-                                <p
-                                    class="font-medium text-[var(--text-primary)]"
-                                >
-                                    {{ testimonial.author }}
-                                </p>
-                                <p class="text-sm text-[var(--text-muted)]">
-                                    {{ testimonial.role }},
-                                    {{ testimonial.company }}
-                                </p>
-                            </div>
-                        </div>
-                    </Card>
-                </div>
-            </div>
-        </section>
-
-        <!-- Contact Section -->
-        <section id="contact" ref="contactRef" class="py-24">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="grid lg:grid-cols-2 gap-12 lg:gap-16">
-                    <!-- Contact info -->
-                    <div class="contact-info opacity-0">
-                        <h2
-                            class="text-3xl sm:text-4xl font-bold text-[var(--text-primary)] mb-4"
-                        >
-                            Get in Touch
-                        </h2>
-                        <p class="text-lg text-[var(--text-secondary)] mb-8">
-                            Have questions? We'd love to hear from you. Send us
-                            a message and we'll respond as soon as possible.
-                        </p>
-
-                        <div class="space-y-6">
-                            <div class="flex items-start gap-4 group">
                                 <div
-                                    class="h-10 w-10 rounded-lg bg-[var(--surface-secondary)] flex items-center justify-center shrink-0 group-hover:bg-[var(--interactive-primary)] group-hover:text-white transition-colors"
+                                    class="font-bold text-[var(--text-primary)] dark:text-white"
                                 >
-                                    <Mail
-                                        class="h-5 w-5 text-[var(--interactive-primary)] group-hover:text-white transition-colors"
-                                    />
+                                    {{ review.author }}
                                 </div>
-                                <div>
-                                    <p
-                                        class="font-medium text-[var(--text-primary)]"
-                                    >
-                                        Email
-                                    </p>
-                                    <a
-                                        href="mailto:hello@coresync.io"
-                                        class="text-[var(--text-secondary)] hover:text-[var(--interactive-primary)] transition-colors"
-                                    >
-                                        hello@coresync.io
-                                    </a>
-                                </div>
-                            </div>
-
-                            <div class="flex items-start gap-4 group">
-                                <div
-                                    class="h-10 w-10 rounded-lg bg-[var(--surface-secondary)] flex items-center justify-center shrink-0 group-hover:bg-[var(--interactive-primary)] group-hover:text-white transition-colors"
-                                >
-                                    <Phone
-                                        class="h-5 w-5 text-[var(--interactive-primary)] group-hover:text-white transition-colors"
-                                    />
-                                </div>
-                                <div>
-                                    <p
-                                        class="font-medium text-[var(--text-primary)]"
-                                    >
-                                        Phone
-                                    </p>
-                                    <a
-                                        href="tel:+1-555-123-4567"
-                                        class="text-[var(--text-secondary)] hover:text-[var(--interactive-primary)] transition-colors"
-                                    >
-                                        +1 (555) 123-4567
-                                    </a>
-                                </div>
-                            </div>
-
-                            <div class="flex items-start gap-4 group">
-                                <div
-                                    class="h-10 w-10 rounded-lg bg-[var(--surface-secondary)] flex items-center justify-center shrink-0 group-hover:bg-[var(--interactive-primary)] group-hover:text-white transition-colors"
-                                >
-                                    <MapPin
-                                        class="h-5 w-5 text-[var(--interactive-primary)] group-hover:text-white transition-colors"
-                                    />
-                                </div>
-                                <div>
-                                    <p
-                                        class="font-medium text-[var(--text-primary)]"
-                                    >
-                                        Office
-                                    </p>
-                                    <p class="text-[var(--text-secondary)]">
-                                        100 Innovation Drive<br />
-                                        San Francisco, CA 94107
-                                    </p>
+                                <div class="text-sm text-[var(--text-muted)]">
+                                    {{ review.role }}
                                 </div>
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+        </section>
 
-                    <!-- Contact form -->
-                    <Card padding="lg" class="contact-form opacity-0">
-                        <form
-                            @submit.prevent="handleContactSubmit"
-                            class="space-y-5"
+        <!-- Global Scale Section -->
+        <section
+            ref="scaleRef"
+            class="py-24 bg-[var(--surface-primary)] dark:bg-[var(--surface-secondary)] overflow-hidden"
+        >
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="grid lg:grid-cols-2 gap-16 items-center">
+                    <div class="scale-content opacity-0">
+                        <div
+                            class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-sm font-medium mb-6"
                         >
-                            <div>
-                                <label
-                                    class="block text-sm font-medium text-[var(--text-primary)] mb-1.5"
-                                >
-                                    Name
-                                </label>
-                                <input
-                                    v-model="contactForm.name"
-                                    type="text"
-                                    placeholder="Your name"
-                                    class="input"
-                                    required
-                                />
-                            </div>
+                            <Globe class="w-4 h-4" />
+                            Global Infrastructure
+                        </div>
+                        <h2
+                            class="text-4xl font-bold text-[var(--text-primary)] dark:text-white mb-6 font-landing"
+                        >
+                            Collaboration without borders.
+                        </h2>
+                        <p
+                            class="text-lg text-[var(--text-secondary)] dark:text-[var(--text-muted)] mb-8"
+                        >
+                            Whether your team is in New York, London, or Tokyo,
+                            WorkSphere keeps everyone in sync with
+                            sub-millisecond latency.
+                        </p>
 
-                            <div>
-                                <label
-                                    class="block text-sm font-medium text-[var(--text-primary)] mb-1.5"
+                        <ul class="space-y-4 mb-10">
+                            <li class="flex items-center gap-3">
+                                <div
+                                    class="w-6 h-6 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center text-green-600 dark:text-green-400 flex-shrink-0"
                                 >
-                                    Email
-                                </label>
-                                <input
-                                    v-model="contactForm.email"
-                                    type="email"
-                                    placeholder="you@example.com"
-                                    class="input"
-                                    required
-                                />
-                            </div>
-
-                            <div>
-                                <label
-                                    class="block text-sm font-medium text-[var(--text-primary)] mb-1.5"
+                                    <CheckCircle2 class="w-4 h-4" />
+                                </div>
+                                <span
+                                    class="text-[var(--text-primary)] dark:text-gray-200 font-medium"
+                                    >99.99% Uptime SLA</span
                                 >
-                                    Message
-                                </label>
-                                <textarea
-                                    v-model="contactForm.message"
-                                    rows="4"
-                                    placeholder="How can we help?"
-                                    class="input resize-none"
-                                    required
-                                />
-                            </div>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <div
+                                    class="w-6 h-6 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center text-green-600 dark:text-green-400 flex-shrink-0"
+                                >
+                                    <CheckCircle2 class="w-4 h-4" />
+                                </div>
+                                <span
+                                    class="text-[var(--text-primary)] dark:text-gray-200 font-medium"
+                                    >Enterprise-grade Encryption</span
+                                >
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <div
+                                    class="w-6 h-6 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center text-green-600 dark:text-green-400 flex-shrink-0"
+                                >
+                                    <CheckCircle2 class="w-4 h-4" />
+                                </div>
+                                <span
+                                    class="text-[var(--text-primary)] dark:text-gray-200 font-medium"
+                                    >GDPR & CCPA Compliant</span
+                                >
+                            </li>
+                        </ul>
 
-                            <Button
-                                type="submit"
-                                full-width
-                                class="group"
-                                :loading="contactLoading"
-                            >
-                                Send Message
-                                <ArrowRight
-                                    class="h-4 w-4 group-hover:translate-x-1 transition-transform"
-                                />
-                            </Button>
-                        </form>
-                    </Card>
+                        <button
+                            class="btn btn-secondary border-[var(--color-neutral-300)] dark:border-white/20 dark:text-white dark:hover:bg-white/10 hover:border-[var(--color-landing-primary)] hover:text-[var(--color-landing-primary)] cursor-pointer"
+                        >
+                            Learn about Security
+                        </button>
+                    </div>
+
+                    <div class="relative scale-image opacity-0">
+                        <!-- Abstract Map Visualization Placeholder -->
+                        <div
+                            class="aspect-square bg-[var(--color-landing-surface)] dark:bg-[var(--color-landing-primary)]/5 rounded-full opacity-50 absolute inset-0 blur-3xl animate-pulse-slow"
+                        ></div>
+                        <div
+                            class="relative z-10 bg-white dark:bg-[var(--surface-elevated)] border border-[var(--color-neutral-200)] dark:border-white/10 rounded-2xl shadow-2xl p-8"
+                        >
+                            <img
+                                src="/doc/screenshots/analytics.png"
+                                alt="Global Analytics"
+                                class="rounded-lg shadow-sm"
+                            />
+                        </div>
+                    </div>
                 </div>
             </div>
         </section>
 
         <!-- CTA Section -->
         <section
-            ref="ctaRef"
-            class="py-24 bg-gradient-to-br from-[var(--color-primary-500)] to-[var(--color-primary-700)] relative overflow-hidden"
+            class="py-32 bg-[var(--text-primary)] dark:bg-black relative overflow-hidden"
         >
-            <!-- Decorative elements -->
             <div class="absolute inset-0 opacity-10">
                 <div
-                    class="absolute top-0 left-0 w-64 h-64 bg-white rounded-full blur-3xl"
-                />
-                <div
-                    class="absolute bottom-0 right-0 w-96 h-96 bg-white rounded-full blur-3xl"
-                />
+                    class="absolute top-0 right-0 w-[800px] h-[800px] bg-[var(--color-landing-primary)] rounded-full blur-[150px] -translate-y-1/2 translate-x-1/2"
+                ></div>
             </div>
 
             <div
-                class="cta-content relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center"
+                class="relative max-w-4xl mx-auto px-4 text-center"
+                ref="ctaRef"
             >
                 <h2
-                    class="opacity-0 text-3xl sm:text-4xl font-bold text-white mb-4"
+                    class="text-4xl md:text-5xl font-bold text-white mb-8 font-landing tracking-tight opacity-0"
                 >
-                    Ready to Transform Your Workflow?
+                    Ready to transform how you work?
                 </h2>
-                <p class="opacity-0 text-lg text-white mb-8">
-                    Join thousands of teams already using {{ appConfig.name }} to manage
-                    their projects more effectively.
+                <p
+                    class="text-xl text-white/70 mb-12 max-w-2xl mx-auto opacity-0"
+                >
+                    Join thousands of high-performing teams who use
+                    {{ appConfig.name }} to build the future.
                 </p>
                 <div
-                    class="opacity-0 flex flex-col sm:flex-row items-center justify-center gap-4"
+                    class="flex flex-col sm:flex-row items-center justify-center gap-4 opacity-0"
                 >
-                    <RouterLink to="/auth/login">
-                        <Button
-                            size="lg"
-                            variant="secondary"
-                            class="!bg-white !text-[var(--color-primary-700)] hover:!bg-gray-100 px-8 shadow-xl font-semibold"
+                    <RouterLink to="/auth/login" class="w-full sm:w-auto">
+                        <button
+                            class="btn bg-white text-neutral-900 hover:bg-gray-100 w-full sm:w-auto px-10 py-4 text-lg font-bold rounded-xl shadow-xl transition-transform hover:-translate-y-1 cursor-pointer"
                         >
-                            Get Started Free
-                        </Button>
+                            Get Started Now
+                        </button>
                     </RouterLink>
-                    <a href="#contact">
-                        <Button
-                            size="lg"
-                            variant="outline"
-                            class="border-white/30 text-white hover:bg-white/10 px-8"
-                        >
-                            Contact Sales
-                        </Button>
-                    </a>
+                    <button
+                        class="btn bg-transparent border border-white/20 text-white hover:bg-white/10 w-full sm:w-auto px-10 py-4 text-lg font-medium rounded-xl cursor-pointer"
+                    >
+                        Contact Sales
+                    </button>
                 </div>
+                <p class="mt-8 text-sm text-white/40 opacity-0">
+                    No credit card required · 14-day free trial · Cancel anytime
+                </p>
             </div>
         </section>
     </PublicLayout>
-
-    <RecaptchaChallengeModal
-        :show="showChallenge"
-        @close="showChallenge = false"
-        @verified="handleChallengeVerified"
-    />
 </template>
+
+<style scoped>
+/* Scoped styles mainly for animation helpers */
+.font-landing {
+    font-family: var(--font-landing);
+}
+
+.animate-pulse-slow {
+    animation: pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+    0%,
+    100% {
+        opacity: 0.2;
+    }
+    50% {
+        opacity: 0.15;
+    }
+}
+
+.animate-bounce-slow {
+    animation: bounce 3s infinite;
+}
+
+@keyframes bounce {
+    0%,
+    100% {
+        transform: translateY(-5%);
+        animation-timing-function: cubic-bezier(0.8, 0, 1, 1);
+    }
+    50% {
+        transform: translateY(0);
+        animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+    }
+}
+</style>

@@ -36,7 +36,9 @@ export function useChatRealtime() {
 
     const echo = (window as any).Echo as Echo<'reverb'>;
     if (!echo) {
-      console.warn('[ChatRealtime] Echo not initialized, cannot subscribe to:', channelName);
+      // This is normal during app startup before Echo is ready.
+      // The initialize() function listens for the connection event and will retry subscriptions.
+      console.log(`[ChatRealtime] Echo not ready, skipping subscription to ${channelName} (will retry automatically)`);
       return;
     }
 
@@ -112,7 +114,7 @@ export function useChatRealtime() {
 
     const echo = (window as any).Echo as Echo<'reverb'>;
     if (!echo) {
-      console.warn('[ChatRealtime] Echo not initialized for user channel');
+      console.log('[ChatRealtime] Echo not initialized for user channel (will retry automatically)');
       return;
     }
 

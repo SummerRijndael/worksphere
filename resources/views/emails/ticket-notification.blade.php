@@ -1,264 +1,400 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 
 <head>
-    <meta charset="UTF-8">
+    <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="x-apple-disable-message-reformatting">
     <title>{{ $title }}</title>
+    <!--[if mso]>
     <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            line-height: 1.6;
-            margin: 0;
-            padding: 0;
-            background-color: #f4f4f5;
-            color: #18181b;
+        table {border-collapse: collapse; border-spacing: 0; border: none; margin: 0;}
+        div, td {padding: 0;}
+        div {margin: 0 !important;}
+    </style>
+    <noscript>
+        <xml>
+            <o:OfficeDocumentSettings>
+            <o:PixelsPerInch>96</o:PixelsPerInch>
+            </o:OfficeDocumentSettings>
+        </xml>
+    </noscript>
+    <![endif]-->
+    <style>
+        /* Base Reset */
+        body,
+        td,
+        div,
+        p,
+        a,
+        input,
+        button {
+            font-family: 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            -webkit-font-smoothing: antialiased;
+            word-break: break-word;
         }
 
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f3f4f6;
+            color: #1f2937;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+
+        img {
+            border: 0;
+            height: auto;
+            line-height: 100%;
+            outline: none;
+            text-decoration: none;
+            display: block;
+        }
+
+        /* Helpers */
         .wrapper {
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
+            background-color: #f3f4f6;
+            padding: 40px 20px;
         }
 
         .container {
             background-color: #ffffff;
-            border-radius: 12px;
+            margin: 0 auto;
+            max-width: 600px;
+            border-radius: 16px;
             overflow: hidden;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
         }
 
+        /* Header */
         .header {
-            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-            padding: 24px;
+            background-color: #ffffff;
+            padding: 32px 40px;
             text-align: center;
+            border-bottom: 1px solid #f3f4f6;
         }
 
-        .header img {
-            max-height: 40px;
-            margin-bottom: 12px;
+        .app-brand {
+            font-size: 24px;
+            font-weight: 700;
+            color: #4f46e5;
+            /* Indigo 600 */
+            text-decoration: none;
+            letter-spacing: -0.5px;
         }
 
-        .header h1 {
-            color: #ffffff;
-            margin: 0;
-            font-size: 20px;
-            font-weight: 600;
+        .app-logo {
+            height: 40px;
+            margin: 0 auto;
         }
 
+        /* Content */
         .content {
-            padding: 32px 24px;
+            padding: 40px;
         }
 
         .greeting {
-            font-size: 16px;
+            font-size: 18px;
+            font-weight: 600;
+            color: #111827;
             margin-bottom: 16px;
+            margin-top: 0;
         }
 
         .message {
-            font-size: 15px;
-            color: #52525b;
-            margin-bottom: 24px;
+            font-size: 16px;
+            line-height: 1.6;
+            color: #4b5563;
+            margin-bottom: 32px;
+            margin-top: 0;
         }
 
-        .ticket-card {
-            background-color: #fafafa;
-            border: 1px solid #e4e4e7;
-            border-radius: 8px;
-            padding: 16px;
-            margin-bottom: 24px;
+        /* Info Card */
+        .info-card {
+            background-color: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 32px;
         }
 
         .ticket-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 12px;
+            margin-bottom: 16px;
+            display: block;
+            /* Fallback */
         }
 
-        .ticket-number {
+        .ticket-id {
+            font-family: 'Monaco', 'Consolas', monospace;
             font-size: 13px;
-            color: #6366f1;
-            font-weight: 600;
-        }
-
-        .ticket-priority {
-            display: inline-block;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-
-        .priority-low {
-            background-color: #dcfce7;
-            color: #166534;
-        }
-
-        .priority-medium {
-            background-color: #fef3c7;
-            color: #92400e;
-        }
-
-        .priority-high {
-            background-color: #fee2e2;
-            color: #991b1b;
-        }
-
-        .priority-urgent {
-            background-color: #fecaca;
-            color: #7f1d1d;
+            color: #6b7280;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+            display: block;
         }
 
         .ticket-title {
-            font-size: 16px;
-            font-weight: 600;
-            color: #18181b;
-            margin-bottom: 8px;
+            font-size: 18px;
+            font-weight: 700;
+            color: #111827;
+            text-decoration: none;
+            line-height: 1.4;
+            display: block;
+            margin: 0;
         }
 
-        .ticket-meta {
-            font-size: 13px;
-            color: #71717a;
+        /* Badges */
+        .badge-container {
+            margin-top: 16px;
         }
 
-        .ticket-meta span {
+        .badge {
             display: inline-block;
-            margin-right: 16px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-right: 8px;
+            white-space: nowrap;
         }
 
+        /* Priority Colors */
+        .priority-low {
+            background-color: #ecfdf5;
+            color: #047857;
+        }
+
+        .priority-medium {
+            background-color: #fffbeb;
+            color: #b45309;
+        }
+
+        .priority-high {
+            background-color: #fff1f2;
+            color: #be123c;
+        }
+
+        .priority-critical {
+            background-color: #7f1d1d;
+            color: #fef2f2;
+        }
+
+        /* Status Colors */
         .status-badge {
             display: inline-block;
-            padding: 2px 8px;
-            border-radius: 4px;
+            padding: 4px 10px;
+            border-radius: 6px;
             font-size: 12px;
-            background-color: #e4e4e7;
-            color: #52525b;
-        }
-
-        .sla-alert {
-            background-color: #fef2f2;
-            border: 1px solid #fecaca;
-            border-radius: 8px;
-            padding: 12px 16px;
-            margin-bottom: 24px;
-            color: #991b1b;
-            font-size: 14px;
-        }
-
-        .sla-alert strong {
-            display: block;
-            margin-bottom: 4px;
-        }
-
-        .action-button {
-            display: inline-block;
-            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-            color: #ffffff !important;
-            text-decoration: none;
-            padding: 12px 32px;
-            border-radius: 8px;
-            font-size: 14px;
             font-weight: 600;
+            margin-right: 8px;
+        }
+
+        /* Open/Warning */
+        .status-bg-warning {
+            background-color: #eff6ff;
+            color: #1d4ed8;
+        }
+
+        /* Kept Blue for Open as per common ticket systems */
+        /* In Progress */
+        .status-bg-primary {
+            background-color: #f5f3ff;
+            color: #6d28d9;
+        }
+
+        /* Resolved */
+        .status-bg-success {
+            background-color: #f0fdf4;
+            color: #15803d;
+        }
+
+        /* Closed */
+        .status-bg-secondary {
+            background-color: #f3f4f6;
+            color: #4b5563;
+        }
+
+        /* Details Grid */
+        .details-table {
+            width: 100%;
+            margin-top: 16px;
+        }
+
+        .details-label {
+            font-size: 12px;
+            text-transform: uppercase;
+            color: #9ca3af;
+            font-weight: 600;
+            padding-bottom: 4px;
+            width: 100px;
+        }
+
+        .details-value {
+            font-size: 14px;
+            color: #374151;
+            padding-bottom: 4px;
+            font-weight: 500;
+        }
+
+        /* Action Button */
+        .button-container {
             text-align: center;
+            margin-bottom: 10px;
         }
 
-        .action-button:hover {
-            opacity: 0.9;
-        }
-
-        .footer {
-            padding: 24px;
-            text-align: center;
-            background-color: #fafafa;
-            border-top: 1px solid #e4e4e7;
-            font-size: 13px;
-            color: #71717a;
-        }
-
-        .footer a {
-            color: #6366f1;
+        .button {
+            display: inline-block;
+            background-color: #4f46e5;
+            /* Indigo 600 */
+            color: #ffffff !important;
+            font-size: 16px;
+            font-weight: 600;
+            padding: 14px 32px;
+            border-radius: 8px;
             text-decoration: none;
+            transition: background-color 0.2s;
+            box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2);
         }
 
-        .footer a:hover {
+        .button:hover {
+            background-color: #4338ca;
+        }
+
+        /* Alerts */
+        .alert {
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 24px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .alert-error {
+            background-color: #fef2f2;
+            color: #991b1b;
+            border: 1px solid #fee2e2;
+        }
+
+        /* Footer */
+        .footer {
+            background-color: #f9fafb;
+            padding: 32px 40px;
+            text-align: center;
+            border-top: 1px solid #f3f4f6;
+        }
+
+        .footer-text {
+            font-size: 12px;
+            color: #9ca3af;
+            margin-bottom: 12px;
+            line-height: 1.5;
+        }
+
+        .footer-link {
+            color: #6b7280;
             text-decoration: underline;
         }
 
-        .unsubscribe {
-            margin-top: 16px;
-            font-size: 12px;
-            color: #a1a1aa;
-        }
-
-        .unsubscribe a {
-            color: #a1a1aa;
+        .footer-link:hover {
+            color: #4b5563;
         }
     </style>
 </head>
 
 <body>
     <div class="wrapper">
-        <div class="container">
-            <!-- Header -->
-            <div class="header">
-                @if($appLogo)
-                    <img src="{{ $appLogo }}" alt="{{ $appName }}">
-                @else
-                    <h1>{{ $appName }}</h1>
-                @endif
-            </div>
+        <center>
+            <div class="container">
+                <!-- Header -->
+                <div class="header">
+                    @if($appLogo)
+                        <img src="{{ $appLogo }}" alt="{{ $appName }}" class="app-logo">
+                    @else
+                        <a href="{{ config('app.url') }}" class="app-brand">{{ $appName }}</a>
+                    @endif
+                </div>
 
-            <!-- Content -->
-            <div class="content">
-                <p class="greeting">Hello {{ $recipient->name }},</p>
+                <!-- Main Content -->
+                <div class="content">
+                    <h1 class="greeting">Hello {{ $recipient->name }},</h1>
 
-                <p class="message">{{ $message }}</p>
+                    <p class="message">{{ $notificationMessage }}</p>
 
-                @if($type === 'sla_breach')
-                    <div class="sla-alert">
-                        <strong>⚠️ SLA Breach Alert</strong>
-                        This ticket has exceeded its SLA threshold. Please take immediate action.
+                    @if($type === 'sla_breach')
+                        <div class="alert alert-error">
+                            ⚠️ <strong>SLA Breach Alert</strong><br>
+                            This ticket has exceeded its SLA threshold. Please take immediate action.
+                        </div>
+                    @endif
+
+                    <!-- Ticket Card -->
+                    <div class="info-card">
+                        <div class="ticket-header">
+                            <span class="ticket-id">{{ $ticket->ticket_number }}</span>
+                            <div class="ticket-title">{{ $ticket->title }}</div>
+                        </div>
+
+                        <table class="details-table">
+                            <tr>
+                                <td class="details-label">Status</td>
+                                <td class="details-value">
+                                    <span class="status-badge status-bg-{{ $ticket->status->color() }}">
+                                        {{ $ticket->status->label() }}
+                                    </span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="details-label">Priority</td>
+                                <td class="details-value">
+                                    <span class="badge priority-{{ strtolower($ticket->priority->value) }}">
+                                        {{ ucfirst($ticket->priority->value) }}
+                                    </span>
+                                </td>
+                            </tr>
+                            @if($ticket->assignee)
+                                <tr>
+                                    <td class="details-label">Assignee</td>
+                                    <td class="details-value">
+                                        {{ $ticket->assignee->name }}
+                                    </td>
+                                </tr>
+                            @endif
+                            @if($ticket->due_at)
+                                <tr>
+                                    <td class="details-label">Due Date</td>
+                                    <td class="details-value">
+                                        {{ $ticket->due_at->format('M j, Y') }}
+                                    </td>
+                                </tr>
+                            @endif
+                        </table>
                     </div>
-                @endif
 
-                <!-- Ticket Card -->
-                <div class="ticket-card">
-                    <div class="ticket-header">
-                        <span class="ticket-number">{{ $ticket->ticket_number }}</span>
-                        <span class="ticket-priority priority-{{ strtolower($ticket->priority->value) }}">
-                            {{ ucfirst($ticket->priority->value) }}
-                        </span>
-                    </div>
-                    <div class="ticket-title">{{ $ticket->title }}</div>
-                    <div class="ticket-meta">
-                        <span>
-                            <span class="status-badge">{{ ucfirst($ticket->status->value) }}</span>
-                        </span>
-                        @if($ticket->assignee)
-                            <span>Assigned to: {{ $ticket->assignee->name }}</span>
-                        @endif
-                        @if($ticket->due_at)
-                            <span>Due: {{ $ticket->due_at->format('M j, Y') }}</span>
-                        @endif
+                    <!-- CTA -->
+                    <div class="button-container">
+                        <a href="{{ $actionUrl }}" class="button">{{ $actionText }}</a>
                     </div>
                 </div>
 
-                <!-- Action Button -->
-                <div style="text-align: center;">
-                    <a href="{{ $actionUrl }}" class="action-button">{{ $actionText }}</a>
+                <!-- Footer -->
+                <div class="footer">
+                    <p class="footer-text">
+                        © {{ date('Y') }} {{ $appName }}. All rights reserved.<br>
+                        This email was sent to {{ $recipient->email }} regarding ticket #{{ $ticket->ticket_number }}.
+                    </p>
+                    <p class="footer-text">
+                        <a href="{{ $unsubscribeUrl }}" class="footer-link">Manage Notifications</a>
+                    </p>
                 </div>
             </div>
-
-            <!-- Footer -->
-            <div class="footer">
-                <p>This email was sent by <a href="{{ config('app.url') }}">{{ $appName }}</a></p>
-                <div class="unsubscribe">
-                    <a href="{{ $unsubscribeUrl }}">Manage notification preferences</a>
-                </div>
-            </div>
-        </div>
+        </center>
     </div>
 </body>
 

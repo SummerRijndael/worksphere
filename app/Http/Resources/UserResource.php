@@ -77,6 +77,10 @@ class UserResource extends JsonResource
                         'name' => $team->name,
                         'slug' => $team->slug,
                         'owner_id' => $team->owner_id,
+                        'membership' => [
+                            'role' => $team->pivot->role,
+                            'joined_at' => $team->pivot->joined_at,
+                        ],
                     ];
                 }),
                 'files' => $this->whenLoaded('media', function () {

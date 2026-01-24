@@ -15,6 +15,17 @@ const router = useRouter();
 const authStore = useAuthStore();
 const hasTeams = computed(() => authStore.hasTeams);
 
+// Role Logic
+const userRole = computed(() => {
+    if (!authStore.user || !authStore.currentTeamId) return null;
+    const team = authStore.user.teams.find(t => t.public_id === authStore.currentTeamId);
+    return team?.membership?.role || null;
+});
+
+const isTeamLead = computed(() => userRole.value === 'team_lead');
+const isQA = computed(() => userRole.value === 'quality_assessor');
+const isOperator = computed(() => userRole.value === 'operator');
+
 // State
 const tasks = ref<any[]>([]);
 const loading = ref(true);
@@ -32,6 +43,15 @@ const tabs = [
     { id: "pm_queue", label: "PM Queue", icon: User },
     { id: "all_tasks", label: "All Tasks", icon: Grid },
 ];
+
+const visibleTabs = computed(() => {
+    return tabs.filter(tab => {
+        if (tab.id === 'pm_queue') return isTeamLead.value;
+        if (tab.id === 'qa_queue') return isTeamLead.value || isQA.value;
+        if (tab.id === 'all_tasks') return !isOperator.value;
+        return true;
+    });
+});
 
 // Filter Options
 const scopeOptions = [
@@ -279,10 +299,9 @@ const onTaskMoved = async (taskId: string, newStatus: string) => {
             </div>
         </div>
 
-        <!-- Tabs -->
         <div class="flex items-center gap-1 border-b border-[var(--border-default)] mb-4">
             <button
-                v-for="tab in tabs"
+                v-for="tab in visibleTabs"
                 :key="tab.id"
                 @click="currentTab = tab.id"
                 class="flex items-center gap-2 px-4 py-2 border-b-2 text-sm font-medium transition-all"

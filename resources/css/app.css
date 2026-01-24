@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+
 @import "./themes/default.css";
 @import "./themes/ocean.css";
 @import "./themes/forest.css";
@@ -18,11 +20,21 @@
    ============================================ */
 
 @theme {
+
     /* Font Family */
+    --font-landing: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+    --font-dirs: "Inter", ui-sans-serif, system-ui, sans-serif;
     --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
 
     --font-display: "Inter", ui-sans-serif, system-ui, sans-serif;
     --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+    /* Landing Page Design System - Soft UI Evolution */
+    --color-landing-primary: #7c3aed;
+    --color-landing-secondary: #a78bfa;
+    --color-landing-cta: #f97316;
+    --color-landing-surface: #faf5ff;
+    --color-landing-text: #4c1d95;
 
     /* Semantic Colors */
 
@@ -83,12 +95,12 @@
     /* Shadows */
     --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
     --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
-    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1),
-        0 2px 4px -2px rgb(0 0 0 / 0.1);
-    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1),
-        0 4px 6px -4px rgb(0 0 0 / 0.1);
-    --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1),
-        0 8px 10px -6px rgb(0 0 0 / 0.1);
+    --shadow-md:
+        0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    --shadow-lg:
+        0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+    --shadow-xl:
+        0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
     --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
 
     /* Z-index Scale */
@@ -232,6 +244,13 @@
 
     --scrollbar-thumb: var(--color-neutral-700);
     --scrollbar-thumb-hover: var(--color-neutral-600);
+
+    /* Landing Page Dark Mode Overrides */
+    --color-landing-primary: #8B5CF6;
+    --color-landing-secondary: #C4B5FD;
+    --color-landing-cta: #FB923C;
+    --color-landing-surface: var(--color-neutral-950);
+    --color-landing-text: var(--color-neutral-50);
 }
 
 /* ============================================
@@ -345,10 +364,7 @@ h6 {
     font-size: 1rem;
 }
 
-p {
-    margin: 0;
-    color: var(--text-secondary);
-}
+
 
 a {
     color: var(--interactive-primary);
@@ -641,18 +657,16 @@ a:hover {
 
 .chat-theme-modern .chat-main-area {
     background-color: var(--surface-primary);
-    background-image: linear-gradient(
-            to right,
-            rgba(0, 0, 0, 0.03) 1px,
-            transparent 1px
-        ),
+    background-image:
+        linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
         linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
     background-size: 40px 40px;
 }
 
 .dark .chat-theme-modern .chat-main-area {
     background-color: var(--surface-primary);
-    background-image: linear-gradient(
+    background-image:
+        linear-gradient(
             to right,
             rgba(255, 255, 255, 0.03) 1px,
             transparent 1px
@@ -716,7 +730,8 @@ a:hover {
 /* Ocean: Deep gradient + Subtle "Bubble" pattern */
 .chat-theme-ocean .chat-main-area {
     background-color: var(--surface-primary);
-    background-image: radial-gradient(
+    background-image:
+        radial-gradient(
             circle at 50% 100%,
             rgba(14, 165, 233, 0.1) 0%,
             transparent 50%
@@ -735,7 +750,8 @@ a:hover {
 
 .dark .chat-theme-ocean .chat-main-area {
     background-color: oklch(0.15 0.05 240);
-    background-image: radial-gradient(
+    background-image:
+        radial-gradient(
             circle at 50% 100%,
             rgba(14, 165, 233, 0.15) 0%,
             transparent 60%
@@ -755,30 +771,30 @@ a:hover {
 /* Nature: Organic gradient + "Dotted/Spore" pattern */
 .chat-theme-nature .chat-main-area {
     background-color: var(--surface-primary);
-    background-image: radial-gradient(
-            rgba(16, 185, 129, 0.1) 1px,
-            transparent 1px
-        ),
+    background-image:
+        radial-gradient(rgba(16, 185, 129, 0.1) 1px, transparent 1px),
         linear-gradient(
             135deg,
             var(--surface-primary) 0%,
             var(--surface-secondary) 100%
         );
-    background-size: 20px 20px, 100% 100%; /* Dots repeat every 20px */
+    background-size:
+        20px 20px,
+        100% 100%; /* Dots repeat every 20px */
 }
 
 .dark .chat-theme-nature .chat-main-area {
     background-color: oklch(0.16 0.04 110);
-    background-image: radial-gradient(
-            rgba(16, 185, 129, 0.15) 1px,
-            transparent 1px
-        ),
+    background-image:
+        radial-gradient(rgba(16, 185, 129, 0.15) 1px, transparent 1px),
         linear-gradient(
             135deg,
             oklch(0.16 0.04 110) 0%,
             oklch(0.13 0.03 110) 100%
         );
-    background-size: 20px 20px, 100% 100%;
+    background-size:
+        20px 20px,
+        100% 100%;
 }
 
 /* ============================================
@@ -858,7 +874,9 @@ a:hover {
     font-size: 0.75rem !important;
     font-weight: 500 !important;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); /* Subtle depth */
-    transition: transform 0.15s, box-shadow 0.15s;
+    transition:
+        transform 0.15s,
+        box-shadow 0.15s;
     margin-bottom: 2px !important;
 }
 
@@ -985,8 +1003,8 @@ a:hover {
 }
 
 .dark .prose code {
-     background-color: rgba(255,255,255,0.1);
-     color: var(--color-primary-400);
+    background-color: rgba(255, 255, 255, 0.1);
+    color: var(--color-primary-400);
 }
 
 .dark .prose pre code {

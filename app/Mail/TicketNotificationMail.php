@@ -46,6 +46,7 @@ class TicketNotificationMail extends Mailable implements ShouldQueue
     public function envelope(): Envelope
     {
         return new Envelope(
+            to: [$this->recipient->email],
             subject: $this->getSubject(),
         );
     }
@@ -65,7 +66,7 @@ class TicketNotificationMail extends Mailable implements ShouldQueue
                 'customMessage' => $this->customMessage,
                 'metadata' => $this->meta,
                 'title' => $this->getTitle(),
-                'message' => $this->getMessage(),
+                'notificationMessage' => $this->getMessage(),
                 'actionUrl' => $this->getActionUrl(),
                 'actionText' => 'View Ticket',
                 'unsubscribeUrl' => $this->getUnsubscribeUrl(),

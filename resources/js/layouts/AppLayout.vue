@@ -14,6 +14,7 @@ import { ScrollToTop } from "@/components/ui";
 import AccountBlockedModal from "@/components/AccountBlockedModal.vue";
 import RoleChangeNotificationModal from "@/components/RoleChangeNotificationModal.vue";
 import MiniChatLauncher from "@/components/minichat/MiniChatLauncher.vue";
+import { appConfig } from "@/config/app";
 
 const route = useRoute();
 const router = useRouter();
@@ -178,7 +179,7 @@ function handleRoleChangeLogout() {
                 >
                     <div class="flex items-center gap-2">
                         <span class="font-medium text-[var(--text-secondary)]"
-                            >CoreSync v2.0.0</span
+                            >{{ appConfig.name }} v2.0.0</span
                         >
                         <span
                             >&copy; {{ new Date().getFullYear() }} All rights

@@ -58,6 +58,23 @@ const toast = useToast();
 const isLoading = ref(true);
 const loadError = ref(null);
 
+// Data
+const tickets = ref([]);
+const ticketStats = ref({
+    open: 0,
+    in_progress: 0,
+    resolved: 0,
+    closed: 0,
+    total: 0,
+    sla_breached: 0
+});
+
+// Pagination
+const currentPage = ref(1);
+const totalPages = ref(1);
+const totalItems = ref(0);
+const perPage = ref(15);
+
 // Modal state
 const showNewTicketModal = ref(false);
 const isSubmitting = ref(false);
@@ -81,6 +98,29 @@ function setViewMode(mode) {
 const searchQuery = ref("");
 const statusFilter = ref("all");
 const priorityFilter = ref("all");
+
+const statusOptions = [
+    { value: 'all', label: 'All Statuses' },
+    { value: 'open', label: 'Open' },
+    { value: 'in_progress', label: 'In Progress' },
+    { value: 'resolved', label: 'Resolved' },
+    { value: 'closed', label: 'Closed' }
+];
+
+const priorityOptions = [
+    { value: 'all', label: 'All Priorities' },
+    { value: 'critical', label: 'Critical' },
+    { value: 'high', label: 'High' },
+    { value: 'medium', label: 'Medium' },
+    { value: 'low', label: 'Low' }
+];
+
+const perPageOptions = [
+    { value: 15, label: '15 per page' },
+    { value: 25, label: '25 per page' },
+    { value: 50, label: '50 per page' },
+    { value: 100, label: '100 per page' }
+];
 
 // Bulk Actions
 const selectedTickets = ref([]);
@@ -178,50 +218,6 @@ const activeView = computed({
         router.push({ query });
     },
 });
-
-// Data from API
-const tickets = ref([]);
-const ticketStats = ref({
-    total: 0,
-    open: 0,
-    in_progress: 0,
-    resolved: 0,
-    closed: 0,
-    unassigned: 0,
-    overdue: 0,
-    sla_breached: 0,
-});
-
-// Pagination state
-const currentPage = ref(1);
-const perPage = ref(20);
-const totalPages = ref(1);
-const totalItems = ref(0);
-const perPageOptions = [20, 50, 100, 200];
-
-const statusOptions = [
-    { value: "all", label: "All Statuses" },
-    { value: "open", label: "Open" },
-    { value: "in_progress", label: "In Progress" },
-    { value: "resolved", label: "Resolved" },
-    { value: "closed", label: "Closed" },
-];
-
-const priorityOptions = [
-    { value: "all", label: "All Priorities" },
-    { value: "critical", label: "Critical" },
-    { value: "high", label: "High" },
-    { value: "medium", label: "Medium" },
-    { value: "low", label: "Low" },
-];
-
-const typeOptions = [
-    { value: "bug", label: "Bug" },
-    { value: "feature", label: "Feature Request" },
-    { value: "task", label: "Task" },
-    { value: "question", label: "Question" },
-    { value: "improvement", label: "Improvement" },
-];
 
 // Computed filtered tickets (client-side filtering for search)
 const filteredTickets = computed(() => {
@@ -739,26 +735,69 @@ function viewTicket(ticketId) {
             <!-- View Tabs -->
             <div class="border-b border-[var(--border-default)]">
                 <div class="flex -mb-px space-x-6 overflow-x-auto">
+                    <!-- All Tickets -->
                     <button
-                        v-for="view in ['all', 'my', 'assigned', 'unassigned']"
-                        :key="view"
-                        @click="activeView = view"
+                        @click="activeView = 'all'"
                         :class="[
-                            activeView === view
+                            activeView === 'all'
                                 ? 'border-[var(--color-primary-500)] text-[var(--color-primary-600)]'
                                 : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-hover)]',
                             'whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm transition-colors',
                         ]"
                     >
-                        {{
-                            view === "all"
-                                ? "All Tickets"
-                                : view === "my"
-                                  ? "My Tickets"
-                                  : view === "assigned"
-                                    ? "Assigned to Me"
-                                    : "Unassigned"
-                        }}
+                        All Tickets
+                    </button>
+
+                    <!-- My Tickets -->
+                    <button
+                        @click="activeView = 'my'"
+                        :class="[
+                            activeView === 'my'
+                                ? 'border-[var(--color-primary-500)] text-[var(--color-primary-600)]'
+                                : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-hover)]',
+                            'whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm transition-colors',
+                        ]"
+                    >
+                        My Tickets
+                    </button>
+
+                    <!-- Assigned to Me -->
+                    <button
+                        @click="activeView = 'assigned'"
+                        :class="[
+                            activeView === 'assigned'
+                                ? 'border-[var(--color-primary-500)] text-[var(--color-primary-600)]'
+                                : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-hover)]',
+                            'whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm transition-colors',
+                        ]"
+                    >
+                        Assigned to Me
+                    </button>
+
+                    <!-- Unassigned -->
+                    <button
+                        @click="activeView = 'unassigned'"
+                        :class="[
+                            activeView === 'unassigned'
+                                ? 'border-[var(--color-primary-500)] text-[var(--color-primary-600)]'
+                                : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-hover)]',
+                            'whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm transition-colors',
+                        ]"
+                    >
+                        Unassigned
+                    </button>
+                    
+                     <!-- Archived -->
+                     <button
+                        @click="activeView = 'archived'"
+                        :class="[
+                            activeView === 'archived'
+                                ? 'border-[var(--color-primary-500)] text-[var(--color-primary-600)]'
+                                : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-hover)]',
+                            'whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm transition-colors',
+                        ]"
+                    >
+                        Archived
                     </button>
                 </div>
             </div>
@@ -1034,37 +1073,37 @@ function viewTicket(ticketId) {
                                 </th>
                                 <th
                                     scope="col"
-                                    class="px-6 py-3 text-left text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider w-[40%]"
+                                    class="px-6 py-3 text-left text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider w-auto md:w-[40%]"
                                 >
                                     Ticket
                                 </th>
                                 <th
                                     scope="col"
-                                    class="px-6 py-3 text-left text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider"
+                                    class="px-6 py-3 text-left text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider hidden sm:table-cell"
                                 >
                                     Status
                                 </th>
                                 <th
                                     scope="col"
-                                    class="px-6 py-3 text-left text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider"
+                                    class="px-6 py-3 text-left text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider hidden md:table-cell"
                                 >
                                     Submitted By
                                 </th>
                                 <th
                                     scope="col"
-                                    class="px-6 py-3 text-left text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider"
+                                    class="px-6 py-3 text-left text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider hidden lg:table-cell"
                                 >
                                     Assigned To
                                 </th>
                                 <th
                                     scope="col"
-                                    class="px-6 py-3 text-left text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider"
+                                    class="px-6 py-3 text-left text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider hidden xl:table-cell"
                                 >
                                     Created
                                 </th>
                                 <th
                                     scope="col"
-                                    class="px-6 py-3 text-left text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider"
+                                    class="px-6 py-3 text-left text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider hidden 2xl:table-cell"
                                 >
                                     Last Updated
                                 </th>
@@ -1195,7 +1234,7 @@ function viewTicket(ticketId) {
 
                                 <!-- Status -->
                                 <td
-                                    class="px-6 py-4"
+                                    class="px-6 py-4 hidden sm:table-cell"
                                     @click="viewTicket(ticket.id)"
                                 >
                                     <Badge
@@ -1220,7 +1259,7 @@ function viewTicket(ticketId) {
 
                                 <!-- Submitted By (Reporter) -->
                                 <td
-                                    class="px-6 py-4"
+                                    class="px-6 py-4 hidden md:table-cell"
                                     @click="viewTicket(ticket.id)"
                                 >
                                     <div
@@ -1251,7 +1290,7 @@ function viewTicket(ticketId) {
 
                                 <!-- Assigned To -->
                                 <td
-                                    class="px-6 py-4"
+                                    class="px-6 py-4 hidden lg:table-cell"
                                     @click="viewTicket(ticket.id)"
                                 >
                                     <div
@@ -1283,7 +1322,7 @@ function viewTicket(ticketId) {
 
                                 <!-- Created -->
                                 <td
-                                    class="px-6 py-4 text-sm text-[var(--text-secondary)] whitespace-nowrap"
+                                    class="px-6 py-4 text-sm text-[var(--text-secondary)] whitespace-nowrap hidden xl:table-cell"
                                     @click="viewTicket(ticket.id)"
                                 >
                                     {{ ticket.createdAt }}
@@ -1291,7 +1330,7 @@ function viewTicket(ticketId) {
 
                                 <!-- Updated -->
                                 <td
-                                    class="px-6 py-4 text-sm text-[var(--text-secondary)] whitespace-nowrap"
+                                    class="px-6 py-4 text-sm text-[var(--text-secondary)] whitespace-nowrap hidden 2xl:table-cell"
                                     @click="viewTicket(ticket.id)"
                                 >
                                     {{ ticket.updatedAt }}

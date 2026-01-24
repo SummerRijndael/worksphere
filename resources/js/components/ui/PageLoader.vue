@@ -1,103 +1,50 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
-import { animate, stagger } from 'animejs';
+import { ref, onMounted } from 'vue';
+import { Zap } from 'lucide-vue-next';
 
-const props = defineProps<{
+defineProps<{
     show?: boolean;
 }>();
-
-const loaderRef = ref<HTMLElement | null>(null);
-
-onMounted(() => {
-    if (!loaderRef.value) return;
-
-    // Animate the orbiting dots
-    animate('.orbit-dot', {
-        rotate: 360,
-        duration: 2000,
-        easing: 'linear',
-        loop: true,
-    });
-
-    // Animate the center logo pulse
-    animate('.center-logo', {
-        scale: [1, 1.1, 1],
-        duration: 1500,
-        easing: 'easeInOutSine',
-        loop: true,
-    });
-
-    // Animate the ring expansion
-    animate('.pulse-ring', {
-        scale: [1, 1.5],
-        opacity: [0.6, 0],
-        duration: 1500,
-        easing: 'easeOutExpo',
-        loop: true,
-    });
-
-    // Staggered dots animation
-    animate('.loader-dot', {
-        scale: [0.5, 1, 0.5],
-        opacity: [0.3, 1, 0.3],
-        duration: 1200,
-        delay: stagger(150),
-        easing: 'easeInOutSine',
-        loop: true,
-    });
-});
 </script>
 
 <template>
     <Transition name="fade-loader">
         <div
             v-if="show"
-            ref="loaderRef"
-            class="fixed inset-0 z-[9999] flex items-center justify-center bg-[var(--surface-primary)]"
+            class="fixed inset-0 z-[9999] flex items-center justify-center bg-[var(--surface-primary)]/90 backdrop-blur-md"
         >
-            <!-- Background gradients -->
-            <div class="absolute inset-0 overflow-hidden">
-                <div class="absolute top-1/4 left-1/4 w-96 h-96 bg-gradient-to-br from-[var(--color-primary-200)] to-[var(--color-primary-400)] rounded-full opacity-20 blur-3xl dark:from-[var(--color-primary-700)] dark:to-[var(--color-primary-900)] animate-pulse" />
-                <div class="absolute bottom-1/4 right-1/4 w-80 h-80 bg-gradient-to-tr from-[var(--color-primary-100)] to-[var(--color-primary-300)] rounded-full opacity-15 blur-3xl dark:from-[var(--color-primary-800)] dark:to-[var(--color-primary-950)] animate-pulse" style="animation-delay: 0.5s;" />
-            </div>
-
-            <!-- Loader container -->
-            <div class="relative flex flex-col items-center gap-8">
-                <!-- Main loader circle -->
-                <div class="relative w-32 h-32">
-                    <!-- Pulse rings -->
-                    <div class="pulse-ring absolute inset-0 rounded-full border-2 border-[var(--color-primary-400)]" />
-                    <div class="pulse-ring absolute inset-0 rounded-full border-2 border-[var(--color-primary-500)]" style="animation-delay: 0.5s;" />
-
-                    <!-- Orbiting ring -->
-                    <div class="absolute inset-0 orbit-dot" style="transform-origin: center;">
-                        <div class="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 bg-[var(--color-primary-500)] rounded-full shadow-lg shadow-[var(--color-primary-500)]/50" />
+            <div class="relative flex flex-col items-center justify-center">
+                <!-- Fluid Gradient Ring -->
+                <div class="relative w-32 h-32 flex items-center justify-center">
+                    <div
+                        class="absolute inset-0 rounded-full bg-gradient-to-tr from-[var(--color-primary-500)] via-[var(--color-landing-secondary)] to-[var(--color-primary-500)] animate-spin-slow blur-xl opacity-50"
+                    ></div>
+                    <div
+                        class="absolute inset-2 rounded-full bg-[var(--surface-primary)] z-10"
+                    ></div>
+                    <div
+                        class="absolute inset-0 rounded-full bg-gradient-to-tr from-[var(--color-primary-500)] via-transparent to-[var(--color-landing-secondary)] animate-spin-slow"
+                        style="mask-image: radial-gradient(transparent 60%, black 64%); -webkit-mask-image: radial-gradient(transparent 60%, black 64%);"
+                    ></div>
+                    
+                    <!-- Center Logo -->
+                    <div class="relative z-20 flex items-center justify-center">
+                        <div class="w-12 h-12 bg-gradient-to-br from-[var(--color-primary-500)] to-[var(--color-primary-700)] rounded-xl flex items-center justify-center shadow-lg shadow-[var(--color-primary-500)]/40 animate-pulse-slow">
+                            <Zap class="w-6 h-6 text-white fill-current" />
+                        </div>
                     </div>
-                    <div class="absolute inset-0 orbit-dot" style="transform-origin: center; animation-delay: 0.33s;">
-                        <div class="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2.5 h-2.5 bg-[var(--color-primary-400)] rounded-full shadow-lg shadow-[var(--color-primary-400)]/50" style="transform: rotate(120deg) translateY(-64px);" />
-                    </div>
-                    <div class="absolute inset-0 orbit-dot" style="transform-origin: center; animation-delay: 0.66s;">
-                        <div class="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 bg-[var(--color-primary-300)] rounded-full shadow-lg shadow-[var(--color-primary-300)]/50" style="transform: rotate(240deg) translateY(-64px);" />
-                    </div>
-
-                    <!-- Center logo -->
-                    <div class="center-logo absolute inset-4 rounded-full bg-gradient-to-br from-[var(--color-primary-500)] to-[var(--color-primary-700)] flex items-center justify-center shadow-2xl shadow-[var(--color-primary-500)]/30">
-                        <svg class="h-10 w-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                        </svg>
-                    </div>
-
-                    <!-- Outer dashed ring -->
-                    <div class="absolute -inset-4 rounded-full border-2 border-dashed border-[var(--color-primary-200)] dark:border-[var(--color-primary-800)] animate-spin" style="animation-duration: 20s;" />
                 </div>
 
-                <!-- Loading text with animated dots -->
-                <div class="flex items-center gap-1">
-                    <span class="text-lg font-medium text-[var(--text-secondary)]">Loading</span>
-                    <div class="flex gap-1 ml-1">
-                        <span class="loader-dot w-1.5 h-1.5 rounded-full bg-[var(--color-primary-500)]" />
-                        <span class="loader-dot w-1.5 h-1.5 rounded-full bg-[var(--color-primary-500)]" />
-                        <span class="loader-dot w-1.5 h-1.5 rounded-full bg-[var(--color-primary-500)]" />
+                <!-- Text -->
+                <div class="mt-8 flex flex-col items-center gap-2">
+                    <h3 class="text-xl font-bold text-[var(--text-primary)] tracking-tight">WorkSphere</h3>
+                    <div class="flex items-center gap-1">
+                        <span class="text-sm font-medium text-[var(--text-secondary)] uppercase tracking-widest">Loading</span>
+                        <span class="flex gap-1 ml-1">
+                            <span class="w-1 h-1 rounded-full bg-[var(--color-primary-500)] animate-bounce" style="animation-delay: 0ms"></span>
+                            <span class="w-1 h-1 rounded-full bg-[var(--color-primary-500)] animate-bounce" style="animation-delay: 150ms"></span>
+                            <span class="w-1 h-1 rounded-full bg-[var(--color-primary-500)] animate-bounce" style="animation-delay: 300ms"></span>
+                        </span>
                     </div>
                 </div>
             </div>
@@ -106,14 +53,41 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.fade-loader-enter-active {
-    transition: opacity 0.3s ease;
-}
+.fade-loader-enter-active,
 .fade-loader-leave-active {
-    transition: opacity 0.5s ease;
+    transition: opacity 0.4s ease;
 }
+
 .fade-loader-enter-from,
 .fade-loader-leave-to {
     opacity: 0;
+}
+
+.animate-spin-slow {
+    animation: spin 3s linear infinite;
+}
+
+.animate-pulse-slow {
+    animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.8;
+        transform: scale(0.95);
+    }
 }
 </style>
