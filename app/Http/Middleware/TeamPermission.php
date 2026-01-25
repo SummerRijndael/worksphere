@@ -37,7 +37,9 @@ class TeamPermission
         }
 
         // Check if user is a member of the team
-        if (! $this->permissionService->isTeamMember($user, $team)) {
+        // Super Admins bypass membership check
+        $superAdminRole = config('roles.super_admin_role', 'administrator');
+        if (! $user->hasRole($superAdminRole) && ! $this->permissionService->isTeamMember($user, $team)) {
             throw new AccessDeniedHttpException('You are not a member of this team.');
         }
 
@@ -75,6 +77,23 @@ class TeamPermission
         if (is_string($team) || is_int($team)) {
             return Team::where('public_id', $team)
                 ->orWhere('id', $team)
+                ->first();
+        }
+
+        // Check for header from frontend
+        $headerTeamId = $request->header('X-Team-ID');
+        if ($headerTeamId) {
+            return Team::where('public_id', $headerTeamId)
+                ->orWhere('id', $headerTeamId)
+                ->first();
+        }
+
+        // Fallback: Check for input parameter (query/body)
+        // Useful for resource controllers that receive team_id in payload
+        $inputTeamId = $request->input('team_id') ?? $request->input('team');
+        if ($inputTeamId) {
+             return Team::where('public_id', $inputTeamId)
+                ->orWhere('id', $inputTeamId)
                 ->first();
         }
 

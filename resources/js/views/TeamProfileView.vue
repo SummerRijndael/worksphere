@@ -42,6 +42,8 @@ import MediaManager from "@/components/tools/MediaManager.vue";
 import TeamCalendar from "@/components/tools/TeamCalendar.vue";
 import TeamEventModal from "@/components/modals/TeamEventModal.vue";
 import TeamProjectsTab from "@/components/teams/TeamProjectsTab.vue";
+import ClientList from '@/components/clients/ClientList.vue';
+import ClientFormModal from '@/components/clients/ClientFormModal.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -101,13 +103,10 @@ async function fetchCalendarEvents(start, end) {
                 },
             },
         );
+
         calendarEvents.value = response.data.data;
     } catch (error) {
-        toast({
-            title: "Error",
-            description: "Failed to load calendar events",
-            variant: "destructive",
-        });
+        toast.error("Failed to load calendar events");
     } finally {
         calendarLoading.value = false;
     }
@@ -347,17 +346,56 @@ const fetchProjects = async () => {
 // Clients
 const clients = ref([]);
 const clientsLoading = ref(false);
+const clientListParams = ref({
+    page: 1,
+    perPage: 15,
+    total: 0
+});
+const clientViewMode = ref('grid');
+const showClientFormModal = ref(false);
+const clientToEdit = ref(null);
 
-const fetchClients = async () => {
+const fetchClients = async (page = 1) => {
+    if (!team.value) return;
     clientsLoading.value = true;
     try {
-        const response = await axios.get("/api/clients");
+        const params = {
+            team_id: team.value.public_id, // Scope to this team (Admin or Member)
+            page,
+            per_page: clientListParams.value.perPage
+        };
+        const response = await axios.get("/api/clients", { params });
         clients.value = response.data.data;
+        clientListParams.value = {
+            currentPage: response.data.current_page,
+            lastPage: response.data.last_page,
+            total: response.data.total,
+            perPage: response.data.per_page
+        };
     } catch (error) {
         console.error("Error fetching clients:", error);
     } finally {
         clientsLoading.value = false;
     }
+};
+
+const openClientCreate = () => {
+    clientToEdit.value = null;
+    showClientFormModal.value = true;
+};
+
+const openClientEdit = (client) => {
+    clientToEdit.value = client;
+    showClientFormModal.value = true;
+};
+
+// Reuse delete logic or add specific one? ClientsView has clean delete logic.
+// We can use a simple confirm for now to save time or reuse the modal generic DeleteModal?
+// TeamProfile has `deleteModalOpen` / `deleteTarget`.
+// It handles 'single', 'bulk', 'avatar'. I can extend it for 'client'.
+const requestDeleteClient = (client) => {
+    deleteTarget.value = { type: 'client', id: client.public_id, name: client.name };
+    deleteModalOpen.value = true;
 };
 
 // Fetch Team Data
@@ -791,6 +829,14 @@ const confirmDelete = async () => {
             console.error("Failed to remove avatar:", error);
             toast.error("Failed to remove avatar");
         }
+    } else if (deleteTarget.value.type === 'client') {
+        try {
+            await axios.delete(`/api/clients/${deleteTarget.value.id}`);
+            toast.success("Client deleted successfully");
+            fetchClients(clientListParams.value.currentPage);
+        } catch (error) {
+            toast.error("Failed to delete client");
+        }
     }
 };
 
@@ -1004,6 +1050,7 @@ const canRemoveMember = (member) => {
                                 'templates',
                                 'members',
                                 'files',
+                                'clients',
                                 'calendar',
                                 'activity',
                             ]"
@@ -1108,7 +1155,7 @@ const canRemoveMember = (member) => {
                                         Clients
                                     </h3>
                                 </div>
-                                <Button variant="ghost" size="sm"
+                                <Button variant="ghost" size="sm" @click="activeTab = 'clients'"
                                     >View All</Button
                                 >
                             </div>
@@ -1131,13 +1178,9 @@ const canRemoveMember = (member) => {
                                     :key="client.id"
                                     class="flex items-center gap-3 p-3 hover:bg-[var(--surface-secondary)] rounded-lg transition-colors cursor-pointer"
                                 >
-                                    <Avatar
-                                        :name="client.name"
-                                        :src="client.logo_url"
-                                        size="sm"
-                                        variant="square"
-                                        class="rounded-md"
-                                    />
+                                    <div class="h-8 w-8 rounded bg-[var(--surface-primary)] border border-[var(--border-default)] flex items-center justify-center text-xs font-bold text-[var(--text-secondary)] uppercase">
+                                        {{ client.initials }}
+                                    </div>
                                     <div>
                                         <h4
                                             class="font-medium text-[var(--text-primary)]"
@@ -1147,7 +1190,7 @@ const canRemoveMember = (member) => {
                                         <p
                                             class="text-xs text-[var(--text-muted)]"
                                         >
-                                            {{ client.industry || "Client" }}
+                                            {{ client.email || "No email" }}
                                         </p>
                                     </div>
                                 </div>
@@ -1155,7 +1198,8 @@ const canRemoveMember = (member) => {
                         </Card>
                     </div>
 
-                    <!-- Calendar Widget -->
+
+
                     <!-- Calendar Widget -->
                     <div>
                         <div class="flex items-center gap-2 mb-4">
@@ -1178,6 +1222,36 @@ const canRemoveMember = (member) => {
                             @export-click="handleExportEvents"
                         />
                     </div>
+                </div>
+
+                <!-- Clients Tab -->
+                <div v-if="activeTab === 'clients'" class="space-y-6">
+                     <div class="flex items-center justify-between">
+                         <div>
+                             <h2 class="text-lg font-semibold text-[var(--text-primary)]">Clients</h2>
+                             <p class="text-[var(--text-secondary)]">Manage organizations associated with this team</p>
+                         </div>
+                         <Button v-if="isTeamAdmin" @click="openClientCreate">
+                             <Plus class="w-4 h-4 mr-2" />
+                             Add Client
+                         </Button>
+                     </div>
+
+                     <ClientList 
+                        :clients="clients"
+                        :loading="clientsLoading"
+                        v-model:viewQuery="clientViewMode"
+                        :pagination="clientListParams"
+                        @edit="openClientEdit"
+                        @delete="requestDeleteClient"
+                        @page-change="fetchClients"
+                    >
+                         <template #empty-actions>
+                            <Button v-if="isTeamAdmin" variant="outline" class="mt-4" @click="openClientCreate">
+                                Add Client
+                            </Button>
+                        </template>
+                    </ClientList>
                 </div>
 
                 <!-- Projects Tab -->
@@ -1926,22 +2000,35 @@ const canRemoveMember = (member) => {
             </template>
         </Modal>
 
+        <!-- Client Modal -->
+        <ClientFormModal
+            :open="showClientFormModal"
+            :client="clientToEdit"
+            :team-id="team?.public_id"
+            @close="showClientFormModal = false"
+            @saved="fetchClients(clientListParams.currentPage)"
+        />
+
         <!-- Delete Confirmation Modal -->
         <Modal
             v-model:open="deleteModalOpen"
             :title="
-                deleteTarget.type === 'bulk'
-                    ? 'Delete Files'
-                    : deleteTarget.type === 'avatar'
-                      ? 'Remove Avatar'
-                      : 'Delete File'
+                deleteTarget.type === 'client' 
+                    ? 'Delete Client'
+                    : deleteTarget.type === 'bulk'
+                        ? 'Delete Files'
+                        : deleteTarget.type === 'avatar'
+                            ? 'Remove Avatar'
+                            : 'Delete File'
             "
             :description="
-                deleteTarget.type === 'bulk'
-                    ? `Are you sure you want to delete ${deleteTarget.ids.length} files? This action cannot be undone.`
-                    : deleteTarget.type === 'avatar'
-                      ? 'Are you sure you want to remove the team avatar? This cannot be undone.'
-                      : 'Are you sure you want to delete this file? This action cannot be undone.'
+                deleteTarget.type === 'client' 
+                    ? `Are you sure you want to delete ${deleteTarget.name}? This action cannot be undone.`
+                    : deleteTarget.type === 'bulk'
+                        ? `Are you sure you want to delete ${deleteTarget.ids.length} files? This action cannot be undone.`
+                        : deleteTarget.type === 'avatar'
+                            ? 'Are you sure you want to remove the team avatar? This cannot be undone.'
+                            : 'Are you sure you want to delete this file? This action cannot be undone.'
             "
             size="sm"
         >

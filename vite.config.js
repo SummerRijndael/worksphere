@@ -5,7 +5,7 @@ import vue from '@vitejs/plugin-vue';
 import { fileURLToPath, URL } from 'node:url';
 import os from 'node:os';
 
-export default defineConfig(({ mode }) => ({
+export default defineConfig(({ mode, command }) => ({
     plugins: [
         laravel({
             input: ['resources/css/app.css', 'resources/js/app.ts'],
@@ -51,6 +51,6 @@ export default defineConfig(({ mode }) => ({
         },
     },
     esbuild: {
-        drop: mode === 'production' ? ['console', 'debugger'] : [],
+        drop: command === 'build' && mode === 'production' ? ['console', 'debugger'] : [],
     },
 }));

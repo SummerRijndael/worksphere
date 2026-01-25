@@ -18,7 +18,7 @@ const api: AxiosInstance = axios.create({
 
 // Request interceptor
 api.interceptors.request.use(
-    (config: InternalAxiosRequestConfig) => {
+    async (config: InternalAxiosRequestConfig) => {
         // Get CSRF token from meta tag
         // REMOVED: Rely on Axios withXSRFToken: true to specific X-XSRF-TOKEN header from cookie.
         // This prevents stale meta tags from overriding fresh cookies.
@@ -34,6 +34,22 @@ api.interceptors.request.use(
         const socketId = (window as Window & { Echo?: { socketId?: () => string } }).Echo?.socketId?.();
         if (socketId) {
             config.headers['X-Socket-ID'] = socketId;
+        }
+
+        // Inject Current Team ID
+        try {
+            // Check localStorage first to avoid async store import overhead for every request if possible,
+            // but store is safer for reactivity. We use a key check.
+            const authStorage = localStorage.getItem('coresync-auth');
+            if (authStorage) {
+                const parsed = JSON.parse(authStorage);
+                 // pinia-plugin-persistedstate stores structure as { currentTeamId: "..." }
+                if (parsed.currentTeamId) {
+                    config.headers['X-Team-ID'] = parsed.currentTeamId;
+                }
+            }
+        } catch (e) {
+            // Silent fail
         }
         
         return config;

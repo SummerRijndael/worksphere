@@ -15,6 +15,7 @@ class Client extends Model
     use Notifiable;
 
     protected $fillable = [
+        'team_id',
         'name',
         'email',
         'contact_person',
@@ -124,6 +125,16 @@ class Client extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * Get the team that owns the client.
+     *
+     * @return BelongsTo<Team, Client>
+     */
+    public function team(): BelongsTo
+    {
+        return $this->belongsTo(Team::class);
     }
 
     /**

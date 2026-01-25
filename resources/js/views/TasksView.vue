@@ -15,6 +15,16 @@ const router = useRouter();
 const authStore = useAuthStore();
 const hasTeams = computed(() => authStore.hasTeams);
 
+// Helper to check permissions
+const can = (permission: string) => {
+    // Check if user is administrator
+    if (authStore.user?.roles?.some((r: any) => r.name === 'administrator')) {
+        return true;
+    }
+    // Check specific permission
+    return authStore.user?.permissions?.some((p: any) => p.name === permission) || false;
+};
+
 // Role Logic
 const userRole = computed(() => {
     if (!authStore.user || !authStore.currentTeamId) return null;
@@ -292,7 +302,7 @@ const onTaskMoved = async (taskId: string, newStatus: string) => {
                         <span>Join a team to create tasks</span>
                     </div>
                 </Tooltip>
-                <Button v-else @click="onCreateTask">
+                <Button v-else-if="can('tasks.create')" @click="onCreateTask">
                     <Plus class="h-4 w-4" />
                     New Task
                 </Button>
@@ -448,7 +458,7 @@ const onTaskMoved = async (taskId: string, newStatus: string) => {
                     <span>Join a team to create tasks</span>
                 </div>
             </Tooltip>
-            <Button v-else class="mt-4" @click="onCreateTask">
+            <Button v-else-if="can('tasks.create')" class="mt-4" @click="onCreateTask">
                 <Plus class="h-4 w-4" />
                 Create Task
             </Button>

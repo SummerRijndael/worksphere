@@ -71,6 +71,17 @@ return [
             ],
         ],
         [
+            'id' => 'clients',
+            'label' => 'Clients',
+            'icon' => 'users', // using users for now (shared with Teams, but distinct label)
+            'route' => '/admin/clients',
+            'permission' => ['clients.view', 'clients.view_all'],
+            'requires_team' => true,
+            'pinnable' => true,
+            'pinned_default' => true,
+            'children' => [],
+        ],
+        [
             'id' => 'tickets',
             'label' => 'Tickets',
             'icon' => 'ticket',

@@ -755,6 +755,18 @@ const routes: RouteRecordRaw[] = [
                 },
             },
             {
+                path: "/admin/clients/:public_id",
+                name: "admin-client-detail",
+                component: () => import("@/views/admin/ClientDetailsView.vue"),
+                meta: {
+                    title: "Client Details",
+                    breadcrumb: "Client Details",
+                    breadcrumbParent: { name: "admin-clients", label: "Clients" },
+                    transition: "slide-fade",
+                    permission: "user_manage",
+                },
+            },
+            {
                 path: "/admin/invoices",
                 name: "admin-invoices",
                 component: () => import("@/views/admin/InvoicesView.vue"),

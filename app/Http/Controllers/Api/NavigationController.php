@@ -148,6 +148,53 @@ class NavigationController extends Controller
                 }
             }
 
+            // Enrich Clients - show recent clients from user's teams
+            if (isset($item['id']) && $item['id'] === 'clients') {
+                 $userTeamIds = $user->teams()->pluck('teams.id');
+
+                 if ($userTeamIds->isNotEmpty()) {
+                    // Fetch recent clients for user's teams
+                    $clients = \App\Models\Client::whereIn('team_id', $userTeamIds)
+                        ->where('status', 'active')
+                        ->orderByDesc('updated_at')
+                        ->limit(10)
+                        ->with('team:id,name,public_id')
+                        ->get(['id', 'public_id', 'name', 'team_id']);
+
+                    $clientChildren = [];
+
+                    // 1. View All
+                    $clientChildren[] = [
+                        'id' => 'clients-all',
+                        'label' => 'View All Clients',
+                        'route' => '/admin/clients',
+                        'icon' => 'users',
+                    ];
+
+                    // 2. Recent Clients
+                    foreach ($clients as $client) {
+                        $clientChildren[] = [
+                            'id' => 'client-'.$client->public_id,
+                            'label' => $client->name,
+                             // NOTE: Linking to admin view with filter, assuming we have a way to view details there
+                             // Or we can add a specific details route. For now, use query param to select it.
+                            'route' => '/admin/clients/'.$client->public_id, 
+                             'team_badge' => $client->team->name ?? null,
+                        ];
+                    }
+
+                    // 3. Add New Client
+                    $clientChildren[] = [
+                        'id' => 'client-new',
+                        'label' => 'Add New Client',
+                        'route' => '/admin/clients?create=true',
+                        'icon' => 'plus',
+                    ];
+
+                    $item['children'] = $clientChildren;
+                 }
+            }
+
             // Recurse for children
             if (isset($item['children']) && is_array($item['children'])) {
                 $item['children'] = $this->enrichNavigation($item['children'], $user);

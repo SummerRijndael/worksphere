@@ -954,13 +954,13 @@ onMounted(() => {
                                                     class="w-2 h-2 rounded-full shrink-0"
                                                     :class="{
                                                         'bg-emerald-500':
-                                                            task.status ===
+                                                            (task.status?.value || task.status) ===
                                                             'completed',
                                                         'bg-blue-500':
-                                                            task.status ===
+                                                            (task.status?.value || task.status) ===
                                                             'in_progress',
                                                         'bg-amber-500':
-                                                            task.status ===
+                                                            (task.status?.value || task.status) ===
                                                             'in_qa',
                                                         'bg-[var(--text-muted)]':
                                                             ![
@@ -968,7 +968,7 @@ onMounted(() => {
                                                                 'in_progress',
                                                                 'in_qa',
                                                             ].includes(
-                                                                task.status
+                                                                task.status?.value || task.status
                                                             ),
                                                     }"
                                                 ></div>
@@ -995,10 +995,8 @@ onMounted(() => {
                                                     class="bg-[var(--surface-tertiary)] text-[var(--text-secondary)]"
                                                 >
                                                     {{
-                                                        task.status.replace(
-                                                            "_",
-                                                            " "
-                                                        )
+                                                        task.status?.label || 
+                                                        (typeof task.status === 'string' ? task.status.replace("_", " ") : task.status?.value || "Unknown")
                                                     }}
                                                 </Badge>
                                             </div>
