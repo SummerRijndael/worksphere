@@ -12,7 +12,7 @@ class TeamPolicy
      */
     public function viewAny(User $user): bool
     {
-        return $user->hasPermissionTo('teams.view') || $user->hasPermissionTo('user_manage');
+        return true; // Controller handles scoping
     }
 
     /**

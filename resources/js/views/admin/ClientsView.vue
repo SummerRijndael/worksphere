@@ -3,15 +3,16 @@ import { ref, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import debounce from 'lodash/debounce';
 import api from '@/lib/api';
-import { Button } from '@/components/ui';
-import { SelectFilter } from '@/components/ui';
+import { Button, SelectFilter, SearchInput, StatsCard } from '@/components/ui';
 import ClientList from '@/components/clients/ClientList.vue';
 import ClientFormModal from '@/components/clients/ClientFormModal.vue';
 import { 
-    Search, 
     LayoutGrid, 
     List, 
-    Plus
+    Plus,
+    Users,
+    Activity,
+    Briefcase
 } from 'lucide-vue-next';
 
 import { useAuthStore } from '@/stores/auth';
@@ -32,6 +33,11 @@ const can = (permission) => {
 
 // State
 const clients = ref([]);
+const stats = ref({
+    total: 0,
+    active: 0,
+    total_projects: 0
+});
 const isLoading = ref(true);
 const viewMode = ref(localStorage.getItem('clients_view_mode') || 'grid');
 const searchQuery = ref('');
@@ -53,14 +59,25 @@ const pagination = ref({
 // Admin Team Options
 const teamOptions = ref([]);
 
+// Fetch stats
+const fetchStats = async () => {
+    try {
+        const response = await api.get('/api/clients/stats');
+        stats.value = response.data;
+    } catch (error) {
+        console.error('Failed to fetch client stats', error);
+    }
+};
+
 const fetchTeams = async () => {
     if (!can('clients.manage_any_team')) return;
     try {
         const response = await api.get('/api/teams?per_page=100');
-        teamOptions.value = response.data.data.map(t => ({
+        const teams = response.data.data.map(t => ({
             label: t.name,
             value: t.id
-        })); 
+        }));
+        teamOptions.value = [{ label: 'All Teams', value: '' }, ...teams];
     } catch (e) {
         console.error('Failed to fetch teams', e);
     }
@@ -83,11 +100,13 @@ const fetchClients = async (page = 1) => {
 
         const response = await api.get('/api/clients', { params });
         clients.value = response.data.data;
+        
+        const meta = response.data.meta || response.data;
         pagination.value = {
-            currentPage: response.data.current_page,
-            lastPage: response.data.last_page,
-            total: response.data.total,
-            perPage: response.data.per_page
+            currentPage: meta.current_page,
+            lastPage: meta.last_page,
+            total: meta.total,
+            perPage: meta.per_page
         };
     } catch (error) {
         console.error('Failed to fetch clients:', error);
@@ -140,7 +159,8 @@ const handlePageChange = (page) => {
 };
 
 const handleViewClient = (client) => {
-    router.push({ name: 'admin-client-detail', params: { public_id: client.public_id } });
+    const detailRoute = route.name === 'admin-clients' ? 'admin-client-detail' : 'client-detail';
+    router.push({ name: detailRoute, params: { public_id: client.public_id } });
 };
 
 // Watchers
@@ -169,6 +189,7 @@ watch(() => route.query, (newQuery) => {
 // Lifecycle
 onMounted(() => {
     fetchClients();
+    fetchStats();
     if (can('clients.manage_any_team')) {
         fetchTeams();
     }
@@ -189,16 +210,41 @@ onMounted(() => {
             </Button>
         </div>
 
+        <!-- Stats Overview -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 animate-fade-in-down" style="animation-delay: 0.1s">
+            <StatsCard
+                :label="can('clients.manage_any_team') ? 'Total Clients' : 'My Team Clients'"
+                :value="stats.total"
+                :icon="Users"
+                variant="primary"
+            />
+            <StatsCard
+                label="Active Clients"
+                :value="stats.active"
+                :icon="Activity"
+                variant="success"
+            />
+             <StatsCard
+                label="Total Projects"
+                :value="stats.total_projects"
+                :icon="Briefcase"
+                variant="info"
+            />
+        </div>
+
         <!-- Filters -->
         <div class="flex flex-col sm:flex-row gap-4 bg-[var(--surface-primary)] p-4 rounded-xl border border-[var(--border-muted)] shadow-sm">
             <div class="flex-1 flex flex-col sm:flex-row gap-3">
                 <div class="relative flex-1">
-                    <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
-                    <input v-model="searchQuery" type="text" placeholder="Search clients..." class="input pl-14 h-10 text-sm">
+                    <SearchInput 
+                        v-model="searchQuery" 
+                        placeholder="Search clients..." 
+                        class="w-full"
+                    />
                 </div>
                 
                 <!-- Admin Team Filter -->
-                <div v-if="teamOptions.length > 0" class="w-[200px]">
+                <div v-if="can('clients.manage_any_team') && teamOptions.length > 0" class="w-[200px]">
                     <SelectFilter
                         v-model="teamFilter"
                         :options="teamOptions"

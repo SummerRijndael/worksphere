@@ -744,6 +744,28 @@ const routes: RouteRecordRaw[] = [
                 },
             },
             {
+                path: "/clients",
+                name: "clients",
+                component: () => import("@/views/admin/ClientsView.vue"),
+                meta: {
+                    title: "Clients",
+                    breadcrumb: "Clients",
+                    transition: "slide-fade",
+                    // No permission required, just auth
+                },
+            },
+            {
+                path: "/clients/:public_id",
+                name: "client-detail",
+                component: () => import("@/views/admin/ClientDetailsView.vue"),
+                meta: {
+                    title: "Client Details",
+                    breadcrumb: "Client Details",
+                    breadcrumbParent: { name: "clients", label: "Clients" },
+                    transition: "slide-fade",
+                },
+            },
+            {
                 path: "/admin/clients",
                 name: "admin-clients",
                 component: () => import("@/views/admin/ClientsView.vue"),
@@ -751,7 +773,8 @@ const routes: RouteRecordRaw[] = [
                     title: "Manage Clients",
                     breadcrumb: "Clients",
                     transition: "slide-fade",
-                    permission: "user_manage",
+                    // No permission check for now - handled by backend and navigationController
+                    // permission: "clients.manage", 
                 },
             },
             {
@@ -764,6 +787,27 @@ const routes: RouteRecordRaw[] = [
                     breadcrumbParent: { name: "admin-clients", label: "Clients" },
                     transition: "slide-fade",
                     permission: "user_manage",
+                },
+            },
+            {
+                path: "/invoices",
+                name: "invoices",
+                component: () => import("@/views/admin/InvoicesView.vue"),
+                meta: {
+                    title: "Invoices",
+                    breadcrumb: "Invoices",
+                    transition: "slide-fade",
+                },
+            },
+            {
+                path: "/invoices/:id",
+                name: "invoice-detail",
+                component: () => import("@/views/admin/InvoiceDetailView.vue"),
+                meta: {
+                    title: "Invoice Details",
+                    breadcrumb: "Invoice Details",
+                    breadcrumbParent: { name: "invoices", label: "Invoices" },
+                    transition: "slide-fade",
                 },
             },
             {

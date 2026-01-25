@@ -22,6 +22,7 @@ class TeamMemberResource extends JsonResource
             'display_name' => $this->display_name,
             'initials' => $this->initials,
             'avatar_url' => $this->avatar_url,
+            'has_avatar' => $this->has_avatar,
             'role' => $this->whenPivotLoaded('team_user', function () {
                 return $this->pivot->role;
             }),

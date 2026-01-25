@@ -19,7 +19,9 @@ class ChatStabilitySeeder extends Seeder
             ->get();
 
         if ($chats->isEmpty()) {
-            $this->command->info('No existing DM or Group chats found. Please create some chats first.');
+            if ($this->command) {
+                $this->command->info('No existing DM or Group chats found. Please create some chats first.');
+            }
 
             return;
         }
@@ -33,31 +35,43 @@ class ChatStabilitySeeder extends Seeder
                 continue;
             }
 
-            // Generate 50-100 messages purely for stability testing (scroll, wrap, replies)
-            $count = rand(50, 100);
+            // Generate 100-200 messages over 12 months for stability testing
+            $count = rand(100, 200);
             $messageIds = [];
 
-            $this->command->info("Seeding {$chat->type} chat {$chat->id} with {$count} messages...");
+            if ($this->command) {
+                $this->command->info("Seeding {$chat->type} chat {$chat->id} with {$count} messages over 12 months...");
+            }
+
+            // Distribute messages over last 12 months
+            $startTime = now()->subMonths(12);
+            $currentTime = clone $startTime;
+            $intervalMinutes = (12 * 30 * 24 * 60) / $count;
 
             for ($i = 0; $i < $count; $i++) {
                 $sender = $participants->random();
+                $currentTime->addMinutes(rand(1, $intervalMinutes * 2));
+                
+                if ($currentTime->isFuture()) {
+                    $currentTime = now()->subMinutes($count - $i);
+                }
 
                 // Content Generation
-                $isLongMessage = ($i % 10 === 0); // Every 10th message is long
-
-                if ($isLongMessage) {
-                    // Long message for wrapping test (no spaces to force break-all or spaces for wrapping)
-                    // We mix both: a block of text and a long unbroken string
+                $dice = rand(1, 100);
+                
+                if ($dice > 90) { // 10% Long messages
                     $content = $faker->paragraph(10)."\n\n".
                                'LONG_STRING_TEST_'.str_repeat('AaBbCcDdEeFfGgHh', 20).
                                "\n\n".$faker->paragraph(5);
-                } else {
+                } elseif ($dice > 70) { // 20% Short reactions/snippets
+                    $content = $faker->randomElement(['LGTM!', 'Thanks!', 'Looking into it.', 'Done.', 'Can we hop on a call?', '🚀', '💯', 'Acknowledged.']);
+                } else { // 70% Normal messages
                     $content = $faker->realText(rand(20, 200));
                 }
 
                 // Reply Logic
                 $replyToId = null;
-                if (! empty($messageIds) && mt_rand(1, 100) <= 20) { // 20% chance to reply
+                if (! empty($messageIds) && mt_rand(1, 100) <= 25) { // 25% chance to reply
                     $replyToId = $messageIds[array_rand($messageIds)];
                 }
 
@@ -67,8 +81,8 @@ class ChatStabilitySeeder extends Seeder
                     'user_id' => $sender->id,
                     'content' => $content,
                     'reply_to_message_id' => $replyToId,
-                    'created_at' => now()->subMinutes($count - $i), // Reverse chronological creation for timeline sane-ness
-                    'updated_at' => now()->subMinutes($count - $i),
+                    'created_at' => $currentTime,
+                    'updated_at' => $currentTime,
                 ]);
 
                 $messageIds[] = $message->id;
@@ -83,6 +97,8 @@ class ChatStabilitySeeder extends Seeder
             }
         }
 
-        $this->command->info("Chat Stability Seeder Complete! Seeded {$totalMessages} messages across {$chats->count()} chats.");
+        if ($this->command) {
+            $this->command->info("Chat Stability Seeder Complete! Seeded {$totalMessages} messages across {$chats->count()} chats.");
+        }
     }
 }

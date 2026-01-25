@@ -19,7 +19,11 @@ import {
     Calendar,
     Plus,
     Trash2,
-    Copy
+    Copy,
+    AlertTriangle,
+    TrendingUp,
+    Clock,
+    DollarSign
 } from 'lucide-vue-next';
 import ClientContactModal from '@/components/clients/ClientContactModal.vue';
 
@@ -49,9 +53,21 @@ const deleteContact = async (contactId) => {
     }
 };
 
+const backRoute = computed(() => {
+    return route.name === 'admin-client-detail' ? { name: 'admin-clients' } : { name: 'clients' };
+});
+
+const projectsRoute = computed(() => {
+    return route.name === 'admin-client-detail' ? { name: 'admin-projects' } : { name: 'projects' };
+});
+
+const invoicesRoute = computed(() => {
+    return route.name === 'admin-client-detail' ? { name: 'admin-invoices' } : { name: 'invoices' };
+});
+
 const breadcrumbs = computed(() => {
     return [
-        { label: 'Clients', to: { name: 'admin-clients' } },
+        { label: 'Clients', to: backRoute.value },
         { label: client.value?.name || 'Loading...', active: true }
     ];
 });
@@ -143,7 +159,7 @@ watch(() => route.params.public_id, () => {
         <div class="bg-[var(--surface-primary)]  border-[var(--border-muted)] px-6 py-4">
             <div class="mx-auto w-full">
                 <div class="mb-4">
-                    <button @click="router.push({ name: 'admin-clients' })" class="flex items-center text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
+                    <button @click="router.push(backRoute)" class="flex items-center text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
                         <ArrowLeft class="w-4 h-4 mr-1" />
                         Back to Clients
                     </button>
@@ -238,7 +254,60 @@ watch(() => route.params.public_id, () => {
             <div class="mx-auto w-full">
                 
                 <!-- Overview Tab -->
-                <div v-show="activeTab === 'overview'" class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div v-show="activeTab === 'overview'" class="space-y-6">
+                    <!-- Financial Overview -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div class="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 rounded-xl p-4 flex items-center gap-4">
+                            <div class="h-10 w-10 rounded-lg bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center text-amber-600 dark:text-amber-400">
+                                <Clock class="h-6 w-6" />
+                            </div>
+                            <div>
+                                <p class="text-xs font-medium text-amber-600 dark:text-amber-400 uppercase tracking-wider">Pending Payments</p>
+                                <p class="text-xl font-bold text-amber-900 dark:text-amber-100">{{ formatCurrency(client.total_pending) }}</p>
+                            </div>
+                        </div>
+
+                        <div class="bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-900/30 rounded-xl p-4 flex items-center gap-4">
+                            <div class="h-10 w-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+                                <TrendingUp class="h-6 w-6" />
+                            </div>
+                            <div>
+                                <p class="text-xs font-medium text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Completed Payments</p>
+                                <p class="text-xl font-bold text-emerald-900 dark:text-emerald-100">{{ formatCurrency(client.total_paid) }}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div v-if="client.overdue_invoices && client.overdue_invoices.length > 0" class="bg-[var(--surface-primary)] rounded-xl border border-red-200 dark:border-red-900/30 overflow-hidden shadow-sm shadow-red-100/50">
+                        <div class="p-4 bg-red-50 dark:bg-red-900/10 border-b border-red-200 dark:border-red-900/30 flex items-center gap-2">
+                            <AlertTriangle class="h-5 w-5 text-red-600 dark:text-red-400" />
+                            <h3 class="text-sm font-bold text-red-900 dark:text-red-100 uppercase tracking-wide">Long Overdue Payments</h3>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse">
+                                <thead>
+                                    <tr class="bg-red-50/50 dark:bg-red-900/5 border-b border-red-100 dark:border-red-900/20">
+                                        <th class="px-6 py-2 text-xs font-bold text-red-800 dark:text-red-300 uppercase tracking-wider">Invoice #</th>
+                                        <th class="px-6 py-2 text-xs font-bold text-red-800 dark:text-red-300 uppercase tracking-wider">Due Date</th>
+                                        <th class="px-6 py-2 text-xs font-bold text-red-800 dark:text-red-300 uppercase tracking-wider">Days Overdue</th>
+                                        <th class="px-6 py-2 text-xs font-bold text-red-800 dark:text-red-300 uppercase tracking-wider text-right">Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-red-100 dark:divide-red-900/20">
+                                    <tr v-for="invoice in client.overdue_invoices" :key="invoice.id" class="hover:bg-red-50/80 dark:hover:bg-red-900/20 transition-colors">
+                                        <td class="px-6 py-3 font-medium text-red-900 dark:text-red-100">{{ invoice.invoice_number }}</td>
+                                        <td class="px-6 py-3 text-sm text-red-800 dark:text-red-300">{{ formatDate(invoice.due_date) }}</td>
+                                        <td class="px-6 py-3 text-sm font-bold text-red-600 dark:text-red-400">
+                                            {{ Math.abs(Math.floor((new Date() - new Date(invoice.due_date)) / (1000 * 60 * 60 * 24))) }} days
+                                        </td>
+                                        <td class="px-6 py-3 text-sm font-bold text-red-900 dark:text-red-100 text-right">{{ formatCurrency(invoice.total, invoice.currency) }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <!-- Contact Info -->
                     <div class="md:col-span-2 space-y-6">
                         <div class="bg-[var(--surface-primary)] rounded-xl border border-[var(--border-muted)] p-6 shadow-sm">
@@ -314,6 +383,7 @@ watch(() => route.params.public_id, () => {
                             </div>
                         </div>
                     </div>
+                    </div>
                 </div>
 
                 <!-- Projects Tab -->
@@ -353,7 +423,7 @@ watch(() => route.params.public_id, () => {
                         
                         <!-- If we have limited projects in show, maybe link to view all -->
                         <div class="p-4 border-t border-[var(--border-muted)] text-center">
-                            <Button variant="ghost" @click="router.push({ name: 'admin-projects', query: { client: client.id } })">
+                            <Button variant="ghost" @click="router.push({ name: projectsRoute.name, query: { client: client.id } })">
                                 View All Projects
                             </Button>
                         </div>
@@ -411,7 +481,7 @@ watch(() => route.params.public_id, () => {
                             </tbody>
                         </table>
                           <div class="p-4 border-t border-[var(--border-muted)] text-center">
-                            <Button variant="ghost" @click="router.push({ name: 'admin-invoices', query: { client: client.id } })">
+                            <Button variant="ghost" @click="router.push({ name: invoicesRoute.name, query: { client: client.id } })">
                                 View All Invoices
                             </Button>
                         </div>

@@ -240,7 +240,7 @@ return [
                     'permission' => 'user_manage',
                 ],
                 [
-                    'id' => 'clients',
+                    'id' => 'admin-clients',
                     'label' => 'Clients',
                     'route' => '/admin/clients',
                     'permission' => 'user_manage',

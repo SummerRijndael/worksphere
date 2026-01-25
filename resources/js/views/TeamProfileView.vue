@@ -27,6 +27,8 @@ import {
     Maximize2,
     History,
     Shield,
+    DollarSign,
+    BarChart3,
 } from "lucide-vue-next";
 import AppLayout from "@/layouts/AppLayout.vue";
 import Avatar from "@/components/ui/Avatar.vue";
@@ -44,6 +46,7 @@ import TeamEventModal from "@/components/modals/TeamEventModal.vue";
 import TeamProjectsTab from "@/components/teams/TeamProjectsTab.vue";
 import ClientList from '@/components/clients/ClientList.vue';
 import ClientFormModal from '@/components/clients/ClientFormModal.vue';
+import EarningsTrendChart from "@/components/charts/EarningsTrendChart.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -53,6 +56,23 @@ const authStore = useAuthStore();
 const team = ref(null);
 const loading = ref(true);
 const activeTab = ref(route.query.tab?.toString() || "overview");
+
+// Financial Stats
+const financialStats = ref(null);
+const financialLoading = ref(false);
+
+const fetchFinancialStats = async () => {
+    if (!team.value) return;
+    financialLoading.value = true;
+    try {
+        const response = await axios.get(`/api/teams/${team.value.public_id}/stats/financial`);
+        financialStats.value = response.data;
+    } catch (error) {
+        console.error("Error fetching financial stats:", error);
+    } finally {
+        financialLoading.value = false;
+    }
+};
 
 // Delete Modal State
 const deleteModalOpen = ref(false);
@@ -400,7 +420,7 @@ const requestDeleteClient = (client) => {
 
 const handleViewClient = (client) => {
     router.push({
-        name: 'admin-client-detail',
+        name: 'client-detail',
         params: { public_id: client.public_id }
     });
 };
@@ -418,6 +438,7 @@ const fetchTeam = async () => {
             fetchFiles(),
             fetchProjects(),
             fetchClients(),
+            fetchFinancialStats(),
         ]);
         // If activity tab is active, fetch activity
         if (activeTab.value === "activity") {
@@ -984,7 +1005,7 @@ const canRemoveMember = (member) => {
                                         <Upload v-else class="h-5 w-5" />
                                     </div>
                                     <div
-                                        v-if="team.has_avatar"
+                                        v-if="team.has_avatar && isOwner"
                                         class="p-2 hover:bg-red-500/80 rounded-full cursor-pointer transition-colors text-red-200 hover:text-white"
                                         @click.stop="removeAvatar"
                                         title="Remove avatar"
@@ -1037,7 +1058,7 @@ const canRemoveMember = (member) => {
                         </div>
                         <div class="flex items-center gap-3">
                             <Button
-                                v-if="isOwner"
+                                v-if="isTeamAdmin"
                                 @click="showInviteModal = true"
                             >
                                 <Plus class="h-4 w-4" />
@@ -1083,6 +1104,90 @@ const canRemoveMember = (member) => {
             <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 <!-- Overview Tab -->
                 <div v-if="activeTab === 'overview'" class="space-y-8">
+                     <!-- Financial Overview -->
+                    <div class="mb-8" v-if="financialStats || financialLoading">
+                        <h3 class="text-lg font-semibold text-[var(--text-primary)] mb-4">Financial Overview</h3>
+                        
+                        <!-- Loading State -->
+                        <div v-if="financialLoading" class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div class="h-32 bg-[var(--surface-elevated)] animate-pulse rounded-lg"></div>
+                            <div class="h-64 bg-[var(--surface-elevated)] animate-pulse rounded-lg"></div>
+                            <div class="h-64 bg-[var(--surface-elevated)] animate-pulse rounded-lg"></div>
+                        </div>
+                        <div v-else class="space-y-6">
+                            <!-- Total Earnings & Trend -->
+                            <Card class="bg-gradient-to-br from-[var(--surface-elevated)] to-[var(--surface-secondary)] border-[var(--border-default)] overflow-hidden">
+                                <div class="p-6 grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
+                                    <div class="md:col-span-1 space-y-4">
+                                        <div>
+                                            <p class="text-sm font-medium text-[var(--text-secondary)]">Total Earnings</p>
+                                            <p class="text-4xl font-bold text-[var(--text-primary)] mt-1 tracking-tight">
+                                                {{ new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(financialStats.total_earnings) }}
+                                            </p>
+                                        </div>
+                                        <div class="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-medium">
+                                            <DollarSign class="h-3.5 w-3.5" />
+                                            <span>Lifetime Revenue</span>
+                                        </div>
+                                    </div>
+                                    <div class="md:col-span-2 h-[200px]">
+                                        <EarningsTrendChart :data="financialStats.monthly_earnings || []" />
+                                    </div>
+                                </div>
+                            </Card>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <!-- Top Projects -->
+                                <Card>
+                                    <div class="flex items-center justify-between mb-4">
+                                        <h4 class="font-semibold text-[var(--text-primary)]">Highest Earning Projects</h4>
+                                        <BarChart3 class="h-4 w-4 text-[var(--text-muted)]" />
+                                    </div>
+                                    <div class="space-y-3">
+                                        <div v-for="(project, index) in financialStats.top_projects" :key="project.id" class="flex items-center justify-between p-2 hover:bg-[var(--surface-secondary)] rounded-md transition-colors">
+                                            <div class="flex items-center gap-3">
+                                                <span class="text-sm font-bold text-[var(--text-muted)] w-4">{{ index + 1 }}</span>
+                                                <div>
+                                                    <p class="text-sm font-medium text-[var(--text-primary)] line-clamp-1">{{ project.name }}</p>
+                                                    <StatusBadge :status="project.status" size="xs" />
+                                                </div>
+                                            </div>
+                                            <span class="text-sm font-semibold text-[var(--text-primary)]">
+                                                {{ new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(project.total_earnings) }}
+                                            </span>
+                                        </div>
+                                        <div v-if="!financialStats.top_projects || financialStats.top_projects.length === 0" class="text-center text-sm text-[var(--text-muted)] py-4">
+                                            No earnings data available
+                                        </div>
+                                    </div>
+                                </Card>
+
+                                <!-- Top Clients -->
+                                <Card>
+                                    <div class="flex items-center justify-between mb-4">
+                                        <h4 class="font-semibold text-[var(--text-primary)]">Top Clients</h4>
+                                        <Users class="h-4 w-4 text-[var(--text-muted)]" />
+                                    </div>
+                                    <div class="space-y-3">
+                                        <div v-for="(client, index) in financialStats.top_clients" :key="client.id" class="flex items-center justify-between p-2 hover:bg-[var(--surface-secondary)] rounded-md transition-colors">
+                                            <div class="flex items-center gap-3">
+                                                <Avatar :src="client.avatar_url" :fallback="client.name ? client.name.substring(0,2).toUpperCase() : '?'" size="sm" />
+                                                <div>
+                                                    <p class="text-sm font-medium text-[var(--text-primary)] line-clamp-1">{{ client.name }}</p>
+                                                </div>
+                                            </div>
+                                            <span class="text-sm font-semibold text-[var(--text-primary)]">
+                                                {{ new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(client.total_earnings) }}
+                                            </span>
+                                        </div>
+                                        <div v-if="!financialStats.top_clients || financialStats.top_clients.length === 0" class="text-center text-sm text-[var(--text-muted)] py-4">
+                                            No client earnings data available
+                                        </div>
+                                    </div>
+                                </Card>
+                            </div>
+                        </div>
+                    </div>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <!-- Projects Widget -->
                         <Card class="md:col-span-2">
@@ -1302,6 +1407,7 @@ const canRemoveMember = (member) => {
                                 </p>
                             </div>
                             <div
+                                v-if="isTeamAdmin"
                                 class="mt-4 pt-4 border-t border-[var(--border-subtle)] flex items-center text-sm font-medium text-[var(--interactive-primary)]"
                             >
                                 Manage Task Templates
@@ -1342,6 +1448,7 @@ const canRemoveMember = (member) => {
                                 </p>
                             </div>
                             <div
+                                v-if="isTeamAdmin"
                                 class="mt-4 pt-4 border-t border-[var(--border-subtle)] flex items-center text-sm font-medium text-[var(--interactive-primary)]"
                             >
                                 Manage Invoice Templates
@@ -1382,6 +1489,7 @@ const canRemoveMember = (member) => {
                                 </p>
                             </div>
                             <div
+                                v-if="isTeamAdmin"
                                 class="mt-4 pt-4 border-t border-[var(--border-subtle)] flex items-center text-sm font-medium text-[var(--interactive-primary)]"
                             >
                                 Manage Team Roles

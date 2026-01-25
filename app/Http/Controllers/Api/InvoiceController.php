@@ -103,6 +103,7 @@ class InvoiceController extends Controller
             'paid' => (clone $baseQuery)->paid()->count(),
             'overdue' => (clone $baseQuery)->overdue()->count(),
             'total_outstanding' => (clone $baseQuery)->pending()->sum('total'),
+            'total_collected' => (clone $baseQuery)->paid()->sum('total'),
             'total_paid_this_month' => (clone $baseQuery)
                 ->paid()
                 ->whereMonth('paid_at', now()->month)

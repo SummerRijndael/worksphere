@@ -48,6 +48,7 @@ const stats = ref({
     paid: 0,
     overdue: 0,
     total_outstanding: 0,
+    total_collected: 0,
 });
 
 const pagination = ref({
@@ -130,11 +131,13 @@ const fetchInvoices = async (page = 1) => {
             { params }
         );
         invoices.value = response.data.data;
+        
+        const meta = response.data.meta || response.data;
         pagination.value = {
-            current_page: response.data.meta.current_page,
-            last_page: response.data.meta.last_page,
-            per_page: response.data.meta.per_page,
-            total: response.data.meta.total,
+            current_page: meta.current_page,
+            last_page: meta.last_page,
+            per_page: meta.per_page,
+            total: meta.total,
         };
     } catch (err) {
         console.error("Failed to fetch invoices", err);
@@ -173,7 +176,8 @@ const changePage = (page: number) => {
 };
 
 const viewInvoice = (invoice: any) => {
-    router.push(`/admin/invoices/${invoice.public_id}`);
+    const detailRoute = route.name === 'admin-invoices' ? 'admin-invoice-detail' : 'invoice-detail';
+    router.push({ name: detailRoute, params: { id: invoice.public_id } });
 };
 
 const createInvoice = () => {
@@ -389,7 +393,7 @@ onMounted(() => {
         </div>
 
         <!-- Stats Cards -->
-        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-4">
             <Card
                 padding="md"
                 class="cursor-pointer hover:shadow-md transition-shadow"
@@ -456,6 +460,14 @@ onMounted(() => {
                         {{ formatCurrency(stats.total_outstanding) }}
                     </p>
                     <p class="text-xs text-[var(--text-muted)]">Outstanding</p>
+                </div>
+            </Card>
+            <Card padding="md">
+                <div class="text-center">
+                    <p class="text-xl font-bold text-green-600">
+                        {{ formatCurrency(stats.total_collected) }}
+                    </p>
+                    <p class="text-xs text-[var(--text-muted)]">Total Collected</p>
                 </div>
             </Card>
         </div>

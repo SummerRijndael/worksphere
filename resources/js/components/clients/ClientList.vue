@@ -93,7 +93,7 @@ const toggleAll = (e) => emit('toggle-all', e.target.checked);
                                 class="group bg-[var(--surface-primary)] rounded-xl border border-[var(--border-muted)] hover:border-[var(--border-default)] transition-all hover:shadow-md p-6 relative cursor-pointer"
                                 @click="$emit('view', client)"
                             >
-                                <div class="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <div class="absolute top-4 right-4 transition-opacity">
                                     <div class="flex items-center gap-1 bg-[var(--surface-elevated)] rounded-lg shadow-sm border border-[var(--border-muted)] p-1">
                                         <button v-if="can('clients.update')" @click.stop="$emit('edit', client)" class="p-1.5 text-[var(--text-muted)] hover:text-[var(--interactive-primary)] rounded-md transition-colors">
                                             <Edit2 class="w-4 h-4" />
@@ -150,6 +150,7 @@ const toggleAll = (e) => emit('toggle-all', e.target.checked);
                                         </th>
                                         <th class="px-6 py-3 text-left font-medium text-[var(--text-secondary)] border border-[var(--border-default)]">Company</th>
                                         <th class="px-6 py-3 text-left font-medium text-[var(--text-secondary)] border border-[var(--border-default)]">Contact</th>
+                                    <th v-if="can('clients.manage_any_team')" class="px-6 py-3 text-left font-medium text-[var(--text-secondary)] border border-[var(--border-default)]">Team</th>
                                         <th class="px-6 py-3 text-left font-medium text-[var(--text-secondary)] border border-[var(--border-default)]">Status</th>
                                         <th class="px-6 py-3 text-left font-medium text-[var(--text-secondary)] border border-[var(--border-default)]">Details</th>
                                         <th class="px-6 py-3 text-left font-medium text-[var(--text-secondary)] border border-[var(--border-default)]">Created</th>
@@ -179,6 +180,15 @@ const toggleAll = (e) => emit('toggle-all', e.target.checked);
                                             <div v-if="client.contact_person" class="font-medium text-[var(--text-primary)]">{{ client.contact_person }}</div>
                                             <div v-else class="text-[var(--text-muted)]">-</div>
                                         </td>
+                                        <td v-if="can('clients.manage_any_team')" class="px-6 py-3 border border-[var(--border-default)]">
+                                            <div v-if="client.team" class="flex items-center gap-2">
+                                                <div class="h-6 w-6 rounded bg-[var(--surface-tertiary)] flex items-center justify-center text-[10px] font-bold text-[var(--text-secondary)] uppercase">
+                                                    {{ client.team.name.substring(0, 2) }}
+                                                </div>
+                                                <span class="text-sm text-[var(--text-primary)]">{{ client.team.name }}</span>
+                                            </div>
+                                            <span v-else class="text-[var(--text-muted)] text-xs">Global/Unassigned</span>
+                                        </td>
                                         <td class="px-6 py-3 border border-[var(--border-default)]">
                                             <span 
                                                 class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
@@ -203,7 +213,7 @@ const toggleAll = (e) => emit('toggle-all', e.target.checked);
                                             {{ new Date(client.created_at).toLocaleDateString() }}
                                         </td>
                                         <td class="px-6 py-3 text-right border border-[var(--border-default)]">
-                                            <div class="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <div class="flex items-center justify-end gap-2 transition-opacity">
                                                 <button v-if="can('clients.update')" @click.stop="$emit('edit', client)" class="p-1.5 text-[var(--text-muted)] hover:text-[var(--interactive-primary)] rounded transition-colors">
                                                     <Edit2 class="w-4 h-4" />
                                                 </button>

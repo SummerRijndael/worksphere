@@ -23,17 +23,110 @@ class TeamController extends Controller
     ) {}
 
     /**
+     * Get global team statistics.
+     */
+    public function stats(): JsonResponse
+    {
+        // Simple counts for now, can be optimized with caching later
+        $stats = [
+            'total' => Team::count(),
+            'active' => Team::where('status', 'active')->count(),
+            'total_members' => \Illuminate\Support\Facades\DB::table('team_user')->count(),
+            'new_this_month' => Team::where('created_at', '>=', now()->startOfMonth())->count(),
+        ];
+
+        return response()->json($stats);
+    }
+
+    /**
+     * Get team financial statistics.
+     */
+    public function financialStats(Team $team): JsonResponse
+    {
+        $this->authorize('view', $team);
+
+        // 1. Total Earnings
+        $totalEarnings = \App\Models\Invoice::where('team_id', $team->id)
+            ->paid()
+            ->sum('total');
+
+        // 2. Top 5 Clients by Earnings
+        $topClients = \App\Models\Client::where('team_id', $team->id)
+            ->withSum(['invoices' => fn($q) => $q->paid()], 'total')
+            ->orderByDesc('invoices_sum_total')
+            ->take(5)
+            ->get()
+            ->map(fn($client) => [
+                'id' => $client->public_id,
+                'name' => $client->name,
+                'avatar_url' => $client->avatar_url,
+                'total_earnings' => $client->invoices_sum_total ?? 0,
+            ]);
+
+        // 3. Top 5 Projects by Earnings
+        $topProjects = \App\Models\Project::where('team_id', $team->id)
+            ->withSum(['invoices' => fn($q) => $q->paid()], 'total')
+            ->orderByDesc('invoices_sum_total')
+            ->take(5)
+            ->get()
+            ->map(fn($project) => [
+                'id' => $project->public_id,
+                'name' => $project->name,
+                'status' => $project->status,
+                'total_earnings' => $project->invoices_sum_total ?? 0,
+            ]);
+
+        // 4. Monthly Earnings Trend (Last 6 months)
+        $sixMonthsAgo = now()->subMonths(5)->startOfMonth();
+        $invoices = \App\Models\Invoice::where('team_id', $team->id)
+            ->paid()
+            ->where('paid_at', '>=', $sixMonthsAgo)
+            ->get();
+
+        $monthlyEarnings = collect(range(0, 5))->map(function ($i) use ($sixMonthsAgo, $invoices) {
+            $date = $sixMonthsAgo->copy()->addMonths($i);
+            $monthKey = $date->format('Y-m');
+            $label = $date->format('M Y');
+            
+            $total = $invoices->filter(function ($invoice) use ($monthKey) {
+                return $invoice->paid_at->format('Y-m') === $monthKey;
+            })->sum('total');
+
+            return [
+                'month' => $label,
+                'amount' => $total
+            ];
+        });
+
+        return response()->json([
+            'total_earnings' => $totalEarnings,
+            'top_clients' => $topClients,
+            'top_projects' => $topProjects,
+            'monthly_earnings' => $monthlyEarnings,
+        ]);
+    }
+
+    /**
      * Display a listing of the resource.
      */
     public function index(Request $request): JsonResponse
     {
         $this->authorize('viewAny', Team::class);
 
-        $query = Team::query()
-            ->with(['owner', 'members'])
-            ->when($request->search, function ($query, $search) {
-                $query->where('name', 'like', "%{$search}%")
-                    ->orWhere('description', 'like', "%{$search}%");
+        $user = $request->user();
+        
+        $query = Team::query()->with(['owner', 'members']);
+
+        // Scope: Admin sees all, Regular user sees joined teams
+        if (! $user->hasRole('administrator')) {
+            $query->whereIn('id', $user->teams()->pluck('teams.id'));
+        }
+
+        $query->when($request->search, function ($query, $search) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('name', 'like', "%{$search}%")
+                      ->orWhere('description', 'like', "%{$search}%");
+                });
             })
             ->when($request->date_from, function ($query, $date) {
                 $query->whereDate('created_at', '>=', $date);

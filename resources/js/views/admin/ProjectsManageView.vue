@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import { Card, Button, Badge, PageLoader, Input, SelectFilter, Avatar, Dropdown } from '@/components/ui';
+import { Card, Button, Badge, PageLoader, Input, SelectFilter, Avatar, Dropdown, StatsCard } from '@/components/ui';
 import { 
     Folder, Search, Plus, ChevronLeft, ChevronRight, MoreHorizontal, 
     LayoutGrid, LayoutList, Archive, Trash2, Calendar, Clock,
-    Filter, RefreshCw, Eye, Edit
+    Filter, RefreshCw, Eye, Edit, Activity, CheckCircle, AlertTriangle
 } from 'lucide-vue-next';
 import axios from 'axios';
 import { useAuthStore } from '@/stores/auth';
@@ -19,6 +19,12 @@ const authStore = useAuthStore();
 const isLoading = ref(true);
 const isRefreshing = ref(false);
 const projects = ref<any[]>([]);
+const stats = ref({
+    total: 0,
+    active: 0,
+    completed: 0,
+    overdue: 0
+});
 
 const pagination = ref({
     current_page: 1,
@@ -37,6 +43,19 @@ const filters = ref({
 });
 
 const viewMode = ref<'list' | 'grid'>('grid');
+
+// Fetch stats
+const fetchStats = async () => {
+    if (!currentTeamId.value) return;
+    try {
+        const response = await axios.get('/api/projects/stats', {
+            params: { team_id: currentTeamId.value }
+        });
+        stats.value = response.data;
+    } catch (error) {
+        console.error('Failed to fetch project stats', error);
+    }
+};
 
 const currentTeamId = computed(() => authStore.currentTeam?.public_id);
 
@@ -282,6 +301,9 @@ onMounted(() => {
     console.log('Initial ViewMode:', viewMode.value);
     console.log('Current Team ID:', currentTeamId.value);
     // Data fetching is handled by the immediate watcher on currentTeamId
+    if (currentTeamId.value) {
+        fetchStats();
+    }
 
     // Check for create=true query param to open modal from nav
     if (route.query.create === 'true') {
@@ -316,6 +338,34 @@ onMounted(() => {
                     New Project
                 </Button>
             </div>
+        </div>
+
+        <!-- Stats Overview -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in-down" style="animation-delay: 0.1s">
+            <StatsCard
+                label="Total Projects"
+                :value="stats.total"
+                :icon="Folder"
+                variant="primary"
+            />
+            <StatsCard
+                label="Active Projects"
+                :value="stats.active"
+                :icon="Activity"
+                variant="info"
+            />
+             <StatsCard
+                label="Completed"
+                :value="stats.completed"
+                :icon="CheckCircle"
+                variant="success"
+            />
+            <StatsCard
+                label="Overdue"
+                :value="stats.overdue"
+                :icon="AlertTriangle"
+                variant="warning"
+            />
         </div>
 
         <!-- Filters -->

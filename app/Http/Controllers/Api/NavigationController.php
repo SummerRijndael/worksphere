@@ -152,14 +152,28 @@ class NavigationController extends Controller
             if (isset($item['id']) && $item['id'] === 'clients') {
                 $userTeamIds = $user->teams()->pluck('teams.id');
 
+                $baseRoute = '/clients';
+                $item['route'] = $baseRoute;
+
                 if ($userTeamIds->isNotEmpty()) {
-                    // Fetch recent clients for user's teams
-                    $clients = \App\Models\Client::whereIn('team_id', $userTeamIds)
-                        ->where('status', 'active')
-                        ->orderByDesc('updated_at')
-                        ->limit(10)
-                        ->with('team:id,name,public_id')
-                        ->get(['id', 'public_id', 'name', 'team_id']);
+                    // Fetch recent clients for user's teams with diverse scoping
+                    // We want 1-2 clients per team, max 10 total
+                    $recentClients = collect();
+                    $userTeams = $user->teams;
+
+                    foreach ($userTeams as $team) {
+                        $teamClients = \App\Models\Client::where('team_id', $team->id)
+                            ->where('status', 'active')
+                            ->orderByDesc('updated_at')
+                            ->limit(2)
+                            ->with('team:id,name,public_id')
+                            ->get(['id', 'public_id', 'name', 'team_id']);
+                        
+                        $recentClients = $recentClients->concat($teamClients);
+                    }
+
+                    // Sort combined list and limit to 10
+                    $clients = $recentClients->sortByDesc('updated_at')->take(10);
 
                     $clientChildren = [];
 
@@ -167,7 +181,7 @@ class NavigationController extends Controller
                     $clientChildren[] = [
                         'id' => 'clients-all',
                         'label' => 'View All Clients',
-                        'route' => '/admin/clients',
+                        'route' => $baseRoute,
                         'icon' => 'users',
                     ];
 
@@ -176,23 +190,19 @@ class NavigationController extends Controller
                         $clientChildren[] = [
                             'id' => 'client-'.$client->public_id,
                             'label' => $client->name,
-                            // NOTE: Linking to admin view with filter, assuming we have a way to view details there
-                            // Or we can add a specific details route. For now, use query param to select it.
-                            'route' => '/admin/clients/'.$client->public_id,
+                            'route' => $baseRoute.'/'.$client->public_id,
                             'team_badge' => $client->team->name ?? null,
                         ];
                     }
 
-                    // 3. Add New Client
-                    $clientChildren[] = [
-                        'id' => 'client-new',
-                        'label' => 'Add New Client',
-                        'route' => '/admin/clients?create=true',
-                        'icon' => 'plus',
-                    ];
-
                     $item['children'] = $clientChildren;
                 }
+            }
+
+            // Enrich Invoices
+            if (isset($item['id']) && $item['id'] === 'invoices') {
+                $isAdmin = $user->hasRole('administrator');
+                $item['route'] = $isAdmin ? '/admin/invoices' : '/invoices';
             }
 
             // Recurse for children

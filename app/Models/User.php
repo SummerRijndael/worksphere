@@ -125,7 +125,16 @@ class User extends Authenticatable implements HasMedia, MustVerifyEmail, WebAuth
         'avatar_url',
         'avatar_thumb_url',
         'cover_photo_url',
+        'has_avatar',
     ];
+
+    /**
+     * Check if the user has a custom avatar.
+     */
+    public function getHasAvatarAttribute(): bool
+    {
+        return $this->hasMedia('avatars');
+    }
 
     /**
      * Bootstrap the model and its traits.

@@ -28,6 +28,27 @@ class ProjectController extends Controller
     ) {}
 
     /**
+     * Get global project statistics.
+     */
+    public function globalStats(): JsonResponse
+    {
+        $query = Project::query();
+        
+        $stats = [
+            'total' => $query->count(),
+            'active' => (clone $query)->where('status', 'active')->count(),
+            'completed' => (clone $query)->where('status', 'completed')->count(),
+            'overdue' => (clone $query)
+                ->whereNotNull('due_date')
+                ->where('due_date', '<', now())
+                ->whereNotIn('status', ['completed', 'archived'])
+                ->count(),
+        ];
+
+        return response()->json($stats);
+    }
+
+    /**
      * Display a listing of projects for a team.
      */
     public function index(Request $request, Team $team): AnonymousResourceCollection

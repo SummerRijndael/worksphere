@@ -202,6 +202,11 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce'])->group(functi
     Route::post('tickets/archive', [\App\Http\Controllers\Api\TicketController::class, 'bulkArchive']); // Add bulk archive route explicitly if not present
     Route::apiResource('tickets', \App\Http\Controllers\Api\TicketController::class);
 
+    // Global Stats
+    Route::get('teams/stats', [\App\Http\Controllers\Api\TeamController::class, 'stats']);
+    Route::get('clients/stats', [\App\Http\Controllers\Api\ClientController::class, 'stats']);
+    Route::get('projects/stats', [\App\Http\Controllers\Api\ProjectController::class, 'globalStats']);
+
     // User Management
     Route::apiResource('teams', \App\Http\Controllers\Api\TeamController::class);
     Route::get('teams-ownership-summary', [\App\Http\Controllers\Api\TeamController::class, 'ownershipSummary']);
@@ -219,8 +224,10 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce'])->group(functi
         Route::get('/invites', [\App\Http\Controllers\Api\TeamController::class, 'pendingInvites']);
         Route::delete('/invites/{notificationId}', [\App\Http\Controllers\Api\TeamController::class, 'cancelInvite']);
 
+
         // Activity / Audit Trail
         Route::get('/activity', [\App\Http\Controllers\Api\TeamController::class, 'activity']);
+        Route::get('/stats/financial', [\App\Http\Controllers\Api\TeamController::class, 'financialStats']);
 
         // Calendar
         Route::get('/calendar', [\App\Http\Controllers\Api\TeamController::class, 'calendar']);

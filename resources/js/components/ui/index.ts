@@ -23,6 +23,7 @@ export { default as RichTextEditor } from './RichTextEditor.vue';
 export { default as ConfirmPasswordModal } from './ConfirmPasswordModal.vue';
 export { default as PasswordStrengthMeter } from './PasswordStrengthMeter.vue';
 export { default as SearchInput } from './SearchInput.vue';
+export { default as StatsCard } from './StatsCard.vue';
 export { default as SelectFilter } from './SelectFilter.vue';
 export { default as TimezoneSelect } from './TimezoneSelect.vue';
 export { default as StatusBadge } from './StatusBadge.vue';
