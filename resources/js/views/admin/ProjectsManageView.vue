@@ -419,11 +419,16 @@ onMounted(() => {
                                     <p class="text-xs text-[var(--text-secondary)]">{{ project.client?.name || 'Internal Project' }}</p>
                                 </div>
                             </div>
-                            <Dropdown :items="getProjectActions(project)" align="end">
-                                <Button variant="ghost" size="sm" @click.stop>
-                                    <MoreHorizontal class="w-4 h-4" />
+                            <div class="flex items-center gap-1">
+                                <Button variant="ghost" size="sm" @click.stop="onEditProject(project)">
+                                    <Edit class="w-4 h-4 text-[var(--text-muted)] hover:text-[var(--text-primary)]" />
                                 </Button>
-                            </Dropdown>
+                                <Dropdown :items="getProjectActions(project)" align="end">
+                                    <Button variant="ghost" size="sm" @click.stop>
+                                        <MoreHorizontal class="w-4 h-4" />
+                                    </Button>
+                                </Dropdown>
+                            </div>
                         </div>
                         
                         <p class="text-sm text-[var(--text-secondary)] line-clamp-2 min-h-[40px]">
@@ -538,12 +543,17 @@ onMounted(() => {
                                         </div>
                                     </div>
                                 </td>
-                                <td class="px-4 py-4 text-right" @click.stop>
-                            <Dropdown :items="getProjectActions(project)" align="end">
-                                        <Button variant="ghost" size="sm">
-                                            <MoreHorizontal class="w-4 h-4" />
+                            <td class="px-4 py-4 text-right" @click.stop>
+                                    <div class="flex items-center justify-end gap-1">
+                                        <Button variant="ghost" size="sm" @click.stop="onEditProject(project)">
+                                            <Edit class="w-4 h-4 text-[var(--text-muted)] hover:text-[var(--text-primary)]" />
                                         </Button>
-                                    </Dropdown>
+                                        <Dropdown :items="getProjectActions(project)" align="end">
+                                            <Button variant="ghost" size="sm">
+                                                <MoreHorizontal class="w-4 h-4" />
+                                            </Button>
+                                        </Dropdown>
+                                    </div>
                                 </td>
                             </tr>
                         </TransitionGroup>

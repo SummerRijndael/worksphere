@@ -145,7 +145,7 @@ class TaskWorkflowService
         ?string $notes = null
     ): bool {
         $task = $review->task;
-        $targetStatus = $approved ? TaskStatus::Approved : TaskStatus::Rejected;
+        $targetStatus = $approved ? TaskStatus::PmReview : TaskStatus::Rejected;
 
         if (! $task->canTransitionTo($targetStatus)) {
             return false;

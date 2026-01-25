@@ -130,9 +130,20 @@ const onEditTask = (task: any) => {
     showEditModal.value = true;
 };
 
-const onTaskCreated = () => {
-    fetchTasks();
+const onTaskCreated = (newTask: any) => {
     showCreateModal.value = false;
+    
+    // Check if the new task is visible in the current view
+    const isAssignedToMe = newTask.assignee?.id === authStore.user?.id || 
+                          newTask.assignee?.public_id === authStore.user?.public_id;
+    
+    if (scopeFilter.value === 'assigned' && !isAssignedToMe) {
+         toast.success("Task created. Switch to 'Created by me' or 'All Tasks' to view it.");
+    } else {
+         toast.success("Task created");
+    }
+    
+    fetchTasks();
 };
 
 const onTaskSaved = () => {

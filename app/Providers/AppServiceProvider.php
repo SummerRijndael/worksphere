@@ -80,6 +80,7 @@ class AppServiceProvider extends ServiceProvider
 
         \Illuminate\Support\Facades\Event::subscribe(\App\Listeners\ScheduledTaskSubscriber::class);
         \App\Models\Event::observe(\App\Observers\EventObserver::class);
+        \App\Models\Task::observe(\App\Observers\TaskObserver::class);
 
         // Register Policies
         Gate::policy(\App\Models\FaqCategory::class, \App\Policies\FaqPolicy::class);

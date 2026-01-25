@@ -128,7 +128,7 @@ const availableActions = computed(() => {
     }
 
     // PM Actions
-    if (rawStatus === "pm_review") {
+    if (rawStatus === "pm_review" || rawStatus === "approved") {
         actions.push({
             id: "pm_approve",
             label: "Approve (To Client)",

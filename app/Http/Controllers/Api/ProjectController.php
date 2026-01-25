@@ -149,6 +149,8 @@ class ProjectController extends Controller
         $project->load(['creator', 'client', 'members', 'archiver']);
         $project->loadCount(['tasks', 'members']);
 
+        // dd($project->relationLoaded('client'), $project->client ? $project->client->toArray() : 'NULL CLIENT');
+
         return response()->json(new ProjectResource($project));
     }
 

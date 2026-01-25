@@ -160,7 +160,7 @@ enum TaskStatus: string
             self::InProgress => [self::Submitted, self::OnHold, self::Open],
             self::OnHold => [self::InProgress, self::Open],
             self::Submitted => [self::InQa, self::InProgress],
-            self::InQa => [self::Approved, self::Rejected, self::OnHold],
+            self::InQa => [self::Approved, self::PmReview, self::Rejected, self::OnHold],
             self::Approved => [self::PmReview, self::Completed, self::SentToClient], // Direct to complete/client allowed if PM step skipped
             self::Rejected => [self::InProgress, self::OnHold],
             self::PmReview => [self::SentToClient, self::Rejected, self::OnHold],

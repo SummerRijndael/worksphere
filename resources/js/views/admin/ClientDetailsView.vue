@@ -91,10 +91,29 @@ const formatDate = (dateString) => {
     });
 };
 
+const formatCurrency = (amount, currency = 'USD') => {
+    return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: currency || 'USD',
+    }).format(amount);
+};
+
 const getStatusColor = (status) => {
     switch(status) {
         case 'active': return 'bg-green-100 text-green-700 border-green-200';
         case 'inactive': return 'bg-gray-100 text-gray-700 border-gray-200';
+        default: return 'bg-gray-100 text-gray-700 border-gray-200';
+    }
+};
+
+const getInvoiceStatusColor = (status) => {
+    switch(String(status).toLowerCase()) {
+        case 'paid': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+        case 'sent': return 'bg-blue-100 text-blue-700 border-blue-200';
+        case 'viewed': return 'bg-blue-50 text-blue-600 border-blue-200';
+        case 'overdue': return 'bg-red-100 text-red-700 border-red-200';
+        case 'draft': return 'bg-gray-100 text-gray-700 border-gray-200';
+        case 'cancelled': return 'bg-gray-50 text-gray-500 border-gray-200';
         default: return 'bg-gray-100 text-gray-700 border-gray-200';
     }
 };
@@ -367,18 +386,21 @@ watch(() => route.params.public_id, () => {
                             <tbody class="divide-y divide-[var(--border-muted)]">
                                 <tr v-for="invoice in client.invoices" :key="invoice.id" class="hover:bg-[var(--surface-secondary)]/50 transition-colors">
                                     <td class="px-6 py-4 font-medium text-[var(--text-primary)]">
-                                        {{ invoice.number }}
+                                        {{ invoice.invoice_number }}
                                     </td>
                                     <td class="px-6 py-4 text-[var(--text-primary)]">
-                                        {{ invoice.formatted_amount || invoice.amount }}
+                                        {{ formatCurrency(invoice.total, invoice.currency) }}
                                     </td>
                                     <td class="px-6 py-4">
-                                        <span class="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700 capitalize">
+                                        <span 
+                                            class="px-2 py-1 text-xs font-medium rounded-full capitalize border"
+                                            :class="getInvoiceStatusColor(invoice.status)"
+                                        >
                                             {{ invoice.status }}
                                         </span>
                                     </td>
                                     <td class="px-6 py-4 text-sm text-[var(--text-secondary)]">
-                                        {{ formatDate(invoice.date) }}
+                                        {{ formatDate(invoice.issue_date) }}
                                     </td>
                                     <td class="px-6 py-4 text-right">
                                         <Button variant="ghost" size="sm" @click="router.push({ name: 'admin-invoice-detail', params: { id: invoice.id } })">

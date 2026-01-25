@@ -80,14 +80,22 @@ const priorityOptions = [
 // Fetch clients
 const fetchClients = async () => {
     try {
-        // Clients are global, fetch from global endpoint
-        const response = await axios.get(`/api/clients`);
+        const teamId = currentTeamId.value;
+        if (!teamId) return;
+
+        const response = await axios.get(`/api/teams/${teamId}/clients`);
         console.log('Fetched clients:', response.data.data);
-        clients.value = response.data.data;
+        clients.value = response.data.data || [];
     } catch (e) {
         console.error('Failed to fetch clients', e);
     }
 };
+
+watch(() => currentTeamId.value, (newVal) => {
+    if (newVal) {
+        fetchClients();
+    }
+});
 
 const fetchTeams = async () => {
     if ((authStore.user?.teams?.length ?? 0) > 0) return; // Already have teams
@@ -123,9 +131,9 @@ watch(() => props.project, (newProject) => {
             name: newProject.name,
             description: newProject.description || '',
             team_id: newProject.team_id,
-            client_id: newProject.client?.public_id || '',
-            status: newProject.status,
-            priority: newProject.priority,
+            client_id: newProject.client?.id || newProject.client?.public_id || '',
+            status: newProject.status?.value || newProject.status || 'active',
+            priority: newProject.priority?.value || newProject.priority || 'medium',
             start_date: newProject.start_date ? newProject.start_date.split('T')[0] : '',
             due_date: newProject.due_date ? newProject.due_date.split('T')[0] : '',
             budget: Number(newProject.budget) || 0,

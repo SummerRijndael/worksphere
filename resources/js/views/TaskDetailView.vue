@@ -233,7 +233,13 @@ const workflowStatuses = [
 ];
 
 const getStatus = (s: string) => statusConfig[s] || statusConfig["open"];
-const getStatusValue = (t: any) => t?.status?.value || t?.status || "open";
+
+// Treat 'approved' (legacy) as 'pm_review' for stepper/UI purposes
+const getStatusValue = (t: any) => {
+    let val = t?.status?.value || t?.status || "open";
+    if (val === 'approved') return 'pm_review';
+    return val;
+};
 const getPriority = (p: number) => priorityConfig[p] || priorityConfig[2];
 
 // Computed

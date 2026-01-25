@@ -14,6 +14,7 @@ import {
     Modal,
 } from "@/components/ui";
 import {
+    RefreshCw,
     Folder,
     Calendar,
     CheckCircle2,
@@ -50,7 +51,7 @@ const isLoading = ref(true);
 const project = ref<any>(null);
 const tasks = ref<any[]>([]);
 const stats = ref<any>(null);
-const activeTab = ref("tasks"); // overview, tasks, files, team
+const activeTab = ref("overview"); // overview, tasks, files, team
 
 // Task Management
 const taskViewMode = ref<"board" | "list">("board");
@@ -292,7 +293,8 @@ const onTaskSaved = (savedTask: any) => {
     } else {
         tasks.value.unshift(savedTask);
     }
-    fetchTasks(); // Refresh to be sure
+    fetchTasks(); // Refresh list
+    fetchProject(); // Refresh stats/progress
 };
 
 const onTaskDeleted = (deletedTask: any) => {
@@ -912,6 +914,32 @@ onMounted(() => {
                                     </div>
                                 </Card>
 
+                                <Card v-if="project.client" padding="lg" class="border-[var(--border-subtle)] shadow-sm">
+                                    <h3 class="text-base font-semibold text-[var(--text-primary)] mb-4 flex items-center gap-2">
+                                        <Briefcase class="w-4 h-4 text-[var(--interactive-primary)]" />
+                                        Client
+                                    </h3>
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-10 h-10 rounded-full bg-[var(--surface-tertiary)] flex items-center justify-center text-[var(--text-secondary)] font-bold">
+                                            {{ project.client.initials || project.client.name?.substring(0, 2).toUpperCase() }}
+                                        </div>
+                                        <div>
+                                            <div class="font-medium text-[var(--text-primary)]">{{ project.client.name }}</div>
+                                            <div class="text-sm text-[var(--text-secondary)]">{{ project.client.email || 'No email provided' }}</div>
+                                        </div>
+                                    </div>
+                                    <div class="mt-4 pt-4 border-t border-[var(--border-default)] flex gap-4 text-sm text-[var(--text-secondary)]">
+                                        <div v-if="project.client.contact_person">
+                                            <span class="block text-[var(--text-muted)] text-xs uppercase font-medium mb-1">Contact</span>
+                                            {{ project.client.contact_person }}
+                                        </div>
+                                        <div v-if="project.client.phone">
+                                            <span class="block text-[var(--text-muted)] text-xs uppercase font-medium mb-1">Phone</span>
+                                            {{ project.client.phone }}
+                                        </div>
+                                    </div>
+                                </Card>
+
                                 <Card
                                     padding="lg"
                                     class="border-[var(--border-subtle)] shadow-sm"
@@ -1236,6 +1264,15 @@ onMounted(() => {
                                     </template>
                                 </Input>
                                 <!-- Basic Status Filter Dropdown can go here -->
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    class="text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                                    @click="fetchTasks"
+                                    title="Refresh Tasks"
+                                >
+                                    <RefreshCw class="w-4 h-4" />
+                                </Button>
                             </div>
                             <div
                                 class="flex items-center gap-2 bg-[var(--surface-secondary)] p-1 rounded-lg border border-[var(--border-subtle)]"
