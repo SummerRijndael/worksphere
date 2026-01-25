@@ -24,45 +24,39 @@ class ClientController extends Controller
     public function stats(Request $request): JsonResponse
     {
         $user = $request->user();
+        $query = Client::query();
+        $projectQuery = \App\Models\Project::query()->whereNotNull('client_id');
+
+        // Resolve Team Scoping
+        $requestedTeamId = $request->header('X-Team-ID') ?? $request->input('team_id');
         
-        if ($user->hasRole('administrator')) {
-            $stats = [
-                'total' => Client::count(),
-                'active' => Client::where('status', 'active')->count(),
-                'total_projects' => \App\Models\Project::whereNotNull('client_id')->count(),
-            ];
-        } else {
-            // For regular users, scope to their teams
-            // We can either scope to "current team" if available, or all user's teams.
-            // Given the top-level "Clients" navigation might imply "All my clients", 
-            // let's check if we should respect 'current_team' or sum all.
-            // Usually, stats on a page are contextual.
-            $team = $request->attributes->get('current_team');
-            
-            // If we are in a specific team context, scope to that team.
-            // If not, perhaps we scope to all user's teams? 
-            // The ClientController seems to rely on 'current_team' middleware for most things.
-            
-            $query = Client::query();
-            $projectQuery = \App\Models\Project::query()->whereNotNull('client_id');
-
+        if ($requestedTeamId) {
+            $team = \App\Models\Team::where('public_id', $requestedTeamId)->first();
             if ($team) {
-                $query->where('team_id', $team->id);
-                // Projects need to be scoped to the team as well via client or directly
-                $projectQuery->where('team_id', $team->id);
+                // Verify Permission
+                $permissionService = app(\App\Services\PermissionService::class);
+                if ($user->hasRole('administrator') || $permissionService->isTeamMember($user, $team)) {
+                    $query->where('team_id', $team->id);
+                    $projectQuery->where('team_id', $team->id);
+                } else {
+                    abort(403, 'Unauthorized access to this team\'s statistics.');
+                }
             } else {
-                // If no specific team context, scope to all user's teams
-                $teamIds = $user->teams()->pluck('teams.id');
-                $query->whereIn('team_id', $teamIds);
-                $projectQuery->whereIn('team_id', $teamIds);
+                return response()->json(['total' => 0, 'active' => 0, 'total_projects' => 0]);
             }
-
-            $stats = [
-                'total' => $query->count(),
-                'active' => (clone $query)->where('status', 'active')->count(),
-                'total_projects' => $projectQuery->count(),
-            ];
+        } elseif (! $user->hasRole('administrator')) {
+            // For regular users without a specific team, scope to all their teams
+            $teamIds = $user->teams()->pluck('teams.id');
+            $query->whereIn('team_id', $teamIds);
+            $projectQuery->whereIn('team_id', $teamIds);
         }
+        // Admins with no team_id see global stats
+
+        $stats = [
+            'total' => $query->count(),
+            'active' => (clone $query)->where('status', 'active')->count(),
+            'total_projects' => $projectQuery->count(),
+        ];
 
         return response()->json($stats);
     }
@@ -81,10 +75,9 @@ class ClientController extends Controller
             // Admin can see everything, or filter by specific team
             if ($request->filled('team_id')) {
                 $teamPublicId = $request->input('team_id');
-                // Resolve team by public_id or id
-                $targetTeam = \App\Models\Team::where('public_id', $teamPublicId)
-                    ->orWhere('id', $teamPublicId) // Handle raw ID if passed internally
-                    ->firstOrFail();
+                // Resolve team by public_id ONLY. orWhere('id') is dangerous with UUIDs
+                // as MySQL casts strings to integers if they look like digits.
+                $targetTeam = \App\Models\Team::where('public_id', $teamPublicId)->firstOrFail();
                 $query->where('team_id', $targetTeam->id);
             }
             // If no team_id, returns all clients globally
@@ -94,9 +87,8 @@ class ClientController extends Controller
             $requestedTeamId = $request->header('X-Team-ID') ?? $request->input('team_id');
             
             if ($requestedTeamId) {
-                // Resolve requested team
+                // Resolve requested team by public_id ONLY.
                 $targetTeam = \App\Models\Team::where('public_id', $requestedTeamId)
-                    ->orWhere('id', $requestedTeamId)
                     ->first();
 
                 if (! $targetTeam) {

@@ -23,17 +23,35 @@ class TeamController extends Controller
     ) {}
 
     /**
-     * Get global team statistics.
+     * Get global or user-scoped team statistics.
      */
-    public function stats(): JsonResponse
+    public function stats(Request $request): JsonResponse
     {
-        // Simple counts for now, can be optimized with caching later
-        $stats = [
-            'total' => Team::count(),
-            'active' => Team::where('status', 'active')->count(),
-            'total_members' => \Illuminate\Support\Facades\DB::table('team_user')->count(),
-            'new_this_month' => Team::where('created_at', '>=', now()->startOfMonth())->count(),
-        ];
+        $user = $request->user();
+
+        if ($user->hasRole('administrator')) {
+            $stats = [
+                'total' => Team::count(),
+                'active' => Team::where('status', 'active')->count(),
+                'total_members' => \Illuminate\Support\Facades\DB::table('team_user')->count(),
+                'new_this_month' => Team::where('created_at', '>=', now()->startOfMonth())->count(),
+            ];
+        } else {
+            // Scope to user's teams
+            $teamIds = $user->teams()->pluck('teams.id');
+            
+            $stats = [
+                'total' => $teamIds->count(),
+                'active' => Team::whereIn('id', $teamIds)->where('status', 'active')->count(),
+                'total_members' => \Illuminate\Support\Facades\DB::table('team_user')
+                    ->whereIn('team_id', $teamIds)
+                    ->distinct('user_id')
+                    ->count(),
+                'new_this_month' => Team::whereIn('id', $teamIds)
+                    ->where('created_at', '>=', now()->startOfMonth())
+                    ->count(),
+            ];
+        }
 
         return response()->json($stats);
     }

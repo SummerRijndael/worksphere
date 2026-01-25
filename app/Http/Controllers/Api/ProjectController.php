@@ -28,14 +28,44 @@ class ProjectController extends Controller
     ) {}
 
     /**
-     * Get global project statistics.
+     * Get global or team-specific project statistics.
      */
-    public function globalStats(): JsonResponse
+    public function globalStats(Request $request): JsonResponse
     {
+        $user = $request->user();
         $query = Project::query();
-        
+
+        // 1. Resolve Team Scoping
+        if ($request->filled('team_id')) {
+            $teamPublicId = $request->input('team_id');
+            $team = Team::where('public_id', $teamPublicId)->first();
+
+            if (! $team) {
+                // If team not found, return zeroes to prevent leakage
+                return response()->json([
+                    'total' => 0,
+                    'active' => 0,
+                    'completed' => 0,
+                    'overdue' => 0,
+                ]);
+            }
+
+            // Verify Permission: Admin or Team Member
+            if (! $user->hasRole('administrator') && ! $this->permissionService->isTeamMember($user, $team)) {
+                abort(403, 'Unauthorized access to this team\'s statistics.');
+            }
+
+            $query->where('team_id', $team->id);
+        } elseif (! $user->hasRole('administrator')) {
+            // Non-admins MUST provide a team_id or be restricted to their teams
+            // For "global" view of a regular user, return stats from all their teams
+            $allowedTeamIds = $user->teams()->pluck('teams.id');
+            $query->whereIn('team_id', $allowedTeamIds);
+        }
+        // Admins with no team_id see global stats (original behavior)
+
         $stats = [
-            'total' => $query->count(),
+            'total' => (clone $query)->count(),
             'active' => (clone $query)->where('status', 'active')->count(),
             'completed' => (clone $query)->where('status', 'completed')->count(),
             'overdue' => (clone $query)

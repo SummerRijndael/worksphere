@@ -19,7 +19,28 @@ class TicketReportController extends Controller
         $user = $request->user();
         $filters = $request->all();
 
-        if (! $user->hasPermissionTo('tickets.view')) {
+        // 1. Resolve Team Scoping
+        $requestedTeamId = $request->header('X-Team-ID') ?? $filters['team_id'] ?? null;
+        if ($requestedTeamId) {
+            $team = \App\Models\Team::where('public_id', $requestedTeamId)->first();
+            if ($team) {
+                // Verify Permission
+                $permissionService = app(\App\Services\PermissionService::class);
+                if ($user->hasRole('administrator') || $permissionService->isTeamMember($user, $team)) {
+                    $filters['team_id'] = $team->id;
+                } else {
+                    abort(403, 'Unauthorized access to this team\'s statistics.');
+                }
+            } else {
+                return response()->json(['total' => 0, 'open' => 0, 'in_progress' => 0, 'resolved' => 0, 'closed' => 0]);
+            }
+        } elseif (! $user->hasRole('administrator')) {
+            // No specific team, scope to all user's teams
+            $filters['team_ids'] = $user->teams()->pluck('teams.id')->toArray();
+        }
+
+        // 2. Personal scope if needed
+        if (! $user->hasPermissionTo('tickets.view') && ! $user->hasRole('administrator')) {
             $filters['for_user'] = $user;
         }
 
