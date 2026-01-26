@@ -16,14 +16,7 @@ const authStore = useAuthStore();
 const hasTeams = computed(() => authStore.hasTeams);
 
 // Helper to check permissions
-const can = (permission: string) => {
-    // Check if user is administrator
-    if (authStore.user?.roles?.some((r: any) => r.name === 'administrator')) {
-        return true;
-    }
-    // Check specific permission
-    return authStore.user?.permissions?.some((p: any) => p.name === permission) || false;
-};
+const can = (permission: string) => authStore.hasPermission(permission);
 
 // Role Logic
 const userRole = computed(() => {

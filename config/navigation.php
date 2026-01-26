@@ -130,7 +130,7 @@ return [
             'id' => 'teams',
             'label' => 'Teams',
             'icon' => 'users',
-            // No route - this is a container-only parent that will be hidden if user has no teams
+            'route' => '/teams',
             'pinnable' => true,
             'pinned_default' => false,
             'children' => [], // Will be populated dynamically with user's teams

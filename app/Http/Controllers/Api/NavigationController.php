@@ -172,7 +172,7 @@ class NavigationController extends Controller
                             ->limit(2)
                             ->with('team:id,name,public_id')
                             ->get(['id', 'public_id', 'name', 'team_id']);
-                        
+
                         $recentClients = $recentClients->concat($teamClients);
                     }
 
@@ -230,12 +230,9 @@ class NavigationController extends Controller
 
         return collect($items)
             ->filter(function ($item) use ($user, $hasTeams) {
-                // Check requires_team condition first
-                if (isset($item['requires_team']) && $item['requires_team'] === true) {
-                    if (! $hasTeams) {
-                        return false;
-                    }
-                }
+                // We used to hide items here if $hasTeams was false, 
+                // but now we show them so the user sees a valid sidebar 
+                // and gets "empty state" CTAs in the main views.
 
                 // Always show items without permission requirements
                 if (! isset($item['permission'])) {
@@ -246,16 +243,14 @@ class NavigationController extends Controller
 
                 // Check if user has any of the required permissions
                 foreach ($permissions as $permission) {
-                    // 1. Check global permission
-                    if ($user->can($permission)) {
+                    // This now hits the cached persona and super admin flag immediately
+                    if ($this->permissionService->hasPermission($user, $permission)) {
                         return true;
                     }
 
-                    // 2. Check if user has this permission on ANY of their teams
-                    // This allows "Invoices" to show up if they are an admin/owner of at least one team
+                    // Check if user has this permission on ANY of their teams
                     if ($hasTeams) {
-                        $userTeams = $user->teams;
-                        foreach ($userTeams as $team) {
+                        foreach ($user->teams as $team) {
                             if ($this->permissionService->hasTeamPermission($user, $team, $permission)) {
                                 return true;
                             }

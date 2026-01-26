@@ -78,6 +78,11 @@ class ClientController extends Controller
 
         $requestedTeamId = $routeTeam ?? $request->header('X-Team-ID') ?? $request->input('team_id');
 
+        // Sanitize: Treat literal "undefined" or "null" strings as null
+        if ($requestedTeamId === 'undefined' || $requestedTeamId === 'null') {
+            $requestedTeamId = null;
+        }
+
         // 1. Resolve Scope
         if ($isAdmin) {
              // Admin Scoping
@@ -86,9 +91,13 @@ class ClientController extends Controller
                 if ($requestedTeamId instanceof \App\Models\Team) {
                     $targetTeam = $requestedTeamId;
                 } else {
-                     $targetTeam = \App\Models\Team::where('public_id', $requestedTeamId)->firstOrFail();
+                     $targetTeam = \App\Models\Team::where('public_id', $requestedTeamId)->first();
                 }
-                $query->where('team_id', $targetTeam->id);
+
+                if ($targetTeam) {
+                    $query->where('team_id', $targetTeam->id);
+                }
+                // If team not found but user is admin, we just don't filter by team_id
             }
             // If no team_id, returns all clients globally
         } else {

@@ -24,6 +24,10 @@ class SocialAccount extends Model
         'refresh_token',
         'token_expires_at',
         'scopes',
+        'google_channel_id',
+        'google_resource_id',
+        'google_channel_expiration',
+        'google_sync_token',
     ];
 
     /**
@@ -37,6 +41,7 @@ class SocialAccount extends Model
             'provider_data' => 'array',
             'scopes' => 'array',
             'token_expires_at' => 'datetime',
+            'google_channel_expiration' => 'datetime',
         ];
     }
 

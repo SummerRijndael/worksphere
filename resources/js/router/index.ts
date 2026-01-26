@@ -669,6 +669,17 @@ const routes: RouteRecordRaw[] = [
                 },
             },
             {
+                path: "/teams",
+                name: "teams",
+                component: () => import("@/views/admin/TeamsView.vue"),
+                meta: {
+                    title: "Teams",
+                    breadcrumb: "Teams",
+                    transition: "slide-fade",
+                    permission: "teams.view",
+                },
+            },
+            {
                 path: "/admin/teams",
                 name: "admin-teams",
                 component: () => import("@/views/admin/TeamsView.vue"),
@@ -1218,8 +1229,7 @@ router.beforeEach(
 
         // Permission Check
         if (to.meta.permission) {
-            const userPermissions = authStore.user?.permissions || [];
-            if (!userPermissions.includes(to.meta.permission)) {
+            if (!authStore.hasPermission(to.meta.permission)) {
                 next({ name: "forbidden" });
                 return;
             }

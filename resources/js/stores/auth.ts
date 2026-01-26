@@ -161,6 +161,20 @@ export const useAuthStore = defineStore('auth', () => {
   const isPasswordSet: ComputedRef<boolean> = computed(() => user.value?.is_password_set || false);
   const passwordLastUpdatedAt: ComputedRef<string | null> = computed(() => user.value?.password_last_updated_at || null);
 
+  const isSuperAdmin: ComputedRef<boolean> = computed(() => {
+    return user.value?.roles?.some(role => role.name === 'administrator') || false;
+  });
+
+  function hasRole(roleName: string): boolean {
+    return user.value?.roles?.some(role => role.name === roleName) || false;
+  }
+
+  function hasPermission(permissionName: string): boolean {
+    if (isSuperAdmin.value) return true;
+    
+    return user.value?.permissions?.some(p => p.name === permissionName) || false;
+  }
+
   const currentTeam = computed(() => {
     if (!user.value?.teams || user.value.teams.length === 0) return null;
     
@@ -728,6 +742,9 @@ export const useAuthStore = defineStore('auth', () => {
     allowed2FAMethods,
     // Computed
     isAuthenticated,
+    isSuperAdmin,
+    hasRole,
+    hasPermission,
     displayName,
     avatarUrl,
     initials,

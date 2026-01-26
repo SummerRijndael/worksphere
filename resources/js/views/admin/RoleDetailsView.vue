@@ -39,7 +39,8 @@ const groupedPermissions = computed(() => {
     if (!roleData.value) return {};
     
     // If admin or all access, return all permissions from system if loaded
-    if (roleData.value.permissions?.includes('*') || roleData.value.name === 'administrator') {
+    // If admin or all access, return all permissions from system if loaded
+    if (roleData.value.permissions?.some(p => (typeof p === 'string' ? p : p.name) === '*') || roleData.value.name === 'administrator') {
         const fullGroups = {};
         allPermissions.value.forEach(group => {
             fullGroups[group.label] = group.permissions.map(p => ({
@@ -144,7 +145,7 @@ onMounted(async () => {
     await loadRole();
     await loadUsers();
     
-    if (roleData.value && (roleData.value.permissions?.includes('*') || roleData.value.name === 'administrator')) {
+    if (roleData.value && (roleData.value.permissions?.some(p => (typeof p === 'string' ? p : p.name) === '*') || roleData.value.name === 'administrator')) {
         loadAllPermissions();
     }
 });

@@ -31,4 +31,9 @@ interface GoogleCalendarContract
      * Sync changes from Google based on a notification channel (webhook).
      */
     public function syncFromGoogle(string $channelId);
+
+    /**
+     * Stop a notification channel.
+     */
+    public function stopChannel(\App\Models\SocialAccount $account);
 }

@@ -155,7 +155,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
             });
 
         // Listen to ticket queue for support staff (if they have tickets.view permission)
-        if (authStore.user?.permissions?.includes('tickets.view')) {
+        if (authStore.hasPermission('tickets.view')) {
             echo.private('tickets.queue')
                 .listen('.ticket.created', (event: any) => {
                     console.log('[Notifications] New ticket created:', event);

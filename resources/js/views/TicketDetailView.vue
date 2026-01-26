@@ -166,7 +166,7 @@ const toast = useToast();
 const authStore = useAuthStore();
 
 function can(permission: string) {
-    return authStore.user?.permissions?.includes(permission) || false;
+    return authStore.hasPermission(permission);
 }
 
 const ticketId = computed(() => route.params.id as string);

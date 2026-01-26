@@ -16,17 +16,62 @@ use Spatie\Permission\PermissionRegistrar;
 
 class PermissionService
 {
+    protected array $personaCache = [];
+
     public function __construct(
         protected CacheService $cache,
         protected ?AuditService $audit = null
     ) {}
 
     /**
+     * Get the authorization persona for a user.
+     * Cached per-request in memory.
+     */
+    public function getPersona(User $user): \App\Classes\AuthorizationPersona
+    {
+        if (isset($this->personaCache[$user->id])) {
+            return $this->personaCache[$user->id];
+        }
+
+        $superAdminRole = config('roles.super_admin_role', 'administrator');
+        $isSuperAdmin = $user->hasRole($superAdminRole);
+
+        // Even if super admin, we build the rest for completeness in reporting (Resource/JSON)
+        // but the Persona object will use the flag for instant bypass.
+
+        // 1. Global Permissions (Spatie)
+        $globalPermissions = $user->getAllPermissions()->pluck('name');
+
+        // 2. Team Permissions
+        $teamPermissions = [];
+        if ($user->relationLoaded('teams') || method_exists($user, 'teams')) {
+            foreach ($user->teams as $team) {
+                $teamPermissions[$team->id] = $this->getTeamPermissions($user, $team);
+            }
+        }
+
+        // 3. Overrides
+        $overrides = $this->getEffectivePermissions($user);
+
+        $persona = new \App\Classes\AuthorizationPersona(
+            $isSuperAdmin,
+            $globalPermissions,
+            $teamPermissions,
+            [
+                'granted' => $overrides['granted'],
+                'blocked' => $overrides['blocked'],
+            ]
+        );
+
+        return $this->personaCache[$user->id] = $persona;
+    }
+
+    /**
      * Check if user has a global permission (Spatie wrapper).
      */
     public function hasPermission(User $user, string $permission): bool
     {
-        return $user->hasPermissionTo($permission);
+        return $this->getPersona($user)->hasPermission($permission);
     }
 
     /**
@@ -36,7 +81,14 @@ class PermissionService
      */
     public function hasAnyPermission(User $user, array $permissions): bool
     {
-        return $user->hasAnyPermission($permissions);
+        $persona = $this->getPersona($user);
+        foreach ($permissions as $permission) {
+            if ($persona->hasPermission($permission)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -46,8 +98,9 @@ class PermissionService
      */
     public function hasAllPermissions(User $user, array $permissions): bool
     {
+        $persona = $this->getPersona($user);
         foreach ($permissions as $permission) {
-            if (! $user->hasPermissionTo($permission)) {
+            if (! $persona->hasPermission($permission)) {
                 return false;
             }
         }
@@ -60,14 +113,7 @@ class PermissionService
      */
     public function hasTeamPermission(User $user, Team $team, string $permission): bool
     {
-        $cacheKey = $this->getTeamPermissionCacheKey($user->id, $team->id, $permission);
-
-        return $this->cache->remember(
-            $cacheKey,
-            $this->cache->getTtl('team_permissions'),
-            fn () => $this->checkTeamPermission($user, $team, $permission),
-            'team_permissions'
-        );
+        return $this->getPersona($user)->hasTeamPermission($team->id, $permission);
     }
 
     /**
@@ -78,9 +124,10 @@ class PermissionService
      */
     public function hasTeamPermissions(User $user, Team $team, array $permissions): array
     {
+        $persona = $this->getPersona($user);
         $results = [];
         foreach ($permissions as $permission) {
-            $results[$permission] = $this->hasTeamPermission($user, $team, $permission);
+            $results[$permission] = $persona->hasTeamPermission($team->id, $permission);
         }
 
         return $results;
@@ -93,8 +140,9 @@ class PermissionService
      */
     public function hasAnyTeamPermission(User $user, Team $team, array $permissions): bool
     {
+        $persona = $this->getPersona($user);
         foreach ($permissions as $permission) {
-            if ($this->hasTeamPermission($user, $team, $permission)) {
+            if ($persona->hasTeamPermission($team->id, $permission)) {
                 return true;
             }
         }
@@ -109,8 +157,9 @@ class PermissionService
      */
     public function hasAllTeamPermissions(User $user, Team $team, array $permissions): bool
     {
+        $persona = $this->getPersona($user);
         foreach ($permissions as $permission) {
-            if (! $this->hasTeamPermission($user, $team, $permission)) {
+            if (! $persona->hasTeamPermission($team->id, $permission)) {
                 return false;
             }
         }
@@ -131,7 +180,7 @@ class PermissionService
             $cacheKey,
             $this->cache->getTtl('team_permissions'),
             function () use ($user, $team): Collection {
-                // Get team-specific permissions
+                // Get team-specific permissions from DB
                 $teamPermissions = DB::table('team_permissions')
                     ->join('permissions', 'team_permissions.permission_id', '=', 'permissions.id')
                     ->where('team_permissions.team_id', $team->id)
@@ -251,6 +300,11 @@ class PermissionService
      */
     public function isTeamAdmin(User $user, Team $team): bool
     {
+        $persona = $this->getPersona($user);
+        if ($persona->isSuperAdmin) {
+            return true;
+        }
+
         if ($this->isTeamOwner($user, $team)) {
             return true;
         }
@@ -265,6 +319,11 @@ class PermissionService
      */
     public function isTeamMember(User $user, Team $team): bool
     {
+        $persona = $this->getPersona($user);
+        if ($persona->isSuperAdmin) {
+            return true;
+        }
+
         return DB::table('team_user')
             ->where('team_id', $team->id)
             ->where('user_id', $user->id)
@@ -276,6 +335,7 @@ class PermissionService
      */
     public function invalidateUserPermissionCache(User $user): void
     {
+        unset($this->personaCache[$user->id]);
         $this->cache->flushTags(["user:{$user->id}:permissions"]);
 
         // Also clear Spatie's cache
@@ -287,6 +347,7 @@ class PermissionService
      */
     public function invalidateTeamPermissionCache(User $user, Team $team): void
     {
+        unset($this->personaCache[$user->id]);
         $this->cache->flushTags([
             "team_permissions:{$team->id}",
             "user:{$user->id}:team_permissions",
@@ -323,49 +384,13 @@ class PermissionService
 
     /**
      * Check team permission without cache.
+     *
+     * @deprecated Use persona-based methods.
      */
     protected function checkTeamPermission(User $user, Team $team, string $permission): bool
     {
-        // 1. Check Scope Logic
-        // Team Owners should ONLY inherit permissions that are scoped to 'team'.
-        // They should NOT inherit 'global' permissions (like users.manage) just because they own a team.
-        $scope = $this->getPermissionScope($permission);
-        if ($scope === 'global') {
-            return false;
-        }
-
-        // Super admin check
-        $superAdminRole = config('roles.super_admin_role', 'administrator');
-        if ($user->hasRole($superAdminRole)) {
-            return true;
-        }
-
-        // Team owner has all permissions (within team scope)
-        if ($this->isTeamOwner($user, $team)) {
-            return true;
-        }
-
-        // Check explicit team permission
-        $hasExplicit = DB::table('team_permissions')
-            ->join('permissions', 'team_permissions.permission_id', '=', 'permissions.id')
-            ->where('team_permissions.team_id', $team->id)
-            ->where('team_permissions.user_id', $user->id)
-            ->where('permissions.name', $permission)
-            ->exists();
-
-        if ($hasExplicit) {
-            return true;
-        }
-
-        // Check role-based team permission
-        $teamRole = $this->getUserTeamRole($user, $team);
-        if ($teamRole) {
-            $rolePermissions = $this->getPermissionsForTeamRole($teamRole);
-
-            return $rolePermissions->contains($permission);
-        }
-
-        return false;
+        // For backwards compatibility if called internally
+        return $this->getPersona($user)->hasTeamPermission($team->id, $permission);
     }
 
     /**
@@ -402,28 +427,13 @@ class PermissionService
      */
     public function hasPermissionWithOverrides(User $user, string $permission, ?Team $team = null): bool
     {
-        // Super admin bypasses all
-        $superAdminRole = config('roles.super_admin_role', 'administrator');
-        if ($user->hasRole($superAdminRole)) {
-            return true;
-        }
+        $persona = $this->getPersona($user);
 
-        // Check for explicit block (highest priority after super admin)
-        if ($this->hasActiveBlock($user, $permission, $team)) {
-            return false;
-        }
-
-        // Check for explicit grant
-        if ($this->hasActiveGrant($user, $permission, $team)) {
-            return true;
-        }
-
-        // Fall back to regular permission check
         if ($team) {
-            return $this->hasTeamPermission($user, $team, $permission);
+            return $persona->hasTeamPermission($team->id, $permission);
         }
 
-        return $this->hasPermission($user, $permission);
+        return $persona->hasPermission($permission);
     }
 
     /**
@@ -638,7 +648,6 @@ class PermissionService
     {
         $expired = PermissionOverride::expired()->get();
         $count = 0;
-
         foreach ($expired as $override) {
             $override->update([
                 'revoked_at' => now(),
@@ -766,26 +775,22 @@ class PermissionService
             ]
         );
     }
+
     /**
      * Get the scope of a permission from config.
      */
     public function getPermissionScope(string $permissionName): string
     {
         $permissions = config('roles.permissions', []);
-
         foreach ($permissions as $group) {
             if (isset($group[$permissionName])) {
                 $def = $group[$permissionName];
-                // Handle both new array format and legacy string format (fallback)
                 if (is_array($def)) {
                     return $def['scope'] ?? 'global';
                 }
             }
         }
 
-        // If not found or legacy format, err on side of caution?
-        // Actually, if it's not defined, it might be a dynamic permission.
-        // Default to 'global' to be safe (deny team owner inheritance).
         return 'global';
     }
 }

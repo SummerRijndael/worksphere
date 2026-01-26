@@ -55,17 +55,31 @@ class UserResource extends JsonResource
                 'permissions' => $this->when(
                     $request->routeIs('api.user') || $request->routeIs('users.show') || $isOwner,
                     function () {
-                        // Global permissions
-                        $permissions = $this->getAllPermissions()->pluck('name');
-                        
-                        // Merge permissions from all teams
                         $permissionService = app(\App\Services\PermissionService::class);
-                        foreach ($this->teams as $team) {
-                            $teamPermissions = $permissionService->getTeamPermissions($this->resource, $team);
-                            $permissions = $permissions->merge($teamPermissions);
+                        $persona = $permissionService->getPersona($this->resource);
+
+                        // If super admin, we return the wildcard but frontend might prefer full list
+                        // Let's return the flattened collection from the persona
+                        $permissions = $persona->globalPermissions;
+
+                        foreach ($persona->teamPermissions as $teamId => $teamPerms) {
+                            $permissions = $permissions->merge($teamPerms);
                         }
-                        
-                        return $permissions->unique()->values()->map(fn ($name) => ['name' => $name]);
+
+                        // Add overrides
+                        $permissions = $permissions->merge($persona->overrides['granted']);
+
+                        return $permissions->unique()->values()->map(function ($name) {
+                            $parts = explode('.', $name);
+                            $category = count($parts) > 1 ? $parts[0] : 'Other';
+                            
+                            return [
+                                'id' => $name,
+                                'name' => $name,
+                                'label' => ucfirst(str_replace('_', ' ', count($parts) > 1 ? $parts[1] : $name)),
+                                'category' => ucfirst($category),
+                            ];
+                        });
                     }
                 ),
                 'last_login_at' => $this->last_login_at?->toISOString(),

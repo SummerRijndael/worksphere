@@ -125,3 +125,10 @@ Schedule::command('teams:check-health')
     ->name('team-health-check')
     ->withoutOverlapping()
     ->onOneServer();
+
+// Renew Google Calendar Watch Channels (Daily)
+Schedule::job(new \App\Jobs\RenewGoogleWatchChannelsJob)
+    ->dailyAt('03:00')
+    ->name('renew-google-calendar-channels')
+    ->withoutOverlapping()
+    ->onOneServer();

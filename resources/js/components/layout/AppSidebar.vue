@@ -335,7 +335,25 @@ onMounted(() => {
                                         {{ child.team_badge }}
                                     </span>
                                 </button>
-                            </div>
+                                <!-- Static Team Actions -->
+                                <template v-if="item.id === 'teams'">
+                                    <div class="my-1.5 h-px bg-[var(--border-muted)]/50 mx-2"></div>
+                                    <button
+                                        class="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-[12px] transition-colors duration-200 border border-transparent font-medium text-[var(--text-muted)] hover:text-[var(--interactive-primary)] hover:bg-[var(--interactive-primary)]/5"
+                                        @click="navigate('/teams?create=true')"
+                                    >
+                                        <Plus class="h-3 w-3 shrink-0" />
+                                        <span class="truncate text-[11.5px]">Create New Team</span>
+                                    </button>
+                                    <button
+                                        class="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-[12px] transition-colors duration-200 border border-transparent font-medium text-[var(--text-muted)] hover:text-[var(--interactive-primary)] hover:bg-[var(--interactive-primary)]/5"
+                                        @click="navigate('/teams')"
+                                    >
+                                        <Sliders class="h-3 w-3 shrink-0" />
+                                        <span class="truncate text-[11.5px]">Manage Teams</span>
+                                    </button>
+                                </template>
+</div>
                         </div>
                     </div>
                 </template>
@@ -472,7 +490,25 @@ onMounted(() => {
                                         {{ child.team_badge }}
                                     </span>
                                 </button>
-                            </div>
+                                <!-- Static Team Actions -->
+                                <template v-if="item.id === 'teams'">
+                                    <div class="my-1.5 h-px bg-[var(--border-muted)]/50 mx-2"></div>
+                                    <button
+                                        class="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-[12px] transition-colors duration-200 border border-transparent font-medium text-[var(--text-muted)] hover:text-[var(--interactive-primary)] hover:bg-[var(--interactive-primary)]/5"
+                                        @click="navigate('/teams?create=true')"
+                                    >
+                                        <Plus class="h-3 w-3 shrink-0" />
+                                        <span class="truncate text-[11.5px]">Create New Team</span>
+                                    </button>
+                                    <button
+                                        class="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-[12px] transition-colors duration-200 border border-transparent font-medium text-[var(--text-muted)] hover:text-[var(--interactive-primary)] hover:bg-[var(--interactive-primary)]/5"
+                                        @click="navigate('/teams')"
+                                    >
+                                        <Sliders class="h-3 w-3 shrink-0" />
+                                        <span class="truncate text-[11.5px]">Manage Teams</span>
+                                    </button>
+                                </template>
+</div>
                         </div>
                     </div>
                 </template>

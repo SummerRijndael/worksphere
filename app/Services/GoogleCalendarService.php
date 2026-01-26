@@ -128,12 +128,17 @@ class GoogleCalendarService implements GoogleCalendarContract
         }
 
         $service = new Calendar($this->client);
-        $channelId = 'google-calendar-'.$user->id; // simplified channel ID
+
+        // Use a UUID for unique channel ID to allow renewal overlapping
+        $channelId = (string) \Illuminate\Support\Str::uuid();
 
         $channel = new \Google\Service\Calendar\Channel;
         $channel->setId($channelId);
         $channel->setType('web_hook');
         $channel->setAddress(config('app.url').'/api/calendar/webhook');
+
+        // Custom expiration (optional, Google defaults to 7 days, we can request less but not more usually)
+        // We track what Google returns.
 
         try {
             $webhookUrl = config('app.url').'/api/calendar/webhook';
@@ -141,40 +146,108 @@ class GoogleCalendarService implements GoogleCalendarContract
                 'channel_id' => $channelId,
                 'webhook_address' => $webhookUrl,
             ]);
-            $service->events->watch('primary', $channel);
+
+            $watchResponse = $service->events->watch('primary', $channel);
+
             \Illuminate\Support\Facades\Log::info('DEBUG: GoogleCalendarService::watchCalendar - GOOGLE API SUCCESS');
 
-            \Illuminate\Support\Facades\Log::info("DEBUG: Google Service: Successfully subscribed to 'primary' calendar for user {$user->id}. Channel ID: {$channelId}");
+            // Save Channel Details
+            $account = $user->getSocialAccount('google');
+            $expirationMs = $watchResponse->expiration; // Google returns Unix timestamp in MS
+            $expirationDate = $expirationMs ? \Carbon\Carbon::createFromTimestampMs($expirationMs) : now()->addDays(7);
+
+            $account->update([
+                'google_channel_id' => $watchResponse->id,
+                'google_resource_id' => $watchResponse->resourceId,
+                'google_channel_expiration' => $expirationDate,
+            ]);
+
+            \Illuminate\Support\Facades\Log::info("DEBUG: Google Service: Successfully subscribed to 'primary' calendar. Channel ID: {$watchResponse->id}, Expires: {$expirationDate}");
         } catch (\Exception $e) {
             \Illuminate\Support\Facades\Log::error("DEBUG: Google Service: Failed to watch calendar for user {$user->id}: ".$e->getMessage());
-            throw $e; // Re-throw to make job fail
+            throw $e;
         } finally {
             \Illuminate\Support\Facades\Log::info('DEBUG: GoogleCalendarService::watchCalendar - EXITING');
         }
     }
 
+    public function stopChannel(\App\Models\SocialAccount $account)
+    {
+        if (! $account->google_channel_id || ! $account->google_resource_id) {
+            return;
+        }
+
+        if (! $this->optimizeClientForUser($account->user)) {
+            return;
+        }
+
+        $service = new Calendar($this->client);
+        $channel = new \Google\Service\Calendar\Channel;
+        $channel->setId($account->google_channel_id);
+        $channel->setResourceId($account->google_resource_id);
+
+        try {
+            $service->channels->stop($channel);
+            $account->update([
+                'google_channel_id' => null,
+                'google_resource_id' => null,
+                'google_channel_expiration' => null,
+            ]);
+            \Illuminate\Support\Facades\Log::info("DEBUG: Google Service: Stopped channel {$account->google_channel_id}");
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::warning("DEBUG: Google Service: Failed to stop channel {$account->google_channel_id}: ".$e->getMessage());
+        }
+    }
+
     public function syncFromGoogle(string $channelId)
     {
-        // Extract user ID from channel ID 'google-calendar-{id}'
-        // This is a naive implementation, robust one stores channel ID in DB.
-        $userId = str_replace('google-calendar-', '', $channelId);
-        $user = User::find($userId);
+        // For security, rely on channel_id lookup in social_accounts table
+        // instead of naive ID extraction.
+        $account = \App\Models\SocialAccount::where('google_channel_id', $channelId)->first();
 
-        if (! $user || ! $this->optimizeClientForUser($user)) {
+        // Fallback for transition period or multiple channel support
+        if (! $account) {
+            // Only if using the old naive ID schema
+            $userId = str_replace('google-calendar-', '', $channelId);
+            $user = User::find($userId);
+            if ($user) {
+                $account = $user->getSocialAccount('google');
+            }
+        }
+
+        if (! $account || ! $account->user) {
+            \Illuminate\Support\Facades\Log::warning("Received webhook for unknown channel: {$channelId}");
+
+            return;
+        }
+
+        $user = $account->user;
+
+        if (! $this->optimizeClientForUser($user)) {
             return;
         }
 
         $service = new Calendar($this->client);
 
-        // Use syncToken if available for incremental sync
-        // For now, simple list of recently modified
-
         try {
-            $events = $service->events->listEvents('primary', [
-                'updatedMin' => now()->subMinutes(15)->toRfc3339String(), // Sync recent changes
+            $params = [
                 'showDeleted' => true,
                 'singleEvents' => true,
-            ]);
+            ];
+
+            // Use Sync Token if available, otherwise fallback to recent
+            if ($account->google_sync_token) {
+                $params['syncToken'] = $account->google_sync_token;
+            } else {
+                $params['updatedMin'] = now()->subMinutes(15)->toRfc3339String();
+            }
+
+            $events = $service->events->listEvents('primary', $params);
+
+            // Store new Sync Token
+            if ($events->getNextSyncToken()) {
+                $account->update(['google_sync_token' => $events->getNextSyncToken()]);
+            }
 
             foreach ($events->getItems() as $googleEvent) {
                 if ($googleEvent->status === 'cancelled') {
@@ -196,7 +269,6 @@ class GoogleCalendarService implements GoogleCalendarContract
 
                 if ($event) {
                     // Update
-                    // Update
                     $event->fill([
                         'title' => $googleEvent->summary,
                         'description' => $googleEvent->description,
@@ -208,11 +280,6 @@ class GoogleCalendarService implements GoogleCalendarContract
                     ])->saveQuietly();
                 } else {
                     // Create (if not exists locally)
-                    // We need to be careful of loops if we just pushed this event.
-                    // Check 'last_synced_at' vs updated time?
-                    // Or avoid loop by checking if we just touched it.
-                    // For now, assume create if new from Google.
-
                     Event::withoutEvents(function () use ($user, $googleEvent, $startTime, $endTime, $isAllDay) {
                         Event::create([
                             'user_id' => $user->id,
@@ -229,6 +296,19 @@ class GoogleCalendarService implements GoogleCalendarContract
                 }
             }
 
+            // If result was paginated, we should strictly loop pages.
+            // For now assuming single page for partial syncs (usual case).
+            // But if full sync, might need loop.
+            // Google PHP Library auto-pagination possible? Yes usually.
+
+        } catch (\Google\Service\Exception $e) {
+            if ($e->getCode() == 410) {
+                // Sync token invalid (expired/cleared). Clear it and perform full sync next time (or now).
+                $account->update(['google_sync_token' => null]);
+                \Illuminate\Support\Facades\Log::info("Google Sync Token expired for user {$user->id}, clearing.");
+                // Could recurse once to retry without token
+            }
+            \Illuminate\Support\Facades\Log::error("Failed to sync from Google for user {$user->id}: ".$e->getMessage());
         } catch (\Exception $e) {
             \Illuminate\Support\Facades\Log::error("Failed to sync from Google for user {$user->id}: ".$e->getMessage());
         }

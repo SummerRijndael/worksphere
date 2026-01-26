@@ -44,8 +44,9 @@ api.interceptors.request.use(
             if (authStorage) {
                 const parsed = JSON.parse(authStorage);
                  // pinia-plugin-persistedstate stores structure as { currentTeamId: "..." }
-                if (parsed.currentTeamId) {
-                    config.headers['X-Team-ID'] = parsed.currentTeamId;
+                const id = parsed.currentTeamId;
+                if (id && typeof id === 'string' && id !== 'undefined' && id !== 'null') {
+                    config.headers['X-Team-ID'] = id;
                 }
             }
         } catch (e) {

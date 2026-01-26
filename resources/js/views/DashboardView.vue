@@ -461,8 +461,28 @@ function getTrendIcon(trend: string) {
                     />
                 </Card>
 
+                <!-- Empty State for Users with No Teams -->
+                <div v-if="teams.length === 0" class="py-12 flex flex-col items-center justify-center text-center animate-fade-in">
+                    <div class="w-24 h-24 rounded-3xl bg-[var(--surface-tertiary)] flex items-center justify-center mb-6 shadow-xl border border-[var(--border-default)] rotate-3">
+                        <Users class="h-10 w-10 text-[var(--interactive-primary)]" />
+                    </div>
+                    <h2 class="text-3xl font-bold text-[var(--text-primary)] tracking-tight">Create your first team</h2>
+                    <p class="text-[var(--text-secondary)] mt-3 max-w-md text-lg leading-relaxed">
+                        It looks like you're not part of any teams yet. Create a team to start managing projects, tracking tasks, and collaborating with others.
+                    </p>
+                    <div class="mt-8 flex flex-col sm:flex-row gap-4">
+                        <Button variant="primary" size="lg" shadow="lg" class="px-8 flex items-center gap-2" @click="$router.push('/teams?create=true')">
+                            <Plus class="h-5 w-5" />
+                            Create Workspace
+                        </Button>
+                        <Button variant="ghost" size="lg" class="text-[var(--text-secondary)] font-medium" @click="$router.push('/support')">
+                            Learn more
+                        </Button>
+                    </div>
+                </div>
+
                 <!-- Content Grid -->
-                <div class="grid gap-6 lg:grid-cols-2">
+                <div v-else class="grid gap-6 lg:grid-cols-2">
                     <!-- Recent Activity -->
                     <Card padding="none">
                         <div

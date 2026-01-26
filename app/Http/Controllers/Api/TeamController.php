@@ -29,7 +29,9 @@ class TeamController extends Controller
     {
         $user = $request->user();
 
-        if ($user->hasRole('administrator')) {
+        $scope = $request->query('scope', 'all');
+
+        if ($user->hasRole('administrator') && $scope === 'all') {
             $stats = [
                 'total' => Team::count(),
                 'active' => Team::where('status', 'active')->count(),
@@ -37,7 +39,7 @@ class TeamController extends Controller
                 'new_this_month' => Team::where('created_at', '>=', now()->startOfMonth())->count(),
             ];
         } else {
-            // Scope to user's teams
+            // Scope to user's teams (personal or non-admin)
             $teamIds = $user->teams()->pluck('teams.id');
             
             $stats = [
@@ -135,8 +137,10 @@ class TeamController extends Controller
         
         $query = Team::query()->with(['owner', 'members']);
 
-        // Scope: Admin sees all, Regular user sees joined teams
-        if (! $user->hasRole('administrator')) {
+        $scope = $request->query('scope', 'all');
+
+        // Scope: Admin sees all (unless personal scope requested), Regular user sees joined teams
+        if (! $user->hasRole('administrator') || $scope === 'personal') {
             $query->whereIn('id', $user->teams()->pluck('teams.id'));
         }
 

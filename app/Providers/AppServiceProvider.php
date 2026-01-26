@@ -99,6 +99,11 @@ class AppServiceProvider extends ServiceProvider
             'avatar' => $user->avatar_url,
         ]);
 
+        // Super Admin bypass: ensure users with 'administrator' role pass all gate checks instantly
+        Gate::before(function ($user, $ability) {
+            return $user->hasRole(config('roles.super_admin_role', 'administrator')) ? true : null;
+        });
+
         // Dynamic Env Builder: Override config with Database Settings
         // We use Schema check to ensure migrations run smoothly on fresh installs
         if (\Illuminate\Support\Facades\Schema::hasTable('settings')) {

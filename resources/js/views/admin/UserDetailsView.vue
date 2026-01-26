@@ -141,10 +141,10 @@ const editForm = ref({
 import { useAuthStore } from '@/stores/auth';
 const authStore = useAuthStore();
 
-const canEdit = () => authStore.user?.permissions?.includes('users.update');
-const canManageRoles = () => authStore.user?.permissions?.includes('users.manage_roles');
-const canManageStatus = () => authStore.user?.permissions?.includes('users.manage_status');
-const canDelete = () => authStore.user?.permissions?.includes('users.delete');
+const canEdit = () => authStore.hasPermission('users.update');
+const canManageRoles = () => authStore.hasPermission('users.manage_roles');
+const canManageStatus = () => authStore.hasPermission('users.manage_status');
+const canDelete = () => authStore.hasPermission('users.delete');
 
 const startEditing = () => {
     editForm.value = {
@@ -938,8 +938,8 @@ onMounted(async () => {
                         </div>
                         <div class="p-6">
                             <div class="flex flex-wrap gap-2">
-                                <span v-for="permission in user.permissions" :key="permission" class="px-2.5 py-1 bg-[var(--surface-secondary)] text-[var(--text-secondary)] rounded-md text-xs border border-[var(--border-default)]">
-                                    {{ permission }}
+                                <span v-for="permission in user.permissions" :key="permission.id || permission.name" class="px-2.5 py-1 bg-[var(--surface-secondary)] text-[var(--text-secondary)] rounded-md text-xs border border-[var(--border-default)]">
+                                    {{ permission.label || permission.name }}
                                 </span>
                                 <span v-if="!user.permissions?.length" class="text-sm text-[var(--text-muted)] italic">No permissions found</span>
                             </div>

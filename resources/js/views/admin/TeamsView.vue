@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import api from '@/lib/api';
 
@@ -47,6 +47,10 @@ const pagination = ref({
     per_page: 20
 });
 
+// Route-based scope detection
+const isPersonalScope = computed(() => router.currentRoute.value.path === '/teams');
+const currentScope = computed(() => isPersonalScope.value ? 'personal' : 'all');
+
 const showCreateModal = ref(false);
 const showEditModal = ref(false);
 const currentTeam = ref({});
@@ -64,7 +68,7 @@ const errors = ref({});
 // Fetch stats
 const fetchStats = async () => {
     try {
-        const response = await api.get('/api/teams/stats');
+        const response = await api.get('/api/teams/stats', { params: { scope: currentScope.value } });
         stats.value = response.data;
     } catch (error) {
         console.error('Failed to fetch team stats', error);
@@ -80,7 +84,8 @@ const fetchTeams = debounce(async (page = 1) => {
             search: searchQuery.value,
             per_page: perPage.value,
             date_from: dateRange.value.start,
-            date_to: dateRange.value.end
+            date_to: dateRange.value.end,
+            scope: currentScope.value
         };
         
         // Filter out empty values
@@ -145,11 +150,16 @@ const openCreateModal = () => {
     formData.value = {
         name: '',
         description: '',
-        owner_id: '',
+        owner_id: authStore.user?.id || '', // Default to current user
         status: 'active',
     };
     errors.value = {};
-    fetchUsers(); // Pre-load users
+    
+    // Only administrators can pick other owners
+    if (authStore.hasRole('administrator')) {
+        fetchUsers();
+    }
+    
     showCreateModal.value = true;
 };
 
@@ -209,6 +219,14 @@ const deleteTeam = async (team) => {
 onMounted(() => {
     fetchTeams();
     fetchStats();
+
+    // Auto-open modal if create=true is in query
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('create') === 'true') {
+        openCreateModal();
+        // Clean up URL without reload
+        router.replace({ query: {} });
+    }
 });
 </script>
 
@@ -615,7 +633,7 @@ onMounted(() => {
                          <p v-if="errors.description" class="text-xs text-[var(--color-error)] mt-1 font-medium">{{ errors.description[0] }}</p>
                     </div>
                     <div class="grid grid-cols-2 gap-5">
-                        <div class="space-y-1.5">
+                        <div v-if="authStore.hasRole('administrator')" class="space-y-1.5">
                             <label class="text-sm font-semibold text-[var(--text-secondary)]">Owner</label>
                             <select v-model="formData.owner_id" class="input w-full focus:ring-2 focus:ring-purple-500/20">
                                 <option value="" disabled>Select Owner</option>
@@ -625,7 +643,7 @@ onMounted(() => {
                             </select>
                             <p v-if="errors.owner_id" class="text-xs text-[var(--color-error)] mt-1 font-medium">{{ errors.owner_id[0] }}</p>
                         </div>
-                        <div class="space-y-1.5">
+                        <div :class="authStore.hasRole('administrator') ? 'space-y-1.5' : 'col-span-2 space-y-1.5'">
                             <label class="text-sm font-semibold text-[var(--text-secondary)]">Status</label>
                             <select v-model="formData.status" class="input w-full focus:ring-2 focus:ring-purple-500/20">
                                 <option value="active">Active</option>
@@ -665,7 +683,7 @@ onMounted(() => {
                          <p v-if="errors.description" class="text-xs text-[var(--color-error)] mt-1 font-medium">{{ errors.description[0] }}</p>
                     </div>
                     <div class="grid grid-cols-2 gap-5">
-                        <div class="space-y-1.5">
+                        <div v-if="authStore.hasRole('administrator')" class="space-y-1.5">
                             <label class="text-sm font-semibold text-[var(--text-secondary)]">Owner</label>
                             <select v-model="formData.owner_id" class="input w-full focus:ring-2 focus:ring-purple-500/20">
                                 <option value="" disabled>Select Owner</option>

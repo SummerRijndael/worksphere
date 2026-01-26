@@ -90,6 +90,8 @@ return [
                 'notes.create',
                 'notes.update',
                 'notes.delete',
+                'teams.view',
+                'teams.create',
             ],
         ],
     ],

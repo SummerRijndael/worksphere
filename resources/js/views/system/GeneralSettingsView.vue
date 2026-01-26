@@ -706,14 +706,7 @@ onMounted(async () => {
 
             <!-- Support Tickets Settings -->
             <div
-                v-if="
-                    authStore.user?.permissions?.includes(
-                        'system.settings.manage',
-                    ) ||
-                    authStore.user?.roles?.find(
-                        (r) => r.name === 'administrator',
-                    )
-                "
+                v-if="authStore.hasPermission('system.settings.manage')"
                 class="bg-[var(--surface-elevated)] rounded-xl border border-[var(--border-default)] overflow-hidden lg:col-span-2"
             >
                 <SupportTicketsSection
