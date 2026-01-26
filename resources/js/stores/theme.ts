@@ -106,6 +106,51 @@ export const useThemeStore = defineStore('theme', () => {
         }
     }
 
+    // Persistence Helpers
+    const getStorageKey = () => {
+        // We need to access auth store to get public ID, but avoiding circular dep issues
+        // We can check localStorage 'worksphere-auth' directly or use auth store if available
+        try {
+            const authData = localStorage.getItem('worksphere-auth');
+            if (authData) {
+                const parsed = JSON.parse(authData);
+                // Auth store persists 'user' object
+                if (parsed.user && parsed.user.public_id) {
+                    return `worksphere_theme_${parsed.user.public_id}`;
+                }
+            }
+        } catch (e) {
+            console.warn('Failed to parse auth storage for theme scoping');
+        }
+        return 'worksphere_theme_guest';
+    };
+
+    const loadFromStorage = () => {
+        const key = getStorageKey();
+        try {
+            const stored = localStorage.getItem(key);
+            if (stored) {
+                const parsed = JSON.parse(stored);
+                if (parsed.mode) mode.value = parsed.mode;
+                if (parsed.themeColor) themeColor.value = parsed.themeColor;
+                if (parsed.chatTheme) chatTheme.value = parsed.chatTheme;
+                applyTheme();
+            }
+        } catch (e) {
+            console.warn('Failed to load theme from storage', e);
+        }
+    };
+
+    const saveToStorage = () => {
+        const key = getStorageKey();
+        const data = {
+            mode: mode.value,
+            themeColor: themeColor.value,
+            chatTheme: chatTheme.value
+        };
+        localStorage.setItem(key, JSON.stringify(data));
+    };
+
     function initializeTheme(): void {
         // Check system preference
         const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
@@ -119,6 +164,9 @@ export const useThemeStore = defineStore('theme', () => {
             }
         });
 
+        // Load persisted state
+        loadFromStorage();
+        
         // Apply initial theme
         applyTheme();
     }
@@ -132,13 +180,21 @@ export const useThemeStore = defineStore('theme', () => {
                 themeColor.value = userPreferences.appearance.color;
             }
             applyTheme();
+            saveToStorage(); // Save synced values to local storage
         }
     }
 
-    // Watch for changes
-    watch(isDark, () => {
+    // Watch for changes and persist
+    watch([mode, themeColor, chatTheme], () => {
         applyTheme();
+        saveToStorage();
     });
+
+    // Watch for auth changes (re-load if user changes)
+    // This is tricky inside a store as we can't easily watch another store without setup
+    // But since `initializeTheme` is called on app mount, and `switchedUser` might reload app...
+    // ideally we watch authStore.user.public_id. 
+    // For now, let's rely on `syncFromUser` being called by authStore on login.
 
     return {
         // State
@@ -160,9 +216,4 @@ export const useThemeStore = defineStore('theme', () => {
         applyTheme,
         syncFromUser
     };
-}, {
-    persist: {
-        key: 'coresync-theme',
-        paths: ['mode', 'chatTheme', 'themeColor'],
-    },
 });

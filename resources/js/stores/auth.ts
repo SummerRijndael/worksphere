@@ -765,7 +765,7 @@ export const useAuthStore = defineStore('auth', () => {
   };
 }, {
   persist: {
-    key: 'coresync-auth',
+    key: 'worksphere-auth',
     paths: ['user', 'userHints', 'currentTeamId'], // Only userHints persisted, NOT fetchedHints (loaded on demand)
   },
 });

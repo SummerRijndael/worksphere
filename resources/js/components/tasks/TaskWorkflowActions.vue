@@ -313,20 +313,7 @@ const performAction = async (actionId: string, note?: string) => {
         <Button
             v-for="action in availableActions"
             :key="action.id"
-            :variant="
-                action.variant === 'primary'
-                    ? 'primary'
-                    : action.variant === 'danger'
-                      ? 'danger'
-                      : action.variant === 'secondary'
-                        ? 'secondary'
-                        : 'outline'
-            "
-            :class="[
-                action.variant === 'success'
-                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600'
-                    : '',
-            ]"
+            :variant="action.variant"
             size="sm"
             @click="initiateAction(action.id)"
             :disabled="submitting || action.disabled"

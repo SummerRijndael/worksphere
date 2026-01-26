@@ -8,6 +8,10 @@ use Illuminate\Http\Request;
 
 class NavigationController extends Controller
 {
+    public function __construct(
+        protected \App\Services\PermissionService $permissionService
+    ) {}
+
     /**
      * Get navigation items for authenticated user.
      */
@@ -242,8 +246,20 @@ class NavigationController extends Controller
 
                 // Check if user has any of the required permissions
                 foreach ($permissions as $permission) {
+                    // 1. Check global permission
                     if ($user->can($permission)) {
                         return true;
+                    }
+
+                    // 2. Check if user has this permission on ANY of their teams
+                    // This allows "Invoices" to show up if they are an admin/owner of at least one team
+                    if ($hasTeams) {
+                        $userTeams = $user->teams;
+                        foreach ($userTeams as $team) {
+                            if ($this->permissionService->hasTeamPermission($user, $team, $permission)) {
+                                return true;
+                            }
+                        }
                     }
                 }
 

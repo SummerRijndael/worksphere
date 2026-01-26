@@ -158,7 +158,7 @@ onUnmounted(() => {
                         Log Out Now
                     </Button>
                     <a
-                        href="mailto:support@coresync.io"
+                        href="mailto:support@worksphere.io"
                         class="flex items-center justify-center gap-2 text-sm text-[var(--text-secondary)] hover:text-[var(--interactive-primary)] transition-colors"
                     >
                         <Mail class="w-4 h-4" />

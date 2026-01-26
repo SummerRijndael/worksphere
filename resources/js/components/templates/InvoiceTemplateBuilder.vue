@@ -103,6 +103,12 @@ const handleSubmit = async () => {
             <div>
                 <label class="block text-sm font-medium text-[var(--text-primary)] mb-3">Line Items</label>
                 <div class="space-y-3">
+                    <div v-if="form.line_items?.length > 0" class="grid grid-cols-12 gap-2 text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider mb-2">
+                        <div class="col-span-6">Description</div>
+                        <div class="col-span-2">Quantity</div>
+                        <div class="col-span-3">Unit Price</div>
+                        <div class="col-span-1"></div>
+                    </div>
                     <div 
                         v-for="(item, index) in form.line_items" 
                         :key="index"

@@ -1016,8 +1016,14 @@ const routes: RouteRecordRaw[] = [
                 meta: {
                     title: "Task Templates",
                     breadcrumb: "Task Templates",
+                    breadcrumbParent: {
+                        name: "team-profile",
+                        label: "Team",
+                        paramKey: "public_id",
+                        sourceParam: "id",
+                    },
                     transition: "slide-fade",
-                    permission: "settings.update",
+                    // Permission check moved to component/API level for team context
                 },
             },
             {
@@ -1028,8 +1034,14 @@ const routes: RouteRecordRaw[] = [
                 meta: {
                     title: "Invoice Templates",
                     breadcrumb: "Invoice Templates",
+                    breadcrumbParent: {
+                        name: "team-profile",
+                        label: "Team",
+                        paramKey: "public_id",
+                        sourceParam: "id",
+                    },
                     transition: "slide-fade",
-                    permission: "settings.update",
+                    // Permission check moved to component/API level for team context
                 },
             },
 

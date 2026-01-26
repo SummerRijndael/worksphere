@@ -40,7 +40,7 @@ api.interceptors.request.use(
         try {
             // Check localStorage first to avoid async store import overhead for every request if possible,
             // but store is safer for reactivity. We use a key check.
-            const authStorage = localStorage.getItem('coresync-auth');
+            const authStorage = localStorage.getItem('worksphere-auth');
             if (authStorage) {
                 const parsed = JSON.parse(authStorage);
                  // pinia-plugin-persistedstate stores structure as { currentTeamId: "..." }
@@ -107,7 +107,7 @@ api.interceptors.response.use(
                 console.error("Failed to check auth store during 401 handling:", e);
             }
 
-            localStorage.removeItem("coresync-auth");
+            localStorage.removeItem("worksphere-auth");
 
             if (!window.location.pathname.startsWith("/auth")) {
                 window.location.href = "/auth/login";

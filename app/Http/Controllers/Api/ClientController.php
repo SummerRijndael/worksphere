@@ -12,10 +12,8 @@ class ClientController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('team.permission:clients.view')->only(['show']);
         $this->middleware('team.permission:clients.create')->only(['store']);
-        $this->middleware('team.permission:clients.update')->only(['update']);
-        $this->middleware('team.permission:clients.delete')->only(['destroy']);
+        // 'show', 'update', 'destroy' use manual checks now
     }
 
     /**
@@ -198,12 +196,21 @@ class ClientController extends Controller
      */
     public function show(Request $request, Client $client): JsonResponse
     {
-        $team = $request->attributes->get('current_team');
         $user = $request->user();
 
+        // Manual Permission Check
         if (! $user->hasRole('administrator')) {
-            if ($client->team_id !== $team->id) {
-                abort(403, 'Client does not belong to this team');
+            // Load client's team to check membership/permissions
+            $client->load('team');
+            $team = $client->team;
+
+            if (! $team) {
+                abort(404, 'Client team not found.');
+            }
+
+            $permissionService = app(\App\Services\PermissionService::class);
+            if (! $permissionService->hasTeamPermission($user, $team, 'clients.view')) {
+                abort(403, 'Insufficient permissions to view this client.');
             }
         }
 
@@ -243,13 +250,20 @@ class ClientController extends Controller
     public function update(Request $request, Client $client): JsonResponse
     {
         $user = $request->user();
-        $team = $request->attributes->get('current_team');
         $targetTeamId = $client->team_id;
 
-        // Strict team check for non-admins
+        // Manual Permission Check
         if (! $user->hasRole('administrator')) {
-            if ($client->team_id !== $team->id) {
-                abort(403, 'Client does not belong to this team');
+            $client->load('team');
+            $team = $client->team;
+
+            if (! $team) {
+                 abort(404, 'Client team not found.');
+            }
+
+             $permissionService = app(\App\Services\PermissionService::class);
+            if (! $permissionService->hasTeamPermission($user, $team, 'clients.update')) {
+                abort(403, 'Insufficient permissions to update this client.');
             }
         }
 
@@ -287,12 +301,19 @@ class ClientController extends Controller
      */
     public function destroy(Request $request, Client $client): JsonResponse
     {
-        $team = $request->attributes->get('current_team');
         $user = $request->user();
 
+        // Manual Permission Check
         if (! $user->hasRole('administrator')) {
-            if ($client->team_id !== $team->id) {
-                abort(403, 'Client does not belong to this team');
+            $client->load('team');
+            $team = $client->team;
+
+            if (! $team) {
+                abort(404, 'Client team not found.');
+            }
+             $permissionService = app(\App\Services\PermissionService::class);
+            if (! $permissionService->hasTeamPermission($user, $team, 'clients.delete')) {
+                abort(403, 'Insufficient permissions to delete this client.');
             }
         }
 

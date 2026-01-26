@@ -171,9 +171,10 @@ const getInitials = (name: string) => {
                 <div class="space-y-3">
                     <ParticipantSelector
                         v-model="selectedParticipants"
+                        fetch-url="/api/directory/search"
                         :allow-external="false"
                         :excluded-ids="currentUserId ? [currentUserId] : []"
-                        placeholder="Search users..."
+                        placeholder="Search team members..."
                         class="w-full"
                     />
 

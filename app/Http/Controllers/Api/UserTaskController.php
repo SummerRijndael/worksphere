@@ -49,7 +49,11 @@ class UserTaskController extends Controller
             });
         })
             ->when($request->status, function ($query, $status) {
-                $query->where('status', $status);
+                if (str_contains($status, ',')) {
+                    $query->whereIn('status', explode(',', $status));
+                } else {
+                    $query->where('status', $status);
+                }
             })
             ->when($request->priority, function ($query, $priority) {
                 $query->where('priority', $priority);

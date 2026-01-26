@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { useToast } from "@/composables/useToast.ts";
+import { useAuthStore } from "@/stores/auth";
 import axios from "axios";
 
 const router = useRouter();
@@ -87,12 +88,25 @@ const newTicket = ref({
     type: "bug",
     tags: [],
 });
+const authStore = useAuthStore();
+
 // View Mode
-const viewMode = ref(localStorage.getItem("tickets_view_mode") || "list");
+const getStorageKey = () => {
+    const publicId = authStore.user?.public_id || 'guest';
+    return `worksphere_tickets_view_mode_${publicId}`;
+};
+
+const viewMode = ref(localStorage.getItem(getStorageKey()) || "list");
+
 function setViewMode(mode) {
     viewMode.value = mode;
-    localStorage.setItem("tickets_view_mode", mode);
+    localStorage.setItem(getStorageKey(), mode);
 }
+
+// Watch for user changes to reload preference (though rare to switch user without reload)
+watch(() => authStore.user?.public_id, () => {
+    viewMode.value = localStorage.getItem(getStorageKey()) || "list";
+});
 
 // Filters
 const searchQuery = ref("");

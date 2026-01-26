@@ -37,7 +37,6 @@ class TeamPermission
         }
 
         // Check if user is a member of the team
-        // Super Admins bypass membership check
         $superAdminRole = config('roles.super_admin_role', 'administrator');
         if (! $user->hasRole($superAdminRole) && ! $this->permissionService->isTeamMember($user, $team)) {
             throw new AccessDeniedHttpException('You are not a member of this team.');
@@ -59,6 +58,8 @@ class TeamPermission
 
         // Store team in request for convenience
         $request->attributes->set('current_team', $team);
+
+
 
         return $next($request);
     }

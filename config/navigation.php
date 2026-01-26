@@ -86,7 +86,7 @@ return [
             'label' => 'Tickets',
             'icon' => 'ticket',
             'route' => '/tickets',
-            'permission' => 'tickets.view',
+            'permission' => 'tickets.manage',
             'pinnable' => true,
             'pinned_default' => true,
             'badge_key' => 'open_tickets_count',

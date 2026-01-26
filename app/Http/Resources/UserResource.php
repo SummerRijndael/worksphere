@@ -54,7 +54,19 @@ class UserResource extends JsonResource
                 ]),
                 'permissions' => $this->when(
                     $request->routeIs('api.user') || $request->routeIs('users.show') || $isOwner,
-                    fn () => $this->getAllPermissions()->pluck('name')
+                    function () {
+                        // Global permissions
+                        $permissions = $this->getAllPermissions()->pluck('name');
+                        
+                        // Merge permissions from all teams
+                        $permissionService = app(\App\Services\PermissionService::class);
+                        foreach ($this->teams as $team) {
+                            $teamPermissions = $permissionService->getTeamPermissions($this->resource, $team);
+                            $permissions = $permissions->merge($teamPermissions);
+                        }
+                        
+                        return $permissions->unique()->values()->map(fn ($name) => ['name' => $name]);
+                    }
                 ),
                 'last_login_at' => $this->last_login_at?->toISOString(),
                 'is_password_set' => $this->is_password_set,

@@ -6,7 +6,7 @@ const props = defineProps({
     variant: {
         type: String,
         default: 'primary',
-        validator: (v) => ['primary', 'secondary', 'outline', 'ghost', 'danger', 'link'].includes(v),
+        validator: (v) => ['primary', 'secondary', 'outline', 'ghost', 'danger', 'link', 'success'].includes(v),
     },
     size: {
         type: String,
@@ -69,6 +69,10 @@ const classes = computed(() =>
             // Link
             'bg-transparent text-[var(--interactive-primary)] underline-offset-4 hover:underline p-0 h-auto':
                 props.variant === 'link',
+
+            // Success
+            'bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800 focus-visible:ring-emerald-600':
+                props.variant === 'success',
         },
 
         // Full width

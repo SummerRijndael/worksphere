@@ -1,16 +1,17 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import { invoiceTemplateService, type InvoiceTemplate } from '@/services/invoice-template.service';
 import Button from '@/components/ui/Button.vue';
 import Card from '@/components/ui/Card.vue';
 import StatusBadge from '@/components/ui/StatusBadge.vue';
 import Modal from '@/components/ui/Modal.vue';
 import InvoiceTemplateBuilder from '@/components/templates/InvoiceTemplateBuilder.vue';
-import { Pencil, Trash2, Plus, FileText } from 'lucide-vue-next';
+import { Pencil, Trash2, Plus, FileText, ArrowLeft } from 'lucide-vue-next';
 
 // Props/Route
 const route = useRoute();
+const router = useRouter();
 const teamId = route.params.id as string; 
 
 const templates = ref<InvoiceTemplate[]>([]);
@@ -67,9 +68,14 @@ onMounted(() => {
 <template>
     <div class="space-y-6">
         <div class="flex items-center justify-between">
-            <div>
-                <h1 class="text-2xl font-semibold text-[var(--text-primary)]">Invoice Templates</h1>
-                <p class="text-[var(--text-secondary)] mt-1">Manage invoice templates for your team.</p>
+            <div class="flex items-center gap-4">
+                <Button variant="ghost" size="icon" @click="router.push({ name: 'team-profile', params: { public_id: teamId }, query: { tab: 'templates' } })">
+                    <ArrowLeft class="h-5 w-5" />
+                </Button>
+                <div>
+                    <h1 class="text-2xl font-semibold text-[var(--text-primary)]">Invoice Templates</h1>
+                    <p class="text-[var(--text-secondary)] mt-1">Manage invoice templates for your team.</p>
+                </div>
             </div>
             <Button @click="handleCreate">
                 <Plus class="h-4 w-4 mr-2" />

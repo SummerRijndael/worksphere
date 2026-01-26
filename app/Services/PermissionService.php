@@ -257,7 +257,7 @@ class PermissionService
 
         $role = $this->getUserTeamRole($user, $team);
 
-        return $role && in_array($role, [TeamRole::Owner, TeamRole::Admin]);
+        return $role && in_array($role, [TeamRole::TeamLead, TeamRole::SubjectMatterExpert]);
     }
 
     /**
@@ -326,13 +326,21 @@ class PermissionService
      */
     protected function checkTeamPermission(User $user, Team $team, string $permission): bool
     {
+        // 1. Check Scope Logic
+        // Team Owners should ONLY inherit permissions that are scoped to 'team'.
+        // They should NOT inherit 'global' permissions (like users.manage) just because they own a team.
+        $scope = $this->getPermissionScope($permission);
+        if ($scope === 'global') {
+            return false;
+        }
+
         // Super admin check
         $superAdminRole = config('roles.super_admin_role', 'administrator');
         if ($user->hasRole($superAdminRole)) {
             return true;
         }
 
-        // Team owner has all permissions
+        // Team owner has all permissions (within team scope)
         if ($this->isTeamOwner($user, $team)) {
             return true;
         }
@@ -757,5 +765,27 @@ class PermissionService
                 'target_user_name' => $targetUser->name,
             ]
         );
+    }
+    /**
+     * Get the scope of a permission from config.
+     */
+    public function getPermissionScope(string $permissionName): string
+    {
+        $permissions = config('roles.permissions', []);
+
+        foreach ($permissions as $group) {
+            if (isset($group[$permissionName])) {
+                $def = $group[$permissionName];
+                // Handle both new array format and legacy string format (fallback)
+                if (is_array($def)) {
+                    return $def['scope'] ?? 'global';
+                }
+            }
+        }
+
+        // If not found or legacy format, err on side of caution?
+        // Actually, if it's not defined, it might be a dynamic permission.
+        // Default to 'global' to be safe (deny team owner inheritance).
+        return 'global';
     }
 }

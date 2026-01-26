@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import type { Ref, ComputedRef } from 'vue';
+// import { useAuthStore } from '@/stores/auth'; // Removed to avoid circular dependency
 import api from '@/lib/api';
 import type {
     NavigationItem,
@@ -17,6 +18,108 @@ export const useNavigationStore = defineStore('navigation', () => {
     const isLoading = ref(false);
     const badges: Ref<NavigationBadges> = ref({});
     const isSearchOpen = ref(false);
+
+    // Persistence Logic
+    
+    // Helper to get user ID without importing Auth Store (avoids circular dependency)
+    function getPublicId() {
+        try {
+            const authData = localStorage.getItem('worksphere-auth');
+            if (authData) {
+                const parsed = JSON.parse(authData);
+                return parsed.user?.public_id || 'guest';
+            }
+        } catch (e) { console.warn(e); }
+        return 'guest';
+    }
+
+    function getStorageKey() {
+      return `worksphere_navigation_${getPublicId()}`;
+    }
+    
+    function loadFromStorage() {
+        try {
+            const data = localStorage.getItem(getStorageKey());
+            if (data) {
+                const parsed = JSON.parse(data);
+                if (parsed.isSidebarCollapsed !== undefined) isSidebarCollapsed.value = parsed.isSidebarCollapsed;
+                 // Note: userPreferences are usually fetched from API but we can restore from local if needed for optimistic UI
+            }
+        } catch (e) {
+            console.warn('Failed to load navigation settings', e);
+        }
+    }
+  
+    function saveToStorage() {
+        const data = {
+            isSidebarCollapsed: isSidebarCollapsed.value,
+             // userPreferences?
+        };
+        // @ts-ignore
+        if (typeof userPreferences !== 'undefined') data.userPreferences = userPreferences.value;
+        
+        localStorage.setItem(getStorageKey(), JSON.stringify(data));
+    }
+  
+    // Watch for changes to persist
+    watch(isSidebarCollapsed, () => {
+        saveToStorage();
+    });
+    
+    // Watch userPreferences deep changes
+    // Need to wait for userPreferences to be defined below? No, access via variable is hoisted if using function but variable 'userPreferences' is defined using 'ref'.
+    // BUT 'userPreferences' is defined lower down. I need to move this watcher or the definition up.
+    // In the previous file content, userPreferences is defined at line 161.
+    // I should move this watch logic to AFTER userPreferences definition, or move userPreferences up.
+    // I will simply move the watch block down in a separate replacement if needed, 
+    // OR just define the watch here but I can't watch 'userPreferences' if it's not defined yet (TDZ).
+    // So I strictly need to be careful.
+    
+    // FIX: I will output the persistence logic functions here, but the watchers must be placed after variable definitions.
+    // However, I am replacing lines 1-78.
+    // So I should include the watchers at the bottom of THIS replacement block?
+    // userPreferences is defined later.
+    // I will remove the watchers from HERE and add them later or just leave the functions here.
+    
+    // Re-verify existing code.
+    // Line 161: const userPreferences = ref({...})
+    // Line 64: watch(userPreferences, ...) -> THis would fail if userPreferences is not defined.
+    // Wait, in previous successful compilation, it worked? 
+    // Javascript functions are hoisted, but `watch(userPreferences, ...)` calls `userPreferences` immediately?
+    // `watch` first argument is source. If `userPreferences` (ref) is passed, it must be initialized.
+    // So `userPreferences` MUST be defined before `watch` is called.
+    // But `userPreferences` is defined at line 161!
+    // My previous edit inserted `watch` at line 64. This should have thrown ReferenceError "userPreferences is not defined".
+    // Maybe that's why "Invalid vnode type"? If the store setup crashes, the component using it fails?
+    // "ReferenceError: Cannot access 'userPreferences' before initialization".
+    
+    // I will move `userPreferences` definition UP, or move watchers DOWN.
+    // Moving watchers down is safer.
+    
+    // Also handling the dynamic auth import for watcher.
+    
+    // Strategy:
+    // 1. Define states.
+    // 2. Define persistence functions.
+    // 3. Define the rest of state (userPreferences).
+    // 4. Define watchers at the end.
+    
+    // Initial load
+    // loadFromStorage(); // Call this later too.
+
+    // ... I need to replace a large chunk to reorder.
+    
+    // Let's just fix the immediate Imports and Helper functions first, 
+    // and then I will Move the watchers.
+    
+    // Replacement:
+    // Remove import useAuthStore.
+    // Define getPublicId, getStorageKey, loadFromStorage, saveToStorage.
+    // NO watchers here.
+    
+    // Then I will make another call to move watchers to bottom.
+
+
 
     // Navigation items from server
     const navItems: Ref<NavigationItem[]> = ref([
@@ -293,6 +396,27 @@ export const useNavigationStore = defineStore('navigation', () => {
         }
     }
 
+    // Watch for changes to persist
+    watch(isSidebarCollapsed, () => {
+        saveToStorage();
+    });
+    
+    // Watch userPreferences deep changes
+    watch(userPreferences, () => {
+        saveToStorage();
+    }, { deep: true });
+    
+    // Watch for user change to reload (dynamically imported to avoid cycle)
+    import('@/stores/auth').then(({ useAuthStore }) => {
+        const authStore = useAuthStore();
+         watch(() => authStore.user?.public_id, () => {
+            loadFromStorage();
+        });
+    });
+    
+    // Initial load
+    loadFromStorage();
+
     return {
         // State
         isSidebarCollapsed,
@@ -332,9 +456,4 @@ export const useNavigationStore = defineStore('navigation', () => {
         fetchNavigation,
         savePreferences,
     };
-}, {
-    persist: {
-        key: 'coresync-navigation',
-        paths: ['isSidebarCollapsed', 'userPreferences'],
-    },
 });

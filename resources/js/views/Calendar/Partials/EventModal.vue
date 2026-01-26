@@ -290,7 +290,8 @@ async function deleteEvent() {
                 <label class="text-sm font-medium text-[var(--text-secondary)]">Invite People</label>
                         <ParticipantSelector
                             v-model="form.participants"
-                            :fetch-url="`/api/users`"
+                            fetch-url="/api/directory/search"
+                            :allow-external="true"
                             placeholder="Add people or enter email..."
                             :max="25"
                         />

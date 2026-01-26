@@ -12,6 +12,7 @@ import {
 } from 'lucide-vue-next';
 import { emailService } from '@/services/email.service';
 import { startEcho } from '@/echo';
+import { useAuthStore } from '@/stores/auth';
 import type { Email, EmailFolder, EmailLabel } from '@/types/models/email';
 
 // --- Constants ---
@@ -61,7 +62,26 @@ export const useEmailStore = defineStore('email', () => {
     const filterDateTo = ref('');
     
     // Persist selected account ID
-    const selectedAccountId = useStorage<string | null>('coresync_selected_email_account', null);
+    // const selectedAccountId = useStorage<string | null>('coresync_selected_email_account', null);
+    
+    // Manual user-scoped persistence
+    const authStore = useAuthStore();
+    const getStorageKey = () => `worksphere_email_account_${authStore.user?.public_id || 'guest'}`;
+    
+    const selectedAccountId = ref<string | null>(localStorage.getItem(getStorageKey()) || null);
+
+    watch(selectedAccountId, (newVal) => {
+        if (newVal) {
+            localStorage.setItem(getStorageKey(), newVal);
+        } else {
+            localStorage.removeItem(getStorageKey());
+        }
+    });
+
+    // Handle user switch
+    watch(() => authStore.user?.public_id, () => {
+         selectedAccountId.value = localStorage.getItem(getStorageKey()) || null;
+    });
 
     // Getters
     const systemFolders = computed(() => folders.value.filter(f => f.type === 'system'));

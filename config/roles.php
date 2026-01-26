@@ -68,12 +68,8 @@ return [
                 'users.view',
                 'users.update', // Reset password/MFA often falls under update
                 'users.manage_status',
-                'tickets.view',
-                'tickets.create',
-                'tickets.update',
-                'tickets.assign',
-                'tickets.close',
-                'tickets.internal_notes',
+                'users.manage_status',
+                'tickets.manage',
                 'reports.view',
             ],
         ],
@@ -111,189 +107,190 @@ return [
     'permissions' => [
         // Dashboard Module
         'dashboard' => [
-            'dashboard.view' => 'View dashboard',
-            'dashboard.analytics' => 'View analytics data',
-            'dashboard.widgets' => 'Manage dashboard widgets',
+            'dashboard.view' => ['label' => 'View dashboard', 'scope' => 'global'],
+            'dashboard.analytics' => ['label' => 'View analytics data', 'scope' => 'global'],
+            'dashboard.widgets' => ['label' => 'Manage dashboard widgets', 'scope' => 'global'],
         ],
 
         // User Management
         'users' => [
-            'users.view' => 'View users',
-            'users.create' => 'Create users',
-            'users.update' => 'Update users',
-            'users.delete' => 'Delete users',
-            'users.impersonate' => 'Impersonate users',
-            'users.manage_roles' => 'Manage user roles',
-            'users.manage_status' => 'Manage user status',
-            'users.manage_permissions' => 'Manage user permission overrides',
-            'user_manage' => 'Manage all user settings',
+            'users.view' => ['label' => 'View users', 'scope' => 'global'],
+            'users.create' => ['label' => 'Create users', 'scope' => 'global'],
+            'users.update' => ['label' => 'Update users', 'scope' => 'global'],
+            'users.delete' => ['label' => 'Delete users', 'scope' => 'global'],
+            'users.impersonate' => ['label' => 'Impersonate users', 'scope' => 'global'],
+            'users.manage_roles' => ['label' => 'Manage user roles', 'scope' => 'global'],
+            'users.manage_status' => ['label' => 'Manage user status', 'scope' => 'global'],
+            'users.manage_permissions' => ['label' => 'Manage user permission overrides', 'scope' => 'global'],
+            'user_manage' => ['label' => 'Manage all user settings', 'scope' => 'global'],
         ],
 
         // Role Management
         'roles' => [
-            'roles.view' => 'View roles',
-            'roles.create' => 'Create roles',
-            'roles.update' => 'Update roles',
-            'roles.delete' => 'Delete roles',
-            'roles.assign' => 'Assign roles to users',
+            'roles.view' => ['label' => 'View roles', 'scope' => 'global'],
+            'roles.create' => ['label' => 'Create roles', 'scope' => 'global'],
+            'roles.update' => ['label' => 'Update roles', 'scope' => 'global'],
+            'roles.delete' => ['label' => 'Delete roles', 'scope' => 'global'],
+            'roles.assign' => ['label' => 'Assign roles to users', 'scope' => 'global'],
         ],
 
         // Project Management
         'projects' => [
-            'projects.view' => 'View all projects',
-            'projects.view_assigned' => 'View assigned projects',
-            'projects.create' => 'Create projects',
-            'projects.update' => 'Update projects',
-            'projects.delete' => 'Delete projects',
-            'projects.archive' => 'Archive projects',
-            'projects.assign' => 'Assign team members to projects',
-            'projects.manage_members' => 'Manage project members',
-            'projects.manage_files' => 'Manage project files',
+            'projects.view' => ['label' => 'View all projects', 'scope' => 'team'],
+            'projects.view_assigned' => ['label' => 'View assigned projects', 'scope' => 'team'],
+            'projects.create' => ['label' => 'Create projects', 'scope' => 'team'],
+            'projects.update' => ['label' => 'Update projects', 'scope' => 'team'],
+            'projects.delete' => ['label' => 'Delete projects', 'scope' => 'team'],
+            'projects.archive' => ['label' => 'Archive projects', 'scope' => 'team'],
+            'projects.assign' => ['label' => 'Assign team members to projects', 'scope' => 'team'],
+            'projects.manage_members' => ['label' => 'Manage project members', 'scope' => 'team'],
+            'projects.manage_files' => ['label' => 'Manage project files', 'scope' => 'team'],
         ],
 
         // Task Management
         'tasks' => [
-            'tasks.view' => 'View all tasks',
-            'tasks.view_assigned' => 'View assigned tasks',
-            'tasks.create' => 'Create tasks',
-            'tasks.update' => 'Update tasks',
-            'tasks.update_assigned' => 'Update assigned tasks',
-            'tasks.delete' => 'Delete tasks',
-            'tasks.assign' => 'Assign tasks to users',
-            'tasks.submit' => 'Submit tasks',
-            'tasks.qa_review' => 'Review tasks (QA)',
-            'tasks.approve' => 'Approve tasks',
-            'tasks.reject' => 'Reject tasks',
-            'tasks.send_to_client' => 'Send tasks to client',
-            'tasks.archive' => 'Archive tasks',
+            'tasks.view' => ['label' => 'View all tasks', 'scope' => 'team'],
+            'tasks.view_assigned' => ['label' => 'View assigned tasks', 'scope' => 'team'],
+            'tasks.create' => ['label' => 'Create tasks', 'scope' => 'team'],
+            'tasks.update' => ['label' => 'Update tasks', 'scope' => 'team'],
+            'tasks.update_assigned' => ['label' => 'Update assigned tasks', 'scope' => 'team'],
+            'tasks.delete' => ['label' => 'Delete tasks', 'scope' => 'team'],
+            'tasks.assign' => ['label' => 'Assign tasks to users', 'scope' => 'team'],
+            'tasks.submit' => ['label' => 'Submit tasks', 'scope' => 'team'],
+            'tasks.qa_review' => ['label' => 'Review tasks (QA)', 'scope' => 'team'],
+            'tasks.approve' => ['label' => 'Approve tasks', 'scope' => 'team'],
+            'tasks.reject' => ['label' => 'Reject tasks', 'scope' => 'team'],
+            'tasks.send_to_client' => ['label' => 'Send tasks to client', 'scope' => 'team'],
+            'tasks.archive' => ['label' => 'Archive tasks', 'scope' => 'team'],
         ],
 
         // Ticket Management
         'tickets' => [
-            'tickets.view' => 'View all tickets',
-            'tickets.view_own' => 'View own tickets',
-            'tickets.create' => 'Create tickets',
-            'tickets.update' => 'Update tickets',
-            'tickets.update_own' => 'Update own tickets',
-            'tickets.delete' => 'Delete tickets',
-            'tickets.assign' => 'Assign tickets',
-            'tickets.close' => 'Close tickets',
-            'tickets.internal_notes' => 'View internal notes',
+            'tickets.view' => ['label' => 'View all tickets', 'scope' => 'team'],
+            'tickets.manage' => ['label' => 'Manage all tickets', 'scope' => 'global'],
+            'tickets.view_own' => ['label' => 'View own tickets', 'scope' => 'team'],
+            'tickets.create' => ['label' => 'Create tickets', 'scope' => 'team'],
+            'tickets.update' => ['label' => 'Update tickets', 'scope' => 'team'],
+            'tickets.update_own' => ['label' => 'Update own tickets', 'scope' => 'team'],
+            'tickets.delete' => ['label' => 'Delete tickets', 'scope' => 'team'],
+            'tickets.assign' => ['label' => 'Assign tickets', 'scope' => 'team'],
+            'tickets.close' => ['label' => 'Close tickets', 'scope' => 'team'],
+            'tickets.internal_notes' => ['label' => 'View internal notes', 'scope' => 'team'],
         ],
 
         // Reports
         'reports' => [
-            'reports.view' => 'View reports',
-            'reports.create' => 'Create reports',
-            'reports.export' => 'Export reports',
+            'reports.view' => ['label' => 'View reports', 'scope' => 'team'],
+            'reports.create' => ['label' => 'Create reports', 'scope' => 'team'],
+            'reports.export' => ['label' => 'Export reports', 'scope' => 'team'],
         ],
 
         // Team Management
         'teams' => [
-            'teams.view' => 'View teams',
-            'teams.create' => 'Create teams',
-            'teams.update' => 'Update teams',
-            'teams.delete' => 'Delete teams',
-            'teams.manage_members' => 'Manage team members',
+            'teams.view' => ['label' => 'View teams', 'scope' => 'team'],
+            'teams.create' => ['label' => 'Create teams', 'scope' => 'global'], // Creating a team is often global context
+            'teams.update' => ['label' => 'Update teams', 'scope' => 'team'],
+            'teams.delete' => ['label' => 'Delete teams', 'scope' => 'team'],
+            'teams.manage_members' => ['label' => 'Manage team members', 'scope' => 'team'],
         ],
 
         // Settings
         'settings' => [
-            'settings.view' => 'View settings',
-            'settings.update' => 'Update settings',
-            'settings.system' => 'Manage system settings',
+            'settings.view' => ['label' => 'View settings', 'scope' => 'global'],
+            'settings.update' => ['label' => 'Update settings', 'scope' => 'global'],
+            'settings.system' => ['label' => 'Manage system settings', 'scope' => 'global'],
         ],
 
         // Audit
         'audit' => [
-            'audit.view' => 'View audit logs',
-            'audit.export' => 'Export audit logs',
+            'audit.view' => ['label' => 'View audit logs', 'scope' => 'global'],
+            'audit.export' => ['label' => 'Export audit logs', 'scope' => 'global'],
         ],
 
         // System Administration
         'system' => [
-            'system.maintenance' => 'Access maintenance tools',
-            'system.settings' => 'Manage system settings',
-            'system.logs' => 'View system logs',
-            'system.manage_blocklist' => 'Manage blocked URLs',
-            'system.manage_email' => 'Manage system email accounts',
+            'system.maintenance' => ['label' => 'Access maintenance tools', 'scope' => 'global'],
+            'system.settings' => ['label' => 'Manage system settings', 'scope' => 'global'],
+            'system.logs' => ['label' => 'View system logs', 'scope' => 'global'],
+            'system.manage_blocklist' => ['label' => 'Manage blocked URLs', 'scope' => 'global'],
+            'system.manage_email' => ['label' => 'Manage system email accounts', 'scope' => 'global'],
         ],
 
         // Team Roles
         'team_roles' => [
-            'team_roles.view' => 'View team roles',
-            'team_roles.create' => 'Create team roles',
-            'team_roles.update' => 'Update team roles',
-            'team_roles.delete' => 'Delete team roles',
-            'team_roles.assign' => 'Assign roles to team members',
+            'team_roles.view' => ['label' => 'View team roles', 'scope' => 'team'],
+            'team_roles.create' => ['label' => 'Create team roles', 'scope' => 'team'],
+            'team_roles.update' => ['label' => 'Update team roles', 'scope' => 'team'],
+            'team_roles.delete' => ['label' => 'Delete team roles', 'scope' => 'team'],
+            'team_roles.assign' => ['label' => 'Assign roles to team members', 'scope' => 'team'],
         ],
 
         // Task Templates
         'task_templates' => [
-            'task_templates.view' => 'View task templates',
-            'task_templates.create' => 'Create task templates',
-            'task_templates.update' => 'Update task templates',
-            'task_templates.delete' => 'Delete task templates',
+            'task_templates.view' => ['label' => 'View task templates', 'scope' => 'team'],
+            'task_templates.create' => ['label' => 'Create task templates', 'scope' => 'team'],
+            'task_templates.update' => ['label' => 'Update task templates', 'scope' => 'team'],
+            'task_templates.delete' => ['label' => 'Delete task templates', 'scope' => 'team'],
         ],
 
         // QA Check Templates
         'qa_checks' => [
-            'qa_checks.view' => 'View QA check templates',
-            'qa_checks.create' => 'Create QA check templates',
-            'qa_checks.update' => 'Update QA check templates',
-            'qa_checks.delete' => 'Delete QA check templates',
+            'qa_checks.view' => ['label' => 'View QA check templates', 'scope' => 'team'],
+            'qa_checks.create' => ['label' => 'Create QA check templates', 'scope' => 'team'],
+            'qa_checks.update' => ['label' => 'Update QA check templates', 'scope' => 'team'],
+            'qa_checks.delete' => ['label' => 'Delete QA check templates', 'scope' => 'team'],
         ],
 
         // Clients
         'clients' => [
-            'clients.view' => 'View clients',
-            'clients.create' => 'Create clients',
-            'clients.update' => 'Update clients',
-            'clients.delete' => 'Delete clients',
-            'clients.manage_portal' => 'Manage client portal access',
+            'clients.view' => ['label' => 'View clients', 'scope' => 'team'],
+            'clients.create' => ['label' => 'Create clients', 'scope' => 'team'],
+            'clients.update' => ['label' => 'Update clients', 'scope' => 'team'],
+            'clients.delete' => ['label' => 'Delete clients', 'scope' => 'team'],
+            'clients.manage_portal' => ['label' => 'Manage client portal access', 'scope' => 'team'],
         ],
 
         // Invoices
         'invoices' => [
-            'invoices.view' => 'View invoices',
-            'invoices.create' => 'Create invoices',
-            'invoices.update' => 'Update invoices',
-            'invoices.delete' => 'Delete invoices',
-            'invoices.send' => 'Send invoices to clients',
-            'invoices.record_payment' => 'Record invoice payments',
+            'invoices.view' => ['label' => 'View invoices', 'scope' => 'team'],
+            'invoices.create' => ['label' => 'Create invoices', 'scope' => 'team'],
+            'invoices.update' => ['label' => 'Update invoices', 'scope' => 'team'],
+            'invoices.delete' => ['label' => 'Delete invoices', 'scope' => 'team'],
+            'invoices.send' => ['label' => 'Send invoices to clients', 'scope' => 'team'],
+            'invoices.record_payment' => ['label' => 'Record invoice payments', 'scope' => 'team'],
         ],
 
         // Invoice Templates
         'invoice_templates' => [
-            'invoice_templates.view' => 'View invoice templates',
-            'invoice_templates.create' => 'Create invoice templates',
-            'invoice_templates.update' => 'Update invoice templates',
-            'invoice_templates.delete' => 'Delete invoice templates',
+            'invoice_templates.view' => ['label' => 'View invoice templates', 'scope' => 'team'],
+            'invoice_templates.create' => ['label' => 'Create invoice templates', 'scope' => 'team'],
+            'invoice_templates.update' => ['label' => 'Update invoice templates', 'scope' => 'team'],
+            'invoice_templates.delete' => ['label' => 'Delete invoice templates', 'scope' => 'team'],
         ],
 
         // Personal Notes
         'notes' => [
-            'notes.view' => 'View personal notes',
-            'notes.create' => 'Create personal notes',
-            'notes.update' => 'Update personal notes',
-            'notes.delete' => 'Delete personal notes',
+            'notes.view' => ['label' => 'View personal notes', 'scope' => 'global'],
+            'notes.create' => ['label' => 'Create personal notes', 'scope' => 'global'],
+            'notes.update' => ['label' => 'Update personal notes', 'scope' => 'global'],
+            'notes.delete' => ['label' => 'Delete personal notes', 'scope' => 'global'],
         ],
 
         // Chat Management
         'chats' => [
-            'chats.manage' => 'Manage active and deleted chats',
+            'chats.manage' => ['label' => 'Manage active and deleted chats', 'scope' => 'global'],
         ],
 
         // FAQ Management
         'faq' => [
-            'faq.view' => 'View FAQ articles (Admin)',
-            'faq.manage' => 'Manage FAQ categories and articles',
+            'faq.view' => ['label' => 'View FAQ articles (Admin)', 'scope' => 'global'],
+            'faq.manage' => ['label' => 'Manage FAQ categories and articles', 'scope' => 'global'],
         ],
 
         // Service Plans Management
         'services' => [
-            'services.view' => 'View service plans',
-            'services.manage' => 'Manage service plans and pricing',
+            'services.view' => ['label' => 'View service plans', 'scope' => 'global'],
+            'services.manage' => ['label' => 'Manage service plans and pricing', 'scope' => 'global'],
         ],
     ],
 
@@ -402,12 +399,9 @@ return [
             'invoice_templates.delete',
 
             // Tickets within team
-            'tickets.view',
+            'tickets.view_own',
             'tickets.create',
-            'tickets.update',
-            'tickets.delete',
-            'tickets.assign',
-            'tickets.close',
+            'tickets.update_own',
             'tickets.internal_notes',
 
             // Reports
@@ -473,11 +467,8 @@ return [
             'invoice_templates.view',
 
             // Tickets within team
-            'tickets.view',
+            'tickets.view_own',
             'tickets.create',
-            'tickets.update',
-            'tickets.assign',
-            'tickets.close',
             'tickets.internal_notes',
 
             // Reports

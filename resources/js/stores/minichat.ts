@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import type { Chat } from '@/types/models/chat';
+import { useAuthStore } from '@/stores/auth';
 
 export interface MiniChatWindow {
   chatId: string;
@@ -23,6 +24,47 @@ export const useMiniChatStore = defineStore('minichat', () => {
   
   // Max visible chat heads when minimized
   const MAX_VISIBLE_HEADS = 5;
+
+  // Persistence Logic
+  const authStore = useAuthStore();
+  
+  function getStorageKey() {
+    return `worksphere_minichat_${authStore.user?.public_id || 'guest'}`;
+  }
+  
+  function loadFromStorage() {
+      try {
+          const data = localStorage.getItem(getStorageKey());
+          if (data) {
+              const parsed = JSON.parse(data);
+              if (parsed.anchoringMode) anchoringMode.value = parsed.anchoringMode;
+              if (parsed.activeTab) activeTab.value = parsed.activeTab;
+          }
+      } catch (e) {
+          console.warn('Failed to load minichat settings', e);
+      }
+  }
+
+  function saveToStorage() {
+      const data = {
+          anchoringMode: anchoringMode.value,
+          activeTab: activeTab.value
+      };
+      localStorage.setItem(getStorageKey(), JSON.stringify(data));
+  }
+
+  // Watch for changes to persist
+  watch([anchoringMode, activeTab], () => {
+      saveToStorage();
+  });
+
+  // Watch for user change to reload
+  watch(() => authStore.user?.public_id, () => {
+      loadFromStorage();
+  });
+  
+  // Initial load
+  loadFromStorage();
   
   // ============================================================================
   // Computed
@@ -236,9 +278,4 @@ export const useMiniChatStore = defineStore('minichat', () => {
     closeAllWindows,
     minimizeAllWindows,
   };
-}, {
-  persist: {
-    key: 'coresync-minichat',
-    paths: ['anchoringMode', 'activeTab'],
-  },
 });

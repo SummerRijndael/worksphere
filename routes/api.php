@@ -390,6 +390,9 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce'])->group(functi
     Route::get('navigation', [\App\Http\Controllers\Api\NavigationController::class, 'index']);
     Route::post('navigation/preferences', [\App\Http\Controllers\Api\NavigationController::class, 'updatePreferences']);
 
+    // Directory Search (Scoped)
+    Route::get('/directory/search', [\App\Http\Controllers\Api\DirectoryController::class, 'search'])->middleware('throttle:60,1');
+
     // Global Search
     Route::get('/search', [\App\Http\Controllers\SearchController::class, 'index'])->middleware('throttle:60,1');
 

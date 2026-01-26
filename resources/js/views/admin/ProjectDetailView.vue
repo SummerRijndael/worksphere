@@ -195,6 +195,14 @@ const isExternalProject = computed(() => {
     return !isMember;
 });
 
+const goBack = () => {
+    if (route.name === 'admin-project-detail') {
+        router.push({ name: 'admin-projects' });
+    } else {
+        router.push({ name: 'projects' });
+    }
+};
+
 const fetchProject = async () => {
     // If auth is still loading, wait.
     if (authStore.isLoading) {
@@ -729,7 +737,7 @@ onMounted(() => {
                         variant="ghost"
                         size="sm"
                         class="-ml-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                        @click="router.push('/admin/projects')"
+                        @click="goBack"
                     >
                         <ArrowLeft class="w-4 h-4 mr-2" />
                         Back
