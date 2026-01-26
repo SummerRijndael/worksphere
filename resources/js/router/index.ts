@@ -1217,8 +1217,13 @@ router.beforeEach(
     },
 );
 
-router.afterEach(() => {
+import { analyticsService } from "@/services/analytics.service";
+
+router.afterEach((to) => {
     NProgress.done();
+
+    // Track page visit in SPA
+    analyticsService.trackPageVisit(to.path);
 });
 
 export default router;

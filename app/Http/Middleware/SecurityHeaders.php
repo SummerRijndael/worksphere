@@ -86,7 +86,7 @@ class SecurityHeaders
             // Allow data: fonts (often used by icon sets or inline fonts)
             "font-src 'self' https://fonts.bunny.net https://fonts.gstatic.com data:",
             // Allow images from self, data URIs (base64), and S3/R2 (https)
-            "img-src 'self' data: https:",
+            "img-src 'self' data: https: blob:",
             // Connect to self, Vite HMR, and Reverb WebSockets (port 9000 usually)
             // Adding ws: and wss: schemes generally to allow websocket connections
             "connect-src {$connectSrc} ws: wss: https://www.google.com",

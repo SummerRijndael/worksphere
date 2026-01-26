@@ -274,7 +274,9 @@ class UserController extends Controller
             $user,
             'avatar',
             'avatars',
-            Str::random(40).'.webp'
+            Str::random(40).'.webp',
+            null,
+            'public' // Force public disk
         );
 
         return response()->json(new UserResource($user));

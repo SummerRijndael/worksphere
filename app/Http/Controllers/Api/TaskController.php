@@ -101,6 +101,71 @@ class TaskController extends Controller
     }
 
     /**
+     * Display a global listing of tasks for a project (Admin only).
+     */
+    public function indexGlobal(Request $request, Project $project): AnonymousResourceCollection
+    {
+        if (! $request->user()->hasRole('administrator')) {
+            abort(403, 'Unauthorized access to global task list.');
+        }
+
+        // Reuse query logic - can refactor later if needed to dry up
+        $query = Task::query()
+            ->where('project_id', $project->id)
+            ->when(! $request->boolean('include_subtasks'), function ($query) {
+                $query->whereNull('parent_id'); // Only top-level tasks by default
+            })
+            ->with(['assignee', 'creator', 'subtasks', 'project.client'])
+            ->withCount(['subtasks', 'comments'])
+            ->when($request->search, function ($query, $search) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('title', 'like', "%{$search}%")
+                        ->orWhere('description', 'like', "%{$search}%");
+                });
+            })
+            ->when($request->status, function ($query, $status) {
+                if (str_contains($status, ',')) {
+                    $query->whereIn('status', explode(',', $status));
+                } else {
+                    $query->where('status', $status);
+                }
+            })
+            ->when($request->assignee, function ($query, $assignee) {
+                $query->whereHas('assignee', function ($q) use ($assignee) {
+                    $q->where('public_id', $assignee);
+                });
+            })
+            ->when($request->boolean('unassigned'), function ($query) {
+                $query->whereNull('assigned_to');
+            })
+            ->when($request->boolean('archived'), function ($query) {
+                $query->where('status', TaskStatus::Archived);
+            }, function ($query) use ($request) {
+                if (! $request->boolean('include_archived')) {
+                    $query->where('status', '!=', TaskStatus::Archived);
+                }
+            })
+            ->when($request->boolean('overdue'), function ($query) {
+                $query->whereNotNull('due_date')
+                    ->where('due_date', '<', now())
+                    ->whereNotIn('status', [TaskStatus::Completed, TaskStatus::Archived]);
+            })
+            ->when($request->priority, function ($query, $priority) {
+                $query->where('priority', $priority);
+            })
+            ->when($request->sort_by, function ($query, $sortBy) use ($request) {
+                $direction = $request->input('sort_direction', 'asc');
+                $query->orderBy($sortBy, $direction);
+            }, function ($query) {
+                $query->orderBy('sort_order')->orderBy('created_at', 'desc');
+            });
+
+        $tasks = $query->paginate($request->integer('per_page', 25));
+
+        return TaskResource::collection($tasks);
+    }
+
+    /**
      * Store a newly created task.
      */
     public function store(StoreTaskRequest $request, Team $team, Project $project): JsonResponse

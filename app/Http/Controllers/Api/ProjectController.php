@@ -81,13 +81,136 @@ class ProjectController extends Controller
     /**
      * Display a listing of projects for a team.
      */
+    /**
+     * Display a listing of projects for a team.
+     */
     public function index(Request $request, Team $team): AnonymousResourceCollection
     {
         $this->authorizeTeamPermission($team, 'projects.view');
 
-        $query = Project::query()
-            ->where('team_id', $team->id)
-            ->with(['creator', 'client', 'members'])
+        $query = $this->getProjectsQuery($request)
+            ->where('team_id', $team->id);
+
+        $projects = $query->paginate($request->integer('per_page', 15));
+
+        return ProjectResource::collection($projects);
+    }
+
+    /**
+     * Display a global listing of projects (Admin only).
+     */
+    public function indexGlobal(Request $request): AnonymousResourceCollection
+    {
+        if (! $request->user()->hasRole('administrator')) {
+            abort(403, 'Unauthorized access to global project list.');
+        }
+
+        $query = $this->getProjectsQuery($request);
+
+        // If specific team is requested in filter
+        if ($request->filled('team_id')) {
+            $team = Team::where('public_id', $request->team_id)->first();
+            if ($team) {
+                $query->where('team_id', $team->id);
+            }
+        }
+
+        $projects = $query->paginate($request->integer('per_page', 15));
+
+        return ProjectResource::collection($projects);
+    }
+
+    /**
+     * Display the specified project globally (Admin only).
+     */
+    public function showGlobal(Request $request, Project $project): JsonResponse
+    {
+        if (! $request->user()->hasRole('administrator')) {
+            abort(403, 'Unauthorized access to global project details.');
+        }
+
+        $project->load(['creator', 'client', 'members', 'archiver', 'team']);
+        $project->loadCount(['tasks', 'members']);
+
+        return response()->json(new ProjectResource($project));
+    }
+
+    /**
+     * Get statistics for a specific project globally (Admin only).
+     */
+    public function statsGlobal(Request $request, Project $project): JsonResponse
+    {
+        if (! $request->user()->hasRole('administrator')) {
+            abort(403, 'Unauthorized access to global project stats.');
+        }
+
+        $stats = [
+            'total_tasks' => $project->tasks()->count(),
+            'completed_tasks' => $project->tasks()->where('status', 'completed')->count(),
+            'active_tasks' => $project->tasks()->where('status', 'active')->count(),
+            'overdue_tasks' => $project->tasks()
+                ->whereNotNull('due_date')
+                ->where('due_date', '<', now())
+                ->whereNotIn('status', ['completed', 'archived'])
+                ->count(),
+            'members_count' => $project->members()->count(),
+            'completion_percentage' => 0,
+        ];
+
+        if ($stats['total_tasks'] > 0) {
+            $stats['completion_percentage'] = round(($stats['completed_tasks'] / $stats['total_tasks']) * 100);
+        }
+
+        return response()->json($stats);
+    }
+
+    /**
+     * Get files for a specific project globally (Admin only).
+     */
+    public function filesGlobal(Request $request, Project $project): JsonResponse
+    {
+        if (! $request->user()->hasRole('administrator')) {
+            abort(403, 'Unauthorized access to global project files.');
+        }
+
+        $collection = $request->input('collection', 'attachments');
+        $media = $project->getMedia($collection);
+
+        $files = $media->map(function (Media $item) {
+            return [
+                'id' => $item->id,
+                'uuid' => $item->uuid,
+                'name' => $item->name,
+                'file_name' => $item->file_name,
+                'mime_type' => $item->mime_type,
+                'size' => $item->size,
+                // USE SIGNED URL (60 mins validity)
+                'url' => \Illuminate\Support\Facades\URL::temporarySignedRoute(
+                    'media.show',
+                    now()->addMinutes(60),
+                    ['media' => $item->id]
+                ),
+                'thumb_url' => $item->hasGeneratedConversion('thumb')
+                    ? \Illuminate\Support\Facades\URL::temporarySignedRoute(
+                        'media.show',
+                        now()->addMinutes(60),
+                        ['media' => $item->id, 'conversion' => 'thumb']
+                    )
+                    : null,
+                'created_at' => $item->created_at,
+            ];
+        });
+
+        return response()->json($files);
+    }
+
+    /**
+     * Build the base project query with filters.
+     */
+    protected function getProjectsQuery(Request $request): \Illuminate\Database\Eloquent\Builder
+    {
+        return Project::query()
+            ->with(['creator', 'client', 'members', 'team'])
             ->withCount(['tasks', 'members'])
             ->when($request->search, function ($query, $search) {
                 $query->where(function ($q) use ($search) {
@@ -121,14 +244,17 @@ class ProjectController extends Controller
             })
             ->when($request->sort_by, function ($query, $sortBy) use ($request) {
                 $direction = $request->input('sort_direction', 'asc');
-                $query->orderBy($sortBy, $direction);
+                
+                // Allow sorting by team name if needed, though simpler to stick to project fields
+                if ($sortBy === 'team.name') {
+                     // Complex join sort, skip for now unless requested
+                     $query->orderBy('created_at', 'desc');
+                } else {
+                    $query->orderBy($sortBy, $direction);
+                }
             }, function ($query) {
                 $query->orderBy('created_at', 'desc');
             });
-
-        $projects = $query->paginate($request->integer('per_page', 15));
-
-        return ProjectResource::collection($projects);
     }
 
     /**
@@ -197,7 +323,7 @@ class ProjectController extends Controller
         $this->authorizeTeamPermission($team, 'projects.view');
         $this->ensureProjectBelongsToTeam($team, $project);
 
-        $project->load(['creator', 'client', 'members', 'archiver']);
+        $project->load(['creator', 'client', 'members', 'archiver', 'team']);
         $project->loadCount(['tasks', 'members']);
 
         // dd($project->relationLoaded('client'), $project->client ? $project->client->toArray() : 'NULL CLIENT');

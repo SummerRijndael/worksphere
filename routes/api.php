@@ -84,6 +84,9 @@ Route::middleware(['throttle:guest'])->group(function () {
         });
     }
 
+    // Analytics Tracking
+    Route::post('/analytics/track', [\App\Http\Controllers\Api\AnalyticsController::class, 'track']);
+
     // Webhooks
     Route::post('/webhooks/twilio/debugger', [\App\Http\Controllers\Api\TwilioWebhookController::class, 'handleDebugger']);
 });
@@ -206,6 +209,15 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce'])->group(functi
     Route::get('teams/stats', [\App\Http\Controllers\Api\TeamController::class, 'stats']);
     Route::get('clients/stats', [\App\Http\Controllers\Api\ClientController::class, 'stats']);
     Route::get('projects/stats', [\App\Http\Controllers\Api\ProjectController::class, 'globalStats']);
+
+    // Admin Project Management (Global Access)
+    Route::middleware('permission:projects.view')->group(function () {
+        Route::get('/projects', [\App\Http\Controllers\Api\ProjectController::class, 'indexGlobal']);
+        Route::get('/projects/{project}', [\App\Http\Controllers\Api\ProjectController::class, 'showGlobal']);
+        Route::get('/projects/{project}/tasks', [\App\Http\Controllers\Api\TaskController::class, 'indexGlobal']);
+        Route::get('/projects/{project}/stats', [\App\Http\Controllers\Api\ProjectController::class, 'statsGlobal']);
+        Route::get('/projects/{project}/files', [\App\Http\Controllers\Api\ProjectController::class, 'filesGlobal']);
+    });
 
     // User Management
     Route::apiResource('teams', \App\Http\Controllers\Api\TeamController::class);

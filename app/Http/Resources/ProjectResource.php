@@ -17,6 +17,14 @@ class ProjectResource extends JsonResource
         return [
             'id' => $this->public_id,
             'public_id' => $this->public_id,
+            'team_id' => $this->team->public_id, // Expose usage of public_id for frontend matching
+            'team' => $this->whenLoaded('team', function () {
+                return [
+                    'id' => $this->team->public_id,
+                    'name' => $this->team->name,
+                    'owner_id' => $this->team->owner_id, // Internal ID for ownership check
+                ];
+            }),
             'name' => $this->name,
             'slug' => $this->slug,
             'description' => $this->description,

@@ -20,6 +20,14 @@ export const analyticsService = {
         return axios.get<{ data: TrafficSource[] }>(`${BASE_URL}/sources`, { params: { period } });
     },
 
+    trackPageVisit(path: string) {
+        return axios.post('/api/analytics/track', {
+            path,
+            url: window.location.href,
+            referer: document.referrer
+        });
+    },
+
     // Aggregated fetch for initial load
     async getAll(period: AnalyticsPeriod) {
         const [overview, chart, pages, sources] = await Promise.all([

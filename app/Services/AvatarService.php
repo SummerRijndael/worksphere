@@ -254,7 +254,7 @@ class AvatarService implements AvatarContract
         // Add new media with processing
         $entity->addMedia($file)
             ->usingFileName((string) Str::uuid().'.'.config('avatar.format', 'webp'))
-            ->toMediaCollection($collection);
+            ->toMediaCollection($collection, 'public');
 
         // Note: EXIF stripping and WebP conversion are handled by Spatie Media Library
         // via the model's registerMediaConversions() method
@@ -301,7 +301,7 @@ class AvatarService implements AvatarContract
                     'source_filename' => $this->extractFilenameFromUrl($url),
                     'source_url' => $url,
                 ])
-                ->toMediaCollection('avatars');
+                ->toMediaCollection('avatars', 'public');
 
             Log::info('AvatarService: Social avatar synced', [
                 'entity_type' => get_class($entity),

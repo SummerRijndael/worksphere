@@ -53,6 +53,14 @@ const activity = ref<ActivityItem[]>([]);
 const projects = ref<ProjectSummary[]>([]);
 const charts = ref<DashboardCharts | null>(null);
 
+const periods = [
+    { label: "7 Days", value: "week" },
+    { label: "30 Days", value: "30d" },
+    { label: "60 Days", value: "60d" },
+    { label: "90 Days", value: "90d" },
+];
+const selectedPeriod = ref("week");
+
 // Icon mapping
 const iconMap: Record<string, any> = {
     "folder-kanban": FolderKanban,
@@ -88,7 +96,10 @@ function viewAllActivity() {
 async function fetchDashboard() {
     try {
         error.value = null;
-        const data = await dashboardService.fetchDashboard(currentTeamId.value);
+        const data = await dashboardService.fetchDashboard(
+            currentTeamId.value,
+            selectedPeriod.value
+        );
         stats.value = data.stats;
         features.value = data.features;
         activity.value = data.activity;
@@ -108,8 +119,8 @@ async function refresh() {
     isRefreshing.value = false;
 }
 
-// Watch for team changes
-watch(currentTeamId, () => {
+// Watch for team or period changes
+watch([currentTeamId, selectedPeriod], () => {
     isLoading.value = true;
     fetchDashboard();
 });
@@ -198,6 +209,23 @@ function getTrendIcon(trend: string) {
                             </button>
                         </div>
                     </Dropdown>
+                    <div class="hidden sm:flex items-center gap-1 bg-[var(--surface-secondary)] p-1 rounded-lg border border-[var(--border-default)]">
+                        <Button
+                            v-for="p in periods"
+                            :key="p.value"
+                            variant="ghost"
+                            size="sm"
+                            class="px-3 h-8 text-xs font-medium transition-all"
+                            :class="{ 
+                                'bg-white dark:bg-[var(--surface-tertiary)] shadow-sm text-[var(--interactive-primary)]': selectedPeriod === p.value,
+                                'text-[var(--text-secondary)] hover:text-[var(--text-primary)]': selectedPeriod !== p.value
+                            }"
+                            @click="selectedPeriod = p.value"
+                        >
+                            {{ p.label }}
+                        </Button>
+                    </div>
+
                     <Button
                         variant="ghost"
                         size="sm"

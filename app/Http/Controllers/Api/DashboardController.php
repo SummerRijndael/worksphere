@@ -22,11 +22,12 @@ class DashboardController extends Controller
         $user = $request->user();
         \Illuminate\Support\Facades\Log::info('Dashboard Index Called', [
             'user_id' => $user->id,
-            'session_id' => $request->session()->getId(),
+            'session_id' => $request->hasSession() ? $request->session()->getId() : 'no-session',
         ]);
         $team = $this->resolveTeam($request);
+        $period = $request->input('period', 'week');
 
-        $data = $this->dashboardService->getDashboard($user, $team);
+        $data = $this->dashboardService->getDashboard($user, $team, $period);
 
         return response()->json([
             'data' => $data,

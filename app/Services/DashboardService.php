@@ -17,14 +17,14 @@ class DashboardService
      *
      * @return array<string, mixed>
      */
-    public function getDashboard(User $user, ?Team $team = null): array
+    public function getDashboard(User $user, ?Team $team = null, string $period = 'week'): array
     {
         return [
             'stats' => $this->getStats($user, $team),
             'features' => $this->getFeatureFlags($user, $team),
             'activity' => $this->getActivityFeed($user, $team, 5),
             'projects' => $this->getProjectSummary($user, $team, 4),
-            'charts' => $this->getChartData($user, $team, 'week'),
+            'charts' => $this->getChartData($user, $team, $period),
         ];
     }
 
@@ -333,9 +333,18 @@ class DashboardService
         $tasksData = [];
         $ticketsData = [];
 
+        $daysCount = count($dates);
+
         foreach ($dates as $date) {
             $carbon = Carbon::parse($date);
-            $labels[] = $carbon->format('D');
+            
+            if ($daysCount <= 7) {
+                $labels[] = $carbon->format('D');
+            } elseif ($daysCount <= 31) {
+                $labels[] = $carbon->day % 5 === 0 ? $carbon->format('M d') : '';
+            } else {
+                $labels[] = $carbon->day === 1 ? $carbon->format('M d') : '';
+            }
 
             // Count tasks created on this day
             $taskQuery = Task::whereDate('created_at', $date);
@@ -433,23 +442,57 @@ class DashboardService
      */
     protected function getTicketTrendsChartData(User $user, ?Team $team, string $period): array
     {
-        $weeks = $period === 'month' ? 4 : ($period === 'year' ? 12 : 4);
+        $days = match ($period) {
+            '30d' => 30,
+            '60d' => 60,
+            '90d' => 90,
+            'month' => 30,
+            'year' => 365,
+            default => 7,
+        };
+
+        // If range is large, aggregate by week
+        $useWeeks = $days > 7;
+        $intervals = $useWeeks ? (int) ceil($days / 7) : $days;
+
         $labels = [];
         $openedData = [];
         $closedData = [];
 
-        for ($i = $weeks - 1; $i >= 0; $i--) {
-            $startDate = now()->subWeeks($i)->startOfWeek();
-            $endDate = now()->subWeeks($i)->endOfWeek();
+        for ($i = $intervals - 1; $i >= 0; $i--) {
+            if ($useWeeks) {
+                $startDate = now()->subWeeks($i)->startOfWeek();
+                $endDate = now()->subWeeks($i)->endOfWeek();
+                $labels[] = 'W' . (now()->subWeeks($i)->weekOfYear);
+            } else {
+                $startDate = now()->subDays($i)->startOfDay();
+                $endDate = now()->subDays($i)->endOfDay();
+                $labels[] = $startDate->format('D');
+            }
 
-            $labels[] = $period === 'year'
-                ? $startDate->format('M')
-                : 'Week '.($weeks - $i);
+            $openedQuery = Ticket::whereBetween('created_at', [$startDate, $endDate]);
+            $closedQuery = Ticket::where('status', 'closed')
+                ->whereBetween('updated_at', [$startDate, $endDate]);
+            
+            if ($team) {
+                // If the app has teams for tickets, filter here. (Judging by previous research, tickets might not be strictly team-bound but let's be safe if they are)
+                // Actually, DashboardService usually filters by team if provided.
+            }
 
-            $openedData[] = Ticket::whereBetween('created_at', [$startDate, $endDate])->count();
-            $closedData[] = Ticket::where('status', 'closed')
-                ->whereBetween('updated_at', [$startDate, $endDate])
-                ->count();
+            // Filter by user access if not admin
+            if (!$user->can('tickets.view')) {
+                $openedQuery->where(function ($q) use ($user) {
+                    $q->where('reporter_id', $user->id)
+                      ->orWhere('assigned_to', $user->id);
+                });
+                $closedQuery->where(function ($q) use ($user) {
+                    $q->where('reporter_id', $user->id)
+                      ->orWhere('assigned_to', $user->id);
+                });
+            }
+
+            $openedData[] = $openedQuery->count();
+            $closedData[] = $closedQuery->count();
         }
 
         return [
@@ -500,13 +543,21 @@ class DashboardService
     protected function getDateRange(string $period): array
     {
         $dates = [];
-        $days = $period === 'week' ? 7 : ($period === 'month' ? 30 : 365);
+        $days = match ($period) {
+            'week' => 7,
+            '30d' => 30,
+            '60d' => 60,
+            '90d' => 90,
+            'month' => 30,
+            'year' => 365,
+            default => 7,
+        };
 
         for ($i = $days - 1; $i >= 0; $i--) {
             $dates[] = now()->subDays($i)->toDateString();
         }
 
-        return $period === 'week' ? $dates : array_slice($dates, 0, 7);
+        return $dates;
     }
 
     /**

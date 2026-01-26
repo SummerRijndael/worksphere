@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\PageView;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 
 class AnalyticsService
 {
@@ -28,50 +29,62 @@ class AnalyticsService
      */
     public function getOverviewStats(string $period): array
     {
-        $startDate = $this->getStartDate($period);
-        $previousStartDate = $startDate->copy()->subSeconds(now()->diffInSeconds($startDate));
+        $cacheKey = "analytics_overview_{$period}";
 
-        // Current Period
-        $currentViews = PageView::where('created_at', '>=', $startDate)->count();
-        $currentUniques = PageView::where('created_at', '>=', $startDate)->distinct('session_id')->count('session_id');
+        return Cache::remember($cacheKey, now()->addMinutes(5), function () use ($period) {
+            $startDate = $this->getStartDate($period);
+            $previousStartDate = $startDate->copy()->subSeconds(now()->diffInSeconds($startDate));
 
-        // Previous Period (for % change)
-        $prevViews = PageView::whereBetween('created_at', [$previousStartDate, $startDate])->count();
-        $prevUniques = PageView::whereBetween('created_at', [$previousStartDate, $startDate])->distinct('session_id')->count('session_id');
+            // Current Period
+            $currentViews = PageView::query()->where('created_at', '>=', $startDate)->count();
+            $currentUniques = PageView::query()->where('created_at', '>=', $startDate)->distinct()->count('session_id');
 
-        // Calculate Bounce Rate (Single page sessions / Total sessions)
-        // This is an approximation. Real bounce rate needs session grouping.
-        // For MVP: Sessions with count(id) = 1
-        $currentBounceRate = $this->calculateBounceRate($startDate);
-        $prevBounceRate = $this->calculateBounceRate($previousStartDate, $startDate);
+            // Previous Period (for % change)
+            $prevViews = PageView::query()->whereBetween('created_at', [$previousStartDate, $startDate])->count();
+            $prevUniques = PageView::query()->whereBetween('created_at', [$previousStartDate, $startDate])->distinct()->count('session_id');
 
-        return [
-            [
-                'id' => 1,
-                'label' => 'Total Views',
-                'value' => number_format($currentViews),
-                'change' => $this->calculateChange($currentViews, $prevViews),
-                'trend' => $currentViews >= $prevViews ? 'up' : 'down',
-                'icon' => 'Eye',
-            ],
-            [
-                'id' => 2,
-                'label' => 'Unique Visitors',
-                'value' => number_format($currentUniques),
-                'change' => $this->calculateChange($currentUniques, $prevUniques),
-                'trend' => $currentUniques >= $prevUniques ? 'up' : 'down',
-                'icon' => 'Users',
-            ],
-            [
-                'id' => 3,
-                'label' => 'Bounce Rate',
-                'value' => round($currentBounceRate, 1).'%',
-                'change' => $this->calculateChange($currentBounceRate, $prevBounceRate, true), // Lower is better? Context dependent, but usually lower bounce is good.
-                'trend' => $currentBounceRate <= $prevBounceRate ? 'up' : 'down', // Visual 'up' (green) if improved (lower)
-                'icon' => 'ArrowUpRight',
-            ],
-            // Avg session duration requires distinct session tracking, omitting for MVP or simple avg
-        ];
+            // Calculate Bounce Rate
+            $currentBounceRate = $this->calculateBounceRate($startDate);
+            $prevBounceRate = $this->calculateBounceRate($previousStartDate, $startDate);
+
+            // Active Users (last 5 minutes)
+            $activeUsers = $this->getActiveUsers();
+
+            return [
+                [
+                    'id' => 1,
+                    'label' => 'Total Views',
+                    'value' => number_format($currentViews),
+                    'change' => $this->calculateChange($currentViews, $prevViews),
+                    'trend' => $currentViews >= $prevViews ? 'up' : 'down',
+                    'icon' => 'Eye',
+                ],
+                [
+                    'id' => 2,
+                    'label' => 'Unique Visitors',
+                    'value' => number_format($currentUniques),
+                    'change' => $this->calculateChange($currentUniques, $prevUniques),
+                    'trend' => $currentUniques >= $prevUniques ? 'up' : 'down',
+                    'icon' => 'Users',
+                ],
+                [
+                    'id' => 3,
+                    'label' => 'Active Now',
+                    'value' => number_format($activeUsers),
+                    'change' => '',
+                    'trend' => 'up',
+                    'icon' => 'Clock',
+                ],
+                [
+                    'id' => 4,
+                    'label' => 'Bounce Rate',
+                    'value' => round($currentBounceRate, 1) . '%',
+                    'change' => $this->calculateChange($currentBounceRate, $prevBounceRate, true),
+                    'trend' => $currentBounceRate <= $prevBounceRate ? 'up' : 'down',
+                    'icon' => 'ArrowUpRight',
+                ],
+            ];
+        });
     }
 
     /**
@@ -79,28 +92,32 @@ class AnalyticsService
      */
     public function getTrafficChart(string $period): array
     {
-        $startDate = $this->getStartDate($period);
-        $dateFormat = $period === '24h' ? '%H:00' : '%Y-%m-%d';
-        $groupBy = $period === '24h' ? 'HOUR(created_at)' : 'DATE(created_at)';
+        $cacheKey = "analytics_chart_{$period}";
 
-        // SQLite/MySQL compatibility
-        // Assuming MySQL/MariaDB for production, but should handle SQLite for local if needed.
-        // For simplicity using Eloquent with raw selection suitable for standard SQL or processing in PHP.
+        return Cache::remember($cacheKey, now()->addMinutes(10), function () use ($period) {
+            $startDate = $this->getStartDate($period);
+            $driver = DB::getDriverName();
 
-        $views = PageView::select(
-            DB::raw('DATE_FORMAT(created_at, "'.($period === '24h' ? '%Y-%m-%d %H:00:00' : '%Y-%m-%d').'") as date'),
-            DB::raw('count(*) as count')
-        )
-            ->where('created_at', '>=', $startDate)
-            ->groupBy('date')
-            ->orderBy('date')
-            ->get();
+            if ($driver === 'sqlite') {
+                $dateFormat = $period === '24h' ? "strftime('%Y-%m-%d %H:00:00', created_at)" : "date(created_at)";
+            } else {
+                $dateFormat = $period === '24h' ? "DATE_FORMAT(created_at, '%Y-%m-%d %H:00:00')" : "DATE(created_at)";
+            }
 
-        // Fill in missing dates? (Ideally yes, but UI library often handles sparse data or we fill in JS)
-        return $views->map(fn ($v) => [
-            'date' => $v->date,
-            'count' => $v->count,
-        ])->toArray();
+            $views = PageView::query()->select([
+                DB::raw($dateFormat . ' as date'),
+                DB::raw('count(*) as count')
+            ])
+                ->where('created_at', '>=', $startDate)
+                ->groupBy('date')
+                ->orderBy('date')
+                ->get();
+
+            return $views->map(fn($v) => [
+                'date' => $v->date,
+                'count' => $v->count,
+            ])->toArray();
+        });
     }
 
     /**
@@ -108,20 +125,28 @@ class AnalyticsService
      */
     public function getTopPages(string $period): array
     {
-        $startDate = $this->getStartDate($period);
+        $cacheKey = "analytics_pages_{$period}";
 
-        return PageView::select('path', DB::raw('count(*) as views'), DB::raw('count(distinct session_id) as unique_visits'))
-            ->where('created_at', '>=', $startDate)
-            ->groupBy('path')
-            ->orderByDesc('views')
-            ->limit(10)
-            ->get()
-            ->map(fn ($p) => [
-                'path' => $p->path,
-                'views' => number_format($p->views),
-                'unique' => number_format($p->unique_visits),
-                'avgTime' => '-', // Calculated time requires complex session analysis
-            ])->toArray();
+        return Cache::remember($cacheKey, now()->addMinutes(10), function () use ($period) {
+            $startDate = $this->getStartDate($period);
+
+            return PageView::query()->select([
+                'path',
+                DB::raw('count(*) as views'),
+                DB::raw('count(distinct session_id) as unique_visits')
+            ])
+                ->where('created_at', '>=', $startDate)
+                ->groupBy('path')
+                ->orderByDesc('views')
+                ->limit(10)
+                ->get()
+                ->map(fn($p) => [
+                    'path' => $p->path,
+                    'views' => number_format($p->views),
+                    'unique' => number_format($p->unique_visits),
+                    'avgTime' => '-',
+                ])->toArray();
+        });
     }
 
     /**
@@ -129,57 +154,83 @@ class AnalyticsService
      */
     public function getTrafficSources(string $period): array
     {
-        $startDate = $this->getStartDate($period);
-        $total = PageView::where('created_at', '>=', $startDate)->count();
+        $cacheKey = "analytics_sources_{$period}";
 
-        if ($total === 0) {
-            return [];
-        }
+        return Cache::remember($cacheKey, now()->addMinutes(10), function () use ($period) {
+            $startDate = $this->getStartDate($period);
+            $total = PageView::query()->where('created_at', '>=', $startDate)->count();
 
-        return PageView::select('referer', DB::raw('count(*) as visits'))
-            ->where('created_at', '>=', $startDate)
-            ->whereNotNull('referer')
-            ->groupBy('referer')
-            ->orderByDesc('visits')
-            ->limit(5)
-            ->get()
-            ->map(function ($s) use ($total) {
-                // Parse domain from referer
-                $domain = parse_url($s->referer, PHP_URL_HOST) ?? 'Direct/Unknown';
+            if ($total === 0) {
+                return [];
+            }
 
-                return [
-                    'source' => $domain,
-                    'visits' => $s->visits,
-                    'percentage' => round(($s->visits / $total) * 100, 1),
-                ];
-            })
-            ->filter(function ($source) {
-                // Filter out internal traffic/self-referrals
-                $appHost = parse_url(config('app.url'), PHP_URL_HOST);
+            return PageView::query()->select([
+                'referer',
+                DB::raw('count(*) as visits')
+            ])
+                ->where('created_at', '>=', $startDate)
+                ->whereNotNull('referer')
+                ->groupBy('referer')
+                ->orderByDesc('visits')
+                ->limit(10)
+                ->get()
+                ->map(function ($s) use ($total) {
+                    $domain = parse_url($s->referer, PHP_URL_HOST) ?? 'Direct/Unknown';
 
-                return $source['source'] !== $appHost && $source['source'] !== 'localhost';
-            })
-            ->values() // Re-index array
-            ->toArray();
+                    return [
+                        'source' => $domain,
+                        'visits' => $s->visits,
+                        'percentage' => round(($s->visits / $total) * 100, 1),
+                    ];
+                })
+                ->filter(function ($source) {
+                    $appHost = parse_url(config('app.url'), PHP_URL_HOST);
+                    return $source['source'] !== $appHost && $source['source'] !== 'localhost';
+                })
+                ->values()
+                ->toArray();
+        });
+    }
+
+    /**
+     * Get count of users active in the last 5 minutes.
+     */
+    public function getActiveUsers(): int
+    {
+        return PageView::query()->where('created_at', '>=', now()->subMinutes(5))
+            ->distinct()
+            ->count('session_id');
     }
 
     private function calculateBounceRate($startDate, $endDate = null): float
     {
-        $query = PageView::select('session_id', DB::raw('count(*) as pages'))
+        $query = PageView::query()->select(['session_id', DB::raw('count(*) as pages')])
             ->where('created_at', '>=', $startDate);
 
         if ($endDate) {
             $query->where('created_at', '<', $endDate);
         }
 
-        $sessions = $query->groupBy('session_id')->get();
-        if ($sessions->isEmpty()) {
+        // Use a subquery to avoid loading all sessions into memory
+        $stats = DB::table(function ($query) use ($startDate, $endDate) {
+            $query->select('session_id')
+                ->from('page_views')
+                ->where('created_at', '>=', $startDate)
+                ->when($endDate, fn($q) => $q->where('created_at', '<', $endDate))
+                ->groupBy('session_id')
+                ->havingRaw('count(*) = 1');
+        }, 'bounces')->count();
+
+        $totalSessions = PageView::query()->where('created_at', '>=', $startDate)
+            ->when($endDate, fn($q) => $q->where('created_at', '<', $endDate))
+            ->distinct()
+            ->count('session_id');
+
+        if ($totalSessions === 0) {
             return 0;
         }
 
-        $bounces = $sessions->filter(fn ($s) => $s->pages === 1)->count();
-
-        return ($bounces / $sessions->count()) * 100;
+        return ($stats / $totalSessions) * 100;
     }
 
     private function calculateChange($current, $prev, $inverse = false): string
@@ -192,6 +243,6 @@ class AnalyticsService
         $percent = ($diff / $prev) * 100;
         $sign = $percent > 0 ? '+' : '';
 
-        return $sign.round($percent, 1).'%';
+        return $sign . round($percent, 1) . '%';
     }
 }

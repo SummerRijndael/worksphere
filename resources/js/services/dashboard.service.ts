@@ -96,9 +96,12 @@ class DashboardService extends BaseService {
   /**
    * Fetch complete dashboard data
    */
-  async fetchDashboard(teamId?: string): Promise<DashboardData> {
+  async fetchDashboard(teamId?: string, period: string = 'week'): Promise<DashboardData> {
     try {
-      const params = teamId ? { team_id: teamId } : {};
+      const params: Record<string, any> = { period };
+      if (teamId) {
+        params.team_id = teamId;
+      }
       const response = await this.api.get<ApiResponse<DashboardData>>(
         '/api/dashboard',
         { params }

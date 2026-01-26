@@ -40,6 +40,7 @@ const filters = ref({
     sort_by: 'created_at',
     sort_order: 'desc',
     project_id: '',
+    scope: localStorage.getItem('admin_project_scope') || 'team', // 'team' or 'all'
 });
 
 const viewMode = ref<'list' | 'grid'>('grid');
@@ -58,6 +59,7 @@ const fetchStats = async () => {
 };
 
 const currentTeamId = computed(() => authStore.currentTeam?.public_id);
+const isAdminRoute = computed(() => route.path.startsWith('/admin'));
 
 const showCreateModal = ref(false);
 const selectedProject = ref<any | null>(null);
@@ -133,7 +135,7 @@ const getPriorityColor = (priorityData: any) => {
 const fetchProjects = async (page = 1) => {
     isLoading.value = true;
     
-    if (!currentTeamId.value) {
+    if (!currentTeamId.value && filters.value.scope !== 'all') {
         isLoading.value = false;
         return;
     }
@@ -152,7 +154,19 @@ const fetchProjects = async (page = 1) => {
         if (filters.value.archived) params.archived = true;
         if (filters.value.project_id) params.public_id = filters.value.project_id;
 
-        const response = await axios.get(`/api/teams/${currentTeamId.value}/projects`, { params });
+        let url = `/api/teams/${currentTeamId.value}/projects`;
+        if (filters.value.scope === 'all') {
+            url = '/api/projects';
+            if (selectedTeamId.value) {
+                // optional: strictly filter by the selected team even in global view if user wants
+                // params.team_id = selectedTeamId.value; 
+                // But typically "All" means ignoring the dropdown, or the dropdown acts as a filter.
+                // For now, let's say "All" implies global list. 
+                // We might want to clear selectedTeamId or ignore it.
+            }
+        }
+
+        const response = await axios.get(url, { params });
         console.log('Projects API Response:', response.data); // DEBUG
         
         projects.value = response.data.data || [];
@@ -204,7 +218,21 @@ const changePage = (page: number) => {
 };
 
 const viewProject = (project: any) => {
-    router.push(`/admin/projects/${project.public_id}`);
+    if (isAdminRoute.value) {
+        router.push({ name: 'admin-project-detail', params: { id: project.public_id } });
+    } else {
+        router.push({ name: 'project-detail', params: { id: project.public_id } });
+    }
+};
+
+const setScope = (scope: 'team' | 'all') => {
+    filters.value.scope = scope;
+    try {
+        localStorage.setItem('admin_project_scope', scope);
+    } catch (e) {
+        console.warn('LocalStorage not available', e);
+    }
+    fetchProjects(1);
 };
 
 const onCreateProject = () => {
@@ -323,10 +351,27 @@ onMounted(() => {
                 <p class="text-[var(--text-secondary)]">Manage your team's projects</p>
             </div>
             <div class="flex items-center gap-2">
+                <div v-if="isAdminRoute" class="flex items-center border border-[var(--border-default)] rounded-lg p-1 bg-[var(--surface-secondary)] mr-2">
+                    <button 
+                        @click="setScope('team')"
+                        class="px-3 py-1 text-xs font-medium rounded-md transition-colors"
+                        :class="filters.scope === 'team' ? 'bg-[var(--surface-elevated)] text-[var(--interactive-primary)] shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'"
+                    >
+                        My Team
+                    </button>
+                    <button 
+                        @click="setScope('all')"
+                        class="px-3 py-1 text-xs font-medium rounded-md transition-colors"
+                        :class="filters.scope === 'all' ? 'bg-[var(--surface-elevated)] text-[var(--interactive-primary)] shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'"
+                    >
+                        All Projects
+                    </button>
+                </div>
+
                 <Button variant="outline" size="sm" :loading="isRefreshing" @click="refreshData">
                     <RefreshCw class="w-4 h-4" />
                 </Button>
-                <div v-if="teamOptions.length > 0" class="w-48">
+                <div v-if="teamOptions.length > 0 && filters.scope === 'team'" class="w-48">
                     <SelectFilter
                         v-model="selectedTeamId"
                         :options="teamOptions"
@@ -529,6 +574,7 @@ onMounted(() => {
                         <thead class="bg-[var(--surface-secondary)]">
                             <tr>
                                 <th class="px-4 py-3 text-left text-xs font-semibold uppercase text-[var(--text-muted)]">Project</th>
+                                <th v-if="filters.scope === 'all'" class="px-4 py-3 text-left text-xs font-semibold uppercase text-[var(--text-muted)]">Team</th>
                                 <th class="px-4 py-3 text-left text-xs font-semibold uppercase text-[var(--text-muted)]">Client</th>
                                 <th class="px-4 py-3 text-left text-xs font-semibold uppercase text-[var(--text-muted)]">Members</th>
                                 <th class="px-4 py-3 text-left text-xs font-semibold uppercase text-[var(--text-muted)]">Status</th>
@@ -546,6 +592,18 @@ onMounted(() => {
                             >
                                 <td class="px-4 py-4">
                                     <div class="font-medium text-[var(--text-primary)]">{{ project.name }}</div>
+                                </td>
+                                <td v-if="filters.scope === 'all'" class="px-4 py-4">
+                                    <div class="flex items-center gap-2">
+                                        <Avatar 
+                                            v-if="project.team" 
+                                            :name="project.team.name" 
+                                            :src="project.team.avatar_url" 
+                                            size="xs" 
+                                            class="rounded-md"
+                                        />
+                                        <span class="text-sm text-[var(--text-secondary)]">{{ project.team?.name || 'Unknown' }}</span>
+                                    </div>
                                 </td>
                                 <td class="px-4 py-4">
                                     <div v-if="project.client" class="flex items-center gap-2">
