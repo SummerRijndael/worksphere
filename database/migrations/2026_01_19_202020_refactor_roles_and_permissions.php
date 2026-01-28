@@ -23,11 +23,15 @@ return new class extends Migration
 
         // Seed new Global Roles (Administrator, IT Support, User)
         // We rely on RolesAndPermissionsSeeder logic, but we can do it explicitly here to be safe and immediate
+        // Seed new Global Roles (Administrator, IT Support, User)
+        // We rely on RolesAndPermissionsSeeder logic, but we can do it explicitly here to be safe and immediate
         $rolesConfig = config('roles.roles');
-        $permissionConfig = config('roles.permissions');
+        $globalPermissions = config('roles.global_permissions', []);
+        $teamPermissions = config('roles.team_permissions', []);
+        $permissionGroups = array_merge_recursive($globalPermissions, $teamPermissions);
 
         // Create all permissions first
-        $allPermissions = collect($permissionConfig)->flatMap(function ($group) {
+        $allPermissions = collect($permissionGroups)->flatMap(function ($group) {
             return array_keys($group);
         })->values();
 

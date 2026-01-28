@@ -18,7 +18,9 @@ class RolesAndPermissionsSeeder extends Seeder
         app()[PermissionRegistrar::class]->forgetCachedPermissions();
 
         // Create all permissions from config
-        $permissionGroups = config('roles.permissions', []);
+        $globalPermissions = config('roles.global_permissions', []);
+        $teamPermissions = config('roles.team_permissions', []);
+        $permissionGroups = array_merge_recursive($globalPermissions, $teamPermissions);
         $allPermissions = [];
 
         foreach ($permissionGroups as $group => $permissions) {

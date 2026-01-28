@@ -45,6 +45,7 @@ import { toast } from "vue-sonner";
 import TaskWorkflowActions from "@/components/tasks/TaskWorkflowActions.vue";
 import MediaManager from "@/components/tools/MediaManager.vue";
 import TaskFormModal from "@/components/tasks/TaskFormModal.vue";
+import QuickAssignModal from "@/components/tasks/QuickAssignModal.vue";
 
 import draggable from "vuedraggable";
 import DOMPurify from "dompurify";
@@ -97,6 +98,13 @@ const isBulkDeleting = ref(false);
 
 // Edit modal
 const showEditModal = ref(false);
+const showQuickAssignModal = ref(false);
+const quickAssignType = ref<"operator" | "qa">("operator");
+
+const onQuickAssign = (type: "operator" | "qa") => {
+    quickAssignType.value = type;
+    showQuickAssignModal.value = true;
+};
 
 // Current team
 const currentTeamId = computed(() => {
@@ -1404,7 +1412,11 @@ watch(
                                 >
                                     Operator
                                 </dt>
-                                <dd class="flex items-center gap-2">
+                                <dd 
+                                    class="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity p-1 -ml-1 rounded hover:bg-[var(--surface-secondary)]" 
+                                    @click="onQuickAssign('operator')"
+                                    title="Click to assign"
+                                >
                                     <Avatar
                                         v-if="task.assignee"
                                         :name="task.assignee.name"
@@ -1441,7 +1453,11 @@ watch(
                                 >
                                     QA
                                 </dt>
-                                <dd class="flex items-center gap-2">
+                                <dd 
+                                    class="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity p-1 -ml-1 rounded hover:bg-[var(--surface-secondary)]" 
+                                    @click="onQuickAssign('qa')"
+                                    title="Click to assign QA owner"
+                                >
                                     <Avatar
                                         v-if="task.qa_user"
                                         :name="task.qa_user.name"
@@ -1575,6 +1591,16 @@ watch(
             :task="task"
             @update:open="showEditModal = $event"
             @saved="onTaskUpdated"
+            @task-saved="onTaskUpdated"
+        />
+
+        <QuickAssignModal
+            v-if="showQuickAssignModal && task"
+            :open="showQuickAssignModal"
+            :task="task"
+            :assign-type="quickAssignType"
+            @update:open="showQuickAssignModal = $event"
+            @assigned="onTaskUpdated"
         />
 
         <!-- Delete File Confirmation Modal -->

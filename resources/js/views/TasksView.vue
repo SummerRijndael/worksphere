@@ -2,10 +2,19 @@
 import { ref, computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { Button, SelectFilter, Tooltip } from "@/components/ui";
-import { Plus, Search, Grid, List as ListIcon, User, Info } from "lucide-vue-next";
+import {
+    Plus,
+    Search,
+    Grid,
+    List as ListIcon,
+    User,
+    Info,
+    RefreshCw,
+} from "lucide-vue-next";
 import TaskBoard from "@/components/tasks/TaskBoard.vue";
 import TaskList from "@/components/tasks/TaskList.vue";
 import TaskFormModal from "@/components/tasks/TaskFormModal.vue";
+import QuickAssignModal from "@/components/tasks/QuickAssignModal.vue";
 // TaskDetailModal removed - using full page view
 import { useAuthStore } from "@/stores/auth";
 import axios from "axios";
@@ -21,13 +30,15 @@ const can = (permission: string) => authStore.hasPermission(permission);
 // Role Logic
 const userRole = computed(() => {
     if (!authStore.user || !authStore.currentTeamId) return null;
-    const team = authStore.user.teams.find(t => t.public_id === authStore.currentTeamId);
+    const team = authStore.user.teams.find(
+        (t) => t.public_id === authStore.currentTeamId,
+    );
     return team?.membership?.role || null;
 });
 
-const isTeamLead = computed(() => userRole.value === 'team_lead');
-const isQA = computed(() => userRole.value === 'quality_assessor');
-const isOperator = computed(() => userRole.value === 'operator');
+const isTeamLead = computed(() => userRole.value === "team_lead");
+const isQA = computed(() => userRole.value === "quality_assessor");
+const isOperator = computed(() => userRole.value === "operator");
 
 // State
 const tasks = ref<any[]>([]);
@@ -48,10 +59,10 @@ const tabs = [
 ];
 
 const visibleTabs = computed(() => {
-    return tabs.filter(tab => {
-        if (tab.id === 'pm_queue') return isTeamLead.value;
-        if (tab.id === 'qa_queue') return isTeamLead.value || isQA.value;
-        if (tab.id === 'all_tasks') return !isOperator.value;
+    return tabs.filter((tab) => {
+        if (tab.id === "pm_queue") return isTeamLead.value;
+        if (tab.id === "qa_queue") return isTeamLead.value || isQA.value;
+        if (tab.id === "all_tasks") return !isOperator.value;
         return true;
     });
 });
@@ -96,16 +107,14 @@ const selectedTask = ref<any>(null);
 const fetchProjects = async (teamId: string) => {
     projectOptions.value = [];
     projectFilter.value = ""; // Reset project filter
-    
+
     if (!teamId) return;
 
     try {
-        const response = await axios.get(
-            `/api/teams/${teamId}/projects`
-        );
+        const response = await axios.get(`/api/teams/${teamId}/projects`);
         // Handle no projects case safely
         const projects = response.data.data || [];
-        
+
         projectOptions.value = projects.map((p: any) => ({
             label: p.name,
             value: p.id,
@@ -129,20 +138,25 @@ const onTaskClick = (task: any) => {
     // Navigate to full detail page using Team Scope
     // Assuming task.project.team is available. If not, fallback to authStore.currentTeamId?
     // UserTaskController eager loads project.team.
-    const teamId = task.project?.team?.public_id || task.project?.team_id || authStore.currentTeamId;
-    
+    const teamId =
+        task.project?.team?.public_id ||
+        task.project?.team_id ||
+        authStore.currentTeamId;
+
     if (teamId) {
         router.push({
-            name: 'team-task-detail',
+            name: "team-task-detail",
             params: {
                 teamId: teamId,
                 projectId: task.project?.id || task.project_id,
-                taskId: task.public_id
-            }
+                taskId: task.public_id,
+            },
         });
     } else {
         // Fallback for safety (though unlikely if model structure holds)
-        router.push(`/projects/${task.project?.id || task.project_id}/tasks/${task.public_id}`);
+        router.push(
+            `/projects/${task.project?.id || task.project_id}/tasks/${task.public_id}`,
+        );
     }
 };
 
@@ -153,17 +167,18 @@ const onEditTask = (task: any) => {
 
 const onTaskCreated = (newTask: any) => {
     showCreateModal.value = false;
-    
+
     // Check if the new task is visible in the current view
-    const isAssignedToMe = newTask.assignee?.id === authStore.user?.id || 
-                          newTask.assignee?.public_id === authStore.user?.public_id;
-    
-    if (scopeFilter.value === 'assigned' && !isAssignedToMe) {
-         // toast.success("Task created. Switch to 'Created by me' or 'All Tasks' to view it.");
+    const isAssignedToMe =
+        newTask?.assignee?.id === authStore.user?.id ||
+        newTask?.assignee?.public_id === authStore.user?.public_id;
+
+    if (scopeFilter.value === "assigned" && !isAssignedToMe) {
+        // toast.success("Task created. Switch to 'Created by me' or 'All Tasks' to view it.");
     } else {
-         // toast.success("Task created");
+        // toast.success("Task created");
     }
-    
+
     fetchTasks();
 };
 
@@ -172,7 +187,24 @@ const onTaskSaved = () => {
     showEditModal.value = false;
 };
 
-// ... (Modals/options logic same) ... 
+// Quick Assign Logic
+const showQuickAssignModal = ref(false);
+const selectedTaskForAssign = ref<any>(null);
+const quickAssignType = ref<'operator' | 'qa'>('operator');
+
+const onQuickAssign = (task: any, type: 'operator' | 'qa' = 'operator') => {
+    selectedTaskForAssign.value = task;
+    quickAssignType.value = type;
+    showQuickAssignModal.value = true;
+};
+
+const onTaskAssigned = () => {
+    fetchTasks();
+    // Keep modal open? No, QuickAssignModal closes itself via v-model or emit
+    // showQuickAssignModal.value = false; // handled in component by emitting update:open
+};
+
+// ... (Modals/options logic same) ...
 
 // Fetch Tasks
 const fetchTasks = async () => {
@@ -184,18 +216,18 @@ const fetchTasks = async () => {
             status: statusFilter.value,
             priority: priorityFilter.value,
             include_archived: false,
-            // Use the locally selected team ID, not the global store one, 
+            // Use the locally selected team ID, not the global store one,
             // because the user is filtering by team in this view.
-            team_id: selectedTeamId.value, 
+            team_id: selectedTeamId.value,
             project_id: projectFilter.value,
         };
-        
+
         console.log("Fetching tasks with params:", params); // Debug log
 
         // Specific sorts or additional filters per tab can go here
-        if (currentTab.value === 'qa_queue') {
-             params.sort = 'submitted_at';
-             params.direction = 'asc';
+        if (currentTab.value === "qa_queue") {
+            params.sort = "submitted_at";
+            params.direction = "asc";
         }
 
         const response = await axios.get("/api/user/tasks", { params });
@@ -207,38 +239,106 @@ const fetchTasks = async () => {
     }
 };
 
+const STORAGE_KEY = "tasks_view_settings";
+
+// Helper to save state
+const saveState = () => {
+    // Only save if we have a team selected (to avoid saving empty resets)
+    if (!selectedTeamId.value) return;
+
+    const state = {
+        scopeFilter: scopeFilter.value,
+        statusFilter: statusFilter.value,
+        priorityFilter: priorityFilter.value,
+        projectFilter: projectFilter.value,
+        currentTab: currentTab.value,
+        viewMode: viewMode.value,
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+};
+
+// Helper to load state
+const loadState = () => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (!saved) return false;
+    try {
+        const state = JSON.parse(saved);
+        if (state.scopeFilter !== undefined)
+            scopeFilter.value = state.scopeFilter;
+        if (state.statusFilter !== undefined)
+            statusFilter.value = state.statusFilter;
+        if (state.priorityFilter !== undefined)
+            priorityFilter.value = state.priorityFilter;
+        if (state.projectFilter !== undefined)
+            projectFilter.value = state.projectFilter;
+        if (state.currentTab !== undefined) currentTab.value = state.currentTab;
+        if (state.viewMode !== undefined) viewMode.value = state.viewMode;
+        return true;
+    } catch (e) {
+        console.error("Failed to parse saved task state", e);
+        return false;
+    }
+};
+
 // Initial Load
 onMounted(async () => {
     // 1. Populate Team Options
     if (authStore.user?.teams?.length > 0) {
-         teamOptions.value = authStore.user.teams.map((t: any) => ({
-             label: t.name,
-             value: t.public_id
-         }));
-         
-         // 2. Default Team Selection
-         // Prioritize current auth team if in list, else first one
-         const currentInList = teamOptions.value.find(t => t.value === authStore.currentTeamId);
-         selectedTeamId.value = currentInList ? currentInList.value : teamOptions.value[0].value;
+        teamOptions.value = authStore.user.teams.map((t: any) => ({
+            label: t.name,
+            value: t.public_id,
+        }));
+
+        // 2. Default Team Selection
+        // Prioritize current auth team if in list, else first one
+        const currentInList = teamOptions.value.find(
+            (t: any) => t.value === authStore.currentTeamId,
+        );
+        selectedTeamId.value = currentInList
+            ? currentInList.value
+            : teamOptions.value[0].value;
     }
 
     // 3. Set Default Filters
-    currentTab.value = "my_tasks"; 
-    statusFilter.value = "open"; 
-    scopeFilter.value = "assigned";
+    const hasSavedState = loadState();
+    if (!hasSavedState) {
+        currentTab.value = "my_tasks";
+        statusFilter.value = "open";
+        scopeFilter.value = "assigned";
+    }
 
     // 4. Fetch Projects & Tasks
     if (selectedTeamId.value) {
         await fetchProjects(selectedTeamId.value);
     }
-    
+
     // Explicitly call fetchTasks AFTER project defaults are set
     fetchTasks();
 });
 
 // Watchers
-watch([scopeFilter, statusFilter, priorityFilter, projectFilter], () => {
-    fetchTasks();
+watch(
+    [scopeFilter, statusFilter, priorityFilter, projectFilter, viewMode],
+    () => {
+        saveState();
+        fetchTasks();
+    },
+);
+
+// Sync Tab with Scope
+watch(currentTab, (newTab) => {
+    if (newTab === "all_tasks") {
+        scopeFilter.value = "all";
+    } else if (newTab === "my_tasks") {
+        scopeFilter.value = "assigned";
+    } else if (newTab === "qa_queue") {
+        // Maybe 'all' or specific QA logic if needed, but 'all' allows filtering by status
+        scopeFilter.value = "all";
+        // Optional: set status filter?
+        if (statusFilter.value === "open") statusFilter.value = "";
+    }
+    saveState();
+    // Note: Changing scopeFilter triggers the watcher above, calling fetchTasks.
 });
 
 // Watch Team Selection Change
@@ -255,7 +355,6 @@ watch(selectedTeamId, async (newTeamId) => {
         fetchTasks();
     }
 });
-
 
 // Computed
 const activeFilterCount = computed(() => {
@@ -290,7 +389,7 @@ const onTaskMoved = async (taskId: string, newStatus: string) => {
                 `/api/teams/${project.team.id}/projects/${project.id}/tasks/${task.public_id}`,
                 {
                     status: newStatus,
-                }
+                },
             );
         } catch (error) {
             console.error("Failed to move task:", error);
@@ -323,6 +422,20 @@ const onTaskMoved = async (taskId: string, newStatus: string) => {
                         placeholder="Select Team"
                     />
                 </div>
+                <!-- Refresh Button -->
+                <Button
+                    variant="outline"
+                    size="icon"
+                    @click="fetchTasks"
+                    :disabled="loading"
+                    title="Refresh Tasks"
+                >
+                    <RefreshCw
+                        class="h-4 w-4"
+                        :class="{ 'animate-spin': loading }"
+                    />
+                </Button>
+
                 <Tooltip v-if="!hasTeams">
                     <template #trigger>
                         <Button disabled class="opacity-60 cursor-not-allowed">
@@ -342,7 +455,9 @@ const onTaskMoved = async (taskId: string, newStatus: string) => {
             </div>
         </div>
 
-        <div class="flex items-center gap-1 border-b border-[var(--border-default)] mb-4">
+        <div
+            class="flex items-center gap-1 border-b border-[var(--border-default)] mb-4"
+        >
             <button
                 v-for="tab in visibleTabs"
                 :key="tab.id"
@@ -491,7 +606,11 @@ const onTaskMoved = async (taskId: string, newStatus: string) => {
                     <span>Join a team to create tasks</span>
                 </div>
             </Tooltip>
-            <Button v-else-if="can('tasks.create')" class="mt-4" @click="onCreateTask">
+            <Button
+                v-else-if="can('tasks.create')"
+                class="mt-4"
+                @click="onCreateTask"
+            >
                 <Plus class="h-4 w-4" />
                 Create Task
             </Button>
@@ -504,6 +623,7 @@ const onTaskMoved = async (taskId: string, newStatus: string) => {
                 show-project
                 @task-click="onTaskClick"
                 @edit-task="onEditTask"
+                @quick-assign="onQuickAssign"
             />
             <TaskBoard
                 v-else
@@ -511,6 +631,7 @@ const onTaskMoved = async (taskId: string, newStatus: string) => {
                 show-project
                 @task-click="onTaskClick"
                 @task-moved="onTaskMoved"
+                @quick-assign="onQuickAssign"
             />
         </div>
 
@@ -544,6 +665,15 @@ const onTaskMoved = async (taskId: string, newStatus: string) => {
             @update:open="showEditModal = $event"
             @close="showEditModal = false"
             @task-saved="onTaskSaved"
+        />
+
+        <QuickAssignModal
+            v-if="showQuickAssignModal && selectedTaskForAssign"
+            :open="showQuickAssignModal"
+            :task="selectedTaskForAssign"
+            :assign-type="quickAssignType"
+            @update:open="showQuickAssignModal = $event"
+            @assigned="onTaskAssigned"
         />
     </div>
 </template>

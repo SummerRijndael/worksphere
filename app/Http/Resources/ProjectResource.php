@@ -74,7 +74,12 @@ class ProjectResource extends JsonResource
             }),
             'archived_at' => $this->archived_at?->toIso8601String(),
             'members' => $this->whenLoaded('members', function () {
-                return $this->members->map(function ($member) {
+                $teamRoles = \Illuminate\Support\Facades\DB::table('team_user')
+                    ->where('team_id', $this->team_id)
+                    ->whereIn('user_id', $this->members->pluck('id'))
+                    ->pluck('role', 'user_id');
+
+                return $this->members->map(function ($member) use ($teamRoles) {
                     return [
                         'id' => $member->public_id,
                         'public_id' => $member->public_id,
@@ -82,6 +87,7 @@ class ProjectResource extends JsonResource
                         'email' => $member->email,
                         'avatar_url' => $member->avatar_url,
                         'role' => $member->pivot->role,
+                        'team_role' => $teamRoles[$member->id] ?? null,
                         'joined_at' => $member->pivot->joined_at,
                     ];
                 });

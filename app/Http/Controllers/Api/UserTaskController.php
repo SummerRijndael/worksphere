@@ -19,7 +19,7 @@ class UserTaskController extends Controller
         $user = $request->user();
 
         $query = Task::query()
-            ->with(['project.team', 'project.client', 'assignee', 'creator'])
+            ->with(['project.team', 'project.client', 'assignee', 'qaUser', 'creator'])
             ->whereHas('project', function ($q) use ($user) {
                 // Ensure user has access to the project via team membership
                 $q->whereHas('team', function ($t) use ($user) {
@@ -34,7 +34,7 @@ class UserTaskController extends Controller
             // Optimized: User's assigned tasks imply visibility, skip deep project checks
             // We still eager load project.team for the UI
             $query = Task::query()
-                ->with(['project.team', 'assignee', 'creator'])
+                ->with(['project.team', 'assignee', 'qaUser', 'creator'])
                 ->where('assigned_to', $user->id);
             // We don't need the deep whereHas check here because assignment implies visibility
         } elseif ($request->input('scope') === 'created') {

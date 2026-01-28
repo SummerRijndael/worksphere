@@ -499,6 +499,17 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce'])->group(functi
         Route::get('/users/{user}/effective-permissions', [PermissionOverrideController::class, 'effective']);
     });
 
+    // Impersonation (Admin Start)
+    Route::middleware('permission:users.impersonate')->prefix('admin/users')->group(function () {
+        Route::post('/{user}/impersonate', [\App\Http\Controllers\Api\ImpersonationController::class, 'impersonate']);
+    });
+
+    // Impersonation (General Control)
+    Route::prefix('impersonation')->group(function () {
+        Route::post('/stop', [\App\Http\Controllers\Api\ImpersonationController::class, 'stop']);
+        Route::get('/status', [\App\Http\Controllers\Api\ImpersonationController::class, 'status']);
+    });
+
     Route::middleware('permission:users.manage_permissions')->prefix('permission-overrides')->group(function () {
         Route::get('/expiring', [PermissionOverrideController::class, 'expiring']);
         Route::put('/{override}', [PermissionOverrideController::class, 'update']);

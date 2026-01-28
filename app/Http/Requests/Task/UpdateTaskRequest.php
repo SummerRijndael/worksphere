@@ -38,7 +38,7 @@ class UpdateTaskRequest extends FormRequest
             'sort_order' => ['sometimes', 'integer', 'min:0'],
             'checklist' => ['nullable', 'array'],
             'checklist.*.title' => ['required_with:checklist', 'string', 'max:255'],
-            'checklist.*.completed' => ['sometimes', 'boolean'],
+            'checklist.*.is_completed' => ['sometimes', 'boolean'],
         ];
     }
 

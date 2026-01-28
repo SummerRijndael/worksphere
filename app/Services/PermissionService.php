@@ -174,6 +174,11 @@ class PermissionService
      */
     public function getTeamPermissions(User $user, Team $team): Collection
     {
+                // Optimization: If user is owner, return all TEAM permissions (wildcard for team scope only)
+        if ($team->owner_id === $user->id) {
+             return $this->getAllTeamPermissionNames();
+        }
+
         $cacheKey = "team_permissions:{$user->id}:{$team->id}:all";
 
         return $this->cache->remember(
@@ -779,18 +784,54 @@ class PermissionService
     /**
      * Get the scope of a permission from config.
      */
+    /**
+     * Get the scope of a permission from config.
+     */
     public function getPermissionScope(string $permissionName): string
     {
-        $permissions = config('roles.permissions', []);
-        foreach ($permissions as $group) {
+        // Check global permissions
+        $globalPermissions = config('roles.global_permissions', []);
+        foreach ($globalPermissions as $group) {
             if (isset($group[$permissionName])) {
-                $def = $group[$permissionName];
-                if (is_array($def)) {
-                    return $def['scope'] ?? 'global';
-                }
+                return 'global';
             }
         }
 
+        // Check team permissions
+        $teamPermissions = config('roles.team_permissions', []);
+        foreach ($teamPermissions as $group) {
+            if (isset($group[$permissionName])) {
+                return 'team';
+            }
+        }
+
+        // Default to global if not found (safest fallback)
         return 'global';
+    }
+
+    /**
+     * Get all available team permission names.
+     *
+     * @return Collection<int, string>
+     */
+    public function getAllTeamPermissionNames(): Collection
+    {
+        return $this->cache->remember(
+            'all_team_permission_names',
+            86400, // 1 day
+            function () {
+                $permissions = config('roles.team_permissions', []);
+                $names = [];
+
+                foreach ($permissions as $group) {
+                    foreach ($group as $key => $label) {
+                        $names[] = $key;
+                    }
+                }
+
+                return collect($names);
+            },
+            'system_config'
+        );
     }
 }

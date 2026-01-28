@@ -243,12 +243,19 @@ class NavigationController extends Controller
 
                 // Check if user has any of the required permissions
                 foreach ($permissions as $permission) {
-                    // This now hits the cached persona and super admin flag immediately
-                    if ($this->permissionService->hasPermission($user, $permission)) {
-                        return true;
+                    // Determine the scope of this permission
+                    $scope = $this->permissionService->getPermissionScope($permission);
+
+                    // If global permission, check global access only
+                    if ($scope === 'global') {
+                        if ($this->permissionService->hasPermission($user, $permission)) {
+                            return true;
+                        }
+                        // Continue to next permission if this one failed
+                        continue;
                     }
 
-                    // Check if user has this permission on ANY of their teams
+                    // If team permission, check team context
                     if ($hasTeams) {
                         foreach ($user->teams as $team) {
                             if ($this->permissionService->hasTeamPermission($user, $team, $permission)) {

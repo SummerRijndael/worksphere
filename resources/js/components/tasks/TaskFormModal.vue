@@ -75,7 +75,7 @@ const newChecklistItem = ref("");
 const addChecklistItem = () => {
     if (!newChecklistItem.value.trim()) return;
     formValues.value.checklist.push({
-        text: newChecklistItem.value.trim(),
+        title: newChecklistItem.value.trim(),
         is_completed: false,
     });
     newChecklistItem.value = "";
@@ -131,20 +131,40 @@ const priorityOptions = [
 
 const localMembers = ref<any[]>([]);
 
-const memberOptions = computed(() => {
-    // First priority: use provided projectMembers if they exist and we have a matching project
-    if (props.projectMembers && props.projectMembers.length > 0) {
-        return props.projectMembers.map((member) => ({
-            value: member.public_id || member.id,
-            label: member.name,
-        }));
-    }
-    // Fallback to locally fetched members
-    return localMembers.value.map((member) => ({
-        value: member.public_id || member.id,
-        label: member.name,
+const QA_ROLES = ["subject_matter_expert", "quality_assessor", "team_lead", "manager", "owner", "admin", "administrator"];
+
+const operatorMemberOptions = computed(() => {
+    const list = props.projectMembers && props.projectMembers.length > 0
+        ? props.projectMembers
+        : localMembers.value;
+
+    return list.map((m: any) => ({
+        value: m.public_id || m.id,
+        label: m.name,
+        avatar: m.avatar_url,
+        subtitle: (m.team_role || m.role)?.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) || m.email
     }));
 });
+
+const qaMemberOptions = computed(() => {
+    const list = props.projectMembers && props.projectMembers.length > 0
+        ? props.projectMembers
+        : localMembers.value;
+
+    return list
+        .filter((m: any) => {
+            return QA_ROLES.includes(m.role) || QA_ROLES.includes(m.team_role);
+        })
+        .map((m: any) => ({
+            value: m.public_id || m.id,
+            label: m.name,
+            avatar: m.avatar_url,
+            subtitle: (m.team_role || m.role)?.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) || m.email
+        }));
+});
+
+// For backward compatibility or internal usage if needed
+const memberOptions = operatorMemberOptions;
 
 // Dynamic State for Selectors
 const selectedTeamId = ref("");
@@ -176,7 +196,6 @@ const fetchProjects = async () => {
     }
 };
 
-// Fetch members - only if not provided via props
 const fetchMembers = async () => {
     // If members are already provided via props, don't fetch
     if (props.projectMembers && props.projectMembers.length > 0) {
@@ -188,10 +207,13 @@ const fetchMembers = async () => {
 
     try {
         isFetchingMembers.value = true;
+        
         const response = await axios.get(
             `/api/teams/${selectedTeamId.value}/projects/${selectedProjectId.value}`,
         );
+        
         localMembers.value = response.data.data?.members || [];
+        console.log("TaskFormModal: Fetched project members:", localMembers.value);
     } catch (error) {
         console.error("Failed to fetch project members", error);
     } finally {
@@ -379,7 +401,7 @@ watch(
                 due_date: newTask.due_date
                     ? new Date(newTask.due_date).toISOString()
                     : "",
-                assigned_to: newTask.assigned_to?.public_id || "",
+                assigned_to: newTask.assignee?.id || newTask.assigned_to || "",
                 estimated_hours: Number(newTask.estimated_hours) || 0,
             });
 
@@ -391,13 +413,13 @@ watch(
                 due_date: newTask.due_date
                     ? new Date(newTask.due_date).toISOString().split("T")[0]
                     : "",
-                assigned_to: newTask.assigned_to?.public_id || "",
+                assigned_to: newTask.assignee?.id || newTask.assigned_to || "",
                 qa_user_id:
-                    newTask.qa_user?.public_id || newTask.qa_user_id || "",
+                    newTask.qa_user?.id || newTask.qa_user_id || "",
                 estimated_hours: Number(newTask.estimated_hours) || 0,
                 checklist:
                     newTask.checklist?.map((item: any) => ({
-                        text: typeof item === "string" ? item : item.text,
+                        title: typeof item === "string" ? item : item.title || item.text,
                         is_completed:
                             typeof item === "string"
                                 ? false
@@ -439,7 +461,7 @@ const onSubmit = async () => {
             ...formValues.value,
             checklist: formValues.value.checklist.map((item) => {
                 if (typeof item === "string") {
-                    return { text: item, is_completed: false };
+                    return { title: item, is_completed: false };
                 }
                 return item;
             }),
@@ -451,7 +473,7 @@ const onSubmit = async () => {
             selectedTeamId.value ||
             props.teamId ||
             props.task?.project?.team_id ||
-            props.task?.project?.team?.public_id ||
+            props.task?.team_id ||
             "";
         const projectId =
             selectedProjectId.value ||
@@ -498,284 +520,295 @@ const onSubmit = async () => {
     <Modal
         v-model:open="isOpen"
         :title="isEditing ? 'Edit Task' : 'Create New Task'"
-        size="md"
+        size="xl"
     >
         <template #default>
             <form
                 id="task-form"
                 @submit.prevent="onSubmit"
-                class="space-y-4 py-2"
+                class="flex flex-col md:flex-row gap-6 h-full p-1"
             >
-                <!-- Template Selector -->
-                <div
-                    v-if="!isEditing && templates.length > 0"
-                    class="p-3 bg-[var(--surface-secondary)] rounded-lg border border-[var(--border-subtle)] mb-4"
-                >
-                    <label
-                        class="block text-xs font-medium text-[var(--text-secondary)] mb-1"
-                        >Load from Template</label
-                    >
-                    <SelectFilter
-                        v-model="selectedTemplateId"
-                        :options="templateOptions"
-                        placeholder="Select a template to auto-fill..."
-                        class="w-full"
-                    />
-                </div>
-
-                <div class="space-y-2">
-                    <label
-                        class="block text-sm font-medium text-[var(--text-primary)]"
-                        >Title <span class="text-red-500">*</span></label
-                    >
-                    <Input
-                        v-model="formValues.title"
-                        placeholder="Task title"
-                        required
-                    />
-                </div>
-
-                <!-- Project Selector (if not provided via props) -->
-                <div
-                    v-if="!props.projectId && !isEditing"
-                    class="grid grid-cols-2 gap-4"
-                >
-                    <div class="space-y-2">
-                        <label
-                            class="block text-sm font-medium text-[var(--text-primary)]"
-                            >Team <span class="text-red-500">*</span></label
-                        >
-                        <SelectFilter
-                            v-model="selectedTeamId"
-                            :options="teamOptions"
-                            placeholder="Select Team"
-                        />
-                    </div>
-                    <div class="space-y-2">
-                        <label
-                            class="block text-sm font-medium text-[var(--text-primary)]"
-                            >Project <span class="text-red-500">*</span></label
-                        >
-                        <SelectFilter
-                            v-model="selectedProjectId"
-                            :options="projectOptions"
-                            placeholder="Select Project"
-                            :disabled="!selectedTeamId"
-                        />
-                    </div>
-                </div>
-
-                <div class="space-y-2">
-                    <label
-                        class="block text-sm font-medium text-[var(--text-primary)]"
-                        >Description</label
-                    >
-                    <Textarea
-                        v-model="formValues.description"
-                        placeholder="Describe the task..."
-                        rows="3"
-                    />
-                </div>
-
-                <div class="grid grid-cols-2 gap-4">
-                    <div class="space-y-2">
-                        <label
-                            class="block text-sm font-medium text-[var(--text-primary)]"
-                            >Status</label
-                        >
-                        <SelectFilter
-                            v-model="formValues.status"
-                            :options="statusOptions"
-                            placeholder="Select status"
-                        />
-                    </div>
-                    <div class="space-y-2">
-                        <label
-                            class="block text-sm font-medium text-[var(--text-primary)]"
-                            >Priority</label
-                        >
-                        <SelectFilter
-                            v-model="formValues.priority"
-                            :options="priorityOptions"
-                            placeholder="Select priority"
-                        />
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-2 gap-4">
-                    <div class="space-y-2">
-                        <label
-                            class="block text-sm font-medium text-[var(--text-primary)]"
-                            >Assignee</label
-                        >
-                        <div
-                            v-if="isFetchingMembers"
-                            class="h-9 flex items-center justify-center bg-[var(--surface-secondary)] rounded-lg border border-[var(--border-default)]"
-                        >
-                            <span class="text-xs text-[var(--text-muted)]"
-                                >Loading members...</span
-                            >
-                        </div>
-                        <SelectFilter
-                            v-else
-                            v-model="formValues.assigned_to"
-                            :options="memberOptions"
-                            :placeholder="
-                                memberOptions.length === 0
-                                    ? 'No members available'
-                                    : 'Unassigned'
-                            "
-                            :disabled="memberOptions.length === 0"
-                        />
-                        <p
-                            v-if="
-                                !isFetchingMembers &&
-                                memberOptions.length === 0 &&
-                                selectedProjectId
-                            "
-                            class="text-xs text-[var(--text-muted)]"
-                        >
-                            Select a project with members to assign
-                        </p>
-                    </div>
-
-                    <!-- QA User -->
-                    <div class="space-y-2">
-                        <label
-                            class="block text-sm font-medium text-[var(--text-primary)]"
-                            >QA</label
-                        >
-                        <SelectFilter
-                            v-model="formValues.qa_user_id"
-                            :options="memberOptions"
-                            :placeholder="
-                                memberOptions.length === 0
-                                    ? 'No members available'
-                                    : 'Unassigned'
-                            "
-                            :disabled="
-                                memberOptions.length === 0 || isFetchingMembers
-                            "
-                        />
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-2 gap-4">
-                    <div class="space-y-2">
-                        <label
-                            class="block text-sm font-medium text-[var(--text-primary)]"
-                            >Due Date</label
-                        >
-                        <Input type="date" v-model="formValues.due_date" />
-                    </div>
-                </div>
-
-                <div class="space-y-2">
-                    <label
-                        class="block text-sm font-medium text-[var(--text-primary)]"
-                        >Estimated Hours</label
-                    >
-                    <Input
-                        type="number"
-                        step="0.5"
-                        v-model="formValues.estimated_hours"
-                        placeholder="e.g. 2.5"
-                    />
-                </div>
-
-                <!-- Checklist Section -->
-                <div class="space-y-2">
-                    <label
-                        class="block text-sm font-medium text-[var(--text-primary)]"
-                        >Checklist</label
-                    >
-
-                    <div class="flex gap-2">
-                        <Input
-                            v-model="newChecklistItem"
-                            placeholder="Add item..."
-                            @keydown.enter.prevent="addChecklistItem"
-                            class="flex-1"
-                        />
-                        <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            @click="addChecklistItem"
-                            >Add</Button
-                        >
-                    </div>
-
+                <!-- Left Column: Main Content -->
+                <div class="flex-1 space-y-6 min-w-0">
+                    <!-- Template Selector -->
                     <div
-                        v-if="formValues.checklist.length > 0"
-                        class="space-y-2 mt-2 max-h-40 overflow-y-auto pr-1"
+                        v-if="!isEditing && templates.length > 0"
+                        class="p-3 bg-[var(--surface-secondary)]/50 backdrop-blur-sm rounded-xl border border-[var(--border-subtle)]"
                     >
-                        <div
-                            v-for="(item, index) in formValues.checklist"
-                            :key="index"
-                            class="flex items-center gap-2 p-2 rounded-md bg-[var(--surface-secondary)] group"
+                        <label
+                            class="block text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] mb-2"
+                            >Load from Template</label
                         >
-                            <span class="text-sm flex-1">{{
-                                typeof item === "string" ? item : item.text
-                            }}</span>
-                            <button
-                                type="button"
-                                @click="removeChecklistItem(index)"
-                                class="text-[var(--text-muted)] hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                        <SelectFilter
+                            v-model="selectedTemplateId"
+                            :options="templateOptions"
+                            placeholder="Select a template..."
+                            class="w-full"
+                        />
+                    </div>
+
+                    <div class="space-y-4">
+                        <div class="space-y-2">
+                            <label
+                                class="block text-sm font-semibold text-[var(--text-primary)]"
+                                >Title <span class="text-red-500">*</span></label
                             >
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    width="16"
-                                    height="16"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    class="lucide lucide-trash-2"
+                            <Input
+                                v-model="formValues.title"
+                                placeholder="Task title"
+                                required
+                                class="text-lg font-medium"
+                            />
+                        </div>
+
+                        <div class="space-y-2">
+                            <label
+                                class="block text-sm font-semibold text-[var(--text-primary)]"
+                                >Description</label
+                            >
+                            <Textarea
+                                v-model="formValues.description"
+                                placeholder="Describe the task..."
+                                rows="6"
+                                class="resize-y min-h-[120px]"
+                            />
+                        </div>
+                    </div>
+
+                    <!-- Checklist Section -->
+                    <div class="space-y-3 pt-4 border-t border-[var(--border-subtle)]">
+                        <div class="flex items-center justify-between">
+                            <label
+                                class="block text-sm font-semibold text-[var(--text-primary)]"
+                                >Checklist</label
+                            >
+                            <span class="text-xs text-[var(--text-muted)]">{{ formValues.checklist.filter(i => typeof i === 'string' ? false : i.is_completed).length }}/{{ formValues.checklist.length }}</span>
+                        </div>
+
+                        <div class="space-y-2">
+                             <div class="flex gap-2">
+                                <Input
+                                    v-model="newChecklistItem"
+                                    placeholder="Add sub-item..."
+                                    @keydown.enter.prevent="addChecklistItem"
+                                    class="flex-1"
+                                />
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="secondary"
+                                    @click="addChecklistItem"
+                                    >Add</Button
                                 >
-                                    <path d="M3 6h18" />
-                                    <path
-                                        d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"
-                                    />
-                                    <path
-                                        d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"
-                                    />
-                                    <line x1="10" x2="10" y1="11" y2="17" />
-                                    <line x1="14" x2="14" y1="11" y2="17" />
-                                </svg>
-                            </button>
+                            </div>
+
+                            <div
+                                v-if="formValues.checklist.length > 0"
+                                class="space-y-1 mt-2 max-h-60 overflow-y-auto pr-1"
+                            >
+                                <div
+                                    v-for="(item, index) in formValues.checklist"
+                                    :key="index"
+                                    class="flex items-center gap-3 p-2 rounded-lg bg-[var(--surface-secondary)]/30 border border-[var(--border-subtle)] hover:border-[var(--border-default)] transition-colors group"
+                                >
+                                    <!-- Simple checkbox visual for list usage (logic handled in details view usually, but good for visualization here) -->
+                                    <div class="w-4 h-4 rounded border border-[var(--border-default)] flex items-center justify-center">
+                                        <div v-if="typeof item !== 'string' && item.is_completed" class="w-2 h-2 bg-[var(--text-primary)] rounded-sm"></div>
+                                    </div>
+
+                                    <span class="text-sm flex-1 text-[var(--text-secondary)]">{{
+                                        typeof item === "string" ? item : item.title
+                                    }}</span>
+                                    
+                                    <button
+                                        type="button"
+                                        @click="removeChecklistItem(index)"
+                                        class="text-[var(--text-muted)] hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1"
+                                    >
+                                        <svg
+                                            xmlns="http://www.w3.org/2000/svg"
+                                            width="14"
+                                            height="14"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                        >
+                                            <path d="M3 6h18" />
+                                            <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                                            <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Save as Template logic -->
-                <div
-                    v-if="!isEditing"
-                    class="pt-2 border-t border-[var(--border-subtle)]"
-                >
-                    <label
-                        class="flex items-center gap-2 cursor-pointer select-none"
-                    >
-                        <input
-                            type="checkbox"
-                            v-model="formValues.save_as_template"
-                            class="rounded border-[var(--border-default)] text-[var(--brand-primary)] focus:ring-[var(--brand-ring)]"
-                        />
-                        <span class="text-sm text-[var(--text-primary)]"
-                            >Save this task structure as a new template</span
+                <!-- Right Column: Sidebar Meta -->
+                <div class="w-full md:w-80 space-y-6">
+                    <div class="bg-[var(--surface-secondary)]/50 p-5 rounded-2xl border border-[var(--border-subtle)] space-y-5">
+                        
+                        <!-- Project Context (if creating new) -->
+                         <div
+                            v-if="!props.projectId && !isEditing"
+                            class="space-y-4 pb-4 border-b border-[var(--border-subtle)]"
                         >
-                    </label>
+                            <div class="space-y-1.5">
+                                <label
+                                    class="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]"
+                                    >Team <span class="text-red-500">*</span></label
+                                >
+                                <SelectFilter
+                                    v-model="selectedTeamId"
+                                    :options="teamOptions"
+                                    placeholder="Select Team"
+                                    class="w-full"
+                                />
+                            </div>
+                            <div class="space-y-1.5">
+                                <label
+                                    class="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]"
+                                    >Project <span class="text-red-500">*</span></label
+                                >
+                                <SelectFilter
+                                    v-model="selectedProjectId"
+                                    :options="projectOptions"
+                                    placeholder="Select Project"
+                                    :disabled="!selectedTeamId"
+                                    class="w-full"
+                                />
+                            </div>
+                        </div>
+
+                        <!-- Status & Priority -->
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="space-y-1.5">
+                                <label
+                                    class="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]"
+                                    >Status</label
+                                >
+                                <SelectFilter
+                                    v-model="formValues.status"
+                                    :options="statusOptions"
+                                    placeholder="Status"
+                                    class="w-full"
+                                />
+                            </div>
+                            <div class="space-y-1.5">
+                                <label
+                                    class="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]"
+                                    >Priority</label
+                                >
+                                <SelectFilter
+                                    v-model="formValues.priority"
+                                    :options="priorityOptions"
+                                    placeholder="Priority"
+                                    class="w-full"
+                                />
+                            </div>
+                        </div>
+
+                        <!-- People -->
+                        <div class="space-y-4">
+                            <div class="space-y-1.5">
+                                <label
+                                    class="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]"
+                                    >Assignee</label
+                                >
+                                <div
+                                    v-if="isFetchingMembers"
+                                    class="h-9 flex items-center justify-center bg-[var(--surface-primary)] rounded-lg border border-[var(--border-default)]"
+                                >
+                                    <span class="text-xs text-[var(--text-muted)] animate-pulse"
+                                        >Loading...</span
+                                    >
+                                </div>
+                                <SelectFilter
+                                    v-else
+                                    v-model="formValues.assigned_to"
+                                    :options="operatorMemberOptions"
+                                    :placeholder="operatorMemberOptions.length === 0 ? 'No members' : 'Unassigned'"
+                                    :disabled="operatorMemberOptions.length === 0"
+                                    class="w-full"
+                                    searchable
+                                />
+                            </div>
+
+                            <div class="space-y-1.5">
+                                <label
+                                    class="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]"
+                                    >QA Owner</label
+                                >
+                                <SelectFilter
+                                    v-model="formValues.qa_user_id"
+                                    :options="qaMemberOptions"
+                                    :placeholder="qaMemberOptions.length === 0 ? 'No members' : 'Unassigned'"
+                                    :disabled="qaMemberOptions.length === 0 || isFetchingMembers"
+                                    class="w-full"
+                                    searchable
+                                />
+                            </div>
+                        </div>
+
+                        <!-- Dates & Estimation -->
+                        <div class="space-y-4 pt-4 border-t border-[var(--border-subtle)]">
+                            <div class="space-y-1.5">
+                                <label
+                                    class="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]"
+                                    >Due Date</label
+                                >
+                                <Input type="date" v-model="formValues.due_date" class="w-full" />
+                            </div>
+
+                            <div class="space-y-1.5">
+                                <label
+                                    class="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]"
+                                    >Est. Hours</label
+                                >
+                                <Input
+                                    type="number"
+                                    step="0.5"
+                                    v-model="formValues.estimated_hours"
+                                    placeholder="0"
+                                    class="w-full"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Template Save Option -->
+                     <div
+                        v-if="!isEditing"
+                        class="p-3 bg-[var(--surface-secondary)]/30 rounded-lg"
+                    >
+                        <label
+                            class="flex items-start gap-3 cursor-pointer select-none"
+                        >
+                            <input
+                                type="checkbox"
+                                v-model="formValues.save_as_template"
+                                class="mt-1 rounded border-[var(--border-default)] text-[var(--brand-primary)] focus:ring-[var(--brand-ring)]"
+                            />
+                            <div class="text-sm">
+                                <span class="font-medium text-[var(--text-primary)]">Save as Template</span>
+                                <p class="text-xs text-[var(--text-muted)] mt-0.5">Reuse this structure later</p>
+                            </div>
+                        </label>
+                    </div>
                 </div>
             </form>
         </template>
 
         <template #footer>
-            <Button variant="outline" @click="isOpen = false">Cancel</Button>
-            <Button :loading="isLoading" @click="onSubmit">
-                {{ isEditing ? "Save Changes" : "Create Task" }}
-            </Button>
+            <div class="flex justify-end gap-3 w-full">
+                <Button variant="ghost" @click="isOpen = false">Cancel</Button>
+                <Button :loading="isLoading" @click="onSubmit" class="min-w-[120px]">
+                    {{ isEditing ? "Save Changes" : "Create Task" }}
+                </Button>
+            </div>
         </template>
     </Modal>
 </template>

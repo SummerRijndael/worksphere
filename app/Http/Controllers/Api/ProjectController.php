@@ -273,7 +273,10 @@ class ProjectController extends Controller
     /**
      * Store a newly created project.
      */
-    public function store(StoreProjectRequest $request, Team $team): JsonResponse
+    /**
+     * Store a newly created project.
+     */
+    public function store(StoreProjectRequest $request, Team $team): \Illuminate\Http\JsonResponse
     {
         // Require team membership for project creation
         if (! $this->permissionService->isTeamMember($request->user(), $team)) {
@@ -325,13 +328,13 @@ class ProjectController extends Controller
         $project->load(['creator', 'client', 'members']);
         $project->loadCount(['tasks', 'members']);
 
-        return response()->json(new ProjectResource($project), 201);
+        return (new ProjectResource($project))->response()->setStatusCode(201);
     }
 
     /**
      * Display the specified project.
      */
-    public function show(Team $team, Project $project): JsonResponse
+    public function show(Team $team, Project $project): ProjectResource
     {
         $user = request()->user();
         $hasView = $this->permissionService->hasTeamPermission($user, $team, 'projects.view');
@@ -354,13 +357,13 @@ class ProjectController extends Controller
 
         // dd($project->relationLoaded('client'), $project->client ? $project->client->toArray() : 'NULL CLIENT');
 
-        return response()->json(new ProjectResource($project));
+        return new ProjectResource($project);
     }
 
     /**
      * Update the specified project.
      */
-    public function update(UpdateProjectRequest $request, Team $team, Project $project): JsonResponse
+    public function update(UpdateProjectRequest $request, Team $team, Project $project): ProjectResource
     {
         $this->authorizeTeamPermission($team, 'projects.update');
         $this->ensureProjectBelongsToTeam($team, $project);
@@ -400,7 +403,7 @@ class ProjectController extends Controller
         $project->load(['creator', 'client', 'members']);
         $project->loadCount(['tasks', 'members']);
 
-        return response()->json(new ProjectResource($project));
+        return new ProjectResource($project);
     }
 
     /**

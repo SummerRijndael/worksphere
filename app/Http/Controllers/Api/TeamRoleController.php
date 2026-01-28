@@ -290,7 +290,7 @@ class TeamRoleController extends Controller
     {
         $this->authorizeTeamPermission($team, 'team_roles.view');
 
-        $permissions = config('roles.permissions', []);
+        $permissions = config('roles.team_permissions', []);
 
         // Modules that are relevant for team roles
         $allowedModules = [

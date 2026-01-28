@@ -193,20 +193,26 @@ const onDragOver = (event: DragEvent) => {
                             <!-- People -->
                             <div class="flex items-center -space-x-2">
                                 <!-- Operator -->
-                                <Avatar
-                                    v-if="task.assignee"
-                                    :name="task.assignee.name"
-                                    :src="task.assignee.avatar_url"
-                                    size="xs"
-                                    class="ring-2 ring-[var(--surface-primary)] w-6 h-6"
-                                    title="Operator"
-                                />
                                 <div
-                                    v-else
-                                    class="w-6 h-6 rounded-full bg-[var(--surface-tertiary)] flex items-center justify-center text-[10px] text-[var(--text-muted)] ring-2 ring-[var(--surface-primary)]"
-                                    title="No Operator"
+                                    @click.stop="emit('quick-assign', task)"
+                                    class="cursor-pointer hover:scale-110 transition-transform relative z-10"
+                                    title="Assign Operator"
                                 >
-                                    <User class="w-3 h-3" />
+                                    <Avatar
+                                        v-if="task.assignee"
+                                        :name="task.assignee.name"
+                                        :src="task.assignee.avatar_url"
+                                        size="xs"
+                                        class="ring-2 ring-[var(--surface-primary)] w-6 h-6"
+                                        title="Operator"
+                                    />
+                                    <div
+                                        v-else
+                                        class="w-6 h-6 rounded-full bg-[var(--surface-tertiary)] flex items-center justify-center text-[10px] text-[var(--text-muted)] ring-2 ring-[var(--surface-primary)] hover:bg-[var(--surface-elevated)] hover:text-[var(--text-primary)] transition-colors"
+                                        title="Assign Operator"
+                                    >
+                                        <User class="w-3 h-3" />
+                                    </div>
                                 </div>
 
                                 <!-- QA -->

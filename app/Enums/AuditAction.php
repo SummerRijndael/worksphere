@@ -14,6 +14,8 @@ enum AuditAction: string
     case TwoFactorDisabled = 'two_factor_disabled';
     case TwoFactorChallenged = 'two_factor_challenged';
     case EmailVerified = 'email_verified';
+    case ImpersonationStarted = 'impersonation_started';
+    case ImpersonationEnded = 'impersonation_ended';
 
     // CRUD Operations
     case Created = 'created';
@@ -110,6 +112,8 @@ enum AuditAction: string
             self::TwoFactorDisabled => 'Two-Factor Disabled',
             self::TwoFactorChallenged => 'Two-Factor Challenged',
             self::EmailVerified => 'Email Verified',
+            self::ImpersonationStarted => 'Impersonation Started',
+            self::ImpersonationEnded => 'Impersonation Ended',
             self::Created => 'Created',
             self::Updated => 'Updated',
             self::Deleted => 'Deleted',
@@ -181,6 +185,8 @@ enum AuditAction: string
             self::PasswordChanged, self::PasswordReset => 'key',
             self::TwoFactorEnabled, self::TwoFactorDisabled, self::TwoFactorChallenged => 'shield',
             self::EmailVerified => 'mail-check',
+            self::ImpersonationStarted => 'user-plus',
+            self::ImpersonationEnded => 'user-minus',
             self::Created => 'plus-circle',
             self::Updated => 'edit',
             self::Deleted, self::ForceDeleted => 'trash',

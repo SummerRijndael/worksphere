@@ -52,6 +52,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->api(append: [
             \App\Http\Middleware\SecurityHeaders::class,
+            \App\Http\Middleware\CheckImpersonation::class,
         ]);
 
         // Exclude certain API routes from CSRF verification

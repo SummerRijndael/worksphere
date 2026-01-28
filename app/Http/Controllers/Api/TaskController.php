@@ -26,6 +26,7 @@ use App\Services\PermissionService;
 use App\Services\TaskWorkflowService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 class TaskController extends Controller
@@ -57,7 +58,7 @@ class TaskController extends Controller
             ->when(! $request->boolean('include_subtasks'), function ($query) {
                 $query->whereNull('parent_id'); // Only top-level tasks by default
             })
-            ->with(['assignee', 'creator', 'subtasks', 'project.client'])
+            ->with(['assignee', 'qaUser', 'creator', 'subtasks', 'project.client', 'project.team'])
             ->withCount(['subtasks', 'comments'])
             ->when($request->search, function ($query, $search) {
                 $query->where(function ($q) use ($search) {
@@ -130,7 +131,7 @@ class TaskController extends Controller
             ->when(! $request->boolean('include_subtasks'), function ($query) {
                 $query->whereNull('parent_id'); // Only top-level tasks by default
             })
-            ->with(['assignee', 'creator', 'subtasks', 'project.client'])
+            ->with(['assignee', 'qaUser', 'creator', 'subtasks', 'project.client', 'project.team'])
             ->withCount(['subtasks', 'comments'])
             ->when($request->search, function ($query, $search) {
                 $query->where(function ($q) use ($search) {
@@ -332,6 +333,7 @@ class TaskController extends Controller
             'qaReviews.reviewer',
             'media',
             'project.client',
+            'project.team',
         ]);
         $task->loadCount(['subtasks', 'comments']);
 
@@ -343,7 +345,12 @@ class TaskController extends Controller
      */
     public function update(UpdateTaskRequest $request, Team $team, Project $project, Task $task): JsonResponse
     {
-        $this->authorizeTeamPermission($team, 'tasks.update');
+        // Allow if user has team permission OR is the assignee
+        if (! $this->permissionService->hasTeamPermission($request->user(), $team, 'tasks.update') &&
+            $task->assigned_to !== $request->user()->id) {
+            abort(403, 'You do not have permission to update this task.');
+        }
+
         $this->ensureProjectBelongsToTeam($team, $project);
         $this->ensureTaskBelongsToProject($project, $task);
 
@@ -474,7 +481,12 @@ class TaskController extends Controller
      */
     public function start(Request $request, Team $team, Project $project, Task $task): JsonResponse
     {
-        $this->authorizeTeamPermission($team, 'tasks.update');
+        // Allow if user has team permission OR is the assignee
+        if (! $this->permissionService->hasTeamPermission($request->user(), $team, 'tasks.update') &&
+            $task->assigned_to !== $request->user()->id) {
+            abort(403, 'You do not have permission to start this task.');
+        }
+
         $this->ensureProjectBelongsToTeam($team, $project);
         $this->ensureTaskBelongsToProject($project, $task);
 
@@ -497,7 +509,12 @@ class TaskController extends Controller
      */
     public function submitForQa(Request $request, Team $team, Project $project, Task $task): JsonResponse
     {
-        $this->authorizeTeamPermission($team, 'tasks.submit');
+        // Allow if user has submit permission OR is the assignee
+        if (! $this->permissionService->hasTeamPermission($request->user(), $team, 'tasks.submit') &&
+            $task->assigned_to !== $request->user()->id) {
+            abort(403, 'You do not have permission to submit this task for QA.');
+        }
+
         $this->ensureProjectBelongsToTeam($team, $project);
         $this->ensureTaskBelongsToProject($project, $task);
 
@@ -553,7 +570,12 @@ class TaskController extends Controller
      */
     public function toggleHold(Request $request, Team $team, Project $project, Task $task): JsonResponse
     {
-        $this->authorizeTeamPermission($team, 'tasks.update');
+        // Allow if user has team permission OR is the assignee
+        if (! $this->permissionService->hasTeamPermission($request->user(), $team, 'tasks.update') &&
+            $task->assigned_to !== $request->user()->id) {
+            abort(403, 'You do not have permission to toggle hold status on this task.');
+        }
+
         $this->ensureProjectBelongsToTeam($team, $project);
         $this->ensureTaskBelongsToProject($project, $task);
 
@@ -751,7 +773,12 @@ class TaskController extends Controller
      */
     public function complete(Request $request, Team $team, Project $project, Task $task): JsonResponse
     {
-        $this->authorizeTeamPermission($team, 'tasks.complete');
+        // Allow if user has complete permission OR is the assignee
+        if (! $this->permissionService->hasTeamPermission($request->user(), $team, 'tasks.complete') &&
+            $task->assigned_to !== $request->user()->id) {
+            abort(403, 'You do not have permission to complete this task.');
+        }
+
         $this->ensureProjectBelongsToTeam($team, $project);
         $this->ensureTaskBelongsToProject($project, $task);
 
@@ -799,7 +826,7 @@ class TaskController extends Controller
      */
     public function comments(Request $request, Team $team, Project $project, Task $task): AnonymousResourceCollection
     {
-        $this->authorizeTeamPermission($team, 'tasks.view');
+        $this->authorizeTaskView($request->user(), $team, $task);
         $this->ensureProjectBelongsToTeam($team, $project);
         $this->ensureTaskBelongsToProject($project, $task);
 
@@ -854,7 +881,7 @@ class TaskController extends Controller
      */
     public function statusHistory(Team $team, Project $project, Task $task): JsonResponse
     {
-        $this->authorizeTeamPermission($team, 'tasks.view');
+        $this->authorizeTaskView(request()->user(), $team, $task);
         $this->ensureProjectBelongsToTeam($team, $project);
         $this->ensureTaskBelongsToProject($project, $task);
 
@@ -884,7 +911,7 @@ class TaskController extends Controller
      */
     public function getFiles(Request $request, Team $team, Project $project, Task $task): JsonResponse
     {
-        $this->authorizeTeamPermission($team, 'tasks.view');
+        $this->authorizeTaskView($request->user(), $team, $task);
         $this->ensureProjectBelongsToTeam($team, $project);
         $this->ensureTaskBelongsToProject($project, $task);
 
@@ -1053,6 +1080,29 @@ class TaskController extends Controller
     {
         if ($task->project_id !== $project->id) {
             abort(404, 'Task not found in this project.');
+        }
+    }
+    /**
+     * Authorize that the user can view the task.
+     * Takes into account tasks.view (all) and tasks.view_assigned (own/related).
+     */
+    protected function authorizeTaskView(User $user, Team $team, Task $task): void
+    {
+        $hasView = $this->permissionService->hasTeamPermission($user, $team, 'tasks.view');
+        $hasViewAssigned = $this->permissionService->hasTeamPermission($user, $team, 'tasks.view_assigned');
+
+        if (! $hasView && ! $hasViewAssigned) {
+            abort(403, 'You do not have permission to view tasks in this team.');
+        }
+
+        if (! $hasView && $hasViewAssigned) {
+            $isAssociated = $task->assigned_to === $user->id ||
+                          $task->qa_user_id === $user->id ||
+                          $task->created_by === $user->id;
+
+            if (! $isAssociated) {
+                abort(403, 'You do not have permission to view this task.');
+            }
         }
     }
 }

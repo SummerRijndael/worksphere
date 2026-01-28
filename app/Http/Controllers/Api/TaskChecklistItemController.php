@@ -26,7 +26,23 @@ class TaskChecklistItemController extends Controller
      */
     public function index(Team $team, Project $project, Task $task): JsonResponse
     {
-        $this->authorizeTeamPermission($team, 'tasks.view');
+        $user = request()->user();
+        $hasView = $this->permissionService->hasTeamPermission($user, $team, 'tasks.view');
+        $hasViewAssigned = $this->permissionService->hasTeamPermission($user, $team, 'tasks.view_assigned');
+
+        if (! $hasView && ! $hasViewAssigned) {
+            abort(403, 'You do not have permission to view tasks in this team.');
+        }
+
+        if (! $hasView && $hasViewAssigned) {
+            $isAssociated = $task->assigned_to === $user->id ||
+                          $task->qa_user_id === $user->id ||
+                          $task->created_by === $user->id;
+
+            if (! $isAssociated) {
+                abort(403, 'You do not have permission to view this task checklist.');
+            }
+        }
 
         Log::info('TaskChecklistItemController index', ['task_id' => $task->id]);
 
@@ -50,7 +66,11 @@ class TaskChecklistItemController extends Controller
      */
     public function store(StoreTaskChecklistItemRequest $request, Team $team, Project $project, Task $task): JsonResponse
     {
-        $this->authorizeTeamPermission($team, 'tasks.update');
+        // Allow if user has team permission OR is the assignee
+        if (! $this->permissionService->hasTeamPermission($request->user(), $team, 'tasks.update') &&
+            $task->assigned_to !== $request->user()->id) {
+            abort(403, 'You do not have permission to update this task checklist.');
+        }
 
         $validated = $request->validated();
 
@@ -76,7 +96,23 @@ class TaskChecklistItemController extends Controller
      */
     public function show(Team $team, Project $project, Task $task, TaskChecklistItem $checklistItem): JsonResponse
     {
-        $this->authorizeTeamPermission($team, 'tasks.view');
+        $user = request()->user();
+        $hasView = $this->permissionService->hasTeamPermission($user, $team, 'tasks.view');
+        $hasViewAssigned = $this->permissionService->hasTeamPermission($user, $team, 'tasks.view_assigned');
+
+        if (! $hasView && ! $hasViewAssigned) {
+            abort(403, 'You do not have permission to view tasks in this team.');
+        }
+
+        if (! $hasView && $hasViewAssigned) {
+            $isAssociated = $task->assigned_to === $user->id ||
+                          $task->qa_user_id === $user->id ||
+                          $task->created_by === $user->id;
+
+            if (! $isAssociated) {
+                abort(403, 'You do not have permission to view this task checklist.');
+            }
+        }
 
         // Ensure item belongs to task
         if ($checklistItem->task_id !== $task->id) {
@@ -93,7 +129,11 @@ class TaskChecklistItemController extends Controller
      */
     public function update(UpdateTaskChecklistItemRequest $request, Team $team, Project $project, Task $task, TaskChecklistItem $checklistItem): JsonResponse
     {
-        $this->authorizeTeamPermission($team, 'tasks.update');
+        // Allow if user has team permission OR is the assignee
+        if (! $this->permissionService->hasTeamPermission($request->user(), $team, 'tasks.update') &&
+            $task->assigned_to !== $request->user()->id) {
+            abort(403, 'You do not have permission to update this task checklist.');
+        }
         // Ensure item belongs to task
         if ($checklistItem->task_id !== $task->id) {
             abort(404);
@@ -136,7 +176,13 @@ class TaskChecklistItemController extends Controller
      */
     public function destroy(Team $team, Project $project, Task $task, TaskChecklistItem $checklistItem): JsonResponse
     {
-        $this->authorizeTeamPermission($team, 'tasks.update');
+        $user = request()->user();
+        
+        // Allow if user has team permission OR is the assignee
+        if (! $this->permissionService->hasTeamPermission($user, $team, 'tasks.update') &&
+            $task->assigned_to !== $user->id) {
+            abort(403, 'You do not have permission to update this task checklist.');
+        }
 
         // Ensure item belongs to task
         if ($checklistItem->task_id !== $task->id) {
@@ -155,7 +201,11 @@ class TaskChecklistItemController extends Controller
      */
     public function reorder(Request $request, Team $team, Project $project, Task $task): JsonResponse
     {
-        $this->authorizeTeamPermission($team, 'tasks.update');
+        // Allow if user has team permission OR is the assignee
+        if (! $this->permissionService->hasTeamPermission($request->user(), $team, 'tasks.update') &&
+            $task->assigned_to !== $request->user()->id) {
+            abort(403, 'You do not have permission to update this task checklist.');
+        }
 
         $validated = $request->validate([
             'items' => ['required', 'array'],

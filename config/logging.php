@@ -144,6 +144,13 @@ return [
             'path' => storage_path('app/private/sys/logs/laravel.log'),
         ],
 
+        'broadcasting' => [
+            'driver' => 'single',
+            'path' => storage_path('app/private/sys/logs/channel-auth.log'),
+            'level' => 'debug',
+            'replace_placeholders' => true,
+        ],
+
     ],
 
 ];
