@@ -72,7 +72,7 @@ Route::middleware(['throttle:guest'])->group(function () {
     // DEV DATA TOOLS (Local/Testing environment only - SECURITY CRITICAL)
     // These routes are completely disabled in production
     if (app()->environment('local', 'testing')) {
-        Route::prefix('dev')->middleware(['throttle:10,1'])->group(function () {
+        Route::prefix('dev')->middleware(['throttle:10,1', 'can:access-dev-tools'])->group(function () {
             Route::get('/users', [\App\Http\Controllers\Api\DevController::class, 'getUsers']);
             Route::get('/chats', [\App\Http\Controllers\Api\DevController::class, 'getChats']);
             Route::post('/login-as', [\App\Http\Controllers\Api\DevController::class, 'loginAs']);

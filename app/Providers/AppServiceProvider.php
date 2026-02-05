@@ -92,6 +92,12 @@ class AppServiceProvider extends ServiceProvider
             return $user->hasPermissionTo('system.maintenance');
         });
 
+        // Dev Tools authorization - strictly limit to local/testing environments
+        // This prevents accidental exposure if routes are registered in production
+        Gate::define('access-dev-tools', function ($user = null) {
+            return app()->environment('local', 'testing');
+        });
+
         // Record user in Pulse requests
         Pulse::user(fn ($user) => [
             'name' => $user->name,
