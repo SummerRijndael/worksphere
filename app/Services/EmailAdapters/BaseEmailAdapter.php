@@ -442,6 +442,41 @@ abstract class BaseEmailAdapter implements EmailProviderAdapter
     }
 
     /**
+     * Fetch multiple messages by UIDs in a batch.
+     */
+    public function getMessagesByUids(Folder $folder, array $uids): \Illuminate\Support\Collection
+    {
+        if (empty($uids)) {
+            return collect();
+        }
+
+        // Use batch fetch with sequence set
+        try {
+            return $this->executeWithBackoff(fn () =>
+                $folder->query()->where('UID', implode(',', $uids))->get()
+            );
+        } catch (\Throwable $e) {
+            Log::warning("[{$this->getProvider()}Adapter] Batch fetch failed", [
+                'folder' => $folder->path,
+                'uids_count' => count($uids),
+                'error' => $e->getMessage(),
+            ]);
+
+            // Fallback to fetching one by one if batch fails
+            $messages = collect();
+            foreach ($uids as $uid) {
+                try {
+                    $msg = $this->getMessageByUid($folder, $uid);
+                    if ($msg) $messages->push($msg);
+                } catch (\Throwable $ex) {
+                    // Ignore individual failures
+                }
+            }
+            return $messages;
+        }
+    }
+
+    /**
      * Get high-level folder status (IMAP implementation).
      */
     public function getFolderStatus(EmailAccount $account, string $folderType): array
@@ -642,29 +677,37 @@ abstract class BaseEmailAdapter implements EmailProviderAdapter
             
             $fetched = 0;
             $minUid = $backfillCursor;
+            $uidsToFetch = [];
 
             foreach ($uidsToProcess as $uid) {
-                try {
-                    $exists = Email::where('email_account_id', $account->id)
-                        ->where('imap_uid', $uid)
-                        ->where('folder', $folderType->value)
-                        ->exists();
+                $exists = Email::where('email_account_id', $account->id)
+                    ->where('imap_uid', $uid)
+                    ->where('folder', $folderType->value)
+                    ->exists();
 
-                    if ($exists) {
-                        $minUid = min($minUid, $uid);
-                        continue;
-                    }
+                if ($exists) {
+                    $minUid = min($minUid, $uid);
+                } else {
+                    $uidsToFetch[] = $uid;
+                }
+            }
 
-                    $message = $this->getMessageByUid($folder, $uid);
-                    if ($message) {
+            if (!empty($uidsToFetch)) {
+                $messages = $this->getMessagesByUids($folder, $uidsToFetch);
+
+                foreach ($messages as $message) {
+                    try {
                         $emailData = $this->parseMessage($message, true);
                         $targetFolder = $emailData['folder'] ?? $folderType->value;
                         $syncService->storeEmail($account, $emailData, $targetFolder, false);
                         $fetched++;
-                        $minUid = min($minUid, $uid);
+                    } catch (\Throwable $e) {
+                         Log::warning("[{$this->getProvider()}Adapter] Failed to process message during backfill", ['error' => $e->getMessage()]);
                     }
-                } catch (\Throwable $e) {
-                    Log::warning("[{$this->getProvider()}Adapter] Failed to fetch UID {$uid} during backfill", ['error' => $e->getMessage()]);
+                }
+
+                // Update minUid for all attempts
+                foreach ($uidsToFetch as $uid) {
                     $minUid = min($minUid, $uid);
                 }
             }

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\EmailAccount;
 use Google\Client;
 use Google\Service\Gmail;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 
 class GmailApiService
@@ -76,6 +77,63 @@ class GmailApiService
         $gmail = new Gmail($this->client);
 
         return $gmail->users_messages->get('me', $messageId, ['format' => 'full']);
+    }
+
+    /**
+     * Get multiple messages in a single batch request.
+     */
+    public function getMessagesBatch(EmailAccount $account, array $messageIds): Collection
+    {
+        if (empty($messageIds)) {
+            return collect();
+        }
+
+        $this->setupForAccount($account);
+
+        $client = $this->client;
+        $client->setUseBatch(true);
+
+        $batch = new \Google\Http\Batch($client);
+        $service = new Gmail($client);
+
+        $messages = collect();
+
+        foreach ($messageIds as $id) {
+            $request = $service->users_messages->get('me', $id, ['format' => 'full']);
+            $batch->add($request, $id);
+        }
+
+        try {
+            $results = $batch->execute();
+
+            foreach ($results as $id => $result) {
+                if ($result instanceof \Google\Service\Gmail\Message) {
+                    $messages->push($result);
+                } else {
+                     $error = 'Unknown error';
+                     if ($result instanceof \Google\Service\Exception) {
+                         $error = $result->getMessage();
+                     } elseif (is_object($result) && method_exists($result, 'getMessage')) {
+                         $error = $result->getMessage();
+                     }
+
+                    Log::warning('[GmailApiService] Batch fetch failed for message', [
+                        'account_id' => $account->id,
+                        'message_id' => $id,
+                        'error' => $error,
+                    ]);
+                }
+            }
+        } catch (\Throwable $e) {
+             Log::error('[GmailApiService] Batch execution failed', [
+                'account_id' => $account->id,
+                'error' => $e->getMessage(),
+            ]);
+        } finally {
+            $client->setUseBatch(false);
+        }
+
+        return $messages;
     }
 
     /**

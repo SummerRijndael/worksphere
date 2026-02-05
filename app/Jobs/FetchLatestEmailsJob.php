@@ -284,23 +284,27 @@ class FetchLatestEmailsJob implements ShouldQueue, ShouldBeUnique
             $fetched = 0;
             $maxUid = $forwardCursor;
 
+            $uidsToFetch = [];
             foreach ($newUids as $uid) {
-                try {
-                    // Check if already exists
-                    $exists = Email::where('email_account_id', $account->id)
-                        ->where('imap_uid', $uid)
-                        ->where('folder', $folderType->value)
-                        ->exists();
+                // Check if already exists
+                $exists = Email::where('email_account_id', $account->id)
+                    ->where('imap_uid', $uid)
+                    ->where('folder', $folderType->value)
+                    ->exists();
 
-                    if ($exists) {
-                        $maxUid = max($maxUid, $uid);
-                        continue;
-                    }
+                if ($exists) {
+                    $maxUid = max($maxUid, $uid);
+                } else {
+                    $uidsToFetch[] = $uid;
+                }
+            }
 
-                    $message = $adapter->getMessageByUid($folder, $uid);
-                    if ($message) {
-                        // delegate parsing to adapter (handles X-GM-LABELS for Gmail)
-                        // [Lazy Sync] Set skipAttachments to true
+            if (!empty($uidsToFetch)) {
+                $messages = $adapter->getMessagesByUids($folder, $uidsToFetch);
+
+                foreach ($messages as $message) {
+                    try {
+                        $uid = (int) $message->getUid();
                         $emailData = $adapter->parseMessage($message, true);
                         
                         // valid folder is either what adapter detected (from labels) or the current folder we are syncing
@@ -309,12 +313,12 @@ class FetchLatestEmailsJob implements ShouldQueue, ShouldBeUnique
                         $syncService->storeEmail($account, $emailData, $targetFolder);
                         $fetched++;
                         $maxUid = max($maxUid, $uid);
+                    } catch (\Throwable $e) {
+                        Log::warning('[FetchLatestEmailsJob] Failed to parse/store message', [
+                            'uid' => $message->getUid(),
+                            'error' => $e->getMessage(),
+                        ]);
                     }
-                } catch (\Throwable $e) {
-                    Log::warning('[FetchLatestEmailsJob] Failed to fetch UID', [
-                        'uid' => $uid,
-                        'error' => $e->getMessage(),
-                    ]);
                 }
             }
 

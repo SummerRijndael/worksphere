@@ -126,9 +126,13 @@ class GmailAdapter extends BaseEmailAdapter
             $result = $this->apiService->listMessages($account, $labelId, $count);
             
             $messages = collect();
-            foreach ($result['messages'] as $msg) {
-                $fullMsg = $this->apiService->getMessage($account, $msg->getId());
-                $messages->push($this->parseGmailMessage($fullMsg, true, $account));
+            $messageIds = collect($result['messages'] ?? [])->map(fn($msg) => $msg->getId())->toArray();
+
+            if (!empty($messageIds)) {
+                $batchedMessages = $this->apiService->getMessagesBatch($account, $messageIds);
+                foreach ($batchedMessages as $fullMsg) {
+                    $messages->push($this->parseGmailMessage($fullMsg, true, $account));
+                }
             }
 
             return $messages;
@@ -159,15 +163,24 @@ class GmailAdapter extends BaseEmailAdapter
             $result = $this->apiService->listHistory($account, (string)$startHistoryId);
             $newMessages = collect();
 
+            $messageIds = collect();
             if (!empty($result['history'])) {
                 foreach ($result['history'] as $historyRecord) {
                     $messagesAdded = $historyRecord->getMessagesAdded();
                     if ($messagesAdded) {
                         foreach ($messagesAdded as $msgAdded) {
-                            $msg = $msgAdded->getMessage();
-                            $fullMsg = $this->apiService->getMessage($account, $msg->getId());
-                            $newMessages->push($this->parseGmailMessage($fullMsg, true, $account));
+                            $messageIds->push($msgAdded->getMessage()->getId());
                         }
+                    }
+                }
+            }
+
+            if ($messageIds->isNotEmpty()) {
+                // Chunk to adhere to batch limits (standard 100, we use 50 for safety)
+                foreach ($messageIds->unique()->chunk(50) as $chunk) {
+                    $batchedMessages = $this->apiService->getMessagesBatch($account, $chunk->toArray());
+                    foreach ($batchedMessages as $fullMsg) {
+                        $newMessages->push($this->parseGmailMessage($fullMsg, true, $account));
                     }
                 }
             }
@@ -468,21 +481,27 @@ class GmailAdapter extends BaseEmailAdapter
             $account->save();
 
             $fetched = 0;
-            foreach ($messages as $msgSummary) {
-                try {
-                    $fullMsg = $this->apiService->getMessage($account, $msgSummary->getId());
-                    $emailData = $this->parseGmailMessage($fullMsg);
-                    
-                    // Store using sync service (provider agnostic)
-                    // We explicitly disable broadcasting for backfill
-                    app(EmailSyncService::class)->storeEmail($account, $emailData, $labelId, false);
-                    $fetched++;
-                } catch (\Throwable $e) {
-                    Log::warning('[GmailAdapter] Failed to process single message during backfill', [
-                        'account_id' => $account->id,
-                        'message_id' => $msgSummary->getId(),
-                        'error' => $e->getMessage(),
-                    ]);
+
+            $messageIds = $messages->map(fn($msg) => $msg->getId())->toArray();
+
+            if (!empty($messageIds)) {
+                $batchedMessages = $this->apiService->getMessagesBatch($account, $messageIds);
+
+                foreach ($batchedMessages as $fullMsg) {
+                    try {
+                        $emailData = $this->parseGmailMessage($fullMsg);
+
+                        // Store using sync service (provider agnostic)
+                        // We explicitly disable broadcasting for backfill
+                        app(EmailSyncService::class)->storeEmail($account, $emailData, $labelId, false);
+                        $fetched++;
+                    } catch (\Throwable $e) {
+                        Log::warning('[GmailAdapter] Failed to process single message during backfill', [
+                            'account_id' => $account->id,
+                            'message_id' => $fullMsg->getId(),
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
                 }
             }
 
