@@ -20,7 +20,7 @@ class DevController extends Controller
      */
     public function __construct()
     {
-        if (! app()->environment('local', 'testing')) {
+        if (! \Illuminate\Support\Facades\Gate::check('access-dev-tools')) {
             abort(403, 'Development endpoints are disabled in production.');
         }
     }

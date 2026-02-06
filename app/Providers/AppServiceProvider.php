@@ -87,6 +87,14 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(\App\Models\FaqArticle::class, \App\Policies\FaqPolicy::class);
         Gate::policy(\Spatie\Permission\Models\Role::class, \App\Policies\RolePolicy::class);
 
+        // Define a gate for dev tools access
+        // This provides a layer of defense against accidental "APP_ENV=local" in production.
+        // Even if the environment is wrong, dev tools will be blocked if dev dependencies (Faker) are missing.
+        Gate::define('access-dev-tools', function ($user = null) {
+            return app()->environment('local', 'testing')
+                && class_exists(\Faker\Factory::class);
+        });
+
         // Pulse authorization - allow users with system.maintenance permission
         Gate::define('viewPulse', function ($user) {
             return $user->hasPermissionTo('system.maintenance');
