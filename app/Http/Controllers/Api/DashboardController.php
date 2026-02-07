@@ -5,13 +5,15 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use App\Services\DashboardService;
+use App\Services\PermissionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class DashboardController extends Controller
 {
     public function __construct(
-        protected DashboardService $dashboardService
+        protected DashboardService $dashboardService,
+        protected PermissionService $permissionService
     ) {}
 
     /**
@@ -85,15 +87,21 @@ class DashboardController extends Controller
     protected function resolveTeam(Request $request): ?Team
     {
         $teamId = $request->input('team_id');
+        $user = $request->user();
 
         if (! $teamId) {
             // Try to get the user's first team
-            $user = $request->user();
             $firstTeam = $user->teams()->first();
 
             return $firstTeam;
         }
 
-        return Team::where('public_id', $teamId)->first();
+        $team = Team::where('public_id', $teamId)->first();
+
+        if ($team && ! $this->permissionService->isTeamMember($user, $team)) {
+            abort(403, 'Unauthorized access to this team dashboard.');
+        }
+
+        return $team;
     }
 }
