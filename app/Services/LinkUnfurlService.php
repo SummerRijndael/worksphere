@@ -8,6 +8,7 @@ use App\Models\BlockedUrl;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use shweshi\OpenGraph\OpenGraph;
+use App\Services\SecureOpenGraph;
 
 class LinkUnfurlService
 {
@@ -16,14 +17,9 @@ class LinkUnfurlService
     public function __construct(
         protected AuditService $auditService
     ) {
-        $this->openGraph = new OpenGraph;
+        $this->openGraph = new SecureOpenGraph;
     }
 
-    /**
-     * Fetch OpenGraph data for a URL.
-     *
-     * @throws \Exception
-     */
     /**
      * Fetch OpenGraph data for a URL.
      *
@@ -233,6 +229,11 @@ class LinkUnfurlService
             return $result;
 
         } catch (\Exception $e) {
+            // Propagate security exceptions to ensure blocking works correctly
+            if (str_contains($e->getMessage(), 'private IP') || str_contains($e->getMessage(), 'blocked')) {
+                throw new \Exception('unsafe_content_blocked');
+            }
+
             Log::error("Link unfurl failed for {$url}: ".$e->getMessage());
 
             // Return minimal data on failure so UI doesn't break

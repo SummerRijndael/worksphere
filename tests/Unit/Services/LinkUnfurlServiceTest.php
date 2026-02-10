@@ -29,21 +29,12 @@ class LinkUnfurlServiceTest extends TestCase
 
     public function test_it_unfurls_valid_url()
     {
-        // Mock OpenGraph fetch logic by partially mocking the service
-        // OR we can trust the library works and just test our logic around it.
-        // For unit test, we should mock the behavior of OpenGraph library,
-        // but since it's instantiated inside the service constructor (tight coupling),
-        // we might modify the service to accept dependency injection or use a partial mock.
-        // For now, let's assume network calls might fail in pure unit tests, so we skip the actual fetch
-        // or refactor service to allow injection.
-
-        // Refactoring Service to allow setter or injection is best practice,
-        // but for speed, let's test the Blocking and Caching logic which are our wrappers.
-
         $url = 'https://example.com';
+        $cacheKey = 'link_unfurl:'.md5($url);
 
-        Cache::shouldReceive('remember')
+        Cache::shouldReceive('get')
             ->once()
+            ->with($cacheKey)
             ->andReturn([
                 'title' => 'Example',
                 'url' => $url,
