@@ -39,7 +39,7 @@ class EmailAccountSSRFTest extends TestCase
         // With the fix, it should be "Access to private IP addresses is not allowed"
         $this->assertTrue(
             str_contains($content['message'], 'private IP') || str_contains($content['message'], 'blocked'),
-            'Response message should indicate blocking of private IP. Actual: ' . $content['message']
+            'Response message should indicate blocking of private IP. Actual: '.$content['message']
         );
     }
 
@@ -68,7 +68,7 @@ class EmailAccountSSRFTest extends TestCase
 
         $this->assertTrue(
             str_contains($content['message'], 'private IP') || str_contains($content['message'], 'blocked'),
-            'Response message should indicate blocking of localhost. Actual: ' . $content['message']
+            'Response message should indicate blocking of localhost. Actual: '.$content['message']
         );
     }
 
@@ -97,7 +97,7 @@ class EmailAccountSSRFTest extends TestCase
 
         $this->assertTrue(
             str_contains($content['message'], 'private IP') || str_contains($content['message'], 'blocked'),
-            'Response message should indicate blocking of host "0". Actual: ' . $content['message']
+            'Response message should indicate blocking of host "0". Actual: '.$content['message']
         );
     }
 }

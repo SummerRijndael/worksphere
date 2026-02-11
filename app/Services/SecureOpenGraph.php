@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\Log;
+use Symfony\Component\HttpFoundation\IpUtils;
 
 class SecureOpenGraph
 {
@@ -10,6 +11,7 @@ class SecureOpenGraph
      * Private/Internal IP ranges to block.
      */
     protected array $blockedRanges = [
+        // IPv4
         '0.0.0.0/8',
         '10.0.0.0/8',
         '100.64.0.0/10',
@@ -26,6 +28,15 @@ class SecureOpenGraph
         '224.0.0.0/4',
         '240.0.0.0/4',
         '255.255.255.255/32',
+        // IPv6
+        '::1/128',
+        '::/128',
+        'fc00::/7',
+        'fe80::/10',
+        'fec0::/10',
+        'ff00::/8',
+        '2001:db8::/32',
+        '::ffff:0:0/96',
     ];
 
     /**
@@ -35,10 +46,21 @@ class SecureOpenGraph
     {
         $maxRedirects = 5;
         $currentUrl = $url;
-        
+
         for ($i = 0; $i < $maxRedirects; $i++) {
-            if (!$this->validateUrl($currentUrl)) {
-                throw new \Exception("Invalid or prohibited URL: " . $currentUrl);
+            $parts = parse_url($currentUrl);
+            if (! $parts || ! isset($parts['host']) || ! in_array($parts['scheme'], ['http', 'https'])) {
+                throw new \Exception('Invalid or prohibited URL: '.$currentUrl);
+            }
+
+            $host = $parts['host'];
+            $port = $parts['port'] ?? ($parts['scheme'] === 'https' ? 443 : 80);
+
+            // Resolve and Validate IP
+            try {
+                $validatedIp = $this->resolveAndValidate($host);
+            } catch (\Exception $e) {
+                throw new \Exception('Invalid or prohibited URL: '.$currentUrl.' - '.$e->getMessage());
             }
 
             $curl = curl_init($currentUrl);
@@ -47,7 +69,10 @@ class SecureOpenGraph
             curl_setopt($curl, CURLOPT_TIMEOUT, 10);
             curl_setopt($curl, CURLOPT_MAXREDIRS, 0);
             curl_setopt($curl, CURLOPT_USERAGENT, 'WorkSphere Link Crawler / 1.0');
-            
+
+            // DNS Pinning: Force resolution to the validated IP to prevent DNS Rebinding (TOC/TOU)
+            curl_setopt($curl, CURLOPT_RESOLVE, ["{$host}:{$port}:{$validatedIp}"]);
+
             $response = curl_exec($curl);
             $httpCode = curl_getinfo($curl, CURLINFO_HTTP_CODE);
             $redirectUrl = curl_getinfo($curl, CURLINFO_REDIRECT_URL);
@@ -55,46 +80,93 @@ class SecureOpenGraph
 
             if ($httpCode >= 300 && $httpCode < 400 && $redirectUrl) {
                 $currentUrl = $this->resolveRedirect($currentUrl, $redirectUrl);
+
                 continue;
             }
 
             if ($httpCode !== 200) {
-                throw new \Exception("Failed to fetch URL, HTTP Code: " . $httpCode);
+                throw new \Exception('Failed to fetch URL, HTTP Code: '.$httpCode);
             }
 
             return $this->parseOpenGraph($response, $currentUrl);
         }
 
-        throw new \Exception("Too many redirects");
+        throw new \Exception('Too many redirects');
+    }
+
+    /**
+     * Resolve IPs for a host, validate them, and return one safe IP.
+     */
+    protected function resolveAndValidate(string $host): string
+    {
+        // Resolve all IPs (A and AAAA)
+        $ips = $this->resolveIps($host);
+
+        if (empty($ips)) {
+            throw new \Exception("Could not resolve host: {$host}");
+        }
+
+        // Validate all IPs
+        foreach ($ips as $ip) {
+            if ($this->isBlockedIp($ip)) {
+                Log::warning("SSRF Attempt Blocked: Host {$host} resolved to blocked IP {$ip}");
+                throw new \Exception('Host resolved to blocked IP');
+            }
+        }
+
+        // Return the first IP (safe to use as all are validated)
+        return $ips[0];
     }
 
     /**
      * Validate URL and its resolved IP address.
+     * Kept for backward compatibility/testing if needed.
      */
     protected function validateUrl(string $url): bool
     {
         $parts = parse_url($url);
-        if (!$parts || !isset($parts['host']) || !in_array($parts['scheme'], ['http', 'https'])) {
+        if (! $parts || ! isset($parts['host'])) {
             return false;
         }
 
-        $host = $parts['host'];
-        $port = $parts['port'] ?? ($parts['scheme'] === 'https' ? 443 : 80);
+        try {
+            $this->resolveAndValidate($parts['host']);
 
-        // Resolve IP
-        $ips = gethostbynamel($host);
-        if (!$ips) {
+            return true;
+        } catch (\Exception $e) {
             return false;
         }
+    }
 
-        foreach ($ips as $ip) {
-            if ($this->isBlockedIp($ip)) {
-                Log::warning("SSRF Attempt Blocked: Host {$host} resolved to blocked IP {$ip}");
-                return false;
+    /**
+     * Resolve IPs for a host.
+     */
+    protected function resolveIps(string $host): array
+    {
+        $ips = [];
+        // Silence warnings just in case
+        $records = @dns_get_record($host, DNS_A | DNS_AAAA);
+
+        if ($records) {
+            foreach ($records as $record) {
+                if (isset($record['ip'])) {
+                    $ips[] = $record['ip'];
+                } elseif (isset($record['ipv6'])) {
+                    $ips[] = $record['ipv6'];
+                }
             }
         }
 
-        return true;
+        // Fallback for some systems where dns_get_record might fail or be disabled
+        // or if dns_get_record returns empty but gethostbynamel might work (e.g. /etc/hosts)
+        if (empty($ips)) {
+            $fallback = gethostbynamel($host);
+            if ($fallback) {
+                $ips = array_merge($ips, $fallback);
+            }
+        }
+
+        return array_values(array_unique($ips));
     }
 
     /**
@@ -102,30 +174,7 @@ class SecureOpenGraph
      */
     protected function isBlockedIp(string $ip): bool
     {
-        foreach ($this->blockedRanges as $range) {
-            if ($this->ipInRage($ip, $range)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * Check if IP is in CIDR range.
-     */
-    protected function ipInRage(string $ip, string $range): bool
-    {
-        if (strpos($range, '/') === false) {
-            $range .= '/32';
-        }
-        
-        list($subnet, $bits) = explode('/', $range);
-        $ip = ip2long($ip);
-        $subnet = ip2long($subnet);
-        $mask = -1 << (32 - $bits);
-        $subnet &= $mask;
-        
-        return ($ip & $mask) == $subnet;
+        return IpUtils::checkIp($ip, $this->blockedRanges);
     }
 
     /**
@@ -140,20 +189,20 @@ class SecureOpenGraph
         $parts = parse_url($baseUrl);
         $scheme = $parts['scheme'];
         $host = $parts['host'];
-        $port = isset($parts['port']) ? ':' . $parts['port'] : '';
+        $port = isset($parts['port']) ? ':'.$parts['port'] : '';
 
         if (strpos($redirectUrl, '//') === 0) {
-            return $scheme . ':' . $redirectUrl;
+            return $scheme.':'.$redirectUrl;
         }
 
         if (strpos($redirectUrl, '/') === 0) {
-            return $scheme . '://' . $host . $port . $redirectUrl;
+            return $scheme.'://'.$host.$port.$redirectUrl;
         }
 
         $path = isset($parts['path']) ? $parts['path'] : '/';
         $path = substr($path, 0, strrpos($path, '/') + 1);
-        
-        return $scheme . '://' . $host . $port . $path . $redirectUrl;
+
+        return $scheme.'://'.$host.$port.$path.$redirectUrl;
     }
 
     /**
@@ -162,7 +211,7 @@ class SecureOpenGraph
     protected function parseOpenGraph(string $html, string $url): array
     {
         libxml_use_internal_errors(true);
-        $doc = new \DOMDocument();
+        $doc = new \DOMDocument;
         $doc->loadHTML($html);
         libxml_clear_errors();
 
@@ -189,13 +238,13 @@ class SecureOpenGraph
 
             // Fallback for some common names
             $name = $meta->getAttribute('name');
-            if (!$tags['description'] && $name === 'description') {
+            if (! $tags['description'] && $name === 'description') {
                 $tags['description'] = $content;
             }
         }
 
         // Fallback for title
-        if (!$tags['title']) {
+        if (! $tags['title']) {
             $titleNodes = $doc->getElementsByTagName('title');
             if ($titleNodes->length > 0) {
                 $tags['title'] = $titleNodes->item(0)->textContent;

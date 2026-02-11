@@ -13,10 +13,15 @@ class CallParticipantJoined implements ShouldBroadcastNow
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
     public string $chatPublicId;
+
     public string $chatType;
+
     public string $callId;
+
     public string $participantPublicId;
+
     public string $participantName;
+
     public ?string $participantAvatar;
 
     public function __construct(string $chatPublicId, string $chatType, string $callId, string $participantPublicId, string $participantName, ?string $participantAvatar)
@@ -42,6 +47,7 @@ class CallParticipantJoined implements ShouldBroadcastNow
     public function broadcastOn(): PrivateChannel
     {
         $prefix = $this->chatType === 'dm' ? 'dm' : 'group';
+
         return new PrivateChannel("{$prefix}.{$this->chatPublicId}");
     }
 

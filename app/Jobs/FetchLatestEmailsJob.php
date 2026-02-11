@@ -269,7 +269,7 @@ class FetchLatestEmailsJob implements ShouldBeUnique, ShouldQueue
             // We fetch a batch (e.g. 500) to ensure we don't load 50k headers at once if the gap is huge.
             $batchSize = config('email.fetch_batch_size', 500);
             $rangeEnd = $forwardCursor + $batchSize;
-            
+
             // If we know the max UID, we can clamp it
             if ($uidNext > 0) {
                 $rangeEnd = min($rangeEnd, $uidNext);

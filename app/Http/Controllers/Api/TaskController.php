@@ -647,7 +647,7 @@ class TaskController extends Controller
     {
         // Status lock
         if ($task->status->isLocked()) {
-            abort(403, "Task status cannot be modified at this stage.");
+            abort(403, 'Task status cannot be modified at this stage.');
         }
 
         // Check permissions based on stage (Bucket Logic)
@@ -925,7 +925,7 @@ class TaskController extends Controller
 
         // Status lock
         if ($task->status === TaskStatus::SentToClient) {
-            abort(403, "Task cannot be archived while awaiting client feedback.");
+            abort(403, 'Task cannot be archived while awaiting client feedback.');
         }
 
         if (! $this->workflowService->archiveTask($task, $request->user())) {
@@ -1045,10 +1045,10 @@ class TaskController extends Controller
                     $sq->forModel($task);
                 })
                 // Related checklist item logs
-                ->orWhere(function ($sq) use ($checklistIds) {
-                    $sq->where('auditable_type', \App\Models\TaskChecklistItem::class)
-                       ->whereIn('auditable_id', $checklistIds);
-                });
+                    ->orWhere(function ($sq) use ($checklistIds) {
+                        $sq->where('auditable_type', \App\Models\TaskChecklistItem::class)
+                            ->whereIn('auditable_id', $checklistIds);
+                    });
             })
             ->with(['user'])
             ->latest()

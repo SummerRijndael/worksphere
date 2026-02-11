@@ -166,7 +166,7 @@ class VideoCallController extends Controller
         $appId = config('services.cloudflare.app_id');
         $secret = config('services.cloudflare.app_secret');
 
-        if (!$appId || !$secret) {
+        if (! $appId || ! $secret) {
             return response()->json(['error' => 'SFU not configured'], 503);
         }
 
@@ -277,12 +277,12 @@ class VideoCallController extends Controller
             $reason
         ));
 
-        // If no participants left, the call is technically over, 
+        // If no participants left, the call is technically over,
         // but we assume the frontend handles the "last person leaving" logic via the events.
         // We could explicitly check `count($participants) === 0` here if we wanted to trigger a CallEnded event.
         // For backwards compatibility, if it's a DM and someone hangs up, we can still send CallEnded.
         if ($chat->type === 'dm') {
-             event(new CallEnded($chat, $user->public_id, $callId, $reason));
+            event(new CallEnded($chat, $user->public_id, $callId, $reason));
         }
 
         return response()->json(['status' => 'ok']);
@@ -306,12 +306,12 @@ class VideoCallController extends Controller
             'avatar' => $user->avatar_thumb_url,
             'joined_at' => now()->timestamp,
         ];
-        
+
         // Use a simple array in cache for now. Ideally this would be a Redis Set.
         $participants = \Illuminate\Support\Facades\Cache::get($key, []);
-        
+
         // Remove existing if present (update)
-        $participants = array_filter($participants, fn($p) => $p['public_id'] !== $user->public_id);
+        $participants = array_filter($participants, fn ($p) => $p['public_id'] !== $user->public_id);
         $participants[] = $participant;
 
         // Expire after 2 hours to clean up stale calls
@@ -322,9 +322,9 @@ class VideoCallController extends Controller
     {
         $key = $this->getCacheKey($chatId, $callId);
         $participants = \Illuminate\Support\Facades\Cache::get($key, []);
-        
-        $participants = array_filter($participants, fn($p) => $p['public_id'] !== $userPublicId);
-        
+
+        $participants = array_filter($participants, fn ($p) => $p['public_id'] !== $userPublicId);
+
         if (empty($participants)) {
             \Illuminate\Support\Facades\Cache::forget($key);
         } else {
@@ -335,6 +335,7 @@ class VideoCallController extends Controller
     private function getParticipantsList(string $chatId, string $callId): array
     {
         $key = $this->getCacheKey($chatId, $callId);
+
         return array_values(\Illuminate\Support\Facades\Cache::get($key, []));
     }
 
@@ -347,6 +348,7 @@ class VideoCallController extends Controller
     private function getCallMetadata(string $chatId, string $callId): array
     {
         $key = "call:meta:{$chatId}:{$callId}";
+
         return \Illuminate\Support\Facades\Cache::get($key, []);
     }
 }

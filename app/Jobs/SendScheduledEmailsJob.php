@@ -39,6 +39,7 @@ class SendScheduledEmailsJob implements ShouldQueue
                 }
             });
     }
+
     /**
      * Get the middleware the job should pass through.
      */
