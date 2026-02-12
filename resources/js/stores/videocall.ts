@@ -30,6 +30,7 @@ export const useVideoCallStore = defineStore('videoCall', () => {
   
   // Maps publicId -> Stream
   const remoteStreams = ref<Map<string, MediaStream>>(new Map());
+  const remoteScreenStreams = ref<Map<string, MediaStream>>(new Map());
   
   const isMuted = ref(false);
   const isCameraOff = ref(false);
@@ -90,6 +91,7 @@ export const useVideoCallStore = defineStore('videoCall', () => {
         currentCall.value.participants.delete(publicId);
     }
     remoteStreams.value.delete(publicId);
+    remoteScreenStreams.value.delete(publicId);
   }
 
   function setState(state: CallState) {
@@ -114,6 +116,18 @@ export const useVideoCallStore = defineStore('videoCall', () => {
 
   function addRemoteStream(publicId: string, stream: MediaStream) {
     remoteStreams.value.set(publicId, stream);
+  }
+
+  function removeRemoteStream(publicId: string) {
+    remoteStreams.value.delete(publicId);
+  }
+
+  function addRemoteScreenStream(publicId: string, stream: MediaStream) {
+    remoteScreenStreams.value.set(publicId, stream);
+  }
+
+  function removeRemoteScreenStream(publicId: string) {
+    remoteScreenStreams.value.delete(publicId);
   }
 
   function toggleMute() {
@@ -164,6 +178,7 @@ export const useVideoCallStore = defineStore('videoCall', () => {
     currentCall.value = null;
     localStream.value = null;
     remoteStreams.value.clear(); 
+    remoteScreenStreams.value.clear();
     isMuted.value = false;
     isCameraOff.value = false;
     callDuration.value = 0;
@@ -178,6 +193,7 @@ export const useVideoCallStore = defineStore('videoCall', () => {
     currentCall,
     localStream,
     remoteStreams,
+    remoteScreenStreams,
     isMuted,
     isCameraOff,
     callDuration,
@@ -198,6 +214,9 @@ export const useVideoCallStore = defineStore('videoCall', () => {
     setState,
     setLocalStream,
     addRemoteStream,
+    removeRemoteStream,
+    addRemoteScreenStream,
+    removeRemoteScreenStream,
     toggleMute,
     toggleCamera,
     setError,

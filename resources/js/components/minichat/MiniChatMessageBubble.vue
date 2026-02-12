@@ -88,9 +88,33 @@ const firstUrl = computed(() => {
 <template>
     <!-- System Message -->
     <div v-if="message.type === 'system'" class="flex justify-center my-2 px-4">
-        <span class="text-xs text-[var(--text-tertiary)] text-center italic leading-tight">
-            {{ message.content }}
-        </span>
+        <div 
+            class="flex items-center gap-1.5 text-[10px] text-[var(--text-tertiary)] bg-[var(--surface-tertiary)]/50 border border-[var(--border-default)] px-2 py-1 rounded-full shadow-sm italic"
+            :class="{ '!text-red-500 !border-red-200 !bg-red-50': message.metadata?.event === 'missed' }"
+        >
+            <template v-if="message.metadata?.system_type === 'call_event'">
+                <Icon 
+                    :name="message.metadata.event === 'missed' ? 'PhoneMissed' : (message.metadata.type === 'video' ? 'Video' : 'Phone')" 
+                    :size="10" 
+                    class="opacity-70" 
+                />
+                <span v-if="message.metadata.event === 'started'">
+                    {{ message.metadata.user_name }} started a {{ message.metadata.type }} call
+                </span>
+                <span v-else-if="message.metadata.event === 'ended'">
+                    Call ended
+                </span>
+                <span v-else-if="message.metadata.event === 'missed'">
+                    Missed {{ message.metadata.type }} call
+                </span>
+                <span v-else>
+                    {{ message.content }}
+                </span>
+            </template>
+            <template v-else>
+                <span>{{ message.content }}</span>
+            </template>
+        </div>
     </div>
 
     <!-- User Message -->

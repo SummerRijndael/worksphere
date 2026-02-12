@@ -59,6 +59,12 @@ return Application::configure(basePath: dirname(__DIR__))
             \App\Http\Middleware\CheckImpersonation::class,
         ]);
 
+        // Exclude certain fields from TrimStrings middleware
+        $middleware->trimStrings(except: [
+            'sessionDescription.sdp',
+            'sdp',
+        ]);
+
         // Exclude certain API routes from CSRF verification
         // These routes are protected by auth:sanctum and rate limiting
         $middleware->validateCsrfTokens(except: [

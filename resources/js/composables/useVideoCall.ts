@@ -142,12 +142,15 @@ export function useVideoCall() {
           avatar: user.avatar
       };
 
+      const chatType = store.currentCall?.chatType || (user.publicId === 'group' ? 'group' : 'dm');
+
       store.setCall({
         callId: call_id,
         chatId,
         callType,
         participants, // Initially empty for group, populated for DM below
         isOutgoing: true,
+        chatType,
         startedAt: null,
       });
 
@@ -160,7 +163,7 @@ export function useVideoCall() {
         callId: call_id,
         chatId,
         callType,
-        chatType: 'dm', // startCall is currently DM-only
+        chatType,
         direction: 'outgoing',
         remoteUser, // Kept for backwards compatibility/DM display
         selfPublicId: authStore.user?.public_id,
@@ -197,7 +200,15 @@ export function useVideoCall() {
     if (data.caller_public_id === authStore.user?.public_id) return;
 
     // If already in a call, ignore
-    if (store.isCallActive) return;
+    if (store.isCallActive) {
+      if (!callPopup || callPopup.closed) {
+        console.log('[VideoCall] Detected stale call state in store, forcing cleanup');
+        cleanup();
+      } else {
+        console.warn('[VideoCall] Dropping incoming call: a call is already active');
+        return;
+      }
+    }
 
     // HYBRID APPROACH:
     // If DM -> Full Ring
@@ -253,6 +264,7 @@ export function useVideoCall() {
           callType: data.call_type,
           participants: new Map(), // Will be populated by join() API
           isOutgoing: false,
+          chatType: data.chat_type,
           startedAt: null,
       });
       acceptCall();
@@ -302,13 +314,19 @@ export function useVideoCall() {
     // If target is specified and it's NOT us, ignore
     if (data.target_public_id && data.target_public_id !== authStore.user?.public_id) return;
 
-    // Buffer if popup not open
-    if (callPopup && !callPopup.closed) {
-        return; 
-    }
+    // Buffer if popup is open (it will handle its own signaling once joined)
+    // or if we are in ringing state but haven't accepted yet.
+    console.log(`[VideoCall] 📥 Received signal from ${data.sender_public_id}. Popup open: ${!!callPopup && !callPopup.closed}`);
+    
+    pendingSignals.value.push(data);
 
-    console.log(`[VideoCall] Buffering signal from ${data.sender_public_id}`);
-    pendingSignals.value.push(data); // Push full data object
+    // If popup is already open, we also broadcast it, but we MUST keep it in pendingSignals 
+    // in case the popup is still in the lobby/initializing phase.
+    if (callPopup && !callPopup.closed) {
+        // We don't need to do anything else here; the popup might already be listening 
+        // to Echo directly, but buffering here ensures we can pass it via sessionStorage 
+        // if the popup just opened.
+    }
   }
 
   async function acceptCall() {
@@ -336,7 +354,7 @@ export function useVideoCall() {
       chatType: store.currentCall.chatType || (remoteUser.publicId === 'group' ? 'group' : 'dm'),
       direction: 'incoming',
       remoteUser,
-      pendingSignals: pendingSignals.value,
+      pendingSignals: [...pendingSignals.value],
       selfPublicId: authStore.user?.public_id,
     };
     

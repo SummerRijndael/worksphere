@@ -166,6 +166,16 @@ return [
             ],
         ],
 
+        \Laravel\Reverb\Pulse\Recorders\ReverbConnections::class => [
+            'enabled' => env('PULSE_REVERB_CONNECTIONS_ENABLED', true),
+            'sample_rate' => env('PULSE_REVERB_CONNECTIONS_SAMPLE_RATE', 1),
+        ],
+
+        \Laravel\Reverb\Pulse\Recorders\ReverbMessages::class => [
+            'enabled' => env('PULSE_REVERB_MESSAGES_ENABLED', true),
+            'sample_rate' => env('PULSE_REVERB_MESSAGES_SAMPLE_RATE', 1),
+        ],
+
         Recorders\Servers::class => [
             'server_name' => env('PULSE_SERVER_NAME', gethostname()),
             'directories' => explode(':', env('PULSE_SERVER_DIRECTORIES', '/')),

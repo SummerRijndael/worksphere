@@ -422,8 +422,10 @@ export function useChatRealtime() {
    * Cleanup on unmount.
    */
   onUnmounted(() => {
-    unsubscribeAll();
-    isConnected.value = false;
+    // We NO LONGER call unsubscribeAll() here because subscribedChannels is a singleton.
+    // If a short-lived component (like MiniChatWindow) unmounts, it shouldn't nuke 
+    // the global listeners used by the sidebar/header.
+    // isConnected.value = false; // Also don't reset this globally
   });
 
   // Watch for new chats and subscribe
