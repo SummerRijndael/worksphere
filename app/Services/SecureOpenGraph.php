@@ -3,13 +3,15 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\Log;
+use Symfony\Component\HttpFoundation\IpUtils;
 
 class SecureOpenGraph
 {
     /**
-     * Private/Internal IP ranges to block.
+     * Private/Internal IP ranges to block (IPv4 and IPv6).
      */
     protected array $blockedRanges = [
+        // IPv4
         '0.0.0.0/8',
         '10.0.0.0/8',
         '100.64.0.0/10',
@@ -26,6 +28,16 @@ class SecureOpenGraph
         '224.0.0.0/4',
         '240.0.0.0/4',
         '255.255.255.255/32',
+        // IPv6
+        '::1/128',          // Loopback
+        '::/128',           // Unspecified
+        'fc00::/7',         // Unique Local
+        'fe80::/10',        // Link-local
+        'fec0::/10',        // Site-local
+        'ff00::/8',         // Multicast
+        '2001:db8::/32',    // Documentation
+        '::ffff:0:0/96',    // IPv4-mapped IPv6
+        '64:ff9b::/96',     // IPv4-Embedded
     ];
 
     /**
@@ -37,8 +49,11 @@ class SecureOpenGraph
         $currentUrl = $url;
         
         for ($i = 0; $i < $maxRedirects; $i++) {
-            if (!$this->validateUrl($currentUrl)) {
-                throw new \Exception("Invalid or prohibited URL: " . $currentUrl);
+            // Resolve and Validate IP
+            try {
+                $safeIp = $this->getSafeIp($currentUrl);
+            } catch (\Exception $e) {
+                 throw new \Exception("Invalid or prohibited URL: " . $currentUrl . " (" . $e->getMessage() . ")");
             }
 
             $curl = curl_init($currentUrl);
@@ -48,7 +63,22 @@ class SecureOpenGraph
             curl_setopt($curl, CURLOPT_MAXREDIRS, 0);
             curl_setopt($curl, CURLOPT_USERAGENT, 'WorkSphere Link Crawler / 1.0');
             
+            // DNS Pinning: Force cURL to use the validated safe IP
+            $parsed = parse_url($currentUrl);
+            $host = $parsed['host'];
+            $port = $parsed['port'] ?? ($parsed['scheme'] === 'https' ? 443 : 80);
+
+            // Format for CURLOPT_RESOLVE: ["HOST:PORT:IP"]
+            curl_setopt($curl, CURLOPT_RESOLVE, ["{$host}:{$port}:{$safeIp}"]);
+
             $response = curl_exec($curl);
+
+            if (curl_errno($curl)) {
+                $error = curl_error($curl);
+                curl_close($curl);
+                throw new \Exception("cURL error: " . $error);
+            }
+
             $httpCode = curl_getinfo($curl, CURLINFO_HTTP_CODE);
             $redirectUrl = curl_getinfo($curl, CURLINFO_REDIRECT_URL);
             curl_close($curl);
@@ -69,63 +99,63 @@ class SecureOpenGraph
     }
 
     /**
-     * Validate URL and its resolved IP address.
+     * Resolve hostname to a safe IP address.
+     * Checks both IPv4 and IPv6 records and validates against blocked ranges.
      */
-    protected function validateUrl(string $url): bool
+    protected function getSafeIp(string $url): string
     {
         $parts = parse_url($url);
         if (!$parts || !isset($parts['host']) || !in_array($parts['scheme'], ['http', 'https'])) {
-            return false;
+            throw new \Exception("Invalid URL structure or scheme");
         }
 
         $host = $parts['host'];
-        $port = $parts['port'] ?? ($parts['scheme'] === 'https' ? 443 : 80);
 
-        // Resolve IP
-        $ips = gethostbynamel($host);
-        if (!$ips) {
-            return false;
+        // If host is an IP literal
+        if (filter_var($host, FILTER_VALIDATE_IP)) {
+             if (IpUtils::checkIp($host, $this->blockedRanges)) {
+                 Log::warning("SSRF Attempt Blocked: IP {$host} is in blocked range");
+                 throw new \Exception("Blocked IP address");
+             }
+             return $host;
+        }
+
+        // Resolve DNS
+        $records = @dns_get_record($host, DNS_A + DNS_AAAA);
+
+        $ips = [];
+        if ($records) {
+            foreach ($records as $record) {
+                if (isset($record['ipv6'])) {
+                    $ips[] = $record['ipv6'];
+                }
+                if (isset($record['ip'])) {
+                    $ips[] = $record['ip'];
+                }
+            }
+        }
+
+        // Fallback to gethostbynamel if dns_get_record returned nothing or failed
+        if (empty($ips)) {
+             $ipv4s = gethostbynamel($host);
+             if ($ipv4s) {
+                 $ips = array_merge($ips, $ipv4s);
+             }
+        }
+
+        if (empty($ips)) {
+             throw new \Exception("Could not resolve host");
         }
 
         foreach ($ips as $ip) {
-            if ($this->isBlockedIp($ip)) {
-                Log::warning("SSRF Attempt Blocked: Host {$host} resolved to blocked IP {$ip}");
-                return false;
+            if (IpUtils::checkIp($ip, $this->blockedRanges)) {
+                 Log::warning("SSRF Warning: Host {$host} resolves to blocked IP {$ip}");
+                 continue; // Skip unsafe IPs
             }
+            return $ip; // Return first safe IP
         }
 
-        return true;
-    }
-
-    /**
-     * Check if an IP address is in a blocked range.
-     */
-    protected function isBlockedIp(string $ip): bool
-    {
-        foreach ($this->blockedRanges as $range) {
-            if ($this->ipInRage($ip, $range)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * Check if IP is in CIDR range.
-     */
-    protected function ipInRage(string $ip, string $range): bool
-    {
-        if (strpos($range, '/') === false) {
-            $range .= '/32';
-        }
-        
-        list($subnet, $bits) = explode('/', $range);
-        $ip = ip2long($ip);
-        $subnet = ip2long($subnet);
-        $mask = -1 << (32 - $bits);
-        $subnet &= $mask;
-        
-        return ($ip & $mask) == $subnet;
+        throw new \Exception("All resolved IPs are blocked");
     }
 
     /**
@@ -163,7 +193,8 @@ class SecureOpenGraph
     {
         libxml_use_internal_errors(true);
         $doc = new \DOMDocument();
-        $doc->loadHTML($html);
+        // Suppress warnings for malformed HTML
+        @$doc->loadHTML($html);
         libxml_clear_errors();
 
         $tags = [
