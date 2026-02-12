@@ -165,7 +165,9 @@ class VideoCallController extends Controller
         $participants = $this->getParticipantsList($chat->public_id, $callId);
         $metadata = $this->getCallMetadata($chat->public_id, $callId);
 
-        // HYBRID LOGIC: Force SFU for group chats or if total participants > 2
+        // HYBRID LOGIC: Force SFU for group chats OR if total participants > 2.
+        // This ensures group conversations start on Cloudflare immediately,
+        // preventing Mesh-to-SFU transition edge cases for existing participants.
         $mode = ($chat->type === 'group' || count($participants) > 2) ? 'sfu' : 'mesh';
 
         return response()->json([

@@ -36,6 +36,7 @@ class CallParticipantJoined implements ShouldBroadcastNow
             'participant_public_id' => $this->participantPublicId,
             'participant_name' => $this->participantName,
             'participant_avatar' => $this->participantAvatar,
+            'chat_type' => $this->chatType,
         ];
     }
 

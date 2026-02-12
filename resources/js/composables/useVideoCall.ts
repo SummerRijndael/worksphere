@@ -241,6 +241,7 @@ export function useVideoCall() {
           avatar: data.caller_avatar
       }]]),
       isOutgoing: false,
+      chatType: data.chat_type || 'dm',
       startedAt: null,
     });
 
@@ -264,7 +265,7 @@ export function useVideoCall() {
           callType: data.call_type,
           participants: new Map(), // Will be populated by join() API
           isOutgoing: false,
-          chatType: data.chat_type,
+          chatType: data.chat_type || 'group',
           startedAt: null,
       });
       acceptCall();

@@ -42,6 +42,7 @@ interface CallData {
         name: string;
         avatar: string | null;
     };
+    chatType?: "dm" | "group";
     pendingSignals?: any[];
 }
 
@@ -863,8 +864,7 @@ function setupEcho() {
     // I will add `chatType` to `callData` interface and try to read it.
     // If missing, default to `dm`.
 
-    const prefix =
-        (callData.value as any).chatType === "group" ? "group" : "dm";
+    const prefix = callData.value.chatType === "group" ? "group" : "dm";
     const channelName = `${prefix}.${callData.value.chatId}`;
 
     echoChannel = echo.private(channelName);
