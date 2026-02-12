@@ -269,6 +269,11 @@ function mungeSdp(sdp: string): string {
     }
 }
 
+function trace(area: string, message: string, data?: any) {
+    const timestamp = new Date().toISOString().split("T")[1].split(".")[0];
+    console.info(`[RTC-TRACE][${timestamp}][${area}] ${message}`, data || "");
+}
+
 // ============================================================================
 // WebRTC (Mesh)
 // ============================================================================
@@ -545,10 +550,12 @@ async function handleSignal(event: any) {
     // to protect against "Invalid SDP line" errors (max-message-size, sctp-port).
     if (signal.sdp) signal.sdp = mungeSdp(signal.sdp);
 
-    // SFU Session Mapping
+    // SFU: Remote Session Registration & Track Pulling
     if (signal.type === "sfu-session-ready") {
-        console.log(
-            `[SFU] Received session ID ${signal.sessionId} for participant ${senderId}`,
+        trace(
+            "SIGNAL",
+            `Received sfu-session-ready from ${senderId}`,
+            signal.sessionId,
         );
         remoteSfuSessions.set(senderId, signal.sessionId);
         pullParticipantTracks(senderId, signal.sessionId);
@@ -557,65 +564,78 @@ async function handleSignal(event: any) {
 
     // SFU Screen Share Signaling
     if (signal.type === "sfu-screen-share-started") {
+        trace(
+            "SIGNAL",
+            `Received screen-share-started from ${senderId}`,
+            signal,
+        );
         pullSFURemoteScreen(senderId, signal.mid, signal.sessionId);
         return;
     }
     if (signal.type === "sfu-screen-share-stopped") {
+        trace("SIGNAL", `Received screen-share-stopped from ${senderId}`);
         store.removeRemoteScreenStream(senderId);
         return;
     }
 
-    // Get or Create Peer
-    let peer = peers.get(senderId);
+    // Get or Create Peer (MESH ONLY)
+    if (callMode.value === "mesh") {
+        let peer = peers.get(senderId);
 
-    if (!peer) {
-        // Deterministic initiation: prevent both sides from offering at once
-        // If we see an offer, we respond.
-        // If we see an answer but don't have a peer, something is wrong or we joined late.
-        if (signal.type === "offer") {
-            console.log(
-                `[Call] Received offer from ${senderId}, creating responder peer`,
-            );
-            createPeer(senderId, false, localStream.value!);
-            peer = peers.get(senderId);
-        } else if (signal.type === "ice-candidate") {
-            console.warn(
-                `[Call] Received candidate from unknown peer ${senderId}, ignoring`,
-            );
-            return;
-        } else {
-            console.warn(
-                `[Call] Received ${signal.type} from unknown peer ${senderId}`,
-            );
-            return;
+        if (!peer) {
+            // Deterministic initiation: prevent both sides from offering at once
+            // If we see an offer, we respond.
+            // If we see an answer but don't have a peer, something is wrong or we joined late.
+            if (signal.type === "offer") {
+                console.log(
+                    `[Call] Received offer from ${senderId}, creating responder peer`,
+                );
+                createPeer(senderId, false, localStream.value!);
+                peer = peers.get(senderId);
+            } else if (signal.type === "ice-candidate") {
+                console.warn(
+                    `[Call] Received candidate from unknown peer ${senderId}, ignoring`,
+                );
+                return;
+            } else {
+                console.warn(
+                    `[Call] Received ${signal.type} from unknown peer ${senderId}`,
+                );
+                return;
+            }
         }
-    }
 
-    // Handle Glare: if we receive an offer while we are in 'have-local-offer' state
-    // @ts-ignore
-    const pc = peer._pc as RTCPeerConnection;
-    if (signal.type === "offer" && pc && pc.signalingState !== "stable") {
-        const isPolite = selfId < senderId;
-        if (!isPolite) {
+        // Handle Glare: if we receive an offer while we are in 'have-local-offer' state
+        // @ts-ignore
+        const pc = peer._pc as RTCPeerConnection;
+        if (signal.type === "offer" && pc && pc.signalingState !== "stable") {
+            const isPolite = selfId < senderId;
+            if (!isPolite) {
+                console.log(
+                    `[Call] Glare detected with ${senderId}. We are impolite, ignoring their offer.`,
+                );
+                return;
+            }
             console.log(
-                `[Call] Glare detected with ${senderId}. We are impolite, ignoring their offer.`,
+                `[Call] Glare detected with ${senderId}. We are polite, rollback and accept their offer.`,
             );
-            return;
+            try {
+                await pc.setLocalDescription({ type: "rollback" } as any);
+            } catch (e) {
+                console.warn("[Call] Rollback failed", e);
+            }
         }
-        console.log(
-            `[Call] Glare detected with ${senderId}. We are polite, rollback and accept their offer.`,
-        );
+
         try {
-            await pc.setLocalDescription({ type: "rollback" } as any);
+            peer?.signal(signal);
         } catch (e) {
-            console.warn("[Call] Rollback failed", e);
+            console.error(`[Call] Error signaling peer ${senderId}:`, e);
         }
-    }
-
-    try {
-        peer?.signal(signal);
-    } catch (e) {
-        console.error(`[Call] Error signaling peer ${senderId}:`, e);
+    } else {
+        trace(
+            "SIGNAL",
+            `Ignoring MESH signal ${signal.type} from ${senderId} (currently in SFU mode)`,
+        );
     }
 }
 
@@ -661,9 +681,7 @@ async function pullSFURemoteScreen(
 
             // Map MIDs IMMEDIATELY after setLocalDescription
             if (transceiver.mid) {
-                console.log(
-                    `[SFU] Mapping mid ${transceiver.mid} to ${participantPublicId}:screen`,
-                );
+                trace("PULL-SCREEN", `Mapping mid ${transceiver.mid} to ${participantPublicId}:screen`);
                 midToParticipantMap.set(
                     transceiver.mid,
                     `${participantPublicId}:screen`,
@@ -691,6 +709,8 @@ async function pullSFURemoteScreen(
                 ],
                 mungeSdp(sfuPc!.localDescription!.sdp!),
             );
+
+            trace("PULL-SCREEN", `Response for ${participantPublicId}`, res);
 
             if (res.sessionDescription) {
                 await sfuPc!.setRemoteDescription(
@@ -731,14 +751,16 @@ function handleParticipantJoined(event: any) {
 
     // MESH: Negotiate with the new person
     if (callMode.value === "mesh") {
-        // DETERMINISTIC: Only the user with the "Higher" string ID initiates.
         const isInitiator = selfId > publicId;
         if (!peers.has(publicId)) {
-            console.log(
-                `[Call] MESH: New participant joined. Initiating? ${isInitiator}`,
-            );
+            trace("MESH", `Initiating mesh peer for ${publicId} (initiator: ${isInitiator})`);
             createPeer(publicId, isInitiator, localStream.value!);
         }
+    } else {
+        trace(
+            "SFU",
+            `Participant ${publicId} joined. Ignoring MESH negotiation as we are in SFU mode.`,
+        );
     }
 
     // SFU: Negotiate with the new person
@@ -1015,7 +1037,6 @@ function stopScreenShare() {
 // ============================================================================
 
 let sfuPc: RTCPeerConnection | null = null;
-const sfuTransceivers = new Map<string, RTCRtpTransceiver>();
 
 // normalizeSdp has been replaced by mungeSdp for bit-perfect cross-browser compatibility
 
@@ -1049,22 +1070,10 @@ async function joinSFU(stream: MediaStream) {
     await sfuPc.setRemoteDescription(
         new RTCSessionDescription(sessionRes.sessionDescription),
     );
+
     if (sessionRes.sessionId) {
         sfuSessionId.value = sessionRes.sessionId;
         console.log("[SFU] Session established:", sessionRes.sessionId);
-
-        // Broadcast session ID to all existing participants
-        videoCallService
-            .sendSignal(
-                callData.value!.chatId,
-                callData.value!.callId,
-                "signal",
-                {
-                    type: "sfu-session-ready",
-                    sessionId: sessionRes.sessionId,
-                },
-            )
-            .catch(() => {});
     }
 
     // 3. Wait for ICE connection
@@ -1084,11 +1093,11 @@ async function joinSFU(stream: MediaStream) {
     // 4. Register local tracks (Cloudflare needs to know track IDs)
     const trackObjects = sfuPc
         .getTransceivers()
-        .filter((t) => t.sender.track)
-        .map((t) => ({
+        .filter((t: any) => t.sender.track)
+        .map((t: any) => ({
             location: "local",
             mid: t.mid,
-            trackName: t.sender.track!.id,
+            trackName: t.sender.track!.kind, // Use stable names (audio/video)
         }));
 
     await sfuPc.setLocalDescription(await sfuPc.createOffer());
@@ -1098,6 +1107,12 @@ async function joinSFU(stream: MediaStream) {
         trackObjects,
         mungeSdp(sfuPc.localDescription!.sdp!),
     );
+
+    trace("JOIN", "Local tracks published", {
+        trackObjects,
+        res: tracksRes,
+    });
+
     if (tracksRes.sessionDescription) {
         await sfuPc.setRemoteDescription(
             new RTCSessionDescription(tracksRes.sessionDescription),
@@ -1108,48 +1123,57 @@ async function joinSFU(stream: MediaStream) {
             tracksRes,
         );
     }
-    console.log("[SFU] Local tracks published");
+
+    // 5. SIGNAL READY (Now that tracks are safe and registered)
+    if (sfuSessionId.value) {
+        console.log("[SFU] Signaling sfu-session-ready to all peers");
+        videoCallService
+            .sendSignal(callData.value!.chatId, callData.value!.callId, "signal", {
+                type: "sfu-session-ready",
+                sessionId: sfuSessionId.value,
+            })
+            .catch(() => {});
+    }
 
     // 4. Handle remote tracks (Subscribing)
     sfuPc.ontrack = (event) => {
         const track = event.track;
         const mid = event.transceiver.mid;
-        console.log(`[SFU] Received remote track: ${track.kind}, mid: ${mid}`);
+        trace("TRACK", `ontrack: ${track.kind}, mid: ${mid}`, {
+            muted: track.muted,
+            readyState: track.readyState,
+        });
 
-        // Find which participant this belongs to based on signaling data
-        // For Cloudflare SFU, we usually map track IDs or use a lookup.
-        // In our case, we'll store the stream in a map keyed by participant ID.
-        // We'll need to listen for Join events to know which tracks to pull.
+        // Resilient Track Activation: Handle immediate unmute or missing stream container
+        const handleTrackActive = () => {
+            const participantId = midToParticipantMap.get(mid!);
+            trace("TRACK", `Active: ${track.kind} (${mid}) for ${participantId}`, {
+                streams: event.streams.length,
+            });
 
-        event.track.onunmute = () => {
-            console.log(
-                `[SFU] Remote track ${track.kind} (${mid}) unmuted/active`,
-            );
-            // Update remoteStreams once active
-            const streams = event.streams;
-            if (streams && streams[0]) {
-                const participantId = midToParticipantMap.get(mid!);
-                if (participantId) {
-                    if (participantId.endsWith(":screen")) {
-                        const realId = participantId.replace(":screen", "");
-                        console.log(
-                            `[SFU] Assigning SCREEN stream for participant ${realId}`,
-                        );
-                        store.addRemoteScreenStream(realId, streams[0]);
-                    } else {
-                        console.log(
-                            `[SFU] Assigning stream for participant ${participantId}`,
-                        );
-                        store.addRemoteStream(participantId, streams[0]);
-                        startAudioAnalysis(participantId, streams[0]);
-                    }
+            if (participantId) {
+                // FALLBACK: If event.streams is empty, create a new stream from the track
+                const remoteStream =
+                    event.streams[0] || new MediaStream([track]);
+
+                if (participantId.endsWith(":screen")) {
+                    const realId = participantId.replace(":screen", "");
+                    store.addRemoteScreenStream(realId, remoteStream);
                 } else {
-                    console.warn(
-                        `[SFU] Could not find participant for mid ${mid}`,
-                    );
+                    store.addRemoteStream(participantId, remoteStream);
+                    startAudioAnalysis(participantId, remoteStream);
                 }
+            } else {
+                console.warn(`[SFU] Could not find participant for mid ${mid}`);
+                trace("TRACK", "FAILED: Unknown MID", { mid, map: Object.fromEntries(midToParticipantMap) });
             }
         };
+
+        if (track.muted === false) {
+            handleTrackActive();
+        } else {
+            track.onunmute = handleTrackActive;
+        }
     };
 
     // 5. Initial Pull: We wait for 'sfu-session-ready' signals from others.
@@ -1285,6 +1309,11 @@ async function pullParticipantTracks(
                 videoMid: videoTransceiver.mid!,
             });
 
+            trace("PULL", `Requesting tracks for ${participantPublicId}`, {
+                audioMid: audioTransceiver.mid,
+                videoMid: videoTransceiver.mid,
+            });
+
             const res = await videoCallService.sfuSessionTracks(
                 callData.value!.chatId,
                 sfuSessionId.value!,
@@ -1292,18 +1321,20 @@ async function pullParticipantTracks(
                     {
                         location: "remote",
                         sessionId: targetSessionId,
-                        trackName: "audio",
+                        trackName: "audio", // Stable name
                         mid: audioTransceiver.mid,
                     },
                     {
                         location: "remote",
                         sessionId: targetSessionId,
-                        trackName: "video",
+                        trackName: "video", // Stable name
                         mid: videoTransceiver.mid,
                     },
                 ],
                 mungeSdp(sfuPc!.localDescription!.sdp!),
             );
+
+            trace("PULL", `Response for ${participantPublicId}`, res);
 
             if (res.sessionDescription) {
                 await sfuPc!.setRemoteDescription(
@@ -1349,19 +1380,22 @@ async function publishSFUScreenTrack(stream: MediaStream) {
             new RTCSessionDescription(res.sessionDescription),
         );
         sfuScreenMid.value = transceiver.mid;
-        console.log("[SFU] Screen share track published");
+        trace("PUB-SCREEN", "Screen share track published", { mid: transceiver.mid, res });
 
         // Signal to others
+        const signalData = {
+            type: "sfu-screen-share-started",
+            mid: transceiver.mid,
+            sessionId: sfuSessionId.value, // Include session ID
+        };
+        const targetPublicId = undefined; // Or derive if needed
         videoCallService
             .sendSignal(
-                callData.value!.chatId,
-                callData.value!.callId,
+                callData.value.chatId,
+                callData.value.callId,
                 "signal",
-                {
-                    type: "sfu-screen-share-started",
-                    mid: transceiver.mid,
-                    sessionId: sfuSessionId.value, // Include session ID
-                },
+                signalData as any,
+                targetPublicId,
             )
             .catch(() => {});
     } else {
