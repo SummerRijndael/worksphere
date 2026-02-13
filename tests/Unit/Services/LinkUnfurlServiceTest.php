@@ -6,6 +6,7 @@ use App\Enums\AuditAction;
 use App\Models\BlockedUrl;
 use App\Services\AuditService;
 use App\Services\LinkUnfurlService;
+use App\Services\SecureOpenGraph;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Mockery;
@@ -17,6 +18,8 @@ class LinkUnfurlServiceTest extends TestCase
 
     protected $auditService;
 
+    protected $openGraph;
+
     protected $service;
 
     protected function setUp(): void
@@ -24,30 +27,40 @@ class LinkUnfurlServiceTest extends TestCase
         parent::setUp();
 
         $this->auditService = Mockery::mock(AuditService::class);
-        $this->service = new LinkUnfurlService($this->auditService);
+        $this->openGraph = Mockery::mock(SecureOpenGraph::class);
+        $this->service = new LinkUnfurlService($this->auditService, $this->openGraph);
     }
 
     public function test_it_unfurls_valid_url()
     {
-        // Mock OpenGraph fetch logic by partially mocking the service
-        // OR we can trust the library works and just test our logic around it.
-        // For unit test, we should mock the behavior of OpenGraph library,
-        // but since it's instantiated inside the service constructor (tight coupling),
-        // we might modify the service to accept dependency injection or use a partial mock.
-        // For now, let's assume network calls might fail in pure unit tests, so we skip the actual fetch
-        // or refactor service to allow injection.
-
-        // Refactoring Service to allow setter or injection is best practice,
-        // but for speed, let's test the Blocking and Caching logic which are our wrappers.
-
         $url = 'https://example.com';
+        $cacheKey = 'link_unfurl:'.md5($url);
 
-        Cache::shouldReceive('remember')
+        Cache::shouldReceive('get')
             ->once()
+            ->with($cacheKey)
+            ->andReturn(null);
+
+        $this->openGraph->shouldReceive('fetch')
+            ->once()
+            ->with($url)
             ->andReturn([
                 'title' => 'Example',
+                'description' => 'Desc',
+                'image' => 'img.jpg',
                 'url' => $url,
+                'site_name' => 'Site',
             ]);
+
+        Cache::shouldReceive('put')
+            ->once()
+            ->with($cacheKey, Mockery::type('array'), Mockery::any());
+
+        $this->auditService->shouldReceive('log')
+            ->once()
+            ->withArgs(function ($action) {
+                return $action === AuditAction::LinkUnfurled;
+            });
 
         $result = $this->service->fetch($url);
 
