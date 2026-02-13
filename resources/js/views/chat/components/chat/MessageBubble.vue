@@ -70,6 +70,16 @@ const formatFileSize = (bytes: number) => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
 };
 
+const formatDuration = (seconds: number) => {
+    if (!seconds && seconds !== 0) return '';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    
+    if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    return `${m}:${String(s).padStart(2, '0')}`;
+};
+
 function handleImageClick(img: MessageAttachment) {
     const allImages = images.value;
     const mediaForViewer = allImages.map(i => ({
@@ -107,8 +117,8 @@ const firstUrl = computed(() => {
     <!-- System Message -->
     <div v-if="message.type === 'system'" class="flex justify-center py-2 px-4 my-1">
         <div 
-            class="flex items-center gap-2 text-xs text-[var(--text-tertiary)] bg-[var(--surface-tertiary)]/50 border border-[var(--border-default)] px-3 py-1 rounded-full shadow-sm"
-            :class="{ '!text-red-500 !border-red-200 !bg-red-50': message.metadata?.event === 'missed' }"
+            class="flex items-center gap-2 text-xs text-(--text-tertiary) bg-(--surface-tertiary)/50 border border-(--border-default) px-3 py-1 rounded-full shadow-sm"
+            :class="{ 'text-red-500! border-red-200! bg-red-50!': message.metadata?.event === 'missed' }"
         >
             <template v-if="message.metadata?.system_type === 'call_event'">
                 <Icon 
@@ -120,7 +130,7 @@ const firstUrl = computed(() => {
                     {{ message.metadata.user_name }} started a {{ message.metadata.type }} call
                 </span>
                 <span v-else-if="message.metadata.event === 'ended'">
-                    Call ended
+                    Call ended <span v-if="message.metadata.duration">({{ formatDuration(message.metadata.duration) }})</span>
                 </span>
                 <span v-else-if="message.metadata.event === 'missed'">
                     Missed {{ message.metadata.type }} call
@@ -151,7 +161,7 @@ const firstUrl = computed(() => {
             />
             <div
                 v-else
-                class="w-8 h-8 rounded-xl bg-[var(--interactive-primary)] flex items-center justify-center text-white text-sm font-semibold"
+                class="w-8 h-8 rounded-xl bg-(--interactive-primary) flex items-center justify-center text-white text-sm font-semibold"
             >
                 {{ avatarInitial }}
             </div>
@@ -166,7 +176,7 @@ const firstUrl = computed(() => {
             <!-- Sender Name (if not mine) -->
             <div
                 v-if="!isMine && showAvatar"
-                class="text-xs font-medium text-[var(--text-secondary)] ml-1"
+                class="text-xs font-medium text-(--text-secondary) ml-1"
             >
                 {{ message.user_name }}
             </div>
@@ -174,7 +184,7 @@ const firstUrl = computed(() => {
             <!-- Reply Context -->
             <button
                 v-if="message.reply_to"
-                class="text-xs py-1.5 px-3 rounded-lg bg-[var(--surface-tertiary)] text-[var(--text-secondary)] border-l-2 border-[var(--interactive-primary)] cursor-pointer hover:bg-[var(--surface-secondary)] transition-colors text-left"
+                class="text-xs py-1.5 px-3 rounded-lg bg-(--surface-tertiary) text-(--text-secondary) border-l-2 border-(--interactive-primary) cursor-pointer hover:bg-(--surface-secondary) transition-colors text-left"
                 @click="handleJumpToReply"
             >
                 <span class="font-medium">{{
@@ -194,8 +204,8 @@ const firstUrl = computed(() => {
                 class="relative px-3.5 py-2.5 rounded-2xl shadow-sm"
                 :class="[
                     isMine
-                        ? 'bg-[var(--interactive-primary)] text-white rounded-br-sm'
-                        : 'bg-[var(--surface-elevated)] text-[var(--text-primary)] border border-[var(--border-default)] rounded-bl-sm',
+                        ? 'bg-(--interactive-primary) text-white rounded-br-sm'
+                        : 'bg-(--surface-elevated) text-(--text-primary) border border-(--border-default) rounded-bl-sm',
                 ]"
             >
                 <!-- Attachments -->
@@ -239,7 +249,7 @@ const firstUrl = computed(() => {
                             :class="
                                 isMine
                                     ? 'text-white/90'
-                                    : 'text-[var(--text-primary)]'
+                                    : 'text-(--text-primary)'
                             "
                         >
                             <div class="p-1.5 rounded bg-white/20 text-current">
@@ -269,8 +279,8 @@ const firstUrl = computed(() => {
                 <!-- Text Content -->
                 <p
                     v-if="message.content"
-                    class="whitespace-pre-wrap break-words break-all text-sm leading-relaxed"
-                    :class="isMine ? '!text-white' : '!text-[var(--text-primary)]'"
+                    class="whitespace-pre-wrap wrap-break-word break-all text-sm leading-relaxed"
+                    :class="isMine ? 'text-white!' : 'text-(--text-primary)!'"
                 >
                     {{ message.content }}
                 </p>
@@ -288,7 +298,7 @@ const firstUrl = computed(() => {
                             ? 'text-red-500 font-medium'
                             : isMine
                             ? 'justify-end text-blue-100'
-                            : 'justify-end text-[var(--text-tertiary)]',
+                            : 'justify-end text-(--text-tertiary)',
                     ]"
                     :title="new Date(message.created_at).toLocaleString()"
                 >
@@ -324,7 +334,7 @@ const firstUrl = computed(() => {
 
                 <!-- Reply Button (shown on hover) -->
                 <button
-                    class="absolute -top-2 opacity-0 group-hover:opacity-100 transition-opacity bg-[var(--surface-elevated)] border border-[var(--border-default)] rounded-lg px-2 py-1 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-tertiary)] shadow-sm"
+                    class="absolute -top-2 opacity-0 group-hover:opacity-100 transition-opacity bg-(--surface-elevated) border border-(--border-default) rounded-lg px-2 py-1 text-xs text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--surface-tertiary) shadow-sm"
                     :class="
                         isMine
                             ? 'left-0 -translate-x-1/2'

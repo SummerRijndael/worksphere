@@ -10,6 +10,10 @@ Route::get('/sanctum/csrf-cookie', [\Laravel\Sanctum\Http\Controllers\CsrfCookie
     ->middleware(['web', 'throttle:10,1'])
     ->name('sanctum.csrf-cookie');
 
+// Dev Login Helper (Session based, for E2E tests)
+Route::get('/dev/login-as', [\App\Http\Controllers\Api\DevController::class, 'loginAs'])
+    ->middleware(['web', \App\Http\Middleware\DevAccessMiddleware::class]);
+
 // Serve the Vue SPA for all routes
 Route::get('/setup-account/{id}', function () {
     return view('app');

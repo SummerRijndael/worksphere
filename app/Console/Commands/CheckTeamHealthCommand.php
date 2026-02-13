@@ -55,70 +55,73 @@ class CheckTeamHealthCommand extends Command
 
         // 1. Find active teams that should be marked dormant
         $dormantThreshold = now()->subDays($dormantDays);
-        $teamsToMarkDormant = Team::query()
+        $queryDormant = Team::query()
             ->lifecycleActive()
             ->where(function ($query) use ($dormantThreshold) {
                 $query->where('last_activity_at', '<', $dormantThreshold)
                     ->orWhereNull('last_activity_at');
-            })
-            ->get();
+            });
 
-        foreach ($teamsToMarkDormant as $team) {
-            $this->line("  → Marking dormant: {$team->name} (last activity: ".($team->last_activity_at?->diffForHumans() ?? 'never').')');
+        $queryDormant->chunkById(50, function ($teams) use (&$stats, $dryRun) {
+            foreach ($teams as $team) {
+                $this->line("  → Marking dormant: {$team->name} (last activity: ".($team->last_activity_at?->diffForHumans() ?? 'never').')');
 
-            if (! $dryRun) {
-                $team->markDormant();
-                // TODO: Send dormant notification to owner
-                // $team->owner->notify(new TeamDormantNotification($team));
-                $stats['notifications_sent']++;
+                if (! $dryRun) {
+                    $team->markDormant();
+                    // TODO: Send dormant notification to owner
+                    // $team->owner->notify(new TeamDormantNotification($team));
+                    $stats['notifications_sent']++;
+                }
+                $stats['marked_dormant']++;
             }
-            $stats['marked_dormant']++;
-        }
+        });
 
         // 2. Find dormant teams that should be marked pending deletion
         $pendingDeletionThreshold = now()->subDays($graceDays);
-        $teamsToMarkPendingDeletion = Team::query()
+        $queryPending = Team::query()
             ->dormant()
-            ->where('dormant_notified_at', '<', $pendingDeletionThreshold)
-            ->get();
+            ->where('dormant_notified_at', '<', $pendingDeletionThreshold);
 
-        foreach ($teamsToMarkPendingDeletion as $team) {
-            $this->line("  → Marking pending deletion: {$team->name} (dormant since: ".$team->dormant_notified_at?->diffForHumans().')');
+        $queryPending->chunkById(50, function ($teams) use (&$stats, $dryRun) {
+            foreach ($teams as $team) {
+                $this->line("  → Marking pending deletion: {$team->name} (dormant since: ".$team->dormant_notified_at?->diffForHumans().')');
 
-            if (! $dryRun) {
-                $team->markPendingDeletion();
-                // TODO: Send pending deletion notification to owner
-                // $team->owner->notify(new TeamPendingDeletionNotification($team));
-                $stats['notifications_sent']++;
+                if (! $dryRun) {
+                    $team->markPendingDeletion();
+                    // TODO: Send pending deletion notification to owner
+                    // $team->owner->notify(new TeamPendingDeletionNotification($team));
+                    $stats['notifications_sent']++;
+                }
+                $stats['marked_pending_deletion']++;
             }
-            $stats['marked_pending_deletion']++;
-        }
+        });
 
         // 3. Auto-delete teams past the grace period (if enabled)
         if ($autoDeleteEnabled) {
             $autoDeleteThreshold = now()->subDays($graceDays);
-            $teamsToDelete = Team::query()
+            $queryDelete = Team::query()
                 ->pendingDeletion()
-                ->where('deletion_scheduled_at', '<', $autoDeleteThreshold)
-                ->get();
+                ->where('deletion_scheduled_at', '<', $autoDeleteThreshold);
 
-            foreach ($teamsToDelete as $team) {
-                $this->warn("  → AUTO-DELETING: {$team->name}");
+            $queryDelete->chunkById(50, function ($teams) use (&$stats, $dryRun) {
+                foreach ($teams as $team) {
+                    $this->warn("  → AUTO-DELETING: {$team->name}");
 
-                if (! $dryRun) {
-                    Log::warning('Auto-deleting team due to inactivity', [
-                        'team_id' => $team->id,
-                        'team_name' => $team->name,
-                        'owner_id' => $team->owner_id,
-                        'last_activity_at' => $team->last_activity_at,
-                        'dormant_notified_at' => $team->dormant_notified_at,
-                        'deletion_scheduled_at' => $team->deletion_scheduled_at,
-                    ]);
+                    if (! $dryRun) {
+                        Log::warning('Auto-deleting team due to inactivity', [
+                            'team_id' => $team->id,
+                            'team_name' => $team->name,
+                            'owner_id' => $team->owner_id,
+                            'last_activity_at' => $team->last_activity_at,
+                            'dormant_notified_at' => $team->dormant_notified_at,
+                            'deletion_scheduled_at' => $team->deletion_scheduled_at,
+                        ]);
 
-                    $team->delete();
+                        $team->delete();
+                    }
+                    $stats['auto_deleted']++;
                 }
-                $stats['auto_deleted']++;
-            }
+            });
         }
 
         // Summary

@@ -814,16 +814,8 @@ function isOwnMessage(msg: Message): boolean {
                     :class="{ 'is-own': isOwnMessage(msg) }"
                     :data-message-id="msg.id"
                 >
-                    <!-- System Message -->
-                    <div v-if="msg.type === 'system'" class="flex justify-center my-2 px-4">
-                         <span class="text-xs text-[var(--text-tertiary)] text-center italic leading-tight">
-                             {{ msg.content }}
-                         </span>
-                    </div>
-
-                    <!-- User Message -->
+                    <!-- Message Bubble (Handles both User and System messages) -->
                     <MiniChatMessageBubble 
-                        v-else 
                         :message="msg" 
                         :is-mine="isOwnMessage(msg)"
                         @reply="handleReply"

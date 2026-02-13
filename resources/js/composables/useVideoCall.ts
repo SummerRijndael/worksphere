@@ -13,6 +13,7 @@ import { ref, onBeforeUnmount } from 'vue';
 import { useVideoCallStore, type CallType } from '@/stores/videocall';
 import { videoCallService } from '@/services/videocall.service';
 import { useAuthStore } from '@/stores/auth';
+import { useChatStore } from '@/stores/chat';
 import { toast } from 'vue-sonner';
 
 // Singleton state
@@ -24,10 +25,12 @@ let ringtoneTimeout: ReturnType<typeof setTimeout> | null = null;
 
 // Pending signals (offer + ICE candidates) for incoming calls (received before user accepts)
 const pendingSignals = ref<any[]>([]);
+const processedIncomingCalls = new Set<string>(); // For deduplication
 
 export function useVideoCall() {
   const store = useVideoCallStore();
   const authStore = useAuthStore();
+  const chatStore = useChatStore();
 
   // ============================================================================
   // Popup Window Management
@@ -97,7 +100,8 @@ export function useVideoCall() {
             stopRingtone();
           } else if (msg.state === 'ended') {
             if (msg.reason === 'declined') {
-              toast.info(`${store.currentCall?.remoteUser.name || 'User'} declined the call`);
+              const remoteName = store.currentCall?.remoteUser?.name || 'User';
+              toast.info(`${remoteName} declined the call`);
             } else if (msg.reason === 'timeout') {
               toast.info('Call was not answered');
             } else {
@@ -199,7 +203,17 @@ export function useVideoCall() {
     // Ignore our own events
     if (data.caller_public_id === authStore.user?.public_id) return;
 
-    // If already in a call, ignore
+    // Deduplication: Prevents double toasts/ringing for the same callId
+    if (processedIncomingCalls.has(data.call_id)) {
+        console.log('[VideoCall] Dropping duplicate incoming call event:', data.call_id);
+        return;
+    }
+    processedIncomingCalls.add(data.call_id);
+    // Cleanup old IDs (simple limit)
+    if (processedIncomingCalls.size > 50) {
+        const first = processedIncomingCalls.values().next().value;
+        if (first) processedIncomingCalls.delete(first);
+    }
     if (store.isCallActive) {
       if (!callPopup || callPopup.closed) {
         console.log('[VideoCall] Detected stale call state in store, forcing cleanup');
@@ -210,27 +224,13 @@ export function useVideoCall() {
       }
     }
 
-    // HYBRID APPROACH:
-    // If DM -> Full Ring
-    // If Group -> Toast Notification only
+    // Unified Ringing Experience for both DM and Group calls
+    const chat = chatStore.chats.find(c => c.id === data.chat_id);
+    const chatName = chat?.name || null;
 
-    const isGroup = data.chat_type === 'group';
-    
     // Register active call for UI indicators
     store.registerActiveCall(data.chat_id, data.call_id, data.call_type);
 
-    if (isGroup) {
-        toast.info(`${data.caller_name} started a group call`, {
-            action: {
-                label: 'Join',
-                onClick: () => acceptCallFromNotification(data)
-            },
-            duration: 10000,
-        });
-        return;
-    }
-
-    // DM Logic (Standard Ringing)
     store.setCall({
       callId: data.call_id,
       chatId: data.chat_id,
@@ -242,6 +242,7 @@ export function useVideoCall() {
       }]]),
       isOutgoing: false,
       chatType: data.chat_type || 'dm',
+      chatName: chatName, // Pass to store for UI display
       startedAt: null,
     });
 
@@ -254,21 +255,6 @@ export function useVideoCall() {
         declineCall();
       }
     }, 45000);
-  }
-
-  function acceptCallFromNotification(data: any) {
-      console.log('[VideoCall] Accepting group call from notification');
-      // Set up store state as if we are joining
-      store.setCall({
-          callId: data.call_id,
-          chatId: data.chat_id,
-          callType: data.call_type,
-          participants: new Map(), // Will be populated by join() API
-          isOutgoing: false,
-          chatType: data.chat_type || 'group',
-          startedAt: null,
-      });
-      acceptCall();
   }
 
   function joinActiveCall(chatId: string, callId: string, callType: CallType) {

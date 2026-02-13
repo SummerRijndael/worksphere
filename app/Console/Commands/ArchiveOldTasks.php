@@ -59,11 +59,10 @@ class ArchiveOldTasks extends Command
 
         $this->info("Looking for tasks completed before {$threshold->toDateTimeString()}...");
 
-        $tasks = Task::where('status', TaskStatus::Completed)
-            ->where('updated_at', '<', $threshold)
-            ->get();
+        $query = Task::where('status', TaskStatus::Completed)
+            ->where('updated_at', '<', $threshold);
 
-        $count = $tasks->count();
+        $count = $query->count();
 
         if ($count === 0) {
             $this->info('No tasks found to archive.');
@@ -76,22 +75,24 @@ class ArchiveOldTasks extends Command
         $bar = $this->output->createProgressBar($count);
         $bar->start();
 
-        foreach ($tasks as $task) {
-            if ($isDryRun) {
-                $this->info("  [DRY RUN] Would archive Task #{$task->id}: {$task->title}");
-            } else {
-                try {
-                    if ($workflowService->archiveTask($task, $archiver)) {
-                        // Success
-                    } else {
-                        $this->error("Failed to archive task {$task->id}: Invalid transition.");
+        $query->chunk(100, function ($tasks) use ($workflowService, $archiver, $isDryRun, $bar) {
+            foreach ($tasks as $task) {
+                if ($isDryRun) {
+                    $this->info("  [DRY RUN] Would archive Task #{$task->id}: {$task->title}");
+                } else {
+                    try {
+                        if ($workflowService->archiveTask($task, $archiver)) {
+                            // Success
+                        } else {
+                            $this->error("Failed to archive task {$task->id}: Invalid transition.");
+                        }
+                    } catch (\Exception $e) {
+                        $this->error("Failed to archive task {$task->id}: {$e->getMessage()}");
                     }
-                } catch (\Exception $e) {
-                    $this->error("Failed to archive task {$task->id}: {$e->getMessage()}");
                 }
+                $bar->advance();
             }
-            $bar->advance();
-        }
+        });
 
         $bar->finish();
         $this->newLine();

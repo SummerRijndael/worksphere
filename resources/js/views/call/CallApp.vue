@@ -73,8 +73,10 @@ const sfuScreenMid = ref<string | null>(null);
 // Hybrid Mode
 const callMode = ref<"mesh" | "sfu">("mesh");
 const sfuSessionId = ref<string | null>(null);
+const isSFUResetting = ref(false);
 const sfuAppId = ref<string | null>(null);
 const remoteSfuSessions = reactive(new Map<string, string>());
+const isTransportReady = ref(false);
 const participantTransceivers = new Map<
     string,
     { audioMid?: string; videoMid?: string; screenMid?: string }
@@ -85,6 +87,12 @@ const participants = ref<Participant[]>([]);
 const peers = new Map<string, Peer.Instance>();
 const iceServers = ref<RTCIceServer[]>([]);
 const processedSignals = new Set<string>(); // To prevent duplicate signal processing
+
+// SFU Transceiver Mapping (Robust identification even after SID/MID changes)
+const sfuTransceiverMap = new WeakMap<
+    RTCRtpTransceiver,
+    { participantId: string; trackName: string }
+>();
 
 // Voice Activity Detection
 const talkingParticipants = reactive(new Set<string>());
@@ -252,7 +260,7 @@ async function acquireMedia(): Promise<MediaStream | null> {
 function mungeSdp(sdp: string): string {
     if (!sdp) return sdp;
     try {
-        // Bit-Perfect Peace Normalizer: 
+        // Bit-Perfect Peace Normalizer:
         // 1. Removes ONLY the bugged max-message-size line.
         // 2. Preserves the original dialect, order, and spacing of all other lines.
         // 3. Ensures clean CRLF line endings to satisfy strict parsers.
@@ -260,7 +268,9 @@ function mungeSdp(sdp: string): string {
             sdp
                 .split(/\r?\n/)
                 .map((l) => l.trim())
-                .filter((l) => l.length > 0 && !l.includes("a=max-message-size:"))
+                .filter(
+                    (l) => l.length > 0 && !l.includes("a=max-message-size:"),
+                )
                 .join("\r\n") + "\r\n"
         );
     } catch (e) {
@@ -347,9 +357,11 @@ async function joinCall() {
                 const isInitiator = selfId > p.publicId;
                 createPeer(p.publicId, isInitiator, stream);
             }
+            isTransportReady.value = true;
         } else {
             console.log("[Call] Initializing SFU mode via Cloudflare");
             await joinSFU(stream);
+            isTransportReady.value = true;
         }
 
         // 4. Set state
@@ -518,15 +530,26 @@ async function handleSignal(event: any) {
     ).toLowerCase();
     const selfId = (callData.value?.selfPublicId || "").toLowerCase();
 
-    if (senderId === selfId) return;
+    if (senderId === selfId) {
+        console.log(
+            `[Call] Ignoring self-signal from ${senderId} (I am ${selfId})`,
+        );
+        return;
+    }
 
     // In mesh, signals MUST be targeted or we ignore them for safety
-    if (targetId && targetId !== selfId) return;
-
-    // WAIT for media if we are in the process of joining
-    if (!hasJoined.value || !localStream.value) {
+    if (targetId && targetId !== selfId) {
         console.log(
-            `[Call] Buffering signal from ${senderId} - joining or media not ready`,
+            `[Call] Ignoring signal targeted at ${targetId} (I am ${selfId})`,
+        );
+        return;
+    }
+
+    // WAIT for media and transport readiness (PC + Session ID)
+    if (!isTransportReady.value || !hasJoined.value || !localStream.value) {
+        trace(
+            "SIGNAL",
+            `Buffering signal from ${senderId} - joining or transport not ready`,
         );
         pendingSignalsBuffer.value.push(event);
         return;
@@ -660,7 +683,7 @@ async function pullSFURemoteScreen(
         `[SFU] Processing remote screen share from ${participantPublicId} (mid: ${mid}) using session ${targetSessionId}`,
     );
 
-    sfuNegotiationQueue = sfuNegotiationQueue.then(async () => {
+    return runInSFUQueue(async () => {
         try {
             // Check if we already have this screen Mid (INSIDE QUEUE to prevent races)
             if (
@@ -673,52 +696,96 @@ async function pullSFURemoteScreen(
                 return;
             }
 
-            const transceiver = sfuPc!.addTransceiver("video", {
-                direction: "recvonly",
-            });
-
-            await sfuPc!.setLocalDescription(await sfuPc!.createOffer());
-
-            // Map MIDs IMMEDIATELY after setLocalDescription
-            if (transceiver.mid) {
-                trace("PULL-SCREEN", `Mapping mid ${transceiver.mid} to ${participantPublicId}:screen`);
-                midToParticipantMap.set(
-                    transceiver.mid,
-                    `${participantPublicId}:screen`,
+            let transceiver = sfuPc!
+                .getTransceivers()
+                .find(
+                    (t) =>
+                        t.direction === "recvonly" &&
+                        sfuTransceiverMap.get(t)?.participantId ===
+                            participantPublicId &&
+                        sfuTransceiverMap.get(t)?.trackName === "screen",
                 );
 
-                // Save to tracking
-                const existing =
-                    participantTransceivers.get(participantPublicId) || {};
-                participantTransceivers.set(participantPublicId, {
-                    ...existing,
-                    screenMid: mid,
+            if (!transceiver) {
+                transceiver = sfuPc!.addTransceiver("video", {
+                    direction: "recvonly",
+                });
+                sfuTransceiverMap.set(transceiver, {
+                    participantId: participantPublicId,
+                    trackName: "screen",
                 });
             }
 
-            const res = await videoCallService.sfuSessionTracks(
+            // 1. Create Offer with new transceivers
+            const offer = await sfuPc!.createOffer();
+            await sfuPc!.setLocalDescription(offer);
+
+            // 2. Request tracks WITH local offer
+            trace("PULL-SCREEN", `Requesting screen for ${participantPublicId}: ${mid}`, {
+                mid,
+            });
+
+            const trackReqs = [
+                {
+                    location: "remote",
+                    sessionId: targetSessionId,
+                    trackName: "screen",
+                    mid: transceiver.mid || undefined,
+                },
+            ].map(t => {
+                const clean = { ...t };
+                if (!clean.mid) delete (clean as any).mid;
+                return clean;
+            });
+
+            const tracksRes = await videoCallService.sfuSessionTracks(
                 callData.value!.chatId,
                 sfuSessionId.value!,
-                [
-                    {
-                        location: "remote",
-                        sessionId: targetSessionId,
-                        trackName: "screen",
-                        mid: transceiver.mid,
-                    },
-                ],
-                mungeSdp(sfuPc!.localDescription!.sdp!),
+                trackReqs,
+                mungeSdp(offer.sdp!), // SEND OFFER
             );
 
-            trace("PULL-SCREEN", `Response for ${participantPublicId}`, res);
+            trace("PULL-SCREEN", `Response for ${participantPublicId}`, tracksRes);
 
-            if (res.sessionDescription) {
+            // Save to tracking
+            const existing = participantTransceivers.get(participantPublicId) || {};
+            participantTransceivers.set(participantPublicId, {
+                ...existing,
+                screenMid: mid,
+            });
+
+            if (transceiver.mid) {
+                midToParticipantMap.set(transceiver.mid, `${participantPublicId}:screen`);
+            }
+
+            if (tracksRes.sessionDescription) {
+                console.log("[SFU] Pull screen returned server answer, setting remote description...");
                 await sfuPc!.setRemoteDescription(
-                    new RTCSessionDescription(res.sessionDescription),
+                    new RTCSessionDescription(tracksRes.sessionDescription),
+                );
+            } else {
+                 console.log(
+                    "[SFU] Pull screen track accepted (no immediate answer).",
+                     tracksRes,
                 );
             }
-        } catch (e) {
-            console.error("[SFU] Failed to pull screen track", e);
+
+            if (tracksRes.requiresImmediateRenegotiation) {
+                // (Already triggered by Force Sync above, but safe to call again or just log)
+                console.log("[SFU] Cloudflare explicitly requested immediate renegotiation for screen");
+            }
+        } catch (e: any) {
+            console.warn(
+                `[SFU] Failed to pull screen track for ${participantPublicId}`,
+                e,
+            );
+            
+            // Clean up tracking on failure
+            const existing = participantTransceivers.get(participantPublicId);
+            if (existing) {
+                delete (existing as any).screenMid;
+                participantTransceivers.set(participantPublicId, existing);
+            }
         }
     });
 }
@@ -732,7 +799,10 @@ function handleParticipantJoined(event: any) {
     ).toLowerCase();
     const selfId = (callData.value?.selfPublicId || "").toLowerCase();
 
-    if (publicId === selfId) return;
+    if (publicId === selfId) {
+        console.log(`[Call] Ignoring self-join event for ${publicId}`);
+        return;
+    }
 
     console.log("[Call] New participant joined:", event);
 
@@ -753,7 +823,10 @@ function handleParticipantJoined(event: any) {
     if (callMode.value === "mesh") {
         const isInitiator = selfId > publicId;
         if (!peers.has(publicId)) {
-            trace("MESH", `Initiating mesh peer for ${publicId} (initiator: ${isInitiator})`);
+            trace(
+                "MESH",
+                `Initiating mesh peer for ${publicId} (initiator: ${isInitiator})`,
+            );
             createPeer(publicId, isInitiator, localStream.value!);
         }
     } else {
@@ -1041,7 +1114,8 @@ let sfuPc: RTCPeerConnection | null = null;
 // normalizeSdp has been replaced by mungeSdp for bit-perfect cross-browser compatibility
 
 async function joinSFU(stream: MediaStream) {
-    console.log("[SFU] Initializing RTCPeerConnection for Cloudflare Calls");
+    return runInSFUQueue(async () => {
+        console.log("[SFU] Initializing RTCPeerConnection for Cloudflare Calls");
 
     sfuPc = new RTCPeerConnection({
         iceServers:
@@ -1057,19 +1131,34 @@ async function joinSFU(stream: MediaStream) {
         sfuPc!.addTransceiver(track, { direction: "sendonly" });
     });
 
-    // 2. Initial Offer to establish session
+    // 2. Initial Offer to establish session and name tracks
     const offer = await sfuPc.createOffer();
     await sfuPc.setLocalDescription(offer);
 
-    console.log("[SFU] Creating new session via backend proxy...");
+    const trackObjects = sfuPc
+        .getTransceivers()
+        .filter((t) => t.sender.track)
+        .map((t) => ({
+            location: "local",
+            mid: t.mid,
+            trackName: t.sender.track!.kind, // "audio" or "video"
+        }));
+
+    console.log(
+        "[SFU] Creating new session via backend proxy...",
+        trackObjects,
+    );
     const sessionRes = await videoCallService.sfuSessionNew(
         callData.value!.chatId,
-        mungeSdp(offer.sdp!),
+        mungeSdp(sfuPc.localDescription!.sdp!),
+        trackObjects,
     );
 
-    await sfuPc.setRemoteDescription(
-        new RTCSessionDescription(sessionRes.sessionDescription),
-    );
+    if (sessionRes.sessionDescription) {
+        await sfuPc.setRemoteDescription(
+            new RTCSessionDescription(sessionRes.sessionDescription),
+        );
+    }
 
     if (sessionRes.sessionId) {
         sfuSessionId.value = sessionRes.sessionId;
@@ -1090,48 +1179,21 @@ async function joinSFU(stream: MediaStream) {
         };
     });
 
-    // 4. Register local tracks (Cloudflare needs to know track IDs)
-    const trackObjects = sfuPc
-        .getTransceivers()
-        .filter((t: any) => t.sender.track)
-        .map((t: any) => ({
-            location: "local",
-            mid: t.mid,
-            trackName: t.sender.track!.kind, // Use stable names (audio/video)
-        }));
-
-    await sfuPc.setLocalDescription(await sfuPc.createOffer());
-    const tracksRes = await videoCallService.sfuSessionTracks(
-        callData.value!.chatId,
-        sfuSessionId.value!,
-        trackObjects,
-        mungeSdp(sfuPc.localDescription!.sdp!),
-    );
-
-    trace("JOIN", "Local tracks published", {
-        trackObjects,
-        res: tracksRes,
-    });
-
-    if (tracksRes.sessionDescription) {
-        await sfuPc.setRemoteDescription(
-            new RTCSessionDescription(tracksRes.sessionDescription),
-        );
-    } else {
-        console.error(
-            "[SFU] Failed to register local tracks: API response missing sessionDescription",
-            tracksRes,
-        );
-    }
+    trace("JOIN", "Local tracks published", { trackObjects });
 
     // 5. SIGNAL READY (Now that tracks are safe and registered)
     if (sfuSessionId.value) {
         console.log("[SFU] Signaling sfu-session-ready to all peers");
         videoCallService
-            .sendSignal(callData.value!.chatId, callData.value!.callId, "signal", {
-                type: "sfu-session-ready",
-                sessionId: sfuSessionId.value,
-            })
+            .sendSignal(
+                callData.value!.chatId,
+                callData.value!.callId,
+                "signal",
+                {
+                    type: "sfu-session-ready",
+                    sessionId: sfuSessionId.value,
+                },
+            )
             .catch(() => {});
     }
 
@@ -1146,10 +1208,28 @@ async function joinSFU(stream: MediaStream) {
 
         // Resilient Track Activation: Handle immediate unmute or missing stream container
         const handleTrackActive = () => {
-            const participantId = midToParticipantMap.get(mid!);
-            trace("TRACK", `Active: ${track.kind} (${mid}) for ${participantId}`, {
-                streams: event.streams.length,
-            });
+            let participantId = midToParticipantMap.get(mid!);
+
+            // FALLBACK: Use transceiver-to-participant mapping if MID mapping failed (e.g. after rollback)
+            if (!participantId) {
+                const assoc = sfuTransceiverMap.get(event.transceiver);
+                if (assoc) {
+                    participantId =
+                        assoc.trackName === "screen"
+                            ? `${assoc.participantId}:screen`
+                            : assoc.participantId;
+                    console.log(
+                        `[SFU] Identified mid ${mid} via transceiver association: ${participantId}`,
+                    );
+                }
+            }
+            trace(
+                "TRACK",
+                `Active: ${track.kind} (${mid}) for ${participantId}`,
+                {
+                    streams: event.streams.length,
+                },
+            );
 
             if (participantId) {
                 // FALLBACK: If event.streams is empty, create a new stream from the track
@@ -1165,7 +1245,10 @@ async function joinSFU(stream: MediaStream) {
                 }
             } else {
                 console.warn(`[SFU] Could not find participant for mid ${mid}`);
-                trace("TRACK", "FAILED: Unknown MID", { mid, map: Object.fromEntries(midToParticipantMap) });
+                trace("TRACK", "FAILED: Unknown MID", {
+                    mid,
+                    map: Object.fromEntries(midToParticipantMap),
+                });
             }
         };
 
@@ -1180,11 +1263,149 @@ async function joinSFU(stream: MediaStream) {
     // However, if we joined late, we might miss them.
     // The backend join response gives us participants list, but not their SFU IDs.
     // They will re-broadcast to us in handleParticipantJoined when they see us join.
+    });
+}
+
+/* SFU Gated Rescue: Pulls pending offer from server on 406 */
+/* SFU Reset: Force a new session on unrecoverable errors */
+/* SFU Reset: Force a new session on unrecoverable errors */
+/* SFU Reset: Force a new session on unrecoverable errors */
+async function resetSFUSession() {
+    if (isSFUResetting.value) return;
+    isSFUResetting.value = true;
+    sfuGeneration++; // Invalidate pending queue tasks
+    
+    console.log(`[SFU] Forcing session reset (Gen ${sfuGeneration}) due to unrecoverable error (406)...`);
+
+    try {
+        // 1. Close existing connection
+        if (sfuPc) {
+            sfuPc.close();
+            sfuPc = null;
+        }
+        sfuSessionId.value = null;
+
+        // 2. Clear track state map
+        participantTransceivers.clear();
+
+        // 3. Stabilization delay
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        // 4. Re-join SFU
+        if (localStream.value) {
+             await joinSFU(localStream.value);
+        }
+
+        // 5. Re-publish screen if needed
+         if (isScreenSharing.value && screenStream.value) {
+            await publishSFUScreenTrack(screenStream.value);
+        }
+
+        console.log("[SFU] Session reset complete. New Session ID:", sfuSessionId.value);
+    } catch (e) {
+        console.error("[SFU] System reset failed", e);
+    } finally {
+        isSFUResetting.value = false;
+    }
+}
+
+let lastSFUReset = 0;
+
+/* SFU Gated Rescue: Force Reset on 406 */
+async function handleSFU406Rescue() {
+    const now = Date.now();
+    if (now - lastSFUReset < 5000) {
+        console.warn("[SFU] Flattening 406 rescue loop - refusing to reset again so soon.");
+        return false; // Let the error propagate, don't loop
+    }
+    lastSFUReset = now;
+
+    console.log("[SFU] 406 Answer Expected. Initiating Force Reset...");
+    await resetSFUSession();
+    return true; 
+}
+
+async function triggerSFURenegotiation() {
+    if (!sfuPc || !sfuSessionId.value || isSFUResetting.value) return;
+
+    // Guard: Don't start a new offer if we are already negotiating
+    if (sfuPc.signalingState !== "stable") {
+        console.log(
+            `[SFU] Signaling state is ${sfuPc.signalingState}, waiting for stability before renegotiating...`,
+        );
+        return;
+    }
+
+    return runInSFUQueue(async () => {
+        if (isSFUResetting.value || sfuPc?.signalingState !== "stable") return;
+        console.log("[SFU] Triggering session renegotiation...");
+        try {
+            const offer = await sfuPc!.createOffer();
+            await sfuPc!.setLocalDescription(offer);
+
+            const res = await videoCallService.sfuSessionRenegotiate(
+                callData.value!.chatId,
+                sfuSessionId.value!,
+                mungeSdp(sfuPc!.localDescription!.sdp!),
+                "offer",
+                "PUT",
+            );
+
+            if (res.sessionDescription) {
+                await sfuPc!.setRemoteDescription(
+                    new RTCSessionDescription(res.sessionDescription),
+                );
+                console.log("[SFU] Renegotiation successful (Client-Initiated)");
+            }
+        } catch (e: any) {
+            console.warn("[SFU] Client-initiated renegotiation failed", e);
+
+            if (e.response?.status === 406) {
+                if (await handleSFU406Rescue()) {
+                    triggerSFURenegotiation();
+                    return;
+                }
+            }
+
+            // Generic rollback for other errors or failed rescue
+            if (sfuPc && sfuPc.signalingState === "have-local-offer") {
+                try {
+                    await sfuPc.setLocalDescription({
+                        type: "rollback",
+                    } as any);
+                    console.log("[SFU] Rolled back local offer after failure");
+                } catch (rollbackErr) {
+                    console.warn(
+                        "[SFU] Rollback failed after renegotiate error",
+                        rollbackErr,
+                    );
+                }
+            }
+        }
+    });
 }
 
 let sfuNegotiationQueue = Promise.resolve();
-
+let isNegotiatingSFU = false;
+let sfuGeneration = 0; // Generation counter to invalidate old tasks on reset
 const midToParticipantMap = new Map<string, string>();
+
+async function runInSFUQueue(fn: () => Promise<void>) {
+    const currentGen = sfuGeneration;
+    sfuNegotiationQueue = sfuNegotiationQueue.then(async () => {
+        if (currentGen !== sfuGeneration) {
+            console.log(`[SFU] Skipping queued task from generation ${currentGen} (current: ${sfuGeneration})`);
+            return;
+        }
+        isNegotiatingSFU = true;
+        try {
+            await fn();
+        } finally {
+            isNegotiatingSFU = false;
+        }
+    });
+    return sfuNegotiationQueue;
+}
 
 function startAudioAnalysis(id: string, stream: MediaStream) {
     const normalizedId = id.toLowerCase();
@@ -1259,7 +1480,7 @@ async function pullParticipantTracks(
     }
 
     // Chain to the queue to ensure sequential negotiation
-    sfuNegotiationQueue = sfuNegotiationQueue.then(async () => {
+    return runInSFUQueue(async () => {
         try {
             // AVOID BLOAT: Check if we already have transceivers for this participant (INSIDE QUEUE)
             if (participantTransceivers.has(participantPublicId)) {
@@ -1273,90 +1494,137 @@ async function pullParticipantTracks(
                 `[SFU] Processing track pull for participant: ${participantPublicId} using session ${targetSessionId}`,
             );
 
-            // 1. Add recvonly transceivers BEFORE creating the offer
-            const audioTransceiver = sfuPc!.addTransceiver("audio", {
-                direction: "recvonly",
-            });
-            const videoTransceiver = sfuPc!.addTransceiver("video", {
-                direction: "recvonly",
-            });
-
-            await sfuPc!.setLocalDescription(await sfuPc!.createOffer());
-
-            // 2. Map MIDs IMMEDIATELY after setLocalDescription
-            if (audioTransceiver.mid) {
-                console.log(
-                    `[SFU] Mapping mid ${audioTransceiver.mid} to ${participantPublicId} (audio)`,
+            // 1. Check for existing transceivers to avoid bloat
+            let audioTransceiver = sfuPc!
+                .getTransceivers()
+                .find(
+                    (t) =>
+                        t.direction === "recvonly" &&
+                        sfuTransceiverMap.get(t)?.participantId ===
+                            participantPublicId &&
+                        sfuTransceiverMap.get(t)?.trackName === "audio",
                 );
-                midToParticipantMap.set(
-                    audioTransceiver.mid,
-                    participantPublicId,
+            let videoTransceiver = sfuPc!
+                .getTransceivers()
+                .find(
+                    (t) =>
+                        t.direction === "recvonly" &&
+                        sfuTransceiverMap.get(t)?.participantId ===
+                            participantPublicId &&
+                        sfuTransceiverMap.get(t)?.trackName === "video",
                 );
+
+            if (!audioTransceiver) {
+                audioTransceiver = sfuPc!.addTransceiver("audio", {
+                    direction: "recvonly",
+                });
+                sfuTransceiverMap.set(audioTransceiver, {
+                    participantId: participantPublicId,
+                    trackName: "audio",
+                });
             }
-            if (videoTransceiver.mid) {
-                console.log(
-                    `[SFU] Mapping mid ${videoTransceiver.mid} to ${participantPublicId} (video)`,
-                );
-                midToParticipantMap.set(
-                    videoTransceiver.mid,
-                    participantPublicId,
-                );
+            if (!videoTransceiver) {
+                videoTransceiver = sfuPc!.addTransceiver("video", {
+                    direction: "recvonly",
+                });
+                sfuTransceiverMap.set(videoTransceiver, {
+                    participantId: participantPublicId,
+                    trackName: "video",
+                });
             }
+            // 1. Check for existing transceivers to avoid bloat (already done above)
 
-            // Save transceivers to tracking
-            participantTransceivers.set(participantPublicId, {
-                audioMid: audioTransceiver.mid!,
-                videoMid: videoTransceiver.mid!,
-            });
+            // 2. Create Offer with new transceivers
+            const offer = await sfuPc!.createOffer();
+            await sfuPc!.setLocalDescription(offer);
 
+            // 3. Request tracks WITH local offer (Server-Initiated Pull + Negotiation)
             trace("PULL", `Requesting tracks for ${participantPublicId}`, {
                 audioMid: audioTransceiver.mid,
                 videoMid: videoTransceiver.mid,
             });
 
+            const trackReqs = [
+                {
+                    location: "remote",
+                    sessionId: targetSessionId,
+                    trackName: "audio",
+                    mid: audioTransceiver.mid || undefined,
+                },
+                {
+                    location: "remote",
+                    sessionId: targetSessionId,
+                    trackName: "video",
+                    mid: videoTransceiver.mid || undefined,
+                },
+            ].map(t => {
+                const clean = { ...t };
+                if (!clean.mid) delete (clean as any).mid;
+                return clean;
+            });
+
             const res = await videoCallService.sfuSessionTracks(
                 callData.value!.chatId,
                 sfuSessionId.value!,
-                [
-                    {
-                        location: "remote",
-                        sessionId: targetSessionId,
-                        trackName: "audio", // Stable name
-                        mid: audioTransceiver.mid,
-                    },
-                    {
-                        location: "remote",
-                        sessionId: targetSessionId,
-                        trackName: "video", // Stable name
-                        mid: videoTransceiver.mid,
-                    },
-                ],
-                mungeSdp(sfuPc!.localDescription!.sdp!),
+                trackReqs,
+                mungeSdp(offer.sdp!), // SEND OFFER
             );
 
             trace("PULL", `Response for ${participantPublicId}`, res);
 
             if (res.sessionDescription) {
+                console.log("[SFU] Pull returned server answer, setting remote description...");
                 await sfuPc!.setRemoteDescription(
                     new RTCSessionDescription(res.sessionDescription),
                 );
             } else {
                 console.log(
-                    "[SFU] Pull tracks request accepted, waiting for signaling matching",
+                    "[SFU] Pull tracks request accepted (no immediate answer).",
                     res,
                 );
             }
-        } catch (e) {
+
+            // 3. Map MIDs AFTER negotiation
+            if (audioTransceiver.mid) {
+                midToParticipantMap.set(audioTransceiver.mid, participantPublicId);
+            }
+            if (videoTransceiver.mid) {
+                midToParticipantMap.set(videoTransceiver.mid, participantPublicId);
+            }
+
+            // Save to tracking
+            participantTransceivers.set(participantPublicId, {
+                audioMid: audioTransceiver.mid || "",
+                videoMid: videoTransceiver.mid || "",
+            });
+
+
+            if (res.requiresImmediateRenegotiation) {
+                console.log("[SFU] Cloudflare explicitly requested immediate renegotiation");
+            }
+        } catch (e: any) {
             console.warn(
                 `[SFU] Failed to pull tracks for ${participantPublicId}`,
                 e,
             );
-            // On failure, remove from tracking so it can be retried if needed
+
+            if (e.response?.status === 406) {
+                if (await handleSFU406Rescue()) {
+                    console.log(
+                        `[SFU] 406 Rescued during track pull for ${participantPublicId}. Retrying pull...`,
+                    );
+                    pullParticipantTracks(participantPublicId);
+                    return;
+                }
+            }
+
+            // Clean up tracking on failure
             participantTransceivers.delete(participantPublicId);
+            
+            // Note: We don't automatically retry here. 
+            // 406 or 400 errors indicate a signaling state mismatch.
         }
     });
-
-    return sfuNegotiationQueue;
 }
 
 // (Redundant processSFUScreenShare removed)
@@ -1364,46 +1632,87 @@ async function pullParticipantTracks(
 async function publishSFUScreenTrack(stream: MediaStream) {
     if (!sfuPc || !sfuSessionId.value) return;
 
-    const track = stream.getVideoTracks()[0];
-    const transceiver = sfuPc.addTransceiver(track, { direction: "sendonly" });
-
-    await sfuPc.setLocalDescription(await sfuPc.createOffer());
-    const res = await videoCallService.sfuSessionTracks(
-        callData.value!.chatId,
-        sfuSessionId.value!,
-        [{ location: "local", mid: transceiver.mid, trackName: "screen" }],
-        mungeSdp(sfuPc.localDescription!.sdp!),
-    );
-
-    if (res.sessionDescription) {
-        await sfuPc.setRemoteDescription(
-            new RTCSessionDescription(res.sessionDescription),
+    return runInSFUQueue(async () => {
+        const track = stream.getVideoTracks()[0];
+        
+        // REUSE or ADD transceiver
+        let transceiver = sfuPc!.getTransceivers().find(
+            t => t.direction === "sendonly" && !t.sender.track && t.mid === null // Unused transceiver
         );
-        sfuScreenMid.value = transceiver.mid;
-        trace("PUB-SCREEN", "Screen share track published", { mid: transceiver.mid, res });
+        
+        if (transceiver) {
+            console.log("[SFU] Reusing existing sendonly transceiver for screen");
+            await transceiver.sender.replaceTrack(track);
+        } else {
+            console.log("[SFU] Adding new sendonly transceiver for screen");
+            transceiver = sfuPc!.addTransceiver(track, { direction: "sendonly" });
+        }
 
-        // Signal to others
-        const signalData = {
-            type: "sfu-screen-share-started",
-            mid: transceiver.mid,
-            sessionId: sfuSessionId.value, // Include session ID
-        };
-        const targetPublicId = undefined; // Or derive if needed
-        videoCallService
-            .sendSignal(
-                callData.value.chatId,
-                callData.value.callId,
+        try {
+            await sfuPc!.setLocalDescription(await sfuPc!.createOffer());
+            const res = await videoCallService.sfuSessionTracks(
+                callData.value!.chatId,
+                sfuSessionId.value!,
+                [{ location: "local", mid: transceiver.mid, trackName: "screen" }],
+                mungeSdp(sfuPc!.localDescription!.sdp!),
+            );
+
+            if (res.sessionDescription) {
+                await sfuPc!.setRemoteDescription(
+                    new RTCSessionDescription(res.sessionDescription),
+                );
+            }
+
+            // GATED SIGNALING: Wait for ICE to be connected/completed before telling others.
+            // This ensures the tracks are actually flowing on Cloudflare's backend.
+            await new Promise((resolve) => {
+                if (sfuPc!.iceConnectionState === "connected" || sfuPc!.iceConnectionState === "completed") {
+                    setTimeout(resolve, 500); // Grace period for media start
+                    return;
+                }
+                const check = setInterval(() => {
+                    if (sfuPc!.iceConnectionState === "connected" || sfuPc!.iceConnectionState === "completed") {
+                        clearInterval(check);
+                        setTimeout(resolve, 500);
+                    }
+                }, 200);
+                setTimeout(() => { clearInterval(check); resolve(true); }, 5000); // 5s Max Wait
+            });
+
+            sfuScreenMid.value = transceiver.mid;
+            trace("PUB-SCREEN", "Screen share track published and connected", {
+                mid: transceiver.mid,
+                res,
+            });
+
+            // Signal to others
+            const signalData = {
+                type: "sfu-screen-share-started",
+                mid: transceiver.mid,
+                sessionId: sfuSessionId.value,
+            };
+            videoCallService.sendSignal(
+                callData.value!.chatId,
+                callData.value!.callId,
                 "signal",
                 signalData as any,
-                targetPublicId,
-            )
-            .catch(() => {});
-    } else {
-        console.error(
-            "[SFU] Failed to publish screen track: API response missing sessionDescription",
-            res,
-        );
-    }
+            ).catch(() => {});
+        } catch (e: any) {
+            console.warn("[SFU] Failed to publish screen track", e);
+            if (e.response?.status === 406) {
+                if (await handleSFU406Rescue()) {
+                    console.log(
+                        "[SFU] 406 Rescued during screen publish. Retrying original publish...",
+                    );
+                    publishSFUScreenTrack(stream);
+                }
+            } else if (sfuPc!.signalingState === "have-local-offer") {
+                await sfuPc!.setLocalDescription({
+                    type: "rollback",
+                } as any);
+            }
+        }
+    });
 }
 
 function stopSFUScreenShare() {
@@ -1534,6 +1843,10 @@ onMounted(async () => {
             direction: callData.value.direction,
             selfId: callData.value.selfPublicId,
         });
+        if (callData.value.chatType === "group") {
+            callMode.value = "sfu";
+        }
+        store.selfPublicId = callData.value.selfPublicId;
     } catch {
         error.value = "Data parse error.";
         callState.value = "error";
@@ -2394,10 +2707,12 @@ onBeforeUnmount(() => cleanup());
 }
 
 .hidden-audio {
-    position: absolute;
-    width: 0;
-    height: 0;
-    opacity: 0;
+    position: fixed;
+    top: -100px;
+    left: -100px;
+    width: 1px;
+    height: 1px;
+    opacity: 0.01;
     pointer-events: none;
 }
 </style>
