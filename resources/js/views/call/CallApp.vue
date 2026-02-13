@@ -17,7 +17,8 @@ import Peer from "simple-peer";
 import * as sdpTransform from "sdp-transform";
 import { startEcho, stopEcho } from "@/echo";
 import { videoCallService } from "@/services/videocall.service";
-import { Icon } from "@/components/ui"; 
+import { useVideoCallStore } from "@/stores/videocall";
+import { Icon } from "@/components/ui";
 
 // ============================================================================
 // Types
@@ -41,6 +42,7 @@ interface CallData {
         name: string;
         avatar: string | null;
     };
+    chatType?: "dm" | "group";
     pendingSignals?: any[];
 }
 
@@ -54,34 +56,64 @@ const callState = ref<
 >("initializing");
 const hasJoined = ref(false);
 const error = ref<string | null>(null);
+const store = useVideoCallStore();
 
 // Media
 const localStream = ref<MediaStream | null>(null);
 const isMuted = ref(false);
 const isCameraOff = ref(false);
 const videoFallback = ref(false);
-const isAudioOnly = computed(() => callData.value?.callType === 'audio');
+const isAudioOnly = computed(() => callData.value?.callType === "audio");
 
 // Screen Sharing
 const isScreenSharing = ref(false);
 const screenStream = ref<MediaStream | null>(null);
+const sfuScreenMid = ref<string | null>(null);
 
 // Hybrid Mode
-const callMode = ref<'mesh' | 'sfu'>('mesh');
+const callMode = ref<"mesh" | "sfu">("mesh");
 const sfuSessionId = ref<string | null>(null);
+const isSFUResetting = ref(false);
 const sfuAppId = ref<string | null>(null);
+const remoteSfuSessions = reactive(new Map<string, string>());
+const isTransportReady = ref(false);
+const participantTransceivers = new Map<
+    string,
+    { audioMid?: string; videoMid?: string; screenMid?: string }
+>();
 
 // Participants & Peers
 const participants = ref<Participant[]>([]);
 const peers = new Map<string, Peer.Instance>();
-const remoteStreams = reactive(new Map<string, MediaStream>());
 const iceServers = ref<RTCIceServer[]>([]);
 const processedSignals = new Set<string>(); // To prevent duplicate signal processing
 
+// SFU Transceiver Mapping (Robust identification even after SID/MID changes)
+const sfuTransceiverMap = new WeakMap<
+    RTCRtpTransceiver,
+    { participantId: string; trackName: string }
+>();
+
+// Voice Activity Detection
+const talkingParticipants = reactive(new Set<string>());
+const audioAnalysers = new Map<
+    string,
+    {
+        context: AudioContext;
+        source: MediaStreamAudioSourceNode;
+        analyser: AnalyserNode;
+        interval: ReturnType<typeof setInterval>;
+    }
+>();
+
 // Directive for srcObject property (Vue doesn't bind to .srcObject property by default)
 const vSrcObject = {
-    updated: (el: any, binding: any) => { if (el.srcObject !== binding.value) el.srcObject = binding.value; },
-    mounted: (el: any, binding: any) => { el.srcObject = binding.value; }
+    updated: (el: any, binding: any) => {
+        if (el.srcObject !== binding.value) el.srcObject = binding.value;
+    },
+    mounted: (el: any, binding: any) => {
+        el.srcObject = binding.value;
+    },
 };
 
 // UI Refs
@@ -108,13 +140,20 @@ const localHasVideo = computed(() => {
 
 const stateLabel = computed(() => {
     switch (callState.value) {
-        case "initializing": return "Preparing...";
-        case "ringing": return "Waiting..."; 
-        case "connecting": return "Connecting...";
-        case "connected": return formattedDuration.value;
-        case "ended": return "Call ended";
-        case "error": return error.value || "Error";
-        default: return "";
+        case "initializing":
+            return "Preparing...";
+        case "ringing":
+            return "Waiting...";
+        case "connecting":
+            return "Connecting...";
+        case "connected":
+            return formattedDuration.value;
+        case "ended":
+            return "Call ended";
+        case "error":
+            return error.value || "Error";
+        default:
+            return "";
     }
 });
 
@@ -126,15 +165,18 @@ const formattedDuration = computed(() => {
 
 const gridClass = computed(() => {
     // Only count participants effectively shown in the grid (Self + Remotes)
-    const count = participants.value.filter(p => !p.isSelf && p.publicId !== callData.value?.selfPublicId).length + 1;
+    const count =
+        participants.value.filter(
+            (p) => !p.isSelf && p.publicId !== callData.value?.selfPublicId,
+        ).length + 1;
     if (count <= 2) return "grid-1-1";
     if (count <= 4) return "grid-2-2";
     return "grid-3-2";
 });
 
 const previewRemoteName = computed(() => {
-   if (callData.value?.remoteUser) return callData.value?.remoteUser.name;
-   return "Group Call";
+    if (callData.value?.remoteUser) return callData.value?.remoteUser.name;
+    return "Group Call";
 });
 
 // ============================================================================
@@ -142,7 +184,6 @@ const previewRemoteName = computed(() => {
 // ============================================================================
 
 // Local stream handling is now unified via v-src-object directive or ref in template
- 
 
 async function acquireMedia(): Promise<MediaStream | null> {
     if (!callData.value) return null;
@@ -154,31 +195,42 @@ async function acquireMedia(): Promise<MediaStream | null> {
             try {
                 // Pre-check for camera availability
                 const devices = await navigator.mediaDevices.enumerateDevices();
-                const hasCamera = devices.some(device => device.kind === 'videoinput');
-                
+                const hasCamera = devices.some(
+                    (device) => device.kind === "videoinput",
+                );
+
                 if (!hasCamera) {
                     console.warn("[Call] No camera found on this device.");
                     videoFallback.value = true;
                 } else {
                     const stream = await navigator.mediaDevices.getUserMedia({
                         audio: true,
-                        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
+                        video: {
+                            width: { ideal: 1280 },
+                            height: { ideal: 720 },
+                            facingMode: "user",
+                        },
                     });
                     localStream.value = stream;
-                    
+
                     console.log("[Call] Local media acquired:", {
-                        audio: stream.getAudioTracks().length > 0 ? 'YES' : 'NO',
-                        video: stream.getVideoTracks().length > 0 ? 'YES' : 'NO'
+                        audio:
+                            stream.getAudioTracks().length > 0 ? "YES" : "NO",
+                        video:
+                            stream.getVideoTracks().length > 0 ? "YES" : "NO",
                     });
-                    
+
                     return stream;
                 }
             } catch (e) {
-                console.warn("[Call] Camera access error or unavailable, fallback to audio", e);
+                console.warn(
+                    "[Call] Camera access error or unavailable, fallback to audio",
+                    e,
+                );
                 videoFallback.value = true;
             }
         }
-        
+
         // Audio Only or Fallback
         const stream = await navigator.mediaDevices.getUserMedia({
             audio: true,
@@ -186,12 +238,12 @@ async function acquireMedia(): Promise<MediaStream | null> {
         });
         localStream.value = stream;
         isCameraOff.value = true; // Force camera off state UI
-        
+
         console.log("[Call] Local media acquired:", {
-            audio: stream.getAudioTracks().length > 0 ? 'YES' : 'NO',
-            video: 'NO (Audio-only mode)'
+            audio: stream.getAudioTracks().length > 0 ? "YES" : "NO",
+            video: "NO (Audio-only mode)",
         });
-        
+
         return stream;
     } catch (e: any) {
         console.error("[Call] Media acquisition failed:", e);
@@ -208,26 +260,28 @@ async function acquireMedia(): Promise<MediaStream | null> {
 function mungeSdp(sdp: string): string {
     if (!sdp) return sdp;
     try {
-        const parsed = sdpTransform.parse(sdp);
-        if (parsed.media) {
-            parsed.media = parsed.media.map((m: any) => {
-                // Fix for: a=max-message-size:1073741823 Invalid SDP line
-                // We cap it to a more standard value.
-                if (m.maxMessageSize !== undefined) {
-                    m.maxMessageSize = 65536; 
-                }
-                // Ensure SCTP port is set if missing (older simple-peer/browser versions)
-                if (m.protocol === 'UDP/DTLS/SCTP' && m.sctpPort === undefined) {
-                    m.sctpPort = 5000;
-                }
-                return m;
-            });
-        }
-        return sdpTransform.write(parsed);
+        // Bit-Perfect Peace Normalizer:
+        // 1. Removes ONLY the bugged max-message-size line.
+        // 2. Preserves the original dialect, order, and spacing of all other lines.
+        // 3. Ensures clean CRLF line endings to satisfy strict parsers.
+        return (
+            sdp
+                .split(/\r?\n/)
+                .map((l) => l.trim())
+                .filter(
+                    (l) => l.length > 0 && !l.includes("a=max-message-size:"),
+                )
+                .join("\r\n") + "\r\n"
+        );
     } catch (e) {
         console.warn("[Call] SDP munging failed, fallback to raw", e);
         return sdp;
     }
+}
+
+function trace(area: string, message: string, data?: any) {
+    const timestamp = new Date().toISOString().split("T")[1].split(".")[0];
+    console.info(`[RTC-TRACE][${timestamp}][${area}] ${message}`, data || "");
 }
 
 // ============================================================================
@@ -236,35 +290,47 @@ function mungeSdp(sdp: string): string {
 
 async function joinCall() {
     console.log("[Call] User clicked JOIN");
-    
+
     const stream = await acquireMedia();
     if (!stream) return;
 
     hasJoined.value = true;
-    stopRingtone(); 
+    stopRingtone();
 
     if (!callData.value) return;
 
     try {
         // 0. Fetch ICE credentials (TURN/STUN) for NAT traversal
         try {
-            const turnData = await videoCallService.getTurnCredentials(callData.value.chatId);
+            const turnData = await videoCallService.getTurnCredentials(
+                callData.value.chatId,
+            );
             iceServers.value = turnData.ice_servers;
-            console.log("[Call] ICE Servers configured:", iceServers.value.length);
+            console.log(
+                "[Call] ICE Servers configured:",
+                iceServers.value.length,
+            );
         } catch (e) {
-            console.warn("[Call] Failed to fetch TURN credentials, using defaults", e);
+            console.warn(
+                "[Call] Failed to fetch TURN credentials, using defaults",
+                e,
+            );
         }
 
         // 1. Tell API we are joining
         const joinResponse = await videoCallService.joinCall(
             callData.value.chatId,
-            callData.value.callId
+            callData.value.callId,
         );
 
         console.log("[Call] Joined. Response:", joinResponse);
-        const { participants: currentParticipants, mode, app_id } = joinResponse;
-        
-        callMode.value = mode || 'mesh';
+        const {
+            participants: currentParticipants,
+            mode,
+            app_id,
+        } = joinResponse;
+
+        callMode.value = mode || "mesh";
         sfuAppId.value = app_id || null;
 
         // 2. Normalize and initialize participants list
@@ -276,21 +342,26 @@ async function joinCall() {
                 publicId: pId,
                 name: isSelf ? "Me" : p.name,
                 avatar: p.avatar_thumb_url || p.avatar,
-                isSelf
+                isSelf,
             };
         });
-        
+
         // 3. Connect to existing participants
-        const others = participants.value.filter(p => !p.isSelf);
-        
-        if (callMode.value === 'mesh') {
+        const others = participants.value.filter((p) => !p.isSelf);
+
+        if (callMode.value === "mesh") {
             console.log("[Call] Initializing MESH mode");
             for (const p of others) {
-                createPeer(p.publicId, true, stream);
+                // DETERMINISTIC: Only the user with the "Higher" string ID initiates.
+                // This prevents "Glare" where both sides send an offer at the same time.
+                const isInitiator = selfId > p.publicId;
+                createPeer(p.publicId, isInitiator, stream);
             }
+            isTransportReady.value = true;
         } else {
             console.log("[Call] Initializing SFU mode via Cloudflare");
             await joinSFU(stream);
+            isTransportReady.value = true;
         }
 
         // 4. Set state
@@ -300,34 +371,63 @@ async function joinCall() {
         startDurationTimer();
         stopRingtone();
 
-        // 5. Replay pending signals (from buffering in useVideoCall)
-        if (callData.value.pendingSignals && callData.value.pendingSignals.length > 0) {
-            console.log(`[Call] Replaying ${callData.value.pendingSignals.length} pending signals`);
+        // 5. Replay pending signals
+        // a) From sessionStorage (signals received before popup opened)
+        if (
+            callData.value.pendingSignals &&
+            callData.value.pendingSignals.length > 0
+        ) {
+            console.log(
+                `[Call] Replaying ${callData.value.pendingSignals.length} signals from sessionStorage`,
+            );
             for (const sig of callData.value.pendingSignals) {
                 handleSignal(sig);
             }
         }
 
+        // b) From runtime buffer (signals received while in lobby)
+        if (pendingSignalsBuffer.value.length > 0) {
+            console.log(
+                `[Call] Replaying ${pendingSignalsBuffer.value.length} signals from runtime buffer`,
+            );
+            const signals = [...pendingSignalsBuffer.value];
+            pendingSignalsBuffer.value = []; // Clear before processing to avoid loops
+            for (const sig of signals) {
+                handleSignal(sig);
+            }
+        }
+
+        // 6. Start local audio analysis for "talking indicator"
+        if (localStream.value) {
+            startAudioAnalysis(selfId, localStream.value);
+        }
     } catch (err) {
         console.error("[Call] Join failed:", err);
         handleCallFailed();
     }
 }
 
-function createPeer(targetPublicId: string, initiator: boolean, stream: MediaStream) {
+function createPeer(
+    targetPublicId: string,
+    initiator: boolean,
+    stream: MediaStream,
+) {
     const normalizedTargetId = targetPublicId.toLowerCase();
     if (peers.has(normalizedTargetId)) return;
 
-    console.log(`[Call] Creating peer for ${normalizedTargetId} (initiator: ${initiator})`);
+    console.log(
+        `[Call] Creating peer for ${normalizedTargetId} (initiator: ${initiator})`,
+    );
 
     const peer = new Peer({
         initiator,
         stream,
         trickle: true,
         sdpTransform: (sdp) => mungeSdp(sdp),
-        config: { 
-            iceServers: iceServers.value.length > 0 ? iceServers.value : undefined 
-        }
+        config: {
+            iceServers:
+                iceServers.value.length > 0 ? iceServers.value : undefined,
+        },
     });
 
     // Debug connection state
@@ -335,10 +435,14 @@ function createPeer(targetPublicId: string, initiator: boolean, stream: MediaStr
     const pc = peer._pc as RTCPeerConnection;
     if (pc) {
         pc.oniceconnectionstatechange = () => {
-            console.log(`[Call] ICE State for ${normalizedTargetId}: ${pc.iceConnectionState}`);
+            console.log(
+                `[Call] ICE State for ${normalizedTargetId}: ${pc.iceConnectionState}`,
+            );
         };
         pc.onconnectionstatechange = () => {
-            console.log(`[Call] Connection State for ${normalizedTargetId}: ${pc.connectionState}`);
+            console.log(
+                `[Call] Connection State for ${normalizedTargetId}: ${pc.connectionState}`,
+            );
         };
     }
 
@@ -349,7 +453,7 @@ function createPeer(targetPublicId: string, initiator: boolean, stream: MediaStr
             callData.value!.callId,
             "signal",
             signal,
-            normalizedTargetId 
+            normalizedTargetId,
         );
     });
 
@@ -357,17 +461,40 @@ function createPeer(targetPublicId: string, initiator: boolean, stream: MediaStr
         console.log(`[Call] Stream from ${normalizedTargetId}`, {
             audio: remoteStream.getAudioTracks().length,
             video: remoteStream.getVideoTracks().length,
-            active: remoteStream.active
-        });
-        
-        // Detailed track logging
-        remoteStream.getTracks().forEach(track => {
-            console.log(`[Call] Remote track from ${normalizedTargetId}: ${track.kind} (${track.id}) enabled=${track.enabled}`);
-            track.onmute = () => console.warn(`[Call] Remote ${track.kind} track from ${normalizedTargetId} MUTED (data flow stopped)`);
-            track.onunmute = () => console.log(`[Call] Remote ${track.kind} track from ${normalizedTargetId} UNMUTED (data flow resumed)`);
+            active: remoteStream.active,
         });
 
-        remoteStreams.set(normalizedTargetId, remoteStream);
+        // Detailed track logging
+        remoteStream.getTracks().forEach((track) => {
+            console.log(
+                `[Call] Remote track from ${normalizedTargetId}: ${track.kind} (${track.id}) enabled=${track.enabled}`,
+            );
+            track.onmute = () =>
+                console.warn(
+                    `[Call] Remote ${track.kind} track from ${normalizedTargetId} MUTED (data flow stopped)`,
+                );
+            track.onunmute = () =>
+                console.log(
+                    `[Call] Remote ${track.kind} track from ${normalizedTargetId} UNMUTED (data flow resumed)`,
+                );
+        });
+
+        // HEURISTIC: In Mesh, main stream has audio+video, screen share has video ONLY.
+        const hasVideo = remoteStream.getVideoTracks().length > 0;
+        const hasAudio = remoteStream.getAudioTracks().length > 0;
+
+        if (hasVideo && !hasAudio) {
+            console.log(
+                `[Call] Mesh: Detected SCREEN stream from ${normalizedTargetId}`,
+            );
+            store.addRemoteScreenStream(normalizedTargetId, remoteStream);
+        } else {
+            console.log(
+                `[Call] Mesh: Detected MAIN stream from ${normalizedTargetId}`,
+            );
+            store.addRemoteStream(normalizedTargetId, remoteStream);
+            startAudioAnalysis(normalizedTargetId, remoteStream);
+        }
     });
 
     peer.on("error", (err) => {
@@ -377,7 +504,8 @@ function createPeer(targetPublicId: string, initiator: boolean, stream: MediaStr
     peer.on("close", () => {
         console.log(`[Call] Peer closed ${normalizedTargetId}`);
         peers.delete(normalizedTargetId);
-        remoteStreams.delete(normalizedTargetId);
+        store.removeRemoteStream(normalizedTargetId);
+        store.removeRemoteScreenStream(normalizedTargetId);
     });
 
     peers.set(normalizedTargetId, peer);
@@ -387,110 +515,407 @@ function createPeer(targetPublicId: string, initiator: boolean, stream: MediaStr
 // Signal Handling
 // ============================================================================
 
+const pendingSignalsBuffer = ref<any[]>([]);
+
 async function handleSignal(event: any) {
-    const senderId = (event.sender_public_id || event.senderPublicId || "").toLowerCase();
-    const targetId = (event.target_public_id || event.targetPublicId || "").toLowerCase();
+    const senderId = (
+        event.sender_public_id ||
+        event.senderPublicId ||
+        ""
+    ).toLowerCase();
+    const targetId = (
+        event.target_public_id ||
+        event.targetPublicId ||
+        ""
+    ).toLowerCase();
     const selfId = (callData.value?.selfPublicId || "").toLowerCase();
 
-    if (senderId === selfId) return;
-    
-    // In mesh, signals MUST be targeted or we ignore them for safety
-    if (targetId && targetId !== selfId) return;
+    if (senderId === selfId) {
+        console.log(
+            `[Call] Ignoring self-signal from ${senderId} (I am ${selfId})`,
+        );
+        return;
+    }
 
-    // WAIT for media if we are in the process of joining
-    if (!hasJoined.value || !localStream.value) {
-        console.log(`[Call] Buffering signal from ${senderId} - joining or media not ready`);
+    // In mesh, signals MUST be targeted or we ignore them for safety
+    if (targetId && targetId !== selfId) {
+        console.log(
+            `[Call] Ignoring signal targeted at ${targetId} (I am ${selfId})`,
+        );
+        return;
+    }
+
+    // WAIT for media and transport readiness (PC + Session ID)
+    if (!isTransportReady.value || !hasJoined.value || !localStream.value) {
+        trace(
+            "SIGNAL",
+            `Buffering signal from ${senderId} - joining or transport not ready`,
+        );
+        pendingSignalsBuffer.value.push(event);
         return;
     }
 
     const signal = event.signal_data;
-    
-    // Deduplication check (simple fingerprint)
-    const signalId = JSON.stringify(signal).substring(0, 100) + senderId;
+
+    // 1. Robust Deduplication check (full fingerprint)
+    // We stringify the WHOLE signal but only keep a rolling hash of the last 1000
+    const signalId = JSON.stringify(signal) + senderId;
     if (processedSignals.has(signalId)) return;
     processedSignals.add(signalId);
-    if (processedSignals.size > 100) processedSignals.delete(processedSignals.keys().next().value!);
 
+    // Management: keep set size manageable
+    if (processedSignals.size > 500) {
+        const first = processedSignals.values().next().value;
+        if (first !== undefined) processedSignals.delete(first);
+    }
+
+    // Bidirectional Sanitization: clean up both incoming and outgoing SDPs
+    // to protect against "Invalid SDP line" errors (max-message-size, sctp-port).
     if (signal.sdp) signal.sdp = mungeSdp(signal.sdp);
 
-    // Get or Create Peer
-    let peer = peers.get(senderId);
-
-    if (!peer) {
-        // Deterministic initiation: prevent both sides from offering at once
-        // If we see an offer, we respond. 
-        // If we see an answer but don't have a peer, something is wrong or we joined late.
-        if (signal.type === 'offer') {
-            console.log(`[Call] Received offer from ${senderId}, creating responder peer`);
-            createPeer(senderId, false, localStream.value!);
-            peer = peers.get(senderId);
-        } else if (signal.type === 'ice-candidate') {
-            console.warn(`[Call] Received candidate from unknown peer ${senderId}, ignoring`);
-            return;
-        } else {
-            console.warn(`[Call] Received ${signal.type} from unknown peer ${senderId}`);
-            return;
-        }
+    // SFU: Remote Session Registration & Track Pulling
+    if (signal.type === "sfu-session-ready") {
+        trace(
+            "SIGNAL",
+            `Received sfu-session-ready from ${senderId}`,
+            signal.sessionId,
+        );
+        remoteSfuSessions.set(senderId, signal.sessionId);
+        pullParticipantTracks(senderId, signal.sessionId);
+        return;
     }
 
-    // Handle Glare: if we receive an offer while we are in 'have-local-offer' state
-    // @ts-ignore
-    const pc = peer._pc as RTCPeerConnection;
-    if (signal.type === 'offer' && pc && pc.signalingState !== 'stable') {
-        const isPolite = selfId < senderId;
-        if (!isPolite) {
-            console.log(`[Call] Glare detected with ${senderId}. We are impolite, ignoring their offer.`);
-            return;
+    // SFU Screen Share Signaling
+    if (signal.type === "sfu-screen-share-started") {
+        trace(
+            "SIGNAL",
+            `Received screen-share-started from ${senderId}`,
+            signal,
+        );
+        pullSFURemoteScreen(senderId, signal.mid, signal.sessionId);
+        return;
+    }
+    if (signal.type === "sfu-screen-share-stopped") {
+        trace("SIGNAL", `Received screen-share-stopped from ${senderId}`);
+        store.removeRemoteScreenStream(senderId);
+        return;
+    }
+
+    // Get or Create Peer (MESH ONLY)
+    if (callMode.value === "mesh") {
+        let peer = peers.get(senderId);
+
+        if (!peer) {
+            // Deterministic initiation: prevent both sides from offering at once
+            // If we see an offer, we respond.
+            // If we see an answer but don't have a peer, something is wrong or we joined late.
+            if (signal.type === "offer") {
+                console.log(
+                    `[Call] Received offer from ${senderId}, creating responder peer`,
+                );
+                createPeer(senderId, false, localStream.value!);
+                peer = peers.get(senderId);
+            } else if (signal.type === "ice-candidate") {
+                console.warn(
+                    `[Call] Received candidate from unknown peer ${senderId}, ignoring`,
+                );
+                return;
+            } else {
+                console.warn(
+                    `[Call] Received ${signal.type} from unknown peer ${senderId}`,
+                );
+                return;
+            }
         }
-        console.log(`[Call] Glare detected with ${senderId}. We are polite, rollback and accept their offer.`);
+
+        // Handle Glare: if we receive an offer while we are in 'have-local-offer' state
+        // @ts-ignore
+        const pc = peer._pc as RTCPeerConnection;
+        if (signal.type === "offer" && pc && pc.signalingState !== "stable") {
+            const isPolite = selfId < senderId;
+            if (!isPolite) {
+                console.log(
+                    `[Call] Glare detected with ${senderId}. We are impolite, ignoring their offer.`,
+                );
+                return;
+            }
+            console.log(
+                `[Call] Glare detected with ${senderId}. We are polite, rollback and accept their offer.`,
+            );
+            try {
+                await pc.setLocalDescription({ type: "rollback" } as any);
+            } catch (e) {
+                console.warn("[Call] Rollback failed", e);
+            }
+        }
+
         try {
-            await pc.setLocalDescription({ type: 'rollback' } as any);
+            peer?.signal(signal);
         } catch (e) {
-            console.warn("[Call] Rollback failed", e);
+            console.error(`[Call] Error signaling peer ${senderId}:`, e);
         }
-    }
-
-    try {
-        peer?.signal(signal);
-    } catch (e) {
-        console.error(`[Call] Error signaling peer ${senderId}:`, e);
+    } else {
+        trace(
+            "SIGNAL",
+            `Ignoring MESH signal ${signal.type} from ${senderId} (currently in SFU mode)`,
+        );
     }
 }
 
+async function pullSFURemoteScreen(
+    participantPublicId: string,
+    mid: string,
+    remoteSessionId?: string,
+) {
+    if (callMode.value !== "sfu" || !sfuPc) return;
+
+    // Resolve sessionId
+    const targetSessionId =
+        remoteSessionId || remoteSfuSessions.get(participantPublicId);
+    if (!targetSessionId) {
+        console.warn(
+            `[SFU] Cannot pull screen for ${participantPublicId}: session ID unknown`,
+        );
+        return;
+    }
+
+    console.log(
+        `[SFU] Processing remote screen share from ${participantPublicId} (mid: ${mid}) using session ${targetSessionId}`,
+    );
+
+    return runInSFUQueue(async () => {
+        try {
+            // Check if we already have this screen Mid (INSIDE QUEUE to prevent races)
+            if (
+                participantTransceivers.get(participantPublicId)?.screenMid ===
+                mid
+            ) {
+                console.log(
+                    `[SFU] Already have screen share mid ${mid} for ${participantPublicId}`,
+                );
+                return;
+            }
+
+            let transceiver = sfuPc!
+                .getTransceivers()
+                .find(
+                    (t) =>
+                        t.direction === "recvonly" &&
+                        sfuTransceiverMap.get(t)?.participantId ===
+                            participantPublicId &&
+                        sfuTransceiverMap.get(t)?.trackName === "screen",
+                );
+
+            if (!transceiver) {
+                transceiver = sfuPc!.addTransceiver("video", {
+                    direction: "recvonly",
+                });
+                sfuTransceiverMap.set(transceiver, {
+                    participantId: participantPublicId,
+                    trackName: "screen",
+                });
+            }
+
+            // 1. Request tracks WITHOUT a local offer first (Server-Initiated Pull)
+            // This avoids "Push-Pull" glare.
+            trace("PULL-SCREEN", `Requesting screen for ${participantPublicId}: ${mid}`, {
+                mid,
+            });
+
+            const trackReqs = [
+                {
+                    location: "remote",
+                    sessionId: targetSessionId,
+                    trackName: "screen",
+                    mid: transceiver.mid || undefined,
+                },
+            ].map(t => {
+                const clean = { ...t };
+                if (!clean.mid) delete (clean as any).mid;
+                return clean;
+            });
+
+            const tracksRes = await videoCallService.sfuSessionTracks(
+                callData.value!.chatId,
+                sfuSessionId.value!,
+                trackReqs,
+                undefined, // NO OFFER
+            );
+
+            trace("PULL-SCREEN", `Response for ${participantPublicId}`, tracksRes);
+
+            // Save to tracking
+            const existing = participantTransceivers.get(participantPublicId) || {};
+            participantTransceivers.set(participantPublicId, {
+                ...existing,
+                screenMid: mid,
+            });
+
+            if (transceiver.mid) {
+                midToParticipantMap.set(transceiver.mid, `${participantPublicId}:screen`);
+            }
+
+            if (tracksRes.sessionDescription) {
+                console.log("[SFU] Pull screen returned server offer (immediate), answering...");
+                await sfuPc!.setRemoteDescription(
+                    new RTCSessionDescription(tracksRes.sessionDescription),
+                );
+                const answer = await sfuPc!.createAnswer();
+                await sfuPc!.setLocalDescription(answer);
+
+                await videoCallService.sfuSessionRenegotiate(
+                    callData.value!.chatId,
+                    sfuSessionId.value!,
+                    mungeSdp(answer.sdp!),
+                    "answer",
+                    "PUT",
+                );
+            } else {
+                 console.log(
+                    "[SFU] Pull screen track accepted. Triggering sync...",
+                     tracksRes,
+                );
+                triggerSFURenegotiation();
+            }
+
+            if (tracksRes.requiresImmediateRenegotiation) {
+                // (Already triggered by Force Sync above, but safe to call again or just log)
+                console.log("[SFU] Cloudflare explicitly requested immediate renegotiation for screen");
+            }
+        } catch (e: any) {
+            console.warn(
+                `[SFU] Failed to pull screen track for ${participantPublicId}`,
+                e,
+            );
+            
+            // Clean up tracking on failure
+            const existing = participantTransceivers.get(participantPublicId);
+            if (existing) {
+                delete (existing as any).screenMid;
+                participantTransceivers.set(participantPublicId, existing);
+            }
+        }
+    });
+}
+
+// Modify handleParticipantJoined to support SFU pulling
 function handleParticipantJoined(event: any) {
-    const publicId = (event.participant_public_id || event.participant_publicId || "").toLowerCase();
+    const publicId = (
+        event.participant_public_id ||
+        event.participant_publicId ||
+        ""
+    ).toLowerCase();
     const selfId = (callData.value?.selfPublicId || "").toLowerCase();
-    
-    if (publicId === selfId) return;
-    
+
+    if (publicId === selfId) {
+        console.log(`[Call] Ignoring self-join event for ${publicId}`);
+        return;
+    }
+
     console.log("[Call] New participant joined:", event);
-    
+
     // Add to list
-    const exists = participants.value.find(p => p.publicId.toLowerCase() === publicId);
+    const exists = participants.value.find(
+        (p) => p.publicId.toLowerCase() === publicId,
+    );
     if (!exists) {
         participants.value.push({
             publicId: publicId,
             name: event.participant_name,
             avatar: event.participant_avatar,
-            isSelf: false
+            isSelf: false,
         });
+    }
+
+    // MESH: Negotiate with the new person
+    if (callMode.value === "mesh") {
+        const isInitiator = selfId > publicId;
+        if (!peers.has(publicId)) {
+            trace(
+                "MESH",
+                `Initiating mesh peer for ${publicId} (initiator: ${isInitiator})`,
+            );
+            createPeer(publicId, isInitiator, localStream.value!);
+        }
+    } else {
+        trace(
+            "SFU",
+            `Participant ${publicId} joined. Ignoring MESH negotiation as we are in SFU mode.`,
+        );
+    }
+
+    // SFU: Negotiate with the new person
+    if (callMode.value === "sfu") {
+        // We can't pull yet, we must wait for their 'sfu-session-ready' signal.
+        // BUT we should send OUR session ID to the new joiner if we have one.
+        if (sfuSessionId.value) {
+            console.log(
+                `[SFU] Sending our session ID ${sfuSessionId.value} to new joiner ${publicId}`,
+            );
+            videoCallService
+                .sendSignal(
+                    callData.value!.chatId,
+                    callData.value!.callId,
+                    "signal",
+                    {
+                        type: "sfu-session-ready",
+                        sessionId: sfuSessionId.value,
+                    },
+                    publicId,
+                )
+                .catch(() => {});
+        }
+
+        // If WE are sharing screen, notify the NEW participant
+        if (isScreenSharing.value && sfuScreenMid.value) {
+            console.log(
+                `[SFU] Notifying new joiner ${publicId} about our active screen share`,
+            );
+            videoCallService
+                .sendSignal(
+                    callData.value!.chatId,
+                    callData.value!.callId,
+                    "signal",
+                    {
+                        type: "sfu-screen-share-started",
+                        mid: sfuScreenMid.value,
+                        sessionId: sfuSessionId.value, // Also provide sessionId here just in case
+                    },
+                    publicId,
+                )
+                .catch(() => {});
+        }
     }
 }
 
 function handleParticipantLeft(event: any) {
-    const publicId = (event.participant_public_id || event.participant_publicId || "").toLowerCase();
+    const publicId = (
+        event.participant_public_id ||
+        event.participant_publicId ||
+        ""
+    ).toLowerCase();
     console.log("[Call] Participant left:", publicId);
-    
+
     // Remove from list
-    participants.value = participants.value.filter(p => p.publicId !== publicId);
-    
+    participants.value = participants.value.filter(
+        (p) => p.publicId !== publicId,
+    );
+
     // Peer cleanup handled by peer.on('close') or explicit destroy
     const peer = peers.get(publicId);
     if (peer) {
         peer.destroy();
         peers.delete(publicId);
-        remoteStreams.delete(publicId);
+        store.removeRemoteStream(publicId);
     }
+
+    // SFU cleanup
+    store.removeRemoteScreenStream(publicId);
+    audioAnalysers.forEach((_, id) => {
+        if (id.startsWith(publicId)) stopAudioAnalysis(id);
+    });
+
+    stopAudioAnalysis(publicId);
 }
 
 function handleCallEndedEvent(event: any) {
@@ -517,7 +942,7 @@ function setupEcho() {
     // Safer to just subscribe to both prefixes or pass it.
     // I will simply try to subscribe to the channel that matches the ID.
     // Actually, `useVideoCall` knows `chat_type` from the event.
-    // Let's fix `startCall` to pass `chatType`. 
+    // Let's fix `startCall` to pass `chatType`.
     // For now, I'll try to guess or use a wildcard approach if I could (Echo doesn't support).
     // Let's update `useVideoCall` to pass `chatType`.
 
@@ -525,31 +950,35 @@ function setupEcho() {
     // The channel is `dm.{public_id}` or `group.{public_id}`.
     // I'll try `group.` first if it looks like a group call?
     // Or just subscribe to `private-dm.x` AND `private-group.x`? No, Echo handles prefix.
-    
+
     // HACK: I will guess based on callData.remoteUser.
-    
+
     // Better fix: update `useVideoCall.ts` to store `chatType` in sessionStorage.
-    // But since I can't do that concurrently effectively without risking race, 
+    // But since I can't do that concurrently effectively without risking race,
     // I will try to subscribe to `dm.{id}`. If it fails (auth), try `group.{id}`.
     // Actually, `Echo` doesn't throw on subscribe.
-    
+
     // Let's assume for now 1:1 is `dm`.
-    // Wait, the `videocall.service` endpoints use `chatId`. 
+    // Wait, the `videocall.service` endpoints use `chatId`.
     // The backend broadcasts on `dm` or `group` based on chat type.
-    
-    // I'll just assume `dm` for now to match legacy, 
+
+    // I'll just assume `dm` for now to match legacy,
     // BUT we must fix this to support groups.
     // I will add `chatType` to `callData` interface and try to read it.
     // If missing, default to `dm`.
-    
-    const prefix = (callData.value as any).chatType === 'group' ? 'group' : 'dm';
+
+    const prefix = callData.value.chatType === "group" ? "group" : "dm";
     const channelName = `${prefix}.${callData.value.chatId}`;
-    
+
     echoChannel = echo.private(channelName);
     echoChannel
         .listen(".CallSignal", (event: any) => handleSignal(event))
-        .listen(".CallParticipantJoined", (event: any) => handleParticipantJoined(event))
-        .listen(".CallParticipantLeft", (event: any) => handleParticipantLeft(event))
+        .listen(".CallParticipantJoined", (event: any) =>
+            handleParticipantJoined(event),
+        )
+        .listen(".CallParticipantLeft", (event: any) =>
+            handleParticipantLeft(event),
+        )
         .listen(".CallEnded", (event: any) => handleCallEndedEvent(event));
 }
 
@@ -559,16 +988,20 @@ function setupEcho() {
 
 function toggleMute() {
     isMuted.value = !isMuted.value;
-    localStream.value?.getAudioTracks().forEach(t => t.enabled = !isMuted.value);
+    localStream.value
+        ?.getAudioTracks()
+        .forEach((t) => (t.enabled = !isMuted.value));
 }
 
 function toggleCamera() {
     isCameraOff.value = !isCameraOff.value;
-    localStream.value?.getVideoTracks().forEach(t => t.enabled = !isCameraOff.value);
+    localStream.value
+        ?.getVideoTracks()
+        .forEach((t) => (t.enabled = !isCameraOff.value));
 }
 
 function remoteHasVideo(participantId: string): boolean {
-    const stream = remoteStreams.get(participantId);
+    const stream = store.remoteStreams.get(participantId);
     if (!stream) return false;
     return stream.getVideoTracks().length > 0;
 }
@@ -583,7 +1016,7 @@ async function toggleScreenShare() {
         console.log("[Call] Requesting screen share...");
         const stream = await (navigator.mediaDevices as any).getDisplayMedia({
             video: { cursor: "always" },
-            audio: false
+            audio: false,
         });
 
         isScreenSharing.value = true;
@@ -595,28 +1028,33 @@ async function toggleScreenShare() {
             stopScreenShare();
         };
 
-        if (callMode.value === 'mesh') {
+        if (callMode.value === "mesh") {
             // Replace tracks for all peers
             const videoTrack = stream.getVideoTracks()[0];
-            peers.forEach(peer => {
+            peers.forEach((peer) => {
                 // @ts-ignore
                 const pc = peer._pc as RTCPeerConnection;
                 const senders = pc.getSenders();
-                const videoSender = senders.find((s: any) => s.track?.kind === 'video');
-                
+                const videoSender = senders.find(
+                    (s: any) => s.track?.kind === "video",
+                );
+
                 if (videoSender) {
-                    console.log("[Call] Mesh: Replacing existing video track with screen track");
+                    console.log(
+                        "[Call] Mesh: Replacing existing video track with screen track",
+                    );
                     videoSender.replaceTrack(videoTrack);
                 } else {
-                    console.log("[Call] Mesh: Adding new screen track (initially audio-only)");
-                    peer.addTrack(videoTrack, localStream.value!); // Simple-peer addTrack triggers negotiation
+                    console.log(
+                        "[Call] Mesh: Adding new screen track (initially audio-only)",
+                    );
+                    peer.addTrack(videoTrack, stream); // Mesh: Use separate stream object to avoid ID collisions
                 }
             });
         } else {
             // SFU: Add screen track
             await publishSFUScreenTrack(stream);
         }
-
     } catch (err) {
         console.error("[Call] Screen share failed:", err);
     }
@@ -626,33 +1064,52 @@ function stopScreenShare() {
     if (!isScreenSharing.value) return;
 
     console.log("[Call] Stopping screen share...");
-    screenStream.value?.getTracks().forEach(t => t.stop());
+    screenStream.value?.getTracks().forEach((t) => t.stop());
     screenStream.value = null;
     isScreenSharing.value = false;
 
+    if (callMode.value === "sfu") {
+        stopSFUScreenShare();
+    }
+
     // Restore camera track
-    if (callMode.value === 'mesh') {
-        peers.forEach(peer => {
+    if (callMode.value === "mesh") {
+        peers.forEach((peer) => {
             // @ts-ignore
             const pc = peer._pc as RTCPeerConnection;
             const senders = pc.getSenders();
-            const videoSender = senders.find((s: any) => s.track?.kind === 'video');
-            
+            const videoSender = senders.find(
+                (s: any) => s.track?.kind === "video",
+            );
+
             if (videoSender) {
                 const cameraTrack = localStream.value?.getVideoTracks()[0];
                 if (cameraTrack) {
                     console.log("[Call] Mesh: Restoring camera track");
                     videoSender.replaceTrack(cameraTrack);
                 } else {
-                    console.log("[Call] Mesh: Removing screen track (no camera fallback)");
+                    console.log(
+                        "[Call] Mesh: Removing screen track (no camera fallback)",
+                    );
                     peer.removeTrack(videoSender.track!, localStream.value!);
                 }
             }
         });
     } else {
-        // SFU Handle restore (usually simple peer connection renegotiation or just swapping track)
-        // For now, let's keep it simple: SFU will need a full renegotiate if we want to remove the track, 
-        // or we just replace the published track.
+        // SFU Handle restore
+        if (sfuPc && sfuSessionId.value) {
+            const cameraTrack = localStream.value?.getVideoTracks()[0];
+            if (cameraTrack) {
+                const transceivers = sfuPc.getTransceivers();
+                const videoTransceiver = transceivers.find(
+                    (t) => t.sender.track?.kind === "video",
+                );
+                if (videoTransceiver) {
+                    console.log("[SFU] Restoring camera track");
+                    videoTransceiver.sender.replaceTrack(cameraTrack);
+                }
+            }
+        }
     }
 }
 
@@ -661,95 +1118,633 @@ function stopScreenShare() {
 // ============================================================================
 
 let sfuPc: RTCPeerConnection | null = null;
-const sfuTransceivers = new Map<string, RTCRtpTransceiver>();
+
+// normalizeSdp has been replaced by mungeSdp for bit-perfect cross-browser compatibility
 
 async function joinSFU(stream: MediaStream) {
+    return runInSFUQueue(async () => {
+        console.log("[SFU] Initializing RTCPeerConnection for Cloudflare Calls");
+
     sfuPc = new RTCPeerConnection({
-        iceServers: iceServers.value.length > 0 ? iceServers.value : [{ urls: 'stun:stun.cloudflare.com:3478' }],
-        bundlePolicy: 'max-bundle'
+        iceServers:
+            iceServers.value.length > 0
+                ? iceServers.value
+                : [{ urls: "stun:stun.cloudflare.com:3478" }],
+        bundlePolicy: "max-bundle",
     });
 
-    // 1. Add senders
-    stream.getTracks().forEach(track => {
-        sfuPc!.addTransceiver(track, { direction: 'sendonly' });
+    // 1. Add local senders
+    stream.getTracks().forEach((track) => {
+        console.log(`[SFU] Adding local ${track.kind} track to session`);
+        sfuPc!.addTransceiver(track, { direction: "sendonly" });
     });
 
-    // 2. Create Offer & Session
+    // 2. Initial Offer to establish session and name tracks
     const offer = await sfuPc.createOffer();
     await sfuPc.setLocalDescription(offer);
 
-    const sessionRes = await videoCallService.sfuSessionNew(callData.value!.chatId, offer.sdp!);
-    sfuSessionId.value = sessionRes.sessionId;
-    
-    await sfuPc.setRemoteDescription(new RTCSessionDescription(sessionRes.sessionDescription));
+    const trackObjects = sfuPc
+        .getTransceivers()
+        .filter((t) => t.sender.track)
+        .map((t) => ({
+            location: "local",
+            mid: t.mid,
+            trackName: t.sender.track!.kind, // "audio" or "video"
+        }));
+
+    console.log(
+        "[SFU] Creating new session via backend proxy...",
+        trackObjects,
+    );
+    const sessionRes = await videoCallService.sfuSessionNew(
+        callData.value!.chatId,
+        mungeSdp(sfuPc.localDescription!.sdp!),
+        trackObjects,
+    );
+
+    if (sessionRes.sessionDescription) {
+        await sfuPc.setRemoteDescription(
+            new RTCSessionDescription(sessionRes.sessionDescription),
+        );
+    }
+
+    if (sessionRes.sessionId) {
+        sfuSessionId.value = sessionRes.sessionId;
+        console.log("[SFU] Session established:", sessionRes.sessionId);
+    }
 
     // 3. Wait for ICE connection
     await new Promise((resolve, reject) => {
         const timeout = setTimeout(() => reject("SFU Connect Timeout"), 10000);
         sfuPc!.oniceconnectionstatechange = () => {
-            if (sfuPc!.iceConnectionState === 'connected' || sfuPc!.iceConnectionState === 'completed') {
+            if (
+                sfuPc!.iceConnectionState === "connected" ||
+                sfuPc!.iceConnectionState === "completed"
+            ) {
                 clearTimeout(timeout);
                 resolve(true);
             }
         };
     });
 
-    // 4. Register local tracks (Cloudflare needs to know track IDs)
-    const trackObjects = sfuPc.getTransceivers()
-        .filter(t => t.sender.track)
-        .map(t => ({
-            location: 'local',
-            mid: t.mid,
-            trackName: t.sender.track!.id
-        }));
+    trace("JOIN", "Local tracks published", { trackObjects });
 
-    await sfuPc.setLocalDescription(await sfuPc.createOffer());
-    const tracksRes = await videoCallService.sfuSessionTracks(
-        callData.value!.chatId, 
-        sfuSessionId.value!, 
-        trackObjects, 
-        sfuPc.localDescription!.sdp!
-    );
-    await sfuPc.setRemoteDescription(new RTCSessionDescription(tracksRes.sessionDescription));
+    // 5. SIGNAL READY (Now that tracks are safe and registered)
+    if (sfuSessionId.value) {
+        console.log("[SFU] Signaling sfu-session-ready to all peers");
+        videoCallService
+            .sendSignal(
+                callData.value!.chatId,
+                callData.value!.callId,
+                "signal",
+                {
+                    type: "sfu-session-ready",
+                    sessionId: sfuSessionId.value,
+                },
+            )
+            .catch(() => {});
+    }
 
-    // 5. Handle pulling remote tracks
+    // 4. Handle remote tracks (Subscribing)
     sfuPc.ontrack = (event) => {
-        // Find which participant this belongs to?
-        // Note: In Cloudflare SFU, we usually need to pull tracks by SessionID/TrackName.
-        // For our hybrid simplicity, we rely on the backend to tell us which tracks to pull.
-        console.log("[SFU] Got remote track:", event.track.kind);
-        // We'll need a way to map these back to participants. 
-        // For now, we'll use a generic approach or wait for Signaling to tell us.
+        const track = event.track;
+        const mid = event.transceiver.mid;
+        trace("TRACK", `ontrack: ${track.kind}, mid: ${mid}`, {
+            muted: track.muted,
+            readyState: track.readyState,
+        });
+
+        // Resilient Track Activation: Handle immediate unmute or missing stream container
+        const handleTrackActive = () => {
+            let participantId = midToParticipantMap.get(mid!);
+
+            // FALLBACK: Use transceiver-to-participant mapping if MID mapping failed (e.g. after rollback)
+            if (!participantId) {
+                const assoc = sfuTransceiverMap.get(event.transceiver);
+                if (assoc) {
+                    participantId =
+                        assoc.trackName === "screen"
+                            ? `${assoc.participantId}:screen`
+                            : assoc.participantId;
+                    console.log(
+                        `[SFU] Identified mid ${mid} via transceiver association: ${participantId}`,
+                    );
+                }
+            }
+            trace(
+                "TRACK",
+                `Active: ${track.kind} (${mid}) for ${participantId}`,
+                {
+                    streams: event.streams.length,
+                },
+            );
+
+            if (participantId) {
+                // FALLBACK: If event.streams is empty, create a new stream from the track
+                const remoteStream =
+                    event.streams[0] || new MediaStream([track]);
+
+                if (participantId.endsWith(":screen")) {
+                    const realId = participantId.replace(":screen", "");
+                    store.addRemoteScreenStream(realId, remoteStream);
+                } else {
+                    store.addRemoteStream(participantId, remoteStream);
+                    startAudioAnalysis(participantId, remoteStream);
+                }
+            } else {
+                console.warn(`[SFU] Could not find participant for mid ${mid}`);
+                trace("TRACK", "FAILED: Unknown MID", {
+                    mid,
+                    map: Object.fromEntries(midToParticipantMap),
+                });
+            }
+        };
+
+        if (track.muted === false) {
+            handleTrackActive();
+        } else {
+            track.onunmute = handleTrackActive;
+        }
     };
-    
-    // SFU pulling logic is omitted for MVP, but the foundations are here.
-    // In a full SFU implementation, we would listen for "ParticipantJoined" 
-    // and then call sfuSessionTracks with 'location: remote'.
+
+    // 5. Initial Pull: We wait for 'sfu-session-ready' signals from others.
+    // However, if we joined late, we might miss them.
+    // The backend join response gives us participants list, but not their SFU IDs.
+    // They will re-broadcast to us in handleParticipantJoined when they see us join.
+    });
 }
+
+/* SFU Gated Rescue: Pulls pending offer from server on 406 */
+/* SFU Reset: Force a new session on unrecoverable errors */
+/* SFU Reset: Force a new session on unrecoverable errors */
+/* SFU Reset: Force a new session on unrecoverable errors */
+async function resetSFUSession() {
+    if (isSFUResetting.value) return;
+    isSFUResetting.value = true;
+    sfuGeneration++; // Invalidate pending queue tasks
+    
+    console.log(`[SFU] Forcing session reset (Gen ${sfuGeneration}) due to unrecoverable error (406)...`);
+
+    try {
+        // 1. Close existing connection
+        if (sfuPc) {
+            sfuPc.close();
+            sfuPc = null;
+        }
+        sfuSessionId.value = null;
+
+        // 2. Clear track state map
+        participantTransceivers.clear();
+
+        // 3. Stabilization delay
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        // 4. Re-join SFU
+        if (localStream.value) {
+             await joinSFU(localStream.value);
+        }
+
+        // 5. Re-publish screen if needed
+         if (isScreenSharing.value && screenStream.value) {
+            await publishSFUScreenTrack(screenStream.value);
+        }
+
+        console.log("[SFU] Session reset complete. New Session ID:", sfuSessionId.value);
+    } catch (e) {
+        console.error("[SFU] System reset failed", e);
+    } finally {
+        isSFUResetting.value = false;
+    }
+}
+
+let lastSFUReset = 0;
+
+/* SFU Gated Rescue: Force Reset on 406 */
+async function handleSFU406Rescue() {
+    const now = Date.now();
+    if (now - lastSFUReset < 5000) {
+        console.warn("[SFU] Flattening 406 rescue loop - refusing to reset again so soon.");
+        return false; // Let the error propagate, don't loop
+    }
+    lastSFUReset = now;
+
+    console.log("[SFU] 406 Answer Expected. Initiating Force Reset...");
+    await resetSFUSession();
+    return true; 
+}
+
+async function triggerSFURenegotiation() {
+    if (!sfuPc || !sfuSessionId.value || isSFUResetting.value) return;
+
+    // Guard: Don't start a new offer if we are already negotiating
+    if (sfuPc.signalingState !== "stable") {
+        console.log(
+            `[SFU] Signaling state is ${sfuPc.signalingState}, waiting for stability before renegotiating...`,
+        );
+        return;
+    }
+
+    return runInSFUQueue(async () => {
+        if (isSFUResetting.value || sfuPc?.signalingState !== "stable") return;
+        console.log("[SFU] Triggering session renegotiation...");
+        try {
+            const offer = await sfuPc!.createOffer();
+            await sfuPc!.setLocalDescription(offer);
+
+            const res = await videoCallService.sfuSessionRenegotiate(
+                callData.value!.chatId,
+                sfuSessionId.value!,
+                mungeSdp(sfuPc!.localDescription!.sdp!),
+                "offer",
+                "PUT",
+            );
+
+            if (res.sessionDescription) {
+                await sfuPc!.setRemoteDescription(
+                    new RTCSessionDescription(res.sessionDescription),
+                );
+                console.log("[SFU] Renegotiation successful (Client-Initiated)");
+            }
+        } catch (e: any) {
+            console.warn("[SFU] Client-initiated renegotiation failed", e);
+
+            if (e.response?.status === 406) {
+                if (await handleSFU406Rescue()) {
+                    triggerSFURenegotiation();
+                    return;
+                }
+            }
+
+            // Generic rollback for other errors or failed rescue
+            if (sfuPc && sfuPc.signalingState === "have-local-offer") {
+                try {
+                    await sfuPc.setLocalDescription({
+                        type: "rollback",
+                    } as any);
+                    console.log("[SFU] Rolled back local offer after failure");
+                } catch (rollbackErr) {
+                    console.warn(
+                        "[SFU] Rollback failed after renegotiate error",
+                        rollbackErr,
+                    );
+                }
+            }
+        }
+    });
+}
+
+let sfuNegotiationQueue = Promise.resolve();
+let isNegotiatingSFU = false;
+let sfuGeneration = 0; // Generation counter to invalidate old tasks on reset
+const midToParticipantMap = new Map<string, string>();
+
+async function runInSFUQueue(fn: () => Promise<void>) {
+    const currentGen = sfuGeneration;
+    sfuNegotiationQueue = sfuNegotiationQueue.then(async () => {
+        if (currentGen !== sfuGeneration) {
+            console.log(`[SFU] Skipping queued task from generation ${currentGen} (current: ${sfuGeneration})`);
+            return;
+        }
+        isNegotiatingSFU = true;
+        try {
+            await fn();
+        } finally {
+            isNegotiatingSFU = false;
+        }
+    });
+    return sfuNegotiationQueue;
+}
+
+function startAudioAnalysis(id: string, stream: MediaStream) {
+    const normalizedId = id.toLowerCase();
+    if (audioAnalysers.has(normalizedId)) stopAudioAnalysis(normalizedId);
+
+    if (stream.getAudioTracks().length === 0) return;
+
+    try {
+        const AudioContextClass =
+            (window as any).AudioContext || (window as any).webkitAudioContext;
+        const context = new AudioContextClass();
+        const source = context.createMediaStreamSource(stream);
+        const analyser = context.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.8;
+        source.connect(analyser);
+
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+        const interval = setInterval(() => {
+            analyser.getByteFrequencyData(dataArray);
+            let volume = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+                volume += dataArray[i];
+            }
+            const average = volume / dataArray.length;
+
+            // Threshold: 15 is usually a good "talking" level. Adjust if too sensitive.
+            if (average > 15) {
+                talkingParticipants.add(normalizedId);
+            } else {
+                talkingParticipants.delete(normalizedId);
+            }
+        }, 100);
+
+        audioAnalysers.set(normalizedId, {
+            context,
+            source,
+            analyser,
+            interval,
+        });
+    } catch (e) {
+        console.warn(`[Audio] Analysis failed for ${normalizedId}`, e);
+    }
+}
+
+function stopAudioAnalysis(id: string) {
+    const normalizedId = id.toLowerCase();
+    const entry = audioAnalysers.get(normalizedId);
+    if (entry) {
+        clearInterval(entry.interval);
+        entry.context.close().catch(() => {});
+        audioAnalysers.delete(normalizedId);
+    }
+    talkingParticipants.delete(normalizedId);
+}
+
+async function pullParticipantTracks(
+    participantPublicId: string,
+    remoteSessionId?: string,
+) {
+    if (!sfuPc || !sfuSessionId.value) return;
+
+    // Resolve sessionId
+    const targetSessionId =
+        remoteSessionId || remoteSfuSessions.get(participantPublicId);
+    if (!targetSessionId) {
+        console.warn(
+            `[SFU] Cannot pull tracks for ${participantPublicId}: session ID unknown yet`,
+        );
+        return;
+    }
+
+    // Chain to the queue to ensure sequential negotiation
+    return runInSFUQueue(async () => {
+        try {
+            // AVOID BLOAT: Check if we already have transceivers for this participant (INSIDE QUEUE)
+            if (participantTransceivers.has(participantPublicId)) {
+                console.log(
+                    `[SFU] Already have transceivers for ${participantPublicId}, skipping redundant pull`,
+                );
+                return;
+            }
+
+            console.log(
+                `[SFU] Processing track pull for participant: ${participantPublicId} using session ${targetSessionId}`,
+            );
+
+            // 1. Check for existing transceivers to avoid bloat
+            let audioTransceiver = sfuPc!
+                .getTransceivers()
+                .find(
+                    (t) =>
+                        t.direction === "recvonly" &&
+                        sfuTransceiverMap.get(t)?.participantId ===
+                            participantPublicId &&
+                        sfuTransceiverMap.get(t)?.trackName === "audio",
+                );
+            let videoTransceiver = sfuPc!
+                .getTransceivers()
+                .find(
+                    (t) =>
+                        t.direction === "recvonly" &&
+                        sfuTransceiverMap.get(t)?.participantId ===
+                            participantPublicId &&
+                        sfuTransceiverMap.get(t)?.trackName === "video",
+                );
+
+            if (!audioTransceiver) {
+                audioTransceiver = sfuPc!.addTransceiver("audio", {
+                    direction: "recvonly",
+                });
+                sfuTransceiverMap.set(audioTransceiver, {
+                    participantId: participantPublicId,
+                    trackName: "audio",
+                });
+            }
+            if (!videoTransceiver) {
+                videoTransceiver = sfuPc!.addTransceiver("video", {
+                    direction: "recvonly",
+                });
+                sfuTransceiverMap.set(videoTransceiver, {
+                    participantId: participantPublicId,
+                    trackName: "video",
+                });
+            }
+            // 1. Check for existing transceivers to avoid bloat (already done above)
+
+            // 2. Create Offer with new transceivers
+            const offer = await sfuPc!.createOffer();
+            await sfuPc!.setLocalDescription(offer);
+
+            // 3. Request tracks WITH local offer (Server-Initiated Pull + Negotiation)
+            trace("PULL", `Requesting tracks for ${participantPublicId}`, {
+                audioMid: audioTransceiver.mid,
+                videoMid: videoTransceiver.mid,
+            });
+
+            const trackReqs = [
+                {
+                    location: "remote",
+                    sessionId: targetSessionId,
+                    trackName: "audio",
+                    mid: audioTransceiver.mid || undefined,
+                },
+                {
+                    location: "remote",
+                    sessionId: targetSessionId,
+                    trackName: "video",
+                    mid: videoTransceiver.mid || undefined,
+                },
+            ].map(t => {
+                const clean = { ...t };
+                if (!clean.mid) delete (clean as any).mid;
+                return clean;
+            });
+
+            const res = await videoCallService.sfuSessionTracks(
+                callData.value!.chatId,
+                sfuSessionId.value!,
+                trackReqs,
+                mungeSdp(offer.sdp!), // SEND OFFER
+            );
+
+            trace("PULL", `Response for ${participantPublicId}`, res);
+
+            if (res.sessionDescription) {
+                console.log("[SFU] Pull returned server answer, setting remote description...");
+                await sfuPc!.setRemoteDescription(
+                    new RTCSessionDescription(res.sessionDescription),
+                );
+            } else {
+                console.log(
+                    "[SFU] Pull tracks request accepted (no immediate answer).",
+                    res,
+                );
+            }
+
+            // 3. Map MIDs AFTER negotiation
+            if (audioTransceiver.mid) {
+                midToParticipantMap.set(audioTransceiver.mid, participantPublicId);
+            }
+            if (videoTransceiver.mid) {
+                midToParticipantMap.set(videoTransceiver.mid, participantPublicId);
+            }
+
+            // Save to tracking
+            participantTransceivers.set(participantPublicId, {
+                audioMid: audioTransceiver.mid || "",
+                videoMid: videoTransceiver.mid || "",
+            });
+
+
+            if (res.requiresImmediateRenegotiation) {
+                console.log("[SFU] Cloudflare explicitly requested immediate renegotiation");
+            }
+        } catch (e: any) {
+            console.warn(
+                `[SFU] Failed to pull tracks for ${participantPublicId}`,
+                e,
+            );
+
+            if (e.response?.status === 406) {
+                if (await handleSFU406Rescue()) {
+                    console.log(
+                        `[SFU] 406 Rescued during track pull for ${participantPublicId}. Retrying pull...`,
+                    );
+                    pullParticipantTracks(participantPublicId);
+                    return;
+                }
+            }
+
+            // Clean up tracking on failure
+            participantTransceivers.delete(participantPublicId);
+            
+            // Note: We don't automatically retry here. 
+            // 406 or 400 errors indicate a signaling state mismatch.
+        }
+    });
+}
+
+// (Redundant processSFUScreenShare removed)
 
 async function publishSFUScreenTrack(stream: MediaStream) {
     if (!sfuPc || !sfuSessionId.value) return;
-    
-    const track = stream.getVideoTracks()[0];
-    const transceiver = sfuPc.addTransceiver(track, { direction: 'sendonly' });
-    
-    await sfuPc.setLocalDescription(await sfuPc.createOffer());
-    const res = await videoCallService.sfuSessionTracks(
-        callData.value!.chatId,
-        sfuSessionId.value!,
-        [{ location: 'local', mid: transceiver.mid, trackName: track.id }],
-        sfuPc.localDescription!.sdp!
-    );
-    await sfuPc.setRemoteDescription(new RTCSessionDescription(res.sessionDescription));
+
+    return runInSFUQueue(async () => {
+        const track = stream.getVideoTracks()[0];
+        
+        // REUSE or ADD transceiver
+        let transceiver = sfuPc!.getTransceivers().find(
+            t => t.direction === "sendonly" && !t.sender.track && t.mid === null // Unused transceiver
+        );
+        
+        if (transceiver) {
+            console.log("[SFU] Reusing existing sendonly transceiver for screen");
+            await transceiver.sender.replaceTrack(track);
+        } else {
+            console.log("[SFU] Adding new sendonly transceiver for screen");
+            transceiver = sfuPc!.addTransceiver(track, { direction: "sendonly" });
+        }
+
+        try {
+            await sfuPc!.setLocalDescription(await sfuPc!.createOffer());
+            const res = await videoCallService.sfuSessionTracks(
+                callData.value!.chatId,
+                sfuSessionId.value!,
+                [{ location: "local", mid: transceiver.mid, trackName: "screen" }],
+                mungeSdp(sfuPc!.localDescription!.sdp!),
+            );
+
+            if (res.sessionDescription) {
+                await sfuPc!.setRemoteDescription(
+                    new RTCSessionDescription(res.sessionDescription),
+                );
+            }
+
+            // GATED SIGNALING: Wait for ICE to be connected/completed before telling others.
+            // This ensures the tracks are actually flowing on Cloudflare's backend.
+            await new Promise((resolve) => {
+                if (sfuPc!.iceConnectionState === "connected" || sfuPc!.iceConnectionState === "completed") {
+                    setTimeout(resolve, 500); // Grace period for media start
+                    return;
+                }
+                const check = setInterval(() => {
+                    if (sfuPc!.iceConnectionState === "connected" || sfuPc!.iceConnectionState === "completed") {
+                        clearInterval(check);
+                        setTimeout(resolve, 500);
+                    }
+                }, 200);
+                setTimeout(() => { clearInterval(check); resolve(true); }, 5000); // 5s Max Wait
+            });
+
+            sfuScreenMid.value = transceiver.mid;
+            trace("PUB-SCREEN", "Screen share track published and connected", {
+                mid: transceiver.mid,
+                res,
+            });
+
+            // Signal to others
+            const signalData = {
+                type: "sfu-screen-share-started",
+                mid: transceiver.mid,
+                sessionId: sfuSessionId.value,
+            };
+            videoCallService.sendSignal(
+                callData.value!.chatId,
+                callData.value!.callId,
+                "signal",
+                signalData as any,
+            ).catch(() => {});
+        } catch (e: any) {
+            console.warn("[SFU] Failed to publish screen track", e);
+            if (e.response?.status === 406) {
+                if (await handleSFU406Rescue()) {
+                    console.log(
+                        "[SFU] 406 Rescued during screen publish. Retrying original publish...",
+                    );
+                    publishSFUScreenTrack(stream);
+                }
+            } else if (sfuPc!.signalingState === "have-local-offer") {
+                await sfuPc!.setLocalDescription({
+                    type: "rollback",
+                } as any);
+            }
+        }
+    });
+}
+
+function stopSFUScreenShare() {
+    sfuScreenMid.value = null;
+    videoCallService
+        .sendSignal(callData.value!.chatId, callData.value!.callId, "signal", {
+            type: "sfu-screen-share-stopped",
+        })
+        .catch(() => {});
 }
 
 async function endCall(reason = "hangup") {
     if (callData.value && callState.value !== "ended") {
-        videoCallService.endCall(callData.value.chatId, callData.value.callId, reason).catch(() => {});
+        videoCallService
+            .endCall(callData.value.chatId, callData.value.callId, reason)
+            .catch(() => {});
     }
     callState.value = "ended";
     postToParent({ type: "state", state: "ended", reason });
     cleanup();
+}
+
+function closeWindow() {
+    window.close();
 }
 
 function handleCallFailed() {
@@ -761,7 +1756,9 @@ function handleCallFailed() {
 function playRingtone(type: "incoming" | "outgoing") {
     try {
         ringtoneAudio = new Audio(
-            type === "incoming" ? "/static/sounds/inbound-call.mp3" : "/static/sounds/outbound-call.mp3"
+            type === "incoming"
+                ? "/static/sounds/inbound-call.mp3"
+                : "/static/sounds/outbound-call.mp3",
         );
         ringtoneAudio.loop = true;
         ringtoneAudio.volume = 0.5;
@@ -796,15 +1793,33 @@ function setupBroadcastChannel() {
 function cleanup() {
     stopRingtone();
     if (localStream.value) {
-        localStream.value.getTracks().forEach(t => t.stop());
+        localStream.value.getTracks().forEach((t) => t.stop());
         localStream.value = null;
     }
-    peers.forEach(p => p.destroy());
+    if (screenStream.value) {
+        screenStream.value.getTracks().forEach((t) => t.stop());
+        screenStream.value = null;
+    }
+    peers.forEach((p) => p.destroy());
     peers.clear();
-    remoteStreams.clear();
+
+    // Reset store
+    store.reset();
+
+    audioAnalysers.forEach((_, id) => stopAudioAnalysis(id));
+    audioAnalysers.clear();
     if (durationTimer) clearInterval(durationTimer);
     stopEcho();
     broadcastChannel?.close();
+
+    remoteSfuSessions.clear();
+    participantTransceivers.clear();
+    processedSignals.clear();
+
+    if (sfuPc) {
+        sfuPc.close();
+        sfuPc = null;
+    }
 }
 
 // ============================================================================
@@ -812,6 +1827,12 @@ function cleanup() {
 // ============================================================================
 
 onMounted(async () => {
+    window.addEventListener("beforeunload", () => {
+        if (callState.value !== "ended") {
+            endCall("hangup");
+        }
+    });
+
     const raw = sessionStorage.getItem("callData");
     if (!raw) {
         error.value = "Invalid session.";
@@ -821,15 +1842,19 @@ onMounted(async () => {
     try {
         callData.value = JSON.parse(raw);
         sessionStorage.removeItem("callData");
-        
+
         console.log("[Call] Initialized with data:", {
             callId: callData.value.callId,
             chatId: callData.value.chatId,
-            chatType: (callData.value as any).chatType || 'dm',
+            chatType: (callData.value as any).chatType || "dm",
             callType: callData.value.callType,
             direction: callData.value.direction,
-            selfId: callData.value.selfPublicId
+            selfId: callData.value.selfPublicId,
         });
+        if (callData.value.chatType === "group") {
+            callMode.value = "sfu";
+        }
+        store.selfPublicId = callData.value.selfPublicId;
     } catch {
         error.value = "Data parse error.";
         callState.value = "error";
@@ -837,22 +1862,22 @@ onMounted(async () => {
     }
 
     const data = callData.value!;
-    
+
     // Add self to participants list initially (conceptual)
     participants.value.push({
         publicId: data.selfPublicId,
         name: "Me",
         avatar: null, // We might not have our own avatar in callData
-        isSelf: true
+        isSelf: true,
     });
 
     document.title = `Call — ${data.chatId}`;
     setupBroadcastChannel();
     setupEcho();
-    
-    // If we have pending signals (from the accept buffering), we should apply them 
+
+    // If we have pending signals (from the accept buffering), we should apply them
     // AFTER we join. But usually we need to join first to get stats.
-    
+
     if (data.pendingSignals) {
         // Store them to apply after join?
         // Actually, in mesh, we need to know WHO they are from.
@@ -863,30 +1888,36 @@ onMounted(async () => {
         // DM Call with Ringing
         playRingtone("incoming");
     } else if (data.direction === "outgoing" && data.remoteUser) {
-         // DM Outgoing
-         playRingtone("outgoing");
-         callState.value = "ringing";
+        // DM Outgoing
+        playRingtone("outgoing");
+        callState.value = "ringing";
     }
 
     // SMART JOIN LOGIC
     // 1. If it's a group call, always show the lobby (user requested)
     // 2. If it's a DM, check if we can autoplay audio. If yes, auto-join.
-    const isGroup = (data as any).chatType === 'group' || data.remoteUser?.publicId === 'group';
-    
+    const isGroup =
+        (data as any).chatType === "group" ||
+        data.remoteUser?.publicId === "group";
+
     if (!isGroup) {
         console.log("[Call] Checking for Smart Join (DM)...");
-        // We can't perfectly check for autoplay permission synchronously, 
+        // We can't perfectly check for autoplay permission synchronously,
         // but we can check navigator.userActivation or try a silent play.
         // For initiators (outgoing), we usually have activation from the parent window click.
         // For receivers (incoming), if they clicked "Accept", activation may carry over in some browsers.
-        
-        const canAutoJoin = (navigator as any).userActivation?.isActive || data.direction === 'outgoing';
-        
+
+        const canAutoJoin =
+            (navigator as any).userActivation?.isActive ||
+            data.direction === "outgoing";
+
         if (canAutoJoin) {
             console.log("[Call] ⚡ Smart Join triggered: skipping lobby");
             joinCall();
         } else {
-            console.log("[Call] Smart Join skipped: User interaction required for audio");
+            console.log(
+                "[Call] Smart Join skipped: User interaction required for audio",
+            );
         }
     } else {
         console.log("[Call] Group call detected: Showing lobby as per policy");
@@ -903,101 +1934,165 @@ onBeforeUnmount(() => cleanup());
 
         <!-- HEADER / INFO -->
         <div class="call-header">
-             <div class="header-info">
-                 <span class="status-dot" :class="callState"></span>
-                 <span class="status-text">{{ stateLabel }}</span>
-             </div>
+            <div class="header-info">
+                <span class="status-dot" :class="callState"></span>
+                <span class="status-text">{{ stateLabel }}</span>
+            </div>
         </div>
 
         <!-- ERROR STATE -->
         <div v-if="callState === 'error'" class="call-center-content">
-             <div class="state-icon error">
-                 <Icon name="AlertCircle" size="48" />
-             </div>
-             <p class="state-text">{{ error }}</p>
-             <button class="btn-secondary" @click="window.close()">Close</button>
+            <div class="state-icon error">
+                <Icon name="AlertCircle" size="48" />
+            </div>
+            <p class="state-text">{{ error }}</p>
+            <button class="btn-secondary" @click="closeWindow">
+                Close Window
+            </button>
         </div>
 
         <!-- ENDED STATE -->
         <div v-else-if="callState === 'ended'" class="call-center-content">
-             <div class="state-icon ended">
-                 <Icon name="PhoneOff" size="48" />
-             </div>
-             <p class="state-text">Call ended</p>
+            <div class="state-icon ended">
+                <Icon name="PhoneOff" size="48" />
+            </div>
+            <p class="state-text">Call ended</p>
+            <button class="btn-secondary" @click="closeWindow">
+                Close Window
+            </button>
         </div>
 
         <!-- JOIN SCREEN -->
         <div v-else-if="!hasJoined" class="join-screen call-center-content">
-             <div class="avatar-preview">
-                 <!-- Avatar Preview -->
-                  <div class="preview-circle">
-                      <span class="initials">{{ previewRemoteName[0] }}</span>
-                  </div>
-             </div>
-             <h1 class="join-title">Join Call</h1>
-             <p class="join-subtitle">With {{ previewRemoteName }}</p>
-             
-             <div class="join-actions">
-                  <button class="btn-join" @click="joinCall">
-                      <Icon name="Phone" size="20" />
-                      <span>Join Now</span>
-                  </button>
-                  <button class="btn-decline" @click="endCall('declined')">
-                      <Icon name="X" size="20" />
-                      <span>Decline</span>
-                  </button>
-             </div>
+            <div class="avatar-preview">
+                <!-- Avatar Preview -->
+                <div class="preview-circle">
+                    <span class="initials">{{ previewRemoteName[0] }}</span>
+                </div>
+            </div>
+            <h1 class="join-title">Join Call</h1>
+            <p class="join-subtitle">With {{ previewRemoteName }}</p>
+
+            <div class="join-actions">
+                <button class="btn-join" @click="joinCall">
+                    <Icon name="Phone" size="20" />
+                    <span>Join Now</span>
+                </button>
+                <button class="btn-decline" @click="endCall('declined')">
+                    <Icon name="X" size="20" />
+                    <span>Decline</span>
+                </button>
+            </div>
         </div>
 
         <!-- CONNECTED GRID -->
         <template v-else>
             <div class="grid-wrapper">
                 <!-- 1. Remote Participants -->
-                <div 
-                    v-for="p in participants.filter(p => !p.isSelf && p.publicId !== callData?.selfPublicId)" 
-                    :key="p.publicId" 
+                <div
+                    v-for="p in participants.filter(
+                        (p) =>
+                            !p.isSelf && p.publicId !== callData?.selfPublicId,
+                    )"
+                    :key="p.publicId"
                     class="video-cell remote"
+                    :class="{
+                        'is-talking': talkingParticipants.has(
+                            p.publicId.toLowerCase(),
+                        ),
+                    }"
                 >
                     <!-- Audio playback (always audible, but hidden/tiny) -->
                     <audio
-                        v-if="remoteStreams.get(p.publicId)"
-                        v-src-object="remoteStreams.get(p.publicId)"
+                        v-if="store.remoteStreams.get(p.publicId)"
+                        v-src-object="store.remoteStreams.get(p.publicId)"
                         autoplay
                         playsinline
                         class="hidden-audio"
                     />
 
                     <video
-                        v-if="remoteStreams.get(p.publicId) && (!isAudioOnly || remoteHasVideo(p.publicId))"
-                        v-src-object="remoteStreams.get(p.publicId)"
+                        v-if="
+                            store.remoteStreams.get(p.publicId) &&
+                            (!isAudioOnly || remoteHasVideo(p.publicId))
+                        "
+                        v-src-object="store.remoteStreams.get(p.publicId)"
                         autoplay
                         playsinline
                         class="video-element"
                     />
                     <!-- Avatar Fallback (Audio Only or No Video) -->
                     <div v-else class="avatar-fallback">
-                        <img v-if="p.avatar" :src="p.avatar" class="avatar-img" />
-                        <div v-else class="avatar-placeholder" :style="{ backgroundColor: 'var(--avatar-bg)' }">
+                        <img
+                            v-if="p.avatar"
+                            :src="p.avatar"
+                            class="avatar-img"
+                        />
+                        <div
+                            v-else
+                            class="avatar-placeholder"
+                            :style="{ backgroundColor: 'var(--avatar-bg)' }"
+                        >
                             {{ p.name[0] }}
                         </div>
                         <div class="audio-indicator">
                             <Icon name="Mic" size="16" />
                         </div>
                     </div>
-                    
+
                     <div class="participant-info">
                         <span class="participant-name">{{ p.name }}</span>
                     </div>
                 </div>
 
-                <!-- 2. Local Participant (Me) -->
-                <div 
-                    class="video-cell local" 
-                    :class="{ 'pip-mode': participants.length >= 2, 'audio-mode': isAudioOnly && !isScreenSharing }"
+                <!-- 1b. Remote Screen Shares (SFU Mode) -->
+                <div
+                    v-for="[
+                        publicId,
+                        screenStream,
+                    ] in store.remoteScreenStreams"
+                    :key="publicId + '-screen'"
+                    class="video-cell remote screen-share"
+                    :class="{ expanded: store.remoteScreenStreams.size === 1 }"
                 >
                     <video
-                        v-if="(isScreenSharing ? !!screenStream : (localHasVideo && !isCameraOff))"
-                        v-src-object="isScreenSharing ? screenStream : localStream"
+                        v-src-object="screenStream"
+                        autoplay
+                        playsinline
+                        class="video-element"
+                    />
+                    <div class="participant-info">
+                        <Icon name="Monitor" size="14" />
+                        <span class="participant-name"
+                            >{{
+                                participants.find(
+                                    (p) => p.publicId === publicId,
+                                )?.name || "Someone"
+                            }}'s Screen</span
+                        >
+                    </div>
+                </div>
+
+                <!-- 2. Local Participant (Me) -->
+                <div
+                    class="video-cell local"
+                    :class="{
+                        'pip-mode': participants.length >= 2,
+                        'audio-mode': isAudioOnly && !isScreenSharing,
+                        'is-talking': talkingParticipants.has(
+                            callData?.selfPublicId?.toLowerCase() || '',
+                        ),
+                    }"
+                >
+                    <video
+                        v-if="
+                            isScreenSharing
+                                ? !!screenStream
+                                : localHasVideo && !isCameraOff
+                        "
+                        v-src-object="
+                            isScreenSharing ? screenStream : localStream
+                        "
                         autoplay
                         muted
                         playsinline
@@ -1006,7 +2101,7 @@ onBeforeUnmount(() => cleanup());
                     />
                     <div v-else class="avatar-fallback">
                         <div class="avatar-placeholder local">
-                            Me
+                            <span>Me</span>
                         </div>
                     </div>
                     <div class="participant-info">
@@ -1014,23 +2109,46 @@ onBeforeUnmount(() => cleanup());
                     </div>
                 </div>
             </div>
-            
+
             <!-- CONTROLS -->
             <div class="controls-bar">
-                 <button class="control-btn" :class="{ 'off': isMuted }" @click="toggleMute" title="Toggle Mute">
+                <button
+                    class="control-btn"
+                    :class="{ off: isMuted }"
+                    @click="toggleMute"
+                    title="Toggle Mute"
+                >
                     <Icon :name="isMuted ? 'MicOff' : 'Mic'" size="24" />
-                 </button>
-                 
-                 <button v-if="!isAudioOnly" class="control-btn" :class="{ 'off': isCameraOff }" @click="toggleCamera" title="Toggle Camera">
-                    <Icon :name="isCameraOff ? 'VideoOff' : 'Video'" size="24" />
-                 </button>
-                  <button class="control-btn" :class="{ 'off': !isScreenSharing }" @click="toggleScreenShare" title="Share Screen">
-                    <Icon name="Monitor" size="24" />
-                  </button>
+                </button>
 
-                 <button class="control-btn hangup" @click="endCall('hangup')" title="End Call">
+                <button
+                    v-if="!isAudioOnly"
+                    class="control-btn"
+                    :class="{ off: isCameraOff }"
+                    @click="toggleCamera"
+                    title="Toggle Camera"
+                >
+                    <Icon
+                        :name="isCameraOff ? 'VideoOff' : 'Video'"
+                        size="24"
+                    />
+                </button>
+                <button
+                    class="control-btn"
+                    :class="{ off: !isScreenSharing }"
+                    @click="toggleScreenShare"
+                    title="Share Screen"
+                >
+                    <Icon name="Monitor" size="24" />
+                </button>
+
+                <button
+                    class="control-btn hangup"
+                    @click="endCall('hangup')"
+                    title="End Call"
+                >
                     <Icon name="PhoneOff" size="24" />
-                 </button>
+                </button>
             </div>
         </template>
     </div>
@@ -1038,11 +2156,12 @@ onBeforeUnmount(() => cleanup());
 
 <style scoped>
 :root {
-  --glass-bg: rgba(255, 255, 255, 0.08);
-  --glass-border: rgba(255, 255, 255, 0.15);
-  --mesh-gradient: radial-gradient(at 0% 0%, #1e1e2e 0px, transparent 50%),
-                   radial-gradient(at 50% 0%, #182848 0px, transparent 50%),
-                   radial-gradient(at 100% 0%, #1e1e2e 0px, transparent 50%);
+    --glass-bg: rgba(255, 255, 255, 0.08);
+    --glass-border: rgba(255, 255, 255, 0.15);
+    --mesh-gradient:
+        radial-gradient(at 0% 0%, #1e1e2e 0px, transparent 50%),
+        radial-gradient(at 50% 0%, #182848 0px, transparent 50%),
+        radial-gradient(at 100% 0%, #1e1e2e 0px, transparent 50%);
 }
 
 .call-container {
@@ -1053,7 +2172,11 @@ onBeforeUnmount(() => cleanup());
     flex-direction: column;
     position: relative;
     overflow: hidden;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family:
+        "Inter",
+        system-ui,
+        -apple-system,
+        sans-serif;
     color: #fafafa;
 }
 
@@ -1068,7 +2191,11 @@ onBeforeUnmount(() => cleanup());
 .call-overlay {
     position: absolute;
     inset: 0;
-    background: radial-gradient(circle at center, transparent 0%, rgba(0,0,0,0.6) 100%);
+    background: radial-gradient(
+        circle at center,
+        transparent 0%,
+        rgba(0, 0, 0, 0.6) 100%
+    );
     z-index: 1;
     pointer-events: none;
 }
@@ -1096,7 +2223,7 @@ onBeforeUnmount(() => cleanup());
     align-items: center;
     gap: 10px;
     border: 1px solid var(--glass-border);
-    box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
 }
 
 .status-dot {
@@ -1107,16 +2234,19 @@ onBeforeUnmount(() => cleanup());
     transition: all 0.3s ease;
 }
 
-.status-dot.connected { 
-    background: #10b981; 
-    box-shadow: 0 0 12px rgba(16, 185, 129, 0.6); 
+.status-dot.connected {
+    background: #10b981;
+    box-shadow: 0 0 12px rgba(16, 185, 129, 0.6);
     animation: breathing 3s infinite;
 }
-.status-dot.connecting, .status-dot.ringing { 
-    background: #3b82f6; 
-    animation: pulse 1.5s infinite; 
+.status-dot.connecting,
+.status-dot.ringing {
+    background: #3b82f6;
+    animation: pulse 1.5s infinite;
 }
-.status-dot.error { background: #ef4444; }
+.status-dot.error {
+    background: #ef4444;
+}
 
 .status-text {
     color: rgba(255, 255, 255, 0.9);
@@ -1149,22 +2279,22 @@ onBeforeUnmount(() => cleanup());
     border: 1px solid transparent;
 }
 
-.state-icon.error { 
-    background: rgba(239, 68, 68, 0.1); 
-    color: #ef4444; 
+.state-icon.error {
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
     border-color: rgba(239, 68, 68, 0.2);
 }
-.state-icon.ended { 
-    background: rgba(113, 113, 122, 0.1); 
+.state-icon.ended {
+    background: rgba(113, 113, 122, 0.1);
     color: #a1a1aa;
     border-color: rgba(113, 113, 122, 0.2);
 }
 
-.state-text { 
-    font-size: 20px; 
+.state-text {
+    font-size: 20px;
     font-weight: 600;
-    color: white; 
-    margin-bottom: 32px; 
+    color: white;
+    margin-bottom: 32px;
     opacity: 0.9;
 }
 
@@ -1173,7 +2303,7 @@ onBeforeUnmount(() => cleanup());
     animation: fadeIn 0.6s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.avatar-preview { 
+.avatar-preview {
     margin-bottom: 32px;
     position: relative;
 }
@@ -1194,27 +2324,29 @@ onBeforeUnmount(() => cleanup());
     animation: float 6s ease-in-out infinite;
 }
 
-.join-title { 
-    font-size: 32px; 
-    font-weight: 800; 
-    margin-bottom: 12px; 
+.join-title {
+    font-size: 32px;
+    font-weight: 800;
+    margin-bottom: 12px;
     letter-spacing: -0.02em;
 }
 
-.join-subtitle { 
-    font-size: 18px; 
-    color: rgba(255, 255, 255, 0.6); 
-    margin-bottom: 48px; 
+.join-subtitle {
+    font-size: 18px;
+    color: rgba(255, 255, 255, 0.6);
+    margin-bottom: 48px;
 }
 
-.join-actions { 
-    display: flex; 
-    gap: 20px; 
+.join-actions {
+    display: flex;
+    gap: 20px;
     width: 100%;
     max-width: 400px;
 }
 
-.btn-join, .btn-decline, .btn-secondary {
+.btn-join,
+.btn-decline,
+.btn-secondary {
     flex: 1;
     padding: 16px 24px;
     border-radius: 18px;
@@ -1229,24 +2361,26 @@ onBeforeUnmount(() => cleanup());
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.btn-join { 
-    background: #10b981; 
-    color: white; 
-    box-shadow: 0 8px 24px rgba(16, 185, 129, 0.3); 
+.btn-join {
+    background: #10b981;
+    color: white;
+    box-shadow: 0 8px 24px rgba(16, 185, 129, 0.3);
 }
-.btn-join:hover { 
-    transform: translateY(-4px) scale(1.02); 
-    box-shadow: 0 12px 32px rgba(16, 185, 129, 0.4); 
+.btn-join:hover {
+    transform: translateY(-4px) scale(1.02);
+    box-shadow: 0 12px 32px rgba(16, 185, 129, 0.4);
 }
-.btn-join:active { transform: translateY(0) scale(0.98); }
+.btn-join:active {
+    transform: translateY(0) scale(0.98);
+}
 
-.btn-decline { 
-    background: rgba(255, 255, 255, 0.05); 
-    color: #ef4444; 
+.btn-decline {
+    background: rgba(255, 255, 255, 0.05);
+    color: #ef4444;
     border: 1px solid rgba(239, 68, 68, 0.3);
 }
-.btn-decline:hover { 
-    background: rgba(239, 68, 68, 0.1); 
+.btn-decline:hover {
+    background: rgba(239, 68, 68, 0.1);
     transform: translateY(-4px);
 }
 
@@ -1272,12 +2406,36 @@ onBeforeUnmount(() => cleanup());
     background: #18181b;
     border-radius: 24px;
     overflow: hidden;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
     border: 1px solid var(--glass-border);
     display: flex;
     align-items: center;
     justify-content: center;
     animation: cellAppear 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+    transition:
+        box-shadow 0.3s ease,
+        border-color 0.3s ease,
+        transform 0.3s ease;
+}
+
+.video-cell.is-talking {
+    border-color: #10b981;
+    box-shadow: 0 0 24px rgba(16, 185, 129, 0.4);
+    transform: scale(1.01);
+    z-index: 20;
+}
+
+.video-cell.screen-share {
+    flex: 2;
+    min-width: 400px;
+    background: #000;
+}
+
+.video-cell.screen-share.expanded {
+    flex: 1 1 100%;
+    height: auto;
+    aspect-ratio: 16/9;
+    max-height: 70vh;
 }
 
 .video-element {
@@ -1289,7 +2447,7 @@ onBeforeUnmount(() => cleanup());
 }
 
 /* Local PiP Mode */
-.grid-1-1 .video-cell.local.pip-mode {
+.video-cell.local.pip-mode {
     position: absolute;
     bottom: calc(120px + env(safe-area-inset-bottom, 20px));
     right: 20px;
@@ -1298,8 +2456,8 @@ onBeforeUnmount(() => cleanup());
     z-index: 30;
     border-radius: 20px;
     border: 20px; /* actually border-width is handled by border below */
-    border: 2px solid rgba(255,255,255,0.2);
-    box-shadow: 0 16px 40px rgba(0,0,0,0.6);
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
 }
 
 .grid-1-1 .video-cell.remote {
@@ -1307,6 +2465,12 @@ onBeforeUnmount(() => cleanup());
     inset: 0;
     border-radius: 0;
     border: none;
+    z-index: 5;
+}
+
+/* Ensure screen share sits on top of participant avatar in 1:1 */
+.grid-1-1 .video-cell.remote.screen-share {
+    z-index: 10;
 }
 
 /* Participant Info Overlay */
@@ -1343,9 +2507,11 @@ onBeforeUnmount(() => cleanup());
     -webkit-backdrop-filter: blur(24px);
     padding: 14px 28px;
     border-radius: 40px;
-    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
     border: 1px solid var(--glass-border);
-    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), bottom 0.3s ease;
+    transition:
+        transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+        bottom 0.3s ease;
 }
 
 .control-btn {
@@ -1369,7 +2535,9 @@ onBeforeUnmount(() => cleanup());
     border-color: rgba(255, 255, 255, 0.3);
 }
 
-.control-btn:active { transform: scale(0.95); }
+.control-btn:active {
+    transform: scale(0.95);
+}
 
 .control-btn.off {
     background: #fafafa;
@@ -1381,30 +2549,54 @@ onBeforeUnmount(() => cleanup());
     color: white;
     border-color: rgba(255, 255, 255, 0.1);
 }
-.control-btn.hangup:hover { 
-    background: #dc2626; 
-    box-shadow: 0 0 20px rgba(239, 68, 68, 0.4); 
+.control-btn.hangup:hover {
+    background: #dc2626;
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
 }
 
 /* Animations */
 @keyframes breathing {
-    0%, 100% { transform: scale(1); opacity: 1; }
-    50% { transform: scale(1.1); opacity: 0.8; }
+    0%,
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.1);
+        opacity: 0.8;
+    }
 }
 
 @keyframes float {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-10px); }
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-10px);
+    }
 }
 
 @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 @keyframes cellAppear {
-    from { opacity: 0; transform: scale(0.95); }
-    to { opacity: 1; transform: scale(1); }
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
 }
 
 /* Grid Layouts */
@@ -1412,12 +2604,14 @@ onBeforeUnmount(() => cleanup());
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     grid-auto-rows: 1fr;
+    min-height: 0;
 }
 
 .grid-3-2 .grid-wrapper {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     grid-auto-rows: 1fr;
+    min-height: 0;
 }
 
 /* Mobile Overrides */
@@ -1427,8 +2621,8 @@ onBeforeUnmount(() => cleanup());
         padding-bottom: calc(120px + env(safe-area-inset-bottom, 24px));
         gap: 12px;
     }
-    
-    .grid-2-2 .grid-wrapper, 
+
+    .grid-2-2 .grid-wrapper,
     .grid-3-2 .grid-wrapper {
         grid-template-columns: 1fr;
     }
@@ -1445,10 +2639,20 @@ onBeforeUnmount(() => cleanup());
         height: 54px;
     }
 
-    .join-title { font-size: 28px; }
-    .join-actions { flex-direction: column; gap: 12px; width: 100%; }
-    
-    .btn-join, .btn-decline { width: 100%; border-radius: 16px; }
+    .join-title {
+        font-size: 28px;
+    }
+    .join-actions {
+        flex-direction: column;
+        gap: 12px;
+        width: 100%;
+    }
+
+    .btn-join,
+    .btn-decline {
+        width: 100%;
+        border-radius: 16px;
+    }
 
     .grid-1-1 .video-cell.local.pip-mode {
         width: 100px;
@@ -1477,11 +2681,12 @@ onBeforeUnmount(() => cleanup());
     display: flex;
     align-items: center;
     justify-content: center;
+    margin: auto; /* Firefox centering fix */
     font-size: 40px;
     font-weight: 800;
     color: white;
-    box-shadow: 0 12px 32px rgba(0,0,0,0.4);
-    border: 2px solid rgba(255,255,255,0.1);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+    border: 2px solid rgba(255, 255, 255, 0.1);
 }
 
 .avatar-img {
@@ -1489,8 +2694,8 @@ onBeforeUnmount(() => cleanup());
     height: 100px;
     border-radius: 50%;
     object-fit: cover;
-    border: 2px solid rgba(255,255,255,0.1);
-    box-shadow: 0 12px 32px rgba(0,0,0,0.4);
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
 }
 
 .audio-indicator {
@@ -1506,14 +2711,16 @@ onBeforeUnmount(() => cleanup());
     justify-content: center;
     color: white;
     border: 2px solid #09090b;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .hidden-audio {
-    position: absolute;
-    width: 0;
-    height: 0;
-    opacity: 0;
+    position: fixed;
+    top: -100px;
+    left: -100px;
+    width: 1px;
+    height: 1px;
+    opacity: 0.01;
     pointer-events: none;
 }
 </style>

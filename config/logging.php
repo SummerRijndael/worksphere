@@ -159,6 +159,13 @@ return [
             'replace_placeholders' => true,
         ],
 
+        'videocall' => [
+            'driver' => 'single',
+            'path' => storage_path('app/private/sys/logs/videocall.log'),
+            'level' => 'debug',
+            'replace_placeholders' => true,
+        ],
+
     ],
 
 ];

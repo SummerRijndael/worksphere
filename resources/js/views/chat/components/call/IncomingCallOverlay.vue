@@ -66,6 +66,9 @@ const callTypeLabel = computed(() => {
             <div class="min-w-0">
               <p class="text-sm font-semibold text-(--text-primary) truncate">
                 {{ caller?.name }}
+                <span v-if="store.currentCall?.chatType === 'group' && store.currentCall?.chatName" class="text-(--text-tertiary) font-normal">
+                  in {{ store.currentCall.chatName }}
+                </span>
               </p>
               <p class="text-xs text-(--text-secondary)">
                 Incoming {{ callTypeLabel }}

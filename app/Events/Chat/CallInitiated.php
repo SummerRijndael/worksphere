@@ -48,6 +48,7 @@ class CallInitiated implements ShouldBroadcastNow
             'caller_name' => $this->callerName,
             'caller_avatar' => $this->callerAvatar,
             'chat_id' => $this->chatPublicId,
+            'chat_type' => $this->chatType,
         ];
     }
 

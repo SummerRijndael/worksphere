@@ -38,13 +38,16 @@ const videoCall = useVideoCall();
 
 function handleStartCall(callType: 'video' | 'audio') {
     const chat = props.window.chat;
-    if (chat.type !== 'dm') return;
-    const other = chat.participants.find((p: any) => p.public_id !== currentUserPublicId.value);
-    if (!other) return;
+    const other = chat.type === 'dm' 
+        ? chat.participants.find((p: any) => p.public_id !== currentUserPublicId.value)
+        : { public_id: 'group', name: chat.name || 'Group Chat', avatar: null };
+
+    if (!other && chat.type === 'dm') return;
+
     videoCall.startCall(chat.public_id, callType, {
-        publicId: other.public_id,
-        name: other.name,
-        avatar: other.avatar || null,
+        publicId: (other as any).public_id || 'group',
+        name: (other as any).name || 'Group',
+        avatar: (other as any).avatar || null,
     });
 }
 
@@ -749,8 +752,8 @@ function isOwnMessage(msg: Message): boolean {
                 <span class="minichat-window-title">{{ chatTitle }}</span>
             </div>
             <div class="minichat-window-actions">
-                <!-- Call buttons (DM only) -->
-                <template v-if="window.chat.type === 'dm'">
+                <!-- Call buttons -->
+                <template v-if="true">
                     <button
                         class="minichat-window-action"
                         title="Voice Call"
@@ -811,16 +814,8 @@ function isOwnMessage(msg: Message): boolean {
                     :class="{ 'is-own': isOwnMessage(msg) }"
                     :data-message-id="msg.id"
                 >
-                    <!-- System Message -->
-                    <div v-if="msg.type === 'system'" class="flex justify-center my-2 px-4">
-                         <span class="text-xs text-[var(--text-tertiary)] text-center italic leading-tight">
-                             {{ msg.content }}
-                         </span>
-                    </div>
-
-                    <!-- User Message -->
+                    <!-- Message Bubble (Handles both User and System messages) -->
                     <MiniChatMessageBubble 
-                        v-else 
                         :message="msg" 
                         :is-mine="isOwnMessage(msg)"
                         @reply="handleReply"

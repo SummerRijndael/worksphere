@@ -46,6 +46,7 @@ class CallSignal implements ShouldBroadcastNow
             'signal_data' => $this->signalData,
             'sender_public_id' => $this->senderPublicId,
             'target_public_id' => $this->targetPublicId,
+            'chat_type' => $this->chatType,
         ];
     }
 

@@ -7,6 +7,7 @@ use App\Events\Chat\CallInitiated;
 use App\Events\Chat\CallSignal;
 use App\Http\Controllers\Controller;
 use App\Models\Chat\Chat;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -108,9 +109,29 @@ class VideoCallController extends Controller
 
         event(new CallInitiated($chat, $user, $callId, $request->input('call_type')));
 
+        // Log call start as system message
+        $this->logCallEvent($chat, $callId, 'started', [
+            'type' => $request->input('call_type'),
+            'user_name' => auth()->user()->name,
+        ]);
+
         return response()->json([
+            'status' => 'ok',
             'call_id' => $callId,
-            'chat_id' => $chat->public_id,
+        ]);
+    }
+
+    protected function logCallEvent(Chat $chat, string $callId, string $event, array $data = []): void
+    {
+        $chat->messages()->create([
+            'type' => 'system',
+            'content' => '', // Content determined by frontend using metadata
+            'metadata' => array_merge($data, [
+                'system_type' => 'call_event',
+                'call_id' => $callId,
+                'event' => $event,
+            ]),
+            'user_id' => auth()->id() ?? User::where('public_id', $chat->participants->first()->public_id)->first()?->id,
         ]);
     }
 
@@ -145,8 +166,10 @@ class VideoCallController extends Controller
         $participants = $this->getParticipantsList($chat->public_id, $callId);
         $metadata = $this->getCallMetadata($chat->public_id, $callId);
 
-        // HYBRID LOGIC: If total participants > 6, suggest SFU mode
-        $mode = count($participants) >= 6 ? 'sfu' : 'mesh';
+        // HYBRID LOGIC: Force SFU for group chats OR if total participants > 2.
+        // This ensures group conversations start on Cloudflare immediately,
+        // preventing Mesh-to-SFU transition edge cases for existing participants.
+        $mode = ($chat->type === 'group' || count($participants) > 2) ? 'sfu' : 'mesh';
 
         return response()->json([
             'status' => 'ok',
@@ -162,18 +185,48 @@ class VideoCallController extends Controller
      */
     public function sfuSessionNew(Request $request, Chat $chat): JsonResponse
     {
+        $sdp = $request->input('sessionDescription.sdp', '');
+        $lastChars = substr($sdp, -10);
+        Log::channel('videocall')->info("[SFU] sfuSessionNew called", [
+            'chat_id' => $chat->id,
+            'public_id' => $chat->public_id,
+            'sdp_length' => strlen($sdp),
+            'last_chars_hex' => $lastChars ? bin2hex($lastChars) : '',
+        ]);
+
         $this->findChatOrFail($chat);
         $appId = config('services.cloudflare.app_id');
         $secret = config('services.cloudflare.app_secret');
+
+        Log::channel('videocall')->info("[SFU] sfuSessionNew details", [
+            'appId' => $appId,
+            'secret_prefix' => substr($secret, 0, 5) . '...',
+            'url' => "https://rtc.live.cloudflare.com/v1/apps/{$appId}/sessions/new"
+        ]);
 
         if (!$appId || !$secret) {
             return response()->json(['error' => 'SFU not configured'], 503);
         }
 
-        $response = Http::withToken($secret)
-            ->post("https://rtc.live.cloudflare.com/v1/apps/{$appId}/sessions/new", $request->all());
+        try {
+            $response = Http::withToken($secret)
+                ->timeout(60)
+                ->post("https://rtc.live.cloudflare.com/v1/apps/{$appId}/sessions/new", $request->all());
 
-        return response()->json($response->json(), $response->status());
+            if (!$response->successful()) {
+                Log::channel('videocall')->error("[SFU] Cloudflare session/new error:", [
+                    'status' => $response->status(),
+                    'body' => $response->body()
+                ]);
+            }
+
+            return response()->json($response->json(), $response->status());
+        } catch (\Exception $e) {
+            Log::channel('videocall')->error("[SFU] Cloudflare session/new exception:", [
+                'error' => $e->getMessage()
+            ]);
+            return response()->json(['error' => 'SFU Session Creation Timeout/Error', 'details' => $e->getMessage()], 500);
+        }
     }
 
     /**
@@ -181,14 +234,43 @@ class VideoCallController extends Controller
      */
     public function sfuSessionTracks(Request $request, Chat $chat, string $sessionId): JsonResponse
     {
+        Log::channel('videocall')->info("[SFU] sfuSessionTracks called", [
+            'chat_id' => $chat->id,
+            'session_id' => $sessionId,
+            'tracks_count' => count($request->input('tracks', [])),
+            'sdp_length' => strlen($request->input('sessionDescription.sdp', ''))
+        ]);
+
         $this->findChatOrFail($chat);
         $appId = config('services.cloudflare.app_id');
         $secret = config('services.cloudflare.app_secret');
 
-        $response = Http::withToken($secret)
-            ->post("https://rtc.live.cloudflare.com/v1/apps/{$appId}/sessions/{$sessionId}/tracks/new", $request->all());
+        try {
+            $response = Http::withToken($secret)
+                ->timeout(60)
+                ->post("https://rtc.live.cloudflare.com/v1/apps/{$appId}/sessions/{$sessionId}/tracks/new", $request->all());
 
-        return response()->json($response->json(), $response->status());
+            $responseData = $response->json();
+            if (!$response->successful()) {
+                Log::channel('videocall')->error("[SFU] Cloudflare tracks/new error:", [
+                    'status' => $response->status(),
+                    'body' => $responseData ?: $response->body()
+                ]);
+            } else {
+                Log::channel('videocall')->info("[SFU] Cloudflare tracks/new success", [
+                    'status' => $response->status(),
+                    'response' => $responseData
+                ]);
+            }
+
+            return response()->json($responseData, $response->status());
+        } catch (\Exception $e) {
+            Log::channel('videocall')->error("[SFU] Cloudflare tracks/new exception:", [
+                'error' => $e->getMessage(),
+                'trace' => substr($e->getTraceAsString(), 0, 500)
+            ]);
+            return response()->json(['error' => 'SFU Track Pull Timeout/Error', 'details' => $e->getMessage()], 500);
+        }
     }
 
     /**
@@ -200,10 +282,58 @@ class VideoCallController extends Controller
         $appId = config('services.cloudflare.app_id');
         $secret = config('services.cloudflare.app_secret');
 
-        $response = Http::withToken($secret)
-            ->put("https://rtc.live.cloudflare.com/v1/apps/{$appId}/sessions/{$sessionId}/renegotiate", $request->all());
+        $method = strtolower($request->method());
+        $data = $request->all();
 
-        return response()->json($response->json(), $response->status());
+        // Fix: Preserve empty string for rollback or pull-offer SDP if it was sent as empty
+        // This prevents Laravel middleware from converting it to null, which Cloudflare rejects.
+        if (isset($data['sessionDescription']['type']) && 
+            ($data['sessionDescription']['type'] === 'rollback' || $data['sessionDescription']['type'] === 'offer') && 
+            array_key_exists('sdp', $data['sessionDescription']) && 
+            $data['sessionDescription']['sdp'] === null) {
+            $data['sessionDescription']['sdp'] = '';
+        }
+
+        Log::channel('videocall')->info("[SFU] Renegotiating session {$sessionId}", [
+            'method' => $method,
+            'data' => $data
+        ]);
+
+        try {
+            $response = Http::withToken($secret)
+                ->timeout(60)
+                ->send($method, "https://rtc.live.cloudflare.com/v1/apps/{$appId}/sessions/{$sessionId}/renegotiate", [
+                    'json' => !empty($data) ? $data : null
+                ]);
+
+            $responseData = $response->json();
+            if (!$response->successful()) {
+                $errorData = $responseData;
+                Log::channel('videocall')->error("[SFU] Cloudflare renegotiate error:", [
+                    'status' => $response->status(),
+                    'body' => $errorData ?: $response->body()
+                ]);
+
+                return response()->json([
+                    'error' => 'Cloudflare Renegotiation Error',
+                    'status' => $response->status(),
+                    'details' => $errorData ?: $response->body()
+                ], $response->status());
+            }
+
+            Log::channel('videocall')->info("[SFU] Cloudflare renegotiate success", [
+                'status' => $response->status(),
+                'response' => $responseData
+            ]);
+
+            return response()->json($responseData, $response->status());
+        } catch (\Exception $e) {
+            Log::channel('videocall')->error("[SFU] Cloudflare renegotiate exception: {$e->getMessage()}");
+            return response()->json([
+                'error' => 'SFU Renegotiation Proxy Exception',
+                'details' => $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
@@ -277,11 +407,25 @@ class VideoCallController extends Controller
             $reason
         ));
 
-        // If no participants left, the call is technically over, 
-        // but we assume the frontend handles the "last person leaving" logic via the events.
-        // We could explicitly check `count($participants) === 0` here if we wanted to trigger a CallEnded event.
-        // For backwards compatibility, if it's a DM and someone hangs up, we can still send CallEnded.
-        if ($chat->type === 'dm') {
+        // Check if call should be ended globally
+        $participants = $this->getParticipantsList($chat->public_id, $callId);
+        $isLastPerson = empty($participants);
+
+        if ($isLastPerson || $chat->type === 'dm') {
+             // Calculate duration
+             $metadata = $this->getCallMetadata($chat->public_id, $callId);
+             $duration = 0;
+             if (isset($metadata['started_at'])) {
+                 $duration = now()->timestamp - $metadata['started_at'];
+             }
+
+             // Log event
+             $this->logCallEvent($chat, $callId, 'ended', [
+                 'duration' => $duration,
+                 'user_name' => $user->name,
+             ]);
+
+             // Broadcast end
              event(new CallEnded($chat, $user->public_id, $callId, $reason));
         }
 

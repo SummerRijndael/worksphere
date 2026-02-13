@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
+import { ref, computed, reactive } from 'vue';
 
 export type CallState = 'idle' | 'initiating' | 'ringing' | 'connecting' | 'connected' | 'ended';
 export type CallType = 'video' | 'audio';
@@ -17,6 +17,8 @@ export interface CallInfo {
   callType: CallType;
   participants: Map<string, Participant>;
   isOutgoing: boolean;
+  chatType: 'dm' | 'group';
+  chatName: string | null;
   startedAt: number | null;
 }
 
@@ -29,13 +31,15 @@ export const useVideoCallStore = defineStore('videoCall', () => {
   const localStream = ref<MediaStream | null>(null);
   
   // Maps publicId -> Stream
-  const remoteStreams = ref<Map<string, MediaStream>>(new Map());
+  const remoteStreams = reactive(new Map<string, MediaStream>());
+  const remoteScreenStreams = reactive(new Map<string, MediaStream>());
   
   const isMuted = ref(false);
   const isCameraOff = ref(false);
   const callDuration = ref(0);
   const error = ref<string | null>(null);
   const activeCallId = ref<string | null>(null); // For "Call in progress" indicator in chat
+  const selfPublicId = ref<string | null>(null);
 
   // Track active calls in other chats: Map<chatId, { callId: string, callType: CallType }>
   const activeCalls = ref<Map<string, { callId: string, callType: CallType }>>(new Map());
@@ -89,7 +93,8 @@ export const useVideoCallStore = defineStore('videoCall', () => {
     if (currentCall.value) {
         currentCall.value.participants.delete(publicId);
     }
-    remoteStreams.value.delete(publicId);
+    remoteStreams.delete(publicId);
+    remoteScreenStreams.delete(publicId);
   }
 
   function setState(state: CallState) {
@@ -113,7 +118,40 @@ export const useVideoCallStore = defineStore('videoCall', () => {
   }
 
   function addRemoteStream(publicId: string, stream: MediaStream) {
-    remoteStreams.value.set(publicId, stream);
+    const active = remoteStreams.get(publicId);
+    if (active) {
+      stream.getTracks().forEach((track) => {
+        if (!active.getTracks().find((t) => t.id === track.id)) {
+          active.addTrack(track);
+        }
+      });
+      // Set again to trigger reactivity for any watchers on the Map itself
+      remoteStreams.set(publicId, active);
+    } else {
+      remoteStreams.set(publicId, stream);
+    }
+  }
+
+  function removeRemoteStream(publicId: string) {
+    remoteStreams.delete(publicId);
+  }
+
+  function addRemoteScreenStream(publicId: string, stream: MediaStream) {
+    const active = remoteScreenStreams.get(publicId);
+    if (active) {
+      stream.getTracks().forEach((track) => {
+        if (!active.getTracks().find((t) => t.id === track.id)) {
+          active.addTrack(track);
+        }
+      });
+      remoteScreenStreams.set(publicId, active);
+    } else {
+      remoteScreenStreams.set(publicId, stream);
+    }
+  }
+
+  function removeRemoteScreenStream(publicId: string) {
+    remoteScreenStreams.delete(publicId);
   }
 
   function toggleMute() {
@@ -163,12 +201,14 @@ export const useVideoCallStore = defineStore('videoCall', () => {
     callState.value = 'idle';
     currentCall.value = null;
     localStream.value = null;
-    remoteStreams.value.clear(); 
+    remoteStreams.clear(); 
+    remoteScreenStreams.clear();
     isMuted.value = false;
     isCameraOff.value = false;
     callDuration.value = 0;
     error.value = null;
     activeCallId.value = null;
+    selfPublicId.value = null;
     stopDurationTimer();
   }
 
@@ -178,12 +218,14 @@ export const useVideoCallStore = defineStore('videoCall', () => {
     currentCall,
     localStream,
     remoteStreams,
+    remoteScreenStreams,
     isMuted,
     isCameraOff,
     callDuration,
     error,
     activeCallId,
     activeCalls,
+    selfPublicId,
     // Getters
     isCallActive,
     isRinging,
@@ -198,6 +240,9 @@ export const useVideoCallStore = defineStore('videoCall', () => {
     setState,
     setLocalStream,
     addRemoteStream,
+    removeRemoteStream,
+    addRemoteScreenStream,
+    removeRemoteScreenStream,
     toggleMute,
     toggleCamera,
     setError,

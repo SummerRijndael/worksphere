@@ -49,7 +49,9 @@ let echo: EchoInstance | null = null;
  * Check if Reverb configuration is available.
  */
 function isReverbConfigured(): boolean {
-    const key = import.meta.env.VITE_REVERB_APP_KEY;
+    const runtimeKey = window.CoreSync?.reverb?.app_key;
+    const buildKey = import.meta.env.VITE_REVERB_APP_KEY;
+    const key = runtimeKey || buildKey;
     return Boolean(key && key !== 'undefined' && key !== '');
 }
 
@@ -109,15 +111,20 @@ function initializeEcho(): EchoInstance | null {
     }
 
     try {
+        const buildEnv = import.meta.env;
+
+        let host = buildEnv.VITE_REVERB_HOST || 'localhost';
+        if (host === '0.0.0.0' || host === '127.0.0.1') {
+            host = window.location.hostname;
+        }
+
         const echoInstance = new Echo({
             broadcaster: 'reverb',
-            key: import.meta.env.VITE_REVERB_APP_KEY,
-            wsHost: (import.meta.env.VITE_REVERB_HOST === '0.0.0.0' || import.meta.env.VITE_REVERB_HOST === '127.0.0.1') 
-                ? window.location.hostname 
-                : (import.meta.env.VITE_REVERB_HOST || 'localhost'),
-            wsPort: Number(import.meta.env.VITE_REVERB_PORT) || 9000,
-            wssPort: Number(import.meta.env.VITE_REVERB_PORT) || 9000,
-            forceTLS: (import.meta.env.VITE_REVERB_SCHEME || 'http') === 'https',
+            key: buildEnv.VITE_REVERB_APP_KEY,
+            wsHost: host,
+            wsPort: Number(buildEnv.VITE_REVERB_PORT) || 9000,
+            wssPort: Number(buildEnv.VITE_REVERB_PORT) || 9000,
+            forceTLS: (buildEnv.VITE_REVERB_SCHEME || 'http') === 'https',
             enabledTransports: ['ws', 'wss'],
             disableStats: true,
             // Custom authorizer to use our API instance (Axios)

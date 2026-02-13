@@ -32,10 +32,10 @@ export class VideoCallService extends BaseService {
   /**
    * SFU Proxy: Create New Session
    */
-  async sfuSessionNew(chatId: string, offer: string): Promise<any> {
-    const response = await this.api.post(`/api/chat/${chatId}/call/sfu/sessions/new`, {
-      sessionDescription: { type: 'offer', sdp: offer }
-    });
+  async sfuSessionNew(chatId: string, offer: string, tracks?: any[]): Promise<any> {
+    const body: any = { sessionDescription: { type: 'offer', sdp: offer } };
+    if (tracks) body.tracks = tracks;
+    const response = await this.api.post(`/api/chat/${chatId}/call/sfu/sessions/new`, body);
     return response.data;
   }
 
@@ -51,12 +51,20 @@ export class VideoCallService extends BaseService {
     return response.data;
   }
 
-  /**
-   * SFU Proxy: Renegotiate (Answer)
-   */
-  async sfuSessionRenegotiate(chatId: string, sessionId: string, answer: string): Promise<any> {
-    const response = await this.api.put(`/api/chat/${chatId}/call/sfu/sessions/${sessionId}/renegotiate`, {
-      sessionDescription: { type: 'answer', sdp: answer }
+  async sfuSessionRenegotiate(chatId: string, sessionId: string, sdp: string | null, type: 'offer' | 'answer' | 'rollback' = 'offer', method: 'PUT' | 'POST' = 'PUT'): Promise<any> {
+    const body: any = {};
+    if (sdp || type !== 'rollback') {
+      body.sessionDescription = { type, sdp };
+    } else {
+      // For rollback, Cloudflare requires sessionDescription wrapper.
+      // We include an empty sdp string as some validators require the field to exist.
+      body.sessionDescription = { type: 'rollback', sdp: '' };
+    }
+
+    const response = await this.api.request({
+      url: `/api/chat/${chatId}/call/sfu/sessions/${sessionId}/renegotiate`,
+      method,
+      data: Object.keys(body).length > 0 ? body : undefined
     });
     return response.data;
   }

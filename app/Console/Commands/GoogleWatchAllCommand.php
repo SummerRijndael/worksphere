@@ -29,17 +29,19 @@ class GoogleWatchAllCommand extends Command
     {
         $this->info('Finding users with Google accounts...');
 
-        $users = User::whereHas('socialAccounts', function ($query) {
+        $query = User::whereHas('socialAccounts', function ($query) {
             $query->where('provider', 'google');
-        })->get();
+        });
 
-        $count = $users->count();
+        $count = $query->count();
         $this->info("Found {$count} users.");
 
-        foreach ($users as $user) {
-            $this->info("Dispatching Watch job for User ID: {$user->id} ({$user->name})");
-            WatchGoogleCalendarJob::dispatch($user);
-        }
+        $query->chunkById(100, function ($users) {
+            foreach ($users as $user) {
+                $this->info("Dispatching Watch job for User ID: {$user->id} ({$user->name})");
+                WatchGoogleCalendarJob::dispatch($user);
+            }
+        });
 
         $this->info('All jobs dispatched.');
 

@@ -31,9 +31,9 @@ Schedule::job(new SendPermissionExpiryReminders(7))
     ->withoutOverlapping()
     ->onOneServer();
 
-// Send urgent expiry reminders (1-day) at 9 AM
+// Send urgent expiry reminders (1-day) at 9:05 AM
 Schedule::job(new SendPermissionExpiryReminders(1))
-    ->dailyAt('09:00')
+    ->dailyAt('09:05')
     ->name('send-permission-expiry-reminders-1day')
     ->withoutOverlapping()
     ->onOneServer();
@@ -53,13 +53,13 @@ Schedule::command('horizon:snapshot')
     ->onOneServer();
 
 // Send event reminders every minute
-Schedule::command('events:send-reminders')
+Schedule::job(new \App\Jobs\SendEventRemindersJob)
     ->everyMinute()
     ->withoutOverlapping()
     ->onOneServer();
 
 // Check ticket SLA breaches and send deadline reminders every 5 minutes
-Schedule::command('tickets:reminders')
+Schedule::job(new \App\Jobs\ProcessTicketRemindersJob)
     ->everyFiveMinutes()
     ->name('ticket-reminders')
     ->withoutOverlapping()
@@ -88,9 +88,9 @@ Schedule::command('email:sync-watchdog')
 Schedule::command('maintenance:stream-cache-stats')->everyMinute()->runInBackground();
 Schedule::command('monitor:stream')->everyMinute()->runInBackground();
 
-// Scheduled Daily Backup (Queued on 'heavy')
+// Scheduled Daily Backup (Queued on 'heavy') at 1 AM
 Schedule::job(new \App\Jobs\CreateSystemBackup('both'), 'heavy')
-    ->daily()
+    ->dailyAt('01:00')
     ->name('daily-system-backup')
     ->withoutOverlapping()
     ->onOneServer();
@@ -103,29 +103,29 @@ Schedule::command('backup:monitor-status')
     ->onOneServer();
 
 // Prune stale presence users every 5 minutes
-Schedule::command('presence:prune')
+Schedule::job(new \App\Jobs\PrunePresenceJob)
     ->everyFiveMinutes()
     ->withoutOverlapping()
     ->onOneServer();
 
-// Prune audit logs daily
+// Prune audit logs daily at 2:30 AM
 Schedule::command('audit:prune --days=30')
-    ->daily()
+    ->dailyAt('02:30')
     ->name('prune-audit-logs')
     ->withoutOverlapping()
     ->onOneServer();
 
-// Auto-archive old completed tasks daily
-Schedule::command('worksphere:archive-tasks')
-    ->daily()
+// Auto-archive old completed tasks daily at 3:30 AM
+Schedule::job(new \App\Jobs\ArchiveOldTasksJob)
+    ->dailyAt('03:30')
     ->name('auto-archive-tasks')
     ->withoutOverlapping()
     ->onOneServer();
 
-// Prune old page views daily
+// Prune old page views daily at 5:30 AM
 Schedule::command('model:prune', [
     '--model' => [\App\Models\PageView::class],
-])->daily()->onOneServer();
+])->dailyAt('05:30')->onOneServer();
 
 // Monitor external services every 10 minutes
 Schedule::command('monitor:external-services')
@@ -134,7 +134,7 @@ Schedule::command('monitor:external-services')
     ->onOneServer();
 
 // Check team health daily at 2 AM
-Schedule::command('teams:check-health')
+Schedule::job(new \App\Jobs\CheckTeamHealthJob)
     ->dailyAt('02:00')
     ->name('team-health-check')
     ->withoutOverlapping()
@@ -154,9 +154,9 @@ Schedule::command('google:watch-all')
     ->withoutOverlapping()
     ->onOneServer();
 
-// Prune old emails and content (Daily)
+// Prune old emails and content (Daily at 5 AM)
 Schedule::job(new \App\Jobs\PruneEmailsJob)
-    ->daily()
+    ->dailyAt('05:00')
     ->name('prune-emails')
     ->withoutOverlapping()
     ->onOneServer();

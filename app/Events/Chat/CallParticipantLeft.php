@@ -33,6 +33,7 @@ class CallParticipantLeft implements ShouldBroadcastNow
             'call_id' => $this->callId,
             'participant_public_id' => $this->participantPublicId,
             'reason' => $this->reason,
+            'chat_type' => $this->chatType,
         ];
     }
 
