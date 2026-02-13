@@ -716,11 +716,8 @@ async function pullSFURemoteScreen(
                 });
             }
 
-            // 1. Create Offer with new transceivers
-            const offer = await sfuPc!.createOffer();
-            await sfuPc!.setLocalDescription(offer);
-
-            // 2. Request tracks WITH local offer
+            // 1. Request tracks WITHOUT a local offer first (Server-Initiated Pull)
+            // This avoids "Push-Pull" glare.
             trace("PULL-SCREEN", `Requesting screen for ${participantPublicId}: ${mid}`, {
                 mid,
             });
@@ -742,7 +739,7 @@ async function pullSFURemoteScreen(
                 callData.value!.chatId,
                 sfuSessionId.value!,
                 trackReqs,
-                mungeSdp(offer.sdp!), // SEND OFFER
+                undefined, // NO OFFER
             );
 
             trace("PULL-SCREEN", `Response for ${participantPublicId}`, tracksRes);
@@ -759,15 +756,26 @@ async function pullSFURemoteScreen(
             }
 
             if (tracksRes.sessionDescription) {
-                console.log("[SFU] Pull screen returned server answer, setting remote description...");
+                console.log("[SFU] Pull screen returned server offer (immediate), answering...");
                 await sfuPc!.setRemoteDescription(
                     new RTCSessionDescription(tracksRes.sessionDescription),
                 );
+                const answer = await sfuPc!.createAnswer();
+                await sfuPc!.setLocalDescription(answer);
+
+                await videoCallService.sfuSessionRenegotiate(
+                    callData.value!.chatId,
+                    sfuSessionId.value!,
+                    mungeSdp(answer.sdp!),
+                    "answer",
+                    "PUT",
+                );
             } else {
                  console.log(
-                    "[SFU] Pull screen track accepted (no immediate answer).",
+                    "[SFU] Pull screen track accepted. Triggering sync...",
                      tracksRes,
                 );
+                triggerSFURenegotiation();
             }
 
             if (tracksRes.requiresImmediateRenegotiation) {
