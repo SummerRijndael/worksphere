@@ -6,3 +6,8 @@
 **Vulnerability:** User-controlled input in `EmailAccount` configuration was used directly in `EsmtpTransport` and IMAP client, allowing connection to internal/private IPs (SSRF).
 **Learning:** `empty($host)` allows "0" (string) to pass, which resolves to `0.0.0.0` (localhost), bypassing simplistic checks.
 **Prevention:** Use strict checks (`$host === null || $host === ''`) and validate resolved IPs against private ranges using `filter_var`.
+
+## 2026-10-24 - SSRF DNS Rebinding in SecureOpenGraph
+**Vulnerability:** The `SecureOpenGraph` service validated resolved IPs but then connected to the original hostname without pinning the resolution, allowing a TOCTOU (Time-of-Check Time-of-Use) DNS rebinding attack.
+**Learning:** Checking an IP and then connecting to a hostname is insufficient if the attacker controls DNS. They can return a safe IP for the check and a private IP for the connection.
+**Prevention:** Use `CURLOPT_RESOLVE` to force cURL to use the exact IP address that was validated, regardless of subsequent DNS resolution. Also, always use `IpUtils::checkIp` (or similar robust library) instead of manual CIDR checks to correctly handle IPv6 and edge cases.
