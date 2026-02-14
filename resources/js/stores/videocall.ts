@@ -49,6 +49,11 @@ export const useVideoCallStore = defineStore('videoCall', () => {
 
   let durationTimer: ReturnType<typeof setInterval> | null = null;
 
+  // Settings
+  const globalVolume = ref(1.0); // 0.0 to 1.0
+  const selectedAudioDeviceId = ref<string | null>(null);
+  const selectedVideoDeviceId = ref<string | null>(null);
+
   // ============================================================================
   // Getters
   // ============================================================================
@@ -71,6 +76,18 @@ export const useVideoCallStore = defineStore('videoCall', () => {
   // ============================================================================
   // Actions
   // ============================================================================
+
+  function setGlobalVolume(vol: number) {
+      globalVolume.value = Math.max(0, Math.min(1, vol));
+  }
+
+  function setSelectedAudioDevice(deviceId: string) {
+      selectedAudioDeviceId.value = deviceId;
+  }
+
+  function setSelectedVideoDevice(deviceId: string) {
+      selectedVideoDeviceId.value = deviceId;
+  }
 
   function registerActiveCall(chatId: string, callId: string, callType: CallType = 'video') {
       activeCalls.value.set(chatId, { callId, callType });
@@ -244,6 +261,9 @@ export const useVideoCallStore = defineStore('videoCall', () => {
     activeCallId,
     activeCalls,
     selfPublicId,
+    globalVolume,
+    selectedAudioDeviceId,
+    selectedVideoDeviceId,
     // Getters
     isCallActive,
     isRinging,
@@ -269,6 +289,9 @@ export const useVideoCallStore = defineStore('videoCall', () => {
     unregisterActiveCall,
     checkActiveCall,
     remoteVolumes,
+    setGlobalVolume,
+    setSelectedAudioDevice,
+    setSelectedVideoDevice,
     setRemoteVolume: (publicId: string, volume: number) => {
         remoteVolumes.set(publicId, volume);
     }

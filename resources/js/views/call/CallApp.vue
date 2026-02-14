@@ -17,6 +17,7 @@ import { startEcho, stopEcho } from "@/echo";
 import { videoCallService } from "@/services/videocall.service";
 import { useVideoCallStore } from "@/stores/videocall";
 import { Icon } from "@/components/ui";
+import CallSettingsModal from "./components/CallSettingsModal.vue";
 
 // ============================================================================
 // Types
@@ -59,7 +60,7 @@ const store = useVideoCallStore();
 // Media
 const localStream = ref<MediaStream | null>(null);
 const isMuted = ref(false);
-const isCameraOff = ref(false);
+const isCameraOff = ref(true); // Default to Video Off as requested
 const videoFallback = ref(false);
 const isAudioOnly = computed(() => callData.value?.callType === "audio");
 
@@ -153,22 +154,77 @@ const stateLabel = computed(() => {
     }
 });
 
+// Settings Modal
+const showSettings = ref(false);
+
 const formattedDuration = computed(() => {
     const mins = Math.floor(callDuration.value / 60);
     const secs = callDuration.value % 60;
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
 });
 
-const gridClass = computed(() => {
-    // Only count participants effectively shown in the grid (Self + Remotes)
-    const count =
-        participants.value.filter(
-            (p) => !p.isSelf && p.publicId !== callData.value?.selfPublicId,
-        ).length + 1;
-    if (count <= 2) return "grid-1-1";
-    if (count <= 4) return "grid-2-2";
-    return "grid-3-2";
+
+
+// UI Polish: Dynamic Layout Mode
+const layoutMode = computed(() => {
+    // If anyone (local or remote) is sharing screen -> Spotlight Mode
+    if (isScreenSharing.value || store.remoteScreenStreams.size > 0) {
+        return "spotlight";
+    }
+    return "grid";
 });
+
+const gridClass = computed(() => {
+    if (layoutMode.value === "spotlight") return "layout-spotlight";
+    
+    // Standard Grid Logic
+    const count = participants.value.length;
+    if (count <= 1) return "grid-1-1";
+    if (count === 2) return "grid-1-1"; // PiP logic handles this
+    if (count <= 4) return "grid-2-2";
+    return "grid-3-3";
+});
+
+// Helper: Get Initials from Name
+function getInitials(name: string) {
+    return name
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .substring(0, 2)
+        .toUpperCase();
+}
+
+// Helper: Get Avatar Color based on name (consistent)
+function getAvatarColor(name: string) {
+    const colors = [
+        "linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)", // Red
+        "linear-gradient(135deg, #f97316 0%, #c2410c 100%)", // Orange
+        "linear-gradient(135deg, #eab308 0%, #a16207 100%)", // Yellow
+        "linear-gradient(135deg, #22c55e 0%, #15803d 100%)", // Green
+        "linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)", // Blue
+        "linear-gradient(135deg, #a855f7 0%, #7e22ce 100%)", // Purple
+        "linear-gradient(135deg, #ec4899 0%, #be185d 100%)", // Pink
+    ];
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+        hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return colors[Math.abs(hash) % colors.length];
+}
+
+
+
+// Helper: Check for Remote Audio (Mute State)
+function remoteHasAudio(publicId: string) {
+    const stream = store.remoteStreams.get(publicId);
+    return stream && stream.getAudioTracks().length > 0 && stream.getAudioTracks()[0].enabled;
+}
+
+const toggleChat = () => {
+    console.log("[Call] Toggle Chat not implemented yet.");
+    // alert("Chat coming soon!"); // visible feedback
+};
 
 const previewRemoteName = computed(() => {
     if (callData.value?.remoteUser) return callData.value?.remoteUser.name;
@@ -208,6 +264,11 @@ async function acquireMedia(): Promise<MediaStream | null> {
                         },
                     });
                     localStream.value = stream;
+
+                    // Apply default video state (Off)
+                    if (isCameraOff.value) {
+                         stream.getVideoTracks().forEach(t => t.enabled = false);
+                    }
 
                     console.log("[Call] Local media acquired:", {
                         audio:
@@ -1093,7 +1154,7 @@ function toggleCamera() {
 function remoteHasVideo(participantId: string): boolean {
     const stream = store.remoteStreams.get(participantId);
     if (!stream) return false;
-    return stream.getVideoTracks().length > 0;
+    return stream.getVideoTracks().length > 0 && stream.getVideoTracks()[0].enabled;
 }
 
 async function toggleScreenShare() {
@@ -1211,19 +1272,34 @@ let sfuPc: RTCPeerConnection | null = null;
 
 // Directive for volume (sync with Pinia store)
 const vVolume = {
+    updated: (el: HTMLMediaElement, binding: any) => {
+        const publicId = binding.value;
+        if (!publicId) return;
+        const vol = store.remoteVolumes.get(publicId) ?? 100;
+        // Multiply individual volume by global volume (0-1)
+        el.volume = (vol / 100) * store.globalVolume;
+    },
     mounted: (el: HTMLMediaElement, binding: any) => {
         const publicId = binding.value;
         if (!publicId) return;
 
         // Sync initial volume (default 100)
         const vol = store.remoteVolumes.get(publicId) ?? 100;
-        el.volume = vol / 100;
+        el.volume = (vol / 100) * store.globalVolume;
 
         // Watch for store changes
         watch(
             () => store.remoteVolumes.get(publicId),
             (newVol) => {
-                el.volume = (newVol ?? 100) / 100;
+                el.volume = ((newVol ?? 100) / 100) * store.globalVolume;
+            },
+        );
+        // Also watch for global volume changes
+        watch(
+            () => store.globalVolume,
+            (newGlobalVol) => {
+                const currentVol = store.remoteVolumes.get(publicId) ?? 100;
+                el.volume = (currentVol / 100) * newGlobalVol;
             },
         );
     },
@@ -2266,6 +2342,18 @@ onBeforeUnmount(() => cleanup());
         <div class="call-bg"></div>
         <div class="call-overlay"></div>
 
+        <!-- PERSISTENT AUDIO MIXER (Fixes "Only One Speaker" bug) -->
+        <div class="audio-mix" style="display:none; position:absolute; top:-9999px;">
+            <audio
+                v-for="[publicId, stream] in store.remoteStreams"
+                :key="publicId + '-audio-mix'"
+                :ref="(el) => { if(el) (el as HTMLMediaElement).srcObject = stream }"
+                v-volume="publicId"
+                autoplay
+                playsinline
+            />
+        </div>
+
         <!-- HEADER / INFO -->
         <div class="call-header">
             <div class="header-info">
@@ -2319,14 +2407,98 @@ onBeforeUnmount(() => cleanup());
             </div>
         </div>
 
-        <!-- CONNECTED GRID -->
+        <!-- CONNECTED LAYOUT -->
         <template v-else>
-            <div class="grid-wrapper">
-                <!-- 1. Remote Participants -->
+            <!-- SPOTLIGHT LAYOUT (Presentation Mode) -->
+            <div v-if="layoutMode === 'spotlight'" class="spotlight-wrapper">
+                <!-- Main Stage: Screen Share -->
+                <div class="spotlight-stage">
+                    <template v-if="isScreenSharing && !!screenStream">
+                        <video
+                            v-src-object="screenStream"
+                            autoplay
+                            muted
+                            playsinline
+                            class="video-element screen-share-video mirror-off"
+                        />
+                         <div class="participant-info">
+                            <Icon name="Monitor" size="14" />
+                            <span class="participant-name">You are presenting</span>
+                        </div>
+                    </template>
+                     <template v-else-if="store.remoteScreenStreams.size > 0">
+                        <div
+                            v-for="[publicId, stream] in store.remoteScreenStreams"
+                            :key="publicId + '-screen-spotlight'"
+                            class="spotlight-content"
+                        >
+                            <video
+                                v-src-object="stream"
+                                autoplay
+                                playsinline
+                                class="video-element screen-share-video"
+                            />
+                            <div class="participant-info">
+                                <Icon name="Monitor" size="14" />
+                                <span class="participant-name">{{
+                                    participants.find(p => p.publicId === publicId)?.name || 'Someone'
+                                }}'s Screen</span>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+
+                <!-- Side/Bottom Filmstrip: Participants -->
+                <div class="filmstrip">
+                     <div
+                        v-for="p in participants.filter(p => !p.isSelf || !isScreenSharing)"
+                        :key="p.publicId"
+                        class="video-cell filmstrip-cell"
+                         :class="{
+                            'is-talking': talkingParticipants.has(p.publicId.toLowerCase()),
+                            'local': p.isSelf
+                        }"
+                    >
+
+                         
+                         <video
+                            v-if="
+                                (p.isSelf ? localHasVideo && !isCameraOff : store.remoteStreams.get(p.publicId)) &&
+                                (!isAudioOnly || (p.isSelf ? false : remoteHasVideo(p.publicId)))
+                            "
+                            v-src-object="p.isSelf ? localStream : store.remoteStreams.get(p.publicId)"
+                             :muted="p.isSelf"
+                            autoplay
+                            playsinline
+                            class="video-element"
+                            :class="{ 'mirror-off': p.isSelf && false }" 
+                        />
+                        <!-- Avatar Fallback -->
+                        <div v-else class="avatar-fallback">
+                             <div
+                                class="avatar-placeholder"
+                                :style="{ background: getAvatarColor(p.name) }"
+                            >
+                                <span class="initials-text">{{ getInitials(p.name) }}</span>
+                            </div>
+                            <div class="audio-indicator" v-if="!p.isSelf">
+                                <Icon name="Mic" size="14" />
+                            </div>
+                        </div>
+
+                        <div class="participant-info small">
+                             <span class="participant-name">{{ p.isSelf ? 'You' : p.name }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STANDARD GRID LAYOUT -->
+            <div v-else class="grid-wrapper">
+                <!-- Remote Participants -->
                 <div
                     v-for="p in participants.filter(
-                        (p) =>
-                            !p.isSelf && p.publicId !== callData?.selfPublicId,
+                        (p) => !p.isSelf && p.publicId !== callData?.selfPublicId,
                     )"
                     :key="p.publicId"
                     class="video-cell remote"
@@ -2336,15 +2508,7 @@ onBeforeUnmount(() => cleanup());
                         ),
                     }"
                 >
-                    <!-- Audio playback (always audible, but hidden/tiny) -->
-                    <audio
-                        v-if="store.remoteStreams.get(p.publicId)"
-                        v-src-object="store.remoteStreams.get(p.publicId)"
-                        v-volume="p.publicId"
-                        autoplay
-                        playsinline
-                        class="hidden-audio"
-                    />
+
 
                     <video
                         v-if="
@@ -2357,27 +2521,27 @@ onBeforeUnmount(() => cleanup());
                         playsinline
                         class="video-element"
                     />
-                    <!-- Avatar Fallback (Audio Only or No Video) -->
+                    <!-- Avatar Fallback -->
                     <div v-else class="avatar-fallback">
-                        <img
-                            v-if="p.avatar"
-                            :src="p.avatar"
-                            class="avatar-img"
-                        />
                         <div
-                            v-else
                             class="avatar-placeholder"
-                            :style="{ backgroundColor: 'var(--avatar-bg)' }"
+                            :style="{ background: getAvatarColor(p.name) }"
                         >
-                            {{ p.name[0] }}
+                             <span class="initials-text">{{ getInitials(p.name) }}</span>
                         </div>
                         <div class="audio-indicator">
                             <Icon name="Mic" size="16" />
                         </div>
                     </div>
 
-                    <div class="participant-info" v-if="p">
+                    <div class="participant-info">
                         <span class="participant-name">{{ p.name }}</span>
+                        
+                        <!-- Status Icons -->
+                        <div class="status-icons">
+                            <Icon v-if="!remoteHasAudio(p.publicId)" name="MicOff" size="14" class="status-icon-red" />
+                            <Icon v-if="!remoteHasVideo(p.publicId)" name="VideoOff" size="14" class="status-icon-red" />
+                        </div>
 
                         <!-- Individual Volume Control -->
                         <div
@@ -2389,29 +2553,15 @@ onBeforeUnmount(() => cleanup());
                                     type="range"
                                     min="0"
                                     max="100"
-                                    :value="
-                                        store.remoteVolumes.get(p.publicId) ??
-                                        100
-                                    "
-                                    @input="
-                                        (e) =>
-                                            store.setRemoteVolume(
-                                                p.publicId,
-                                                parseInt(
-                                                    (
-                                                        e.target as HTMLInputElement
-                                                    ).value,
-                                                ),
-                                            )
-                                    "
+                                    :value="store.remoteVolumes.get(p.publicId) ?? 100"
+                                    @input="(e) => store.setRemoteVolume(p.publicId, parseInt((e.target as HTMLInputElement).value))"
                                     class="volume-slider-input"
                                 />
                             </div>
                             <button class="volume-btn">
                                 <Icon
                                     :name="
-                                        (store.remoteVolumes.get(p.publicId) ??
-                                            100) === 0
+                                        (store.remoteVolumes.get(p.publicId) ?? 100) === 0
                                             ? 'VolumeX'
                                             : 'Volume2'
                                     "
@@ -2451,15 +2601,13 @@ onBeforeUnmount(() => cleanup());
                     </div>
                 </div>
 
-                <!-- 2. Local Participant (Me) -->
+                <!-- Local Participant (Me) -->
                 <div
                     class="video-cell local"
-                    :class="{
+                     :class="{
                         'pip-mode': participants.length >= 2,
                         'audio-mode': isAudioOnly && !isScreenSharing,
-                        'is-talking': talkingParticipants.has(
-                            callData?.selfPublicId?.toLowerCase() || '',
-                        ),
+                        'is-talking': talkingParticipants.has(callData?.selfPublicId?.toLowerCase() || ''),
                     }"
                 >
                     <video
@@ -2478,12 +2626,16 @@ onBeforeUnmount(() => cleanup());
                         :class="{ 'mirror-off': isScreenSharing }"
                     />
                     <div v-else class="avatar-fallback">
-                        <div class="avatar-placeholder local">
-                            <span>Me</span>
+                        <div class="avatar-placeholder local" :style="{ background: getAvatarColor('Me') }">
+                             <span class="initials-text">Me</span>
                         </div>
                     </div>
                     <div class="participant-info">
                         <span class="participant-name">You</span>
+                        <div class="status-icons">
+                            <Icon v-if="isMuted" name="MicOff" size="14" class="status-icon-red" />
+                            <Icon v-if="isCameraOff" name="VideoOff" size="14" class="status-icon-red" />
+                        </div>
                     </div>
                 </div>
             </div>
@@ -2521,6 +2673,22 @@ onBeforeUnmount(() => cleanup());
                 </button>
 
                 <button
+                    class="control-btn"
+                    @click="showSettings = true"
+                    title="Settings"
+                >
+                    <Icon name="Settings" size="24" />
+                </button>
+
+                <button
+                     class="control-btn"
+                     @click="toggleChat"
+                     title="Chat"
+                >
+                    <Icon name="MessageSquare" size="24" />
+                </button>
+
+                <button
                     class="control-btn hangup"
                     @click="endCall('hangup')"
                     title="End Call"
@@ -2528,6 +2696,12 @@ onBeforeUnmount(() => cleanup());
                     <Icon name="PhoneOff" size="24" />
                 </button>
             </div>
+            
+            <CallSettingsModal 
+                :open="showSettings" 
+                @update:open="showSettings = $event" 
+                @close="showSettings = false"
+            />
         </template>
     </div>
 </template>
@@ -2550,11 +2724,7 @@ onBeforeUnmount(() => cleanup());
     flex-direction: column;
     position: relative;
     overflow: hidden;
-    font-family:
-        "Inter",
-        system-ui,
-        -apple-system,
-        sans-serif;
+    font-family: "Inter", system-ui, -apple-system, sans-serif;
     color: #fafafa;
 }
 
@@ -2569,11 +2739,7 @@ onBeforeUnmount(() => cleanup());
 .call-overlay {
     position: absolute;
     inset: 0;
-    background: radial-gradient(
-        circle at center,
-        transparent 0%,
-        rgba(0, 0, 0, 0.6) 100%
-    );
+    background: radial-gradient(circle at center, transparent 0%, rgba(0, 0, 0, 0.6) 100%);
     z-index: 1;
     pointer-events: none;
 }
@@ -2611,26 +2777,21 @@ onBeforeUnmount(() => cleanup());
     background: #71717a;
     transition: all 0.3s ease;
 }
-
 .status-dot.connected {
     background: #10b981;
     box-shadow: 0 0 12px rgba(16, 185, 129, 0.6);
     animation: breathing 3s infinite;
 }
-.status-dot.connecting,
-.status-dot.ringing {
+.status-dot.connecting, .status-dot.ringing {
     background: #3b82f6;
     animation: pulse 1.5s infinite;
 }
-.status-dot.error {
-    background: #ef4444;
-}
+.status-dot.error { background: #ef4444; }
 
 .status-text {
     color: rgba(255, 255, 255, 0.9);
     font-size: 14px;
     font-weight: 600;
-    letter-spacing: 0.02em;
 }
 
 /* Center Content */
@@ -2656,7 +2817,6 @@ onBeforeUnmount(() => cleanup());
     margin-bottom: 32px;
     border: 1px solid transparent;
 }
-
 .state-icon.error {
     background: rgba(239, 68, 68, 0.1);
     color: #ef4444;
@@ -2673,19 +2833,13 @@ onBeforeUnmount(() => cleanup());
     font-weight: 600;
     color: white;
     margin-bottom: 32px;
-    opacity: 0.9;
 }
 
-/* Join Screen / Lobby */
+/* Join Screen */
 .join-screen {
     animation: fadeIn 0.6s cubic-bezier(0.22, 1, 0.36, 1);
 }
-
-.avatar-preview {
-    margin-bottom: 32px;
-    position: relative;
-}
-
+.avatar-preview { margin-bottom: 32px; }
 .preview-circle {
     width: 140px;
     height: 140px;
@@ -2699,32 +2853,12 @@ onBeforeUnmount(() => cleanup());
     color: white;
     box-shadow: 0 12px 40px rgba(99, 102, 241, 0.4);
     border: 4px solid rgba(255, 255, 255, 0.1);
-    animation: float 6s ease-in-out infinite;
 }
+.join-title { font-size: 32px; font-weight: 800; margin-bottom: 12px; }
+.join-subtitle { font-size: 18px; color: rgba(255, 255, 255, 0.6); margin-bottom: 48px; }
+.join-actions { display: flex; gap: 20px; width: 100%; max-width: 400px; }
 
-.join-title {
-    font-size: 32px;
-    font-weight: 800;
-    margin-bottom: 12px;
-    letter-spacing: -0.02em;
-}
-
-.join-subtitle {
-    font-size: 18px;
-    color: rgba(255, 255, 255, 0.6);
-    margin-bottom: 48px;
-}
-
-.join-actions {
-    display: flex;
-    gap: 20px;
-    width: 100%;
-    max-width: 400px;
-}
-
-.btn-join,
-.btn-decline,
-.btn-secondary {
+.btn-join, .btn-decline, .btn-secondary {
     flex: 1;
     padding: 16px 24px;
     border-radius: 18px;
@@ -2736,33 +2870,14 @@ onBeforeUnmount(() => cleanup());
     align-items: center;
     justify-content: center;
     gap: 12px;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.3s;
 }
+.btn-join { background: #10b981; color: white; box-shadow: 0 8px 24px rgba(16, 185, 129, 0.3); }
+.btn-join:hover { transform: translateY(-4px) scale(1.02); }
+.btn-decline { background: rgba(255, 255, 255, 0.05); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
+.btn-decline:hover { background: rgba(239, 68, 68, 0.1); transform: translateY(-4px); }
 
-.btn-join {
-    background: #10b981;
-    color: white;
-    box-shadow: 0 8px 24px rgba(16, 185, 129, 0.3);
-}
-.btn-join:hover {
-    transform: translateY(-4px) scale(1.02);
-    box-shadow: 0 12px 32px rgba(16, 185, 129, 0.4);
-}
-.btn-join:active {
-    transform: translateY(0) scale(0.98);
-}
-
-.btn-decline {
-    background: rgba(255, 255, 255, 0.05);
-    color: #ef4444;
-    border: 1px solid rgba(239, 68, 68, 0.3);
-}
-.btn-decline:hover {
-    background: rgba(239, 68, 68, 0.1);
-    transform: translateY(-4px);
-}
-
-/* Grid & Video Cells */
+/* --- GRID LAYOUT --- */
 .grid-wrapper {
     flex: 1;
     display: flex;
@@ -2777,6 +2892,76 @@ onBeforeUnmount(() => cleanup());
     align-items: center;
 }
 
+.grid-2-2 .grid-wrapper {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    grid-auto-rows: 1fr;
+}
+.grid-3-3 .grid-wrapper {
+     display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-auto-rows: 1fr;
+}
+
+/* --- SPOTLIGHT LAYOUT --- */
+.spotlight-wrapper {
+    flex: 1;
+    display: flex;
+    width: 100%;
+    height: 100%;
+    z-index: 10;
+    position: relative;
+    padding: 16px;
+    padding-bottom: calc(100px + env(safe-area-inset-bottom, 20px));
+    gap: 16px;
+}
+
+.spotlight-stage {
+    flex: 1;
+    background: #000;
+    border-radius: 16px;
+    border: 1px solid var(--glass-border);
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+
+.spotlight-content {
+    width: 100%;
+    height: 100%;
+    position: relative;
+}
+
+.screen-share-video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.filmstrip {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 280px;
+    overflow-y: auto;
+    padding-right: 4px;
+    /* Scrollbar styling */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,0.2) transparent;
+}
+
+.filmstrip-cell.video-cell {
+    width: 100%;
+    aspect-ratio: 16/9;
+    height: auto;
+    flex-shrink: 0;
+    border-radius: 12px; /* Softer rounded corners */
+}
+
+/* --- VIDEO CELL STYLING --- */
 .video-cell {
     position: relative;
     width: 100%;
@@ -2789,31 +2974,13 @@ onBeforeUnmount(() => cleanup());
     display: flex;
     align-items: center;
     justify-content: center;
-    animation: cellAppear 0.5s cubic-bezier(0.22, 1, 0.36, 1);
-    transition:
-        box-shadow 0.3s ease,
-        border-color 0.3s ease,
-        transform 0.3s ease;
+    transition: transform 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
 .video-cell.is-talking {
     border-color: #10b981;
-    box-shadow: 0 0 24px rgba(16, 185, 129, 0.4);
-    transform: scale(1.01);
+    box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.3);
     z-index: 20;
-}
-
-.video-cell.screen-share {
-    flex: 2;
-    min-width: 400px;
-    background: #000;
-}
-
-.video-cell.screen-share.expanded {
-    flex: 1 1 100%;
-    height: auto;
-    aspect-ratio: 16/9;
-    max-height: 70vh;
 }
 
 .video-element {
@@ -2821,44 +2988,55 @@ onBeforeUnmount(() => cleanup());
     height: 100%;
     object-fit: cover;
     background: #000;
-    transition: filter 0.3s ease;
+}
+.mirror-off { transform: scaleX(1); }
+
+/* Avatar Fallback */
+.avatar-fallback {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: #18181b;
+}
+.avatar-placeholder {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    font-weight: 700;
+    color: white;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 }
 
-/* Local PiP Mode */
+/* PiP for Local (in Grid 1-1) */
 .video-cell.local.pip-mode {
     position: absolute;
     bottom: calc(120px + env(safe-area-inset-bottom, 20px));
     right: 20px;
-    width: 120px;
-    height: 180px;
+    width: 160px;
+    height: 240px; /* Portrait PiP usually better? Or 16:9? Let's check aspect */
+    height: 100px;
+    height: auto;
+    aspect-ratio: 9/16; /* Mobile style vertical pip? or 16/9 */
+    aspect-ratio: 16/9; /* Standard */
+    width: 200px;
     z-index: 30;
-    border-radius: 20px;
-    border: 20px; /* actually border-width is handled by border below */
-    border: 2px solid rgba(255, 255, 255, 0.2);
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+    border: 2px solid rgba(255,255,255,0.2);
+    box-shadow: 0 16px 40px rgba(0,0,0,0.6);
 }
 
-.grid-1-1 .video-cell.remote {
-    position: absolute;
-    inset: 0;
-    border-radius: 0;
-    border: none;
-    z-index: 5;
-}
-
-/* Ensure screen share sits on top of participant avatar in 1:1 */
-.grid-1-1 .video-cell.remote.screen-share {
-    z-index: 10;
-}
-
-/* Participant Info Overlay */
 .participant-info {
     position: absolute;
     bottom: 16px;
     left: 16px;
-    background: rgba(9, 9, 11, 0.5);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    background: rgba(9, 9, 11, 0.6);
+    backdrop-filter: blur(8px);
     padding: 6px 14px;
     border-radius: 12px;
     display: flex;
@@ -2867,7 +3045,6 @@ onBeforeUnmount(() => cleanup());
     color: white;
     font-size: 13px;
     font-weight: 600;
-    pointer-events: none;
     border: 1px solid var(--glass-border);
 }
 
@@ -2880,182 +3057,82 @@ onBeforeUnmount(() => cleanup());
     display: flex;
     gap: 20px;
     z-index: 500;
-    background: rgba(20, 20, 25, 0.7);
+    background: rgba(20, 20, 25, 0.8);
     backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
     padding: 14px 28px;
     border-radius: 40px;
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
     border: 1px solid var(--glass-border);
-    transition:
-        transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-        bottom 0.3s ease;
 }
-
 .control-btn {
     width: 60px;
     height: 60px;
     border-radius: 50%;
-    border: none;
+    border: 1px solid rgba(255,255,255,0.1);
     background: rgba(255, 255, 255, 0.08);
     color: white;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    font-size: 24px;
     cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    display:flex; align-items:center; justify-content:center;
+    transition: all 0.2s;
 }
-
-.control-btn:hover {
-    background: rgba(255, 255, 255, 0.15);
-    transform: scale(1.1) translateY(-2px);
-    border-color: rgba(255, 255, 255, 0.3);
-}
-
-.control-btn:active {
-    transform: scale(0.95);
-}
-
-.control-btn.off {
-    background: #fafafa;
-    color: #09090b;
-}
-
-.control-btn.hangup {
-    background: #ef4444;
-    color: white;
-    border-color: rgba(255, 255, 255, 0.1);
-}
-.control-btn.hangup:hover {
-    background: #dc2626;
-    box-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
-}
-
-/* Animations */
-@keyframes breathing {
-    0%,
-    100% {
-        transform: scale(1);
-        opacity: 1;
-    }
-    50% {
-        transform: scale(1.1);
-        opacity: 0.8;
-    }
-}
-
-@keyframes float {
-    0%,
-    100% {
-        transform: translateY(0);
-    }
-    50% {
-        transform: translateY(-10px);
-    }
-}
-
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-@keyframes cellAppear {
-    from {
-        opacity: 0;
-        transform: scale(0.95);
-    }
-    to {
-        opacity: 1;
-        transform: scale(1);
-    }
-}
-
-/* Grid Layouts */
-.grid-2-2 .grid-wrapper {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    grid-auto-rows: 1fr;
-    min-height: 0;
-}
-
-.grid-3-2 .grid-wrapper {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    grid-auto-rows: 1fr;
-    min-height: 0;
-}
+.control-btn:hover { background: rgba(255,255,255,0.15); transform: scale(1.1); }
+.control-btn.off { background: #fafafa; color: #09090b; }
+.control-btn.hangup { background: #ef4444; border-color: rgba(255,255,255,0.1); }
+.control-btn.hangup:hover { background: #dc2626; }
 
 /* Mobile Overrides */
-@media (max-width: 640px) {
-    .grid-wrapper {
-        padding: 12px;
-        padding-bottom: calc(120px + env(safe-area-inset-bottom, 24px));
-        gap: 12px;
-    }
-
-    .grid-2-2 .grid-wrapper,
-    .grid-3-2 .grid-wrapper {
-        grid-template-columns: 1fr;
-    }
-
-    .controls-bar {
-        width: calc(100% - 32px);
-        max-width: 380px;
-        padding: 12px 16px;
-        gap: 12px;
-    }
-
-    .control-btn {
-        width: 54px;
-        height: 54px;
-    }
-
-    .join-title {
-        font-size: 28px;
-    }
-    .join-actions {
+@media (max-width: 768px) {
+    .spotlight-wrapper {
         flex-direction: column;
-        gap: 12px;
+        padding: 0;
+    }
+    .spotlight-stage {
+        border-radius: 0;
+        border: none;
+        flex: 1; /* Take mostly all space */
+    }
+    .filmstrip {
         width: 100%;
+        height: 120px;
+        flex-direction: row;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding: 12px;
+        background: #09090b;
+        border-top: 1px solid var(--glass-border);
+        padding-bottom: calc(100px + env(safe-area-inset-bottom, 20px)); /* Lift over controls */
+        position: absolute;
+        bottom: 0;
+        z-index: 400; /* Under controls */
     }
+    .filmstrip-cell.video-cell {
+        width: 160px;
+        height: 100%;
+        aspect-ratio: 16/9;
+    }
+    
+    .controls-bar {
+        bottom: calc(20px + env(safe-area-inset-bottom, 0));
+        width: calc(100% - 40px);
+        max-width: 400px;
+        padding: 10px 20px;
+        justify-content: space-evenly;
+    }
+    .control-btn { width: 48px; height: 48px; }
 
-    .btn-join,
-    .btn-decline {
-        width: 100%;
-        border-radius: 16px;
-    }
-
-    .grid-1-1 .video-cell.local.pip-mode {
-        width: 100px;
-        height: 150px;
-        bottom: calc(110px + env(safe-area-inset-bottom, 20px));
-        right: 12px;
-    }
+    .grid-wrapper { padding: 12px; padding-bottom: 120px; }
+    .grid-2-2 .grid-wrapper, .grid-3-3 .grid-wrapper { grid-template-columns: 1fr; }
 }
 
-/* Avatar Fallbacks */
-.avatar-fallback {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    background: #09090b;
-}
+@keyframes breathing { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.1); opacity: 0.8; } }
+@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
 .avatar-placeholder {
     width: 100px;
     height: 100px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -3161,4 +3238,3 @@ onBeforeUnmount(() => cleanup());
     color: white;
 }
 </style>
-```

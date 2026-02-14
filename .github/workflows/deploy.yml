@@ -1,0 +1,65 @@
+name: Deploy to Ploi
+
+on:
+  push:
+    branches: [main] # This triggers the deploy every time you push to main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4" # Matches your server version
+          extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite
+          coverage: none
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install PHP Dependencies
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev
+
+      - name: Install JS Dependencies & Build Assets
+        run: |
+          npm install
+          npm run build
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ploi
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          script: |
+            cd /home/ploi/link-technologies.info
+
+            # 1. Pull the new code
+            git pull origin main
+
+            # 2. Re-link the persistent data we moved earlier
+            rm -f .env && ln -s /home/ploi/shared/.env .env
+            rm -rf storage && ln -s /home/ploi/shared/storage storage
+
+            # 3. Laravel housekeeping
+            php artisan migrate --force
+            php artisan optimize
+
+            # 4. Clear PHP Opcache
+            echo "" | sudo -S service php8.4-fpm reload
+
+            # 5. Purge Cloudflare Cache (Prevents the 419 error)
+            curl -X POST "https://api.cloudflare.com/client/v4/zones/${{ secrets.CF_ZONE_ID }}/purge_cache" \
+                 -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
+                 -H "Content-Type: application/json" \
+                 --data '{"purge_everything":true}'
+
+            echo "🚀 Deployment Successful!"
