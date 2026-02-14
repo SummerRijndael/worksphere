@@ -53,6 +53,7 @@ export const useVideoCallStore = defineStore('videoCall', () => {
   const globalVolume = ref(1.0); // 0.0 to 1.0
   const selectedAudioDeviceId = ref<string | null>(null);
   const selectedVideoDeviceId = ref<string | null>(null);
+  const selectedOutputDeviceId = ref<string | null>(null);
 
   // ============================================================================
   // Getters
@@ -261,6 +262,7 @@ export const useVideoCallStore = defineStore('videoCall', () => {
     activeCallId,
     activeCalls,
     selfPublicId,
+    remoteVolumes,
     globalVolume,
     selectedAudioDeviceId,
     selectedVideoDeviceId,
@@ -288,10 +290,13 @@ export const useVideoCallStore = defineStore('videoCall', () => {
     registerActiveCall,
     unregisterActiveCall,
     checkActiveCall,
-    remoteVolumes,
     setGlobalVolume,
     setSelectedAudioDevice,
     setSelectedVideoDevice,
+    setSelectedOutputDevice: (deviceId: string) => {
+        selectedOutputDeviceId.value = deviceId;
+    },
+    selectedOutputDeviceId,
     setRemoteVolume: (publicId: string, volume: number) => {
         remoteVolumes.set(publicId, volume);
     }

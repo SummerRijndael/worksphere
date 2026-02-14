@@ -96,7 +96,10 @@ const updateTileLayer = () => {
 function initMap() {
     if (!mapContainer.value) return;
 
-    map = L.map(mapContainer.value).setView([20, 0], 2);
+    map = L.map(mapContainer.value, {
+        minZoom: 2,
+        worldCopyJump: true,
+    }).setView([20, 0], 2);
 
     updateTileLayer();
 
@@ -139,18 +142,20 @@ function refreshMarkers() {
                 }
             }
 
-            L.circleMarker([stat.lat, stat.lon], {
-                radius: Math.min(Math.max(Math.sqrt(stat.count) * 4, 6), 25), // Use sqrt for better scaling
-                fillColor: fillColor,
-                color: color,
-                weight: 1,
-                opacity: 0.8,
-                fillOpacity: 0.5,
-            })
-                .bindPopup(popupContent, {
-                    className: "custom-map-popup",
+            [0, -360, 360].forEach(offset => {
+                L.circleMarker([stat.lat, stat.lon + offset], {
+                    radius: Math.min(Math.max(Math.sqrt(stat.count) * 4, 6), 25), // Use sqrt for better scaling
+                    fillColor: fillColor,
+                    color: color,
+                    weight: 1,
+                    opacity: 0.8,
+                    fillOpacity: 0.5,
                 })
-                .addTo(markers!);
+                    .bindPopup(popupContent, {
+                        className: "custom-map-popup",
+                    })
+                    .addTo(markers!);
+            });
         }
     });
 }

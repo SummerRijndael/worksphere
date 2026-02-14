@@ -96,6 +96,7 @@ function handleClick(e) {
         :type="as === 'button' ? 'button' : undefined"
         :class="classes"
         :disabled="disabled || loading"
+        v-bind="$attrs"
         @click="handleClick"
     >
         <svg

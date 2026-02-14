@@ -38,6 +38,8 @@ const props = defineProps({
         default: true,
     },
     preventClose: Boolean,
+    disablePadding: Boolean,
+    disableScroll: Boolean,
 });
 
 const emit = defineEmits(["update:open", "close"]);
@@ -45,9 +47,10 @@ const emit = defineEmits(["update:open", "close"]);
 const contentClasses = computed(() =>
     cn(
         "fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[1050]",
-        "bg-[var(--surface-elevated)] rounded-2xl shadow-2xl",
+        "bg-(--surface-elevated) border border-(--border-default) rounded-2xl shadow-2xl",
         "focus:outline-none",
-        "max-h-[85vh] overflow-auto",
+        props.disableScroll ? "overflow-hidden" : "overflow-auto",
+        props.size !== "full" && "max-h-[85vh]",
 
         // Animation
         "data-[state=open]:animate-in data-[state=closed]:animate-out",
@@ -152,7 +155,7 @@ defineSlots<{
     <DialogRoot :open="open" @update:open="handleOpenChange">
         <DialogPortal>
             <DialogOverlay
-                class="fixed inset-0 z-[1040] bg-black/80 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
+                class="fixed inset-0 z-1040 bg-black/80 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
             />
             <DialogContent :class="contentClasses">
                 <!-- Accessibility: Always render Title/Description -->
@@ -170,7 +173,7 @@ defineSlots<{
                 >
                     <div v-if="title || $slots.title" class="space-y-1.5">
                         <DialogTitle
-                            class="text-lg font-semibold text-[var(--text-primary)]"
+                            class="text-lg font-semibold text-(--text-primary)"
                         >
                             <slot name="title">{{ title }}</slot>
                         </DialogTitle>
@@ -178,7 +181,7 @@ defineSlots<{
                         <DialogDescription
                             :class="
                                 description
-                                    ? 'text-sm text-[var(--text-secondary)]'
+                                    ? 'text-sm text-(--text-secondary)'
                                     : 'sr-only'
                             "
                         >
@@ -197,7 +200,7 @@ defineSlots<{
                 </div>
 
                 <!-- Content -->
-                <div class="p-6">
+                <div :class="cn(!disablePadding && 'p-6', disableScroll && 'flex-1 overflow-hidden flex flex-col')">
                     <slot />
                 </div>
 
