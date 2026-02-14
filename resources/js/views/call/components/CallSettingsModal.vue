@@ -160,11 +160,11 @@ onMounted(() => {
         @click.self="$emit('close')"
     >
         <div
-            class="bg-(--surface-primary) rounded-xl border border-(--border-muted) shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col h-[420px]"
+            class="bg-(--surface-primary) rounded-xl border border-(--border-subtle) ring-1 ring-black/5 dark:ring-white/5 shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col h-[420px]"
         >
             <div class="flex-1 flex overflow-hidden">
                 <!-- Sidebar (Precision DNA) -->
-                <div class="w-44 bg-(--surface-secondary)/30 border-r border-(--border-muted) flex flex-col pt-4">
+                <div class="w-44 bg-(--surface-secondary)/30 border-r border-(--border-subtle) flex flex-col pt-4">
                     <div class="px-3 pb-4 flex-1 overflow-y-auto custom-scrollbar">
                         <div class="space-y-1">
                             <button
@@ -188,7 +188,7 @@ onMounted(() => {
                         </div>
                     </div>
 
-                    <div class="p-4 border-t border-(--border-muted)">
+                    <div class="p-4 border-t border-(--border-subtle)">
                         <div class="flex items-center gap-2 px-1">
                             <div class="h-1.5 w-1.5 rounded-full bg-success"></div>
                             <span class="text-[10px] font-bold uppercase tracking-tight text-(--text-muted)">Live Status</span>
@@ -304,7 +304,7 @@ onMounted(() => {
                 </div>
             </div>
 
-            <div class="px-6 py-4 bg-(--surface-secondary) border-t border-(--border-muted) flex justify-end gap-3 ring-1 ring-black/5">
+            <div class="px-6 py-4 bg-(--surface-secondary) border-t border-(--border-subtle) flex justify-end gap-3 ring-1 ring-black/5">
                 <button 
                     class="btn btn-ghost text-sm"
                     @click="$emit('close')"

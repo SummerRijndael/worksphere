@@ -104,7 +104,7 @@ const updateMapData = () => {
 
     // Add dynamic markers for significant threats (Replicated for wrapping)
     props.data.forEach(d => {
-        if (d.count > 5) {
+        if (d.count > 0) {
             [0, -360, 360].forEach(offset => {
                 const marker = L.circleMarker([d.lat, d.lng + offset], {
                     radius: Math.min(10, 4 + d.count / 5),

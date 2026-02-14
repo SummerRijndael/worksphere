@@ -71,6 +71,26 @@ function joinCall() {
     }
 }
 
+const activeCallInvite = computed(() => {
+    const chat = props.window.chat;
+    if (!chat || chat.type !== 'group') return null;
+    
+    // Check if there is an active call for this chat
+    const activeCall = videoCallStore.activeCalls.get(props.window.chatId);
+    if (!activeCall) return null;
+
+    // Check if we are already in it
+    const isInCall = videoCallStore.currentCall?.chatId === props.window.chatId;
+    if (isInCall) return null;
+
+    return {
+        callId: activeCall.callId,
+        callType: activeCall.callType,
+        chatId: props.window.chatId,
+        callerName: "Group" 
+    };
+});
+
 
 
 // Instance Identity for Debugging
@@ -686,6 +706,7 @@ function handleDragEnd() {
     document.removeEventListener("mouseup", handleDragEnd);
 }
 function isOwnMessage(msg: Message): boolean {
+    if (msg.type === 'system') return false;
     return msg.user_public_id === currentUserPublicId.value;
 }
 
@@ -775,15 +796,6 @@ function isOwnMessage(msg: Message): boolean {
                 <span class="minichat-window-title">{{ chatTitle }}</span>
             </div>
             <div class="minichat-window-actions">
-                <!-- Join Call Button -->
-                <button
-                    v-if="activeCall && !isInCurrentCall"
-                    class="minichat-window-action text-green-500 animate-pulse"
-                    title="Join Active Call"
-                    @click.stop="joinCall"
-                >
-                    <Icon name="Video" :size="14" />
-                </button>
 
                 <!-- Call buttons -->
                 <template v-if="true">
@@ -857,6 +869,27 @@ function isOwnMessage(msg: Message): boolean {
                     />
                 </div>
             </TransitionGroup>
+
+             <!-- System Message: Active Call Invite -->
+            <div v-if="activeCallInvite" class="flex justify-center py-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div class="bg-(--surface-elevated) border border-(--border-default) rounded-xl p-4 shadow-lg flex items-center gap-3 max-w-[90%] w-full mx-auto">
+                    <div class="p-2 bg-green-500/10 text-green-500 rounded-full shrink-0">
+                         <Icon name="Video" size="20" />
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="font-medium text-xs text-(--text-primary)">Video Call Started</div>
+                        <div class="text-[10px] text-(--text-secondary) truncate">
+                            Group Call
+                        </div>
+                    </div>
+                    <button 
+                        @click.stop="joinCall"
+                        class="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-lg transition-colors shadow-sm whitespace-nowrap"
+                    >
+                        Join
+                    </button>
+                </div>
+            </div>
 
 
 

@@ -41,6 +41,7 @@ export function useChat(options: UseChatOptions = {}) {
   const messageInput = ref('');
   const messagesContainerRef = ref<HTMLElement | null>(null);
   const isLoadingMore = ref(false);
+  const isSending = ref(false);
   const searchQuery = ref('');
   const peopleSearchQuery = ref('');
   
@@ -177,31 +178,40 @@ export function useChat(options: UseChatOptions = {}) {
   // ============================================================================
 
   async function sendMessage(contentArg?: string, replyToArg?: string | number) {
-    if (!store.activeChatPublicId) return;
+    if (!store.activeChatPublicId || isSending.value) {
+        console.warn('[useChat] sendMessage aborted: no activeChatPublicId or already sending');
+        return;
+    }
 
     const content = contentArg ?? messageInput.value.trim();
     const pendingFiles = store.pendingFiles;
     const replyTo = replyToArg ?? store.replyingToMessage?.id;
 
-    console.log('[useChat] sendMessage called', { content, pendingFilesLen: pendingFiles.length });
+    console.log('[useChat] sendMessage called', { 
+        content: content.substring(0, 50), 
+        pendingFilesLen: pendingFiles.length,
+        activeChat: store.activeChatPublicId 
+    });
 
     if (!content && pendingFiles.length === 0) {
         console.log('[useChat] sendMessage aborted: no content or files');
         return;
     }
 
-    // Only clear input if we are sending from state (not retry)
+    isSending.value = true;
+    // Only clear input if we are sending from state (not retry/arg)
     if (!contentArg) {
         messageInput.value = '';
     }
 
     try {
-      if (pendingFiles.length > 0 && !contentArg) {
-        // Only attach pending files if sending from composer (not retry)
-        console.log('[useChat] Uploading files...');
+      if (pendingFiles.length > 0) {
+        // Files + optional content
+        console.log('[useChat] Uploading files...', { count: pendingFiles.length });
         const files = pendingFiles.map(p => p.file);
         await store.uploadMessage(store.activeChatPublicId, files, content, replyTo);
       } else {
+        // Text only
         console.log('[useChat] Sending text...');
         await store.sendMessage(store.activeChatPublicId, content, replyTo);
       }
@@ -214,11 +224,13 @@ export function useChat(options: UseChatOptions = {}) {
       if (!contentArg) {
           messageInput.value = content;
       }
+    } finally {
+      isSending.value = false;
     }
   }
 
   async function sendGif(gif: any) {
-    if (!store.activeChatPublicId) return;
+    if (!store.activeChatPublicId || isSending.value) return;
     
     const metadata = {
         giphy: {
@@ -231,9 +243,14 @@ export function useChat(options: UseChatOptions = {}) {
         }
     };
     
-    // Send empty content but with metadata
-    await store.sendMessage(store.activeChatPublicId, '', store.replyingToMessage?.id, metadata);
-    scrollToBottom();
+    isSending.value = true;
+    try {
+        // Send empty content but with metadata
+        await store.sendMessage(store.activeChatPublicId, '', store.replyingToMessage?.id, metadata);
+        scrollToBottom();
+    } finally {
+        isSending.value = false;
+    }
   }
 
   async function loadMoreMessages() {
@@ -323,8 +340,15 @@ export function useChat(options: UseChatOptions = {}) {
 
   function addFiles(files: FileList | File[]) {
     const currentCount = store.pendingFiles.length;
-    const currentTotalSize = store.pendingFiles.reduce((acc, f) => acc + f.size, 0);
+    // Fix: access f.file.size instead of f.size
+    const currentTotalSize = store.pendingFiles.reduce((acc, f) => acc + (f.file?.size || 0), 0);
     const newFiles = Array.from(files);
+
+    console.log('[useChat] addFiles called', { 
+        count: newFiles.length, 
+        currentTotalSize,
+        currentCount
+    });
 
     if (currentCount + newFiles.length > MAX_FILES) {
         toast.error('Limit Exceeded', `You can only upload up to ${MAX_FILES} files at a time.`);
@@ -588,6 +612,7 @@ export function useChat(options: UseChatOptions = {}) {
     searchQuery,
     peopleSearchQuery,
     isLoadingMore,
+    isSending,
 
     // Computed
     activeChat,

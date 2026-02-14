@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
- * CallApp.vue — Group Call (Mesh Topology)
- * Supports 1:1 and Group calls (up to ~6 participants)
+ * CallApp.vue — Hybrid Call Architecture (SFU + Mesh)
+ * - Group Calls: Utilizing Cloudflare SFU (Selective Forwarding Unit) for high scalability and performance.
+ * - 1:1 Calls: Supports Peer-to-Peer Mesh (Mesh Topology) with failover to SFU if needed.
  */
 import "webrtc-adapter";
 import {
@@ -16,8 +17,15 @@ import Peer from "simple-peer";
 import { startEcho, stopEcho } from "@/echo";
 import { videoCallService } from "@/services/videocall.service";
 import { useVideoCallStore } from "@/stores/videocall";
+import { useChatStore } from "@/stores/chat";
+import { useAuthStore } from "@/stores/auth";
 import { Icon } from "@/components/ui";
 import CallSettingsModal from "./components/CallSettingsModal.vue";
+import { useChat } from "@/composables/useChat";
+import CallChatList from "./components/CallChatList.vue";
+import ChatComposer from "../chat/components/chat/ChatComposer.vue";
+import NetworkHealthIndicator from "./components/NetworkHealthIndicator.vue";
+import MediaViewer from "@/components/tools/MediaViewer.vue";
 
 // ============================================================================
 // Types
@@ -56,6 +64,52 @@ const callState = ref<
 const hasJoined = ref(false);
 const error = ref<string | null>(null);
 const store = useVideoCallStore();
+const chatStore = useChatStore();
+const authStore = useAuthStore();
+// const route = useRoute(); // Not available in standalone app
+
+// Chat Integration
+const showSidebar = ref(false); // Default closed
+const sidebarTab = ref<'people' | 'chat'>('people');
+const {
+    activeChat,
+    activeMessages,
+    messageInput,
+    messagesContainerRef,
+    isLoadingMore: isChatLoadingMore,
+    isSending,
+    replyingTo,
+    pendingFiles,
+    typingIndicator,
+    
+    selectChat,
+    sendMessage,
+    loadMoreMessages,
+    setReplyTo,
+    cancelReply,
+    addFiles,
+    removeFile,
+    handleInputChange,
+    sendGif,
+    scrollToBottom
+} = useChat({ autoFetch: true });
+
+const handleMessageReply = (message: any) => {
+    setReplyTo(message);
+};
+
+const toggleSidebar = (tab?: 'people' | 'chat') => {
+    if (tab) {
+        if (showSidebar.value && sidebarTab.value === tab) {
+            showSidebar.value = false; // Close if clicking same tab
+        } else {
+            showSidebar.value = true;
+            sidebarTab.value = tab;
+        }
+    } else {
+        showSidebar.value = !showSidebar.value;
+    }
+};
 
 // Media
 const localStream = ref<MediaStream | null>(null);
@@ -67,6 +121,18 @@ const isAudioOnly = computed(() => callData.value?.callType === "audio");
 // Screen Sharing
 const isScreenSharing = ref(false);
 const screenStream = ref<MediaStream | null>(null);
+
+// Network Stats
+const networkStats = reactive({
+    bitrate: 0,
+    packetLoss: 0,
+    rtt: 0,
+    score: 0 // 0=Good, 1=Fair, 2=Poor
+});
+const participantStats = reactive(new Map<string, { bitrate: number; packetLoss: number; rtt: number; score: number }>());
+// Signaling-based remote media state (cross-browser reliable)
+const remoteMediaState = reactive(new Map<string, { muted: boolean; cameraOff: boolean }>());
+let statsInterval: ReturnType<typeof setInterval> | null = null;
 const sfuScreenMid = ref<string | null>(null);
 
 // Hybrid Mode
@@ -79,10 +145,110 @@ const remoteSfuTracks = reactive(
     new Map<string, { audioMid?: string; videoMid?: string }>(),
 );
 const isTransportReady = ref(false);
+const chatListRef = ref<any>(null);
+
+// Link the child's scroll container to useChat composable
+watch(() => chatListRef.value?.container, (newVal) => {
+    if (newVal) messagesContainerRef.value = newVal;
+}, { immediate: true });
+
+// Mark as read when messages arrive and chat is visible
+watch([() => activeMessages.value.length, () => showSidebar.value, () => sidebarTab.value], ([newLen, visible, tab]) => {
+    if (visible && tab === 'chat' && activeChat.value?.public_id) {
+        chatStore.markAsRead(activeChat.value.public_id);
+    }
+});
 const participantTransceivers = new Map<
     string,
     { audioMid?: string; videoMid?: string; screenMid?: string }
 >();
+
+/**
+ * Update Network Stats
+ */
+async function updateNetworkStats() {
+    // 1. Global Stats (Local OUTBOUND or first Peer)
+    let mainPc: RTCPeerConnection | null = null;
+    if (callMode.value === "sfu" && sfuPc) mainPc = sfuPc;
+    else if (peers.size > 0) mainPc = (Array.from(peers.values())[0] as any)?._pc;
+
+    if (mainPc) {
+        try {
+            const stats = await mainPc.getStats();
+            stats.forEach(report => {
+                if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                    networkStats.rtt = (report.currentRoundTripTime || 0) * 1000;
+                }
+            });
+        } catch (e) {}
+    }
+
+    // 2. Per-Participant Stats (INBOUND)
+    if (callMode.value === "sfu" && sfuPc) {
+        try {
+            const stats = await sfuPc.getStats();
+            stats.forEach(report => {
+                if (report.type === 'inbound-rtp' && (report.kind === 'audio' || report.kind === 'video')) {
+                    // Find participant by MID
+                    let pId: string | null = null;
+                    for (const [id, mids] of participantTransceivers.entries()) {
+                        if (mids.audioMid === report.mid || mids.videoMid === report.mid) {
+                            pId = id;
+                            break;
+                        }
+                    }
+
+                    if (pId) {
+                        const pIdLower = pId.toLowerCase();
+                        const current = participantStats.get(pIdLower) || { bitrate: 0, packetLoss: 0, rtt: 0, score: 0 };
+                        
+                        const lost = report.packetsLost || 0;
+                        const received = report.packetsReceived || 0;
+                        const lossPercent = (lost / (lost + received || 1)) * 100;
+                        
+                        current.packetLoss = lossPercent;
+                        current.bitrate = (report.bytesReceived * 8) / 5000; // Rough kbps assuming 5s interval
+                        current.rtt = networkStats.rtt; // Shared RTT for SFU PC
+                        
+                        // Score
+                        if (lossPercent > 10) current.score = 2;
+                        else if (lossPercent > 3) current.score = 1;
+                        else current.score = 0;
+
+                        participantStats.set(pIdLower, current);
+                    }
+                }
+            });
+        } catch (e) {}
+    } else {
+        // MESH Mode
+        for (const [pId, peer] of peers.entries()) {
+            try {
+                const pc = (peer as any)._pc as RTCPeerConnection;
+                const stats = await pc.getStats();
+                const pIdLower = pId.toLowerCase();
+                const current = { bitrate: 0, packetLoss: 0, rtt: 0, score: 0 };
+                
+                stats.forEach(report => {
+                    if (report.type === 'inbound-rtp' && report.kind === 'audio') {
+                        const lost = report.packetsLost || 0;
+                        const received = report.packetsReceived || 0;
+                        current.packetLoss = (lost / (lost + received || 1)) * 100;
+                    }
+                    if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                        current.rtt = (report.currentRoundTripTime || 0) * 1000;
+                    }
+                });
+
+                if (current.packetLoss > 10 || current.rtt > 400) current.score = 2;
+                else if (current.packetLoss > 3 || current.rtt > 200) current.score = 1;
+                else current.score = 0;
+
+                participantStats.set(pIdLower, current);
+            } catch (e) {}
+        }
+    }
+}
 
 // Participants & Peers
 const participants = ref<Participant[]>([]);
@@ -98,6 +264,97 @@ const sfuTransceiverMap = new WeakMap<
 
 // Voice Activity Detection
 const talkingParticipants = reactive(new Set<string>());
+const handRaised = reactive(new Set<string>());
+const isControlsCollapsed = ref(false);
+
+// Draggable Controls Logic
+const controlsPosition = reactive({ x: 0, y: 0 });
+const isDragging = ref(false);
+const dragOffset = reactive({ x: 0, y: 0 });
+const hasMoved = ref(false); // To prevent click triggering when dragging
+
+const startDrag = (event: MouseEvent | TouchEvent) => {
+    // Only allow dragging if not clicking a button directly (unless it's the container background)
+    // Actually, users might click anywhere on the bar. Let's filter out if they click a button.
+    const target = event.target as HTMLElement;
+    if (target.closest('button')) return;
+
+    isDragging.value = true;
+    hasMoved.value = false;
+    
+    const clientX = 'touches' in event ? event.touches[0].clientX : event.clientX;
+    const clientY = 'touches' in event ? event.touches[0].clientY : event.clientY;
+    
+    // Calculate offset from the element's top-left corner
+    const controlsEl = document.querySelector('.controls-bar') as HTMLElement;
+    if (controlsEl) {
+        const rect = controlsEl.getBoundingClientRect();
+        dragOffset.x = clientX - rect.left;
+        dragOffset.y = clientY - rect.top;
+    }
+    
+    window.addEventListener('mousemove', onDrag);
+    window.addEventListener('mouseup', stopDrag);
+    window.addEventListener('touchmove', onDrag);
+    window.addEventListener('touchend', stopDrag);
+};
+
+const onDrag = (event: MouseEvent | TouchEvent) => {
+    if (!isDragging.value) return;
+    
+    const clientX = 'touches' in event ? event.touches[0].clientX : (event as MouseEvent).clientX;
+    const clientY = 'touches' in event ? event.touches[0].clientY : (event as MouseEvent).clientY;
+    
+    // Update position
+    let newX = clientX - dragOffset.x;
+    let newY = clientY - dragOffset.y;
+    
+    // Bounds checking (keep within viewport with 16px margin)
+    const controlsEl = document.querySelector('.controls-bar') as HTMLElement;
+    if (controlsEl) {
+         const rect = controlsEl.getBoundingClientRect();
+         const maxX = window.innerWidth - rect.width - 16;
+         const maxY = window.innerHeight - rect.height - 16;
+         
+         newX = Math.max(16, Math.min(newX, maxX));
+         newY = Math.max(16, Math.min(newY, maxY));
+    }
+    
+    controlsPosition.x = newX;
+    controlsPosition.y = newY;
+    
+    hasMoved.value = true;
+};
+
+const stopDrag = () => {
+    isDragging.value = false;
+    window.removeEventListener('mousemove', onDrag);
+    window.removeEventListener('mouseup', stopDrag);
+    window.removeEventListener('touchmove', onDrag);
+    window.removeEventListener('touchend', stopDrag);
+};
+
+const clampControlsPosition = () => {
+    // Ensure controls stay within window
+    const isMobile = window.innerWidth <= 768;
+    
+    // On mobile, we often want to lock it or restrict it heavily
+    if (isMobile && !hasMoved.value) {
+        controlsPosition.x = 0;
+        controlsPosition.y = 0;
+        return;
+    }
+
+    const maxX = window.innerWidth / 2 - (isMobile ? 100 : 150);
+    const minX = -window.innerWidth / 2 + (isMobile ? 100 : 150);
+    const maxY = 20;
+    const minY = -window.innerHeight + (isMobile ? 150 : 100);
+
+    controlsPosition.x = Math.max(minX, Math.min(maxX, controlsPosition.x));
+    controlsPosition.y = Math.max(minY, Math.min(maxY, controlsPosition.y));
+};
+
+window.addEventListener('resize', clampControlsPosition);
 const audioAnalysers = new Map<
     string,
     {
@@ -232,6 +489,36 @@ const gridClass = computed(() => {
     return "grid-3-3";
 });
 
+function toggleHand() {
+    const selfId = callData.value?.selfPublicId?.toLowerCase();
+    if (!selfId) return;
+
+    if (handRaised.has(selfId)) {
+        handRaised.delete(selfId);
+    } else {
+        handRaised.add(selfId);
+        // Auto-lower hand after 30 seconds
+        setTimeout(() => {
+            if (handRaised.has(selfId)) {
+                handRaised.delete(selfId);
+                sendSignal('hand-toggle', { raised: false });
+            }
+        }, 30000);
+    }
+    
+    sendSignal('hand-toggle', { raised: handRaised.has(selfId) });
+}
+
+function sendSignal(type: string, payload: any) {
+    if (!callData.value) return;
+    videoCallService.sendSignal(
+        callData.value.chatId,
+        callData.value.callId,
+        "signal",
+        { type, ...payload }
+    ).catch(e => console.warn("Failed to send signal", e));
+}
+
 // Helper: Get Initials from Name
 function getInitials(name: string) {
     return name
@@ -262,10 +549,15 @@ function getAvatarColor(name: string) {
 
 
 
-// Helper: Check for Remote Audio (Mute State)
+// Helper: Check for Remote Audio (Mute State) — uses signaling state
 function remoteHasAudio(publicId: string) {
+    const state = remoteMediaState.get(publicId.toLowerCase());
+    if (state) return !state.muted;
+    // Fallback to track check if no signal received yet
     const stream = store.remoteStreams.get(publicId);
-    return stream && stream.getAudioTracks().length > 0 && stream.getAudioTracks()[0].enabled;
+    if (!stream) return false;
+    const tracks = stream.getAudioTracks();
+    return tracks.length > 0 && tracks[0].enabled;
 }
 
 const toggleChat = () => {
@@ -642,10 +934,33 @@ async function handleSignal(event: any) {
     }
 
     // In mesh, signals MUST be targeted or we ignore them for safety
-    if (targetId && targetId !== selfId) {
+    // EXCEPTION: "hand-toggle" is a broadcast signal that might be inadvertently targeted or should be allowed anyway
+    const signalType = event.signal_data?.type;
+    if (targetId && targetId !== selfId && signalType !== 'hand-toggle' && signalType !== 'media-state') {
         console.log(
             `[Call] Ignoring signal targeted at ${targetId} (I am ${selfId})`,
         );
+        return;
+    }
+
+    // Hand Raise Signaling - Process early as it's UI only and doesn't depend on media transport
+    if (signalType === "hand-toggle" || (event.signal_data?.type === "hand-toggle")) {
+        const hSignal = event.signal_data;
+        if (hSignal.raised) {
+            handRaised.add(senderId);
+        } else {
+            handRaised.delete(senderId);
+        }
+        return;
+    }
+
+    // Media State Signaling - Process early, cross-browser mute/camera state
+    if (signalType === "media-state") {
+        const ms = event.signal_data;
+        remoteMediaState.set(senderId, {
+            muted: !!ms.muted,
+            cameraOff: !!ms.cameraOff,
+        });
         return;
     }
 
@@ -717,6 +1032,12 @@ async function handleSignal(event: any) {
         pullSFURemoteScreen(senderId, signal.mid, signal.sessionId);
         return;
     }
+
+    // Hand Raise Signaling - (Moved up to process early)
+    if (signal.type === "hand-toggle") {
+        return;
+    }
+
     if (signal.type === "sfu-screen-share-stopped") {
         trace("SIGNAL", `Received screen-share-stopped from ${senderId}`);
         store.removeRemoteScreenStream(senderId);
@@ -1096,8 +1417,9 @@ function handleParticipantLeft(event: any) {
 
     // Remove from list
     participants.value = participants.value.filter(
-        (p) => p.publicId !== publicId,
+        (p) => p.publicId.toLowerCase() !== publicId,
     );
+    handRaised.delete(publicId);
 
     // Peer cleanup handled by peer.on('close') or explicit destroy
     const peer = peers.get(publicId);
@@ -1189,6 +1511,8 @@ function toggleMute() {
     localStream.value
         ?.getAudioTracks()
         .forEach((t) => (t.enabled = !isMuted.value));
+    // Broadcast state to all peers for cross-browser compatibility
+    sendSignal('media-state', { muted: isMuted.value, cameraOff: isCameraOff.value });
 }
 
 function toggleCamera() {
@@ -1196,12 +1520,19 @@ function toggleCamera() {
     localStream.value
         ?.getVideoTracks()
         .forEach((t) => (t.enabled = !isCameraOff.value));
+    // Broadcast state to all peers for cross-browser compatibility
+    sendSignal('media-state', { muted: isMuted.value, cameraOff: isCameraOff.value });
 }
 
 function remoteHasVideo(participantId: string): boolean {
+    // Use signaling state first (cross-browser reliable)
+    const state = remoteMediaState.get(participantId.toLowerCase());
+    if (state) return !state.cameraOff;
+    // Fallback to track check if no signal received yet
     const stream = store.remoteStreams.get(participantId);
     if (!stream) return false;
-    return stream.getVideoTracks().length > 0 && stream.getVideoTracks()[0].enabled;
+    const tracks = stream.getVideoTracks();
+    return tracks.length > 0 && tracks[0].enabled;
 }
 
 async function toggleScreenShare() {
@@ -2275,13 +2606,17 @@ function cleanup() {
         sfuPc.close();
         sfuPc = null;
     }
+    if (statsInterval) {
+        clearInterval(statsInterval);
+        statsInterval = null;
+    }
 }
 
 // ============================================================================
 // Lifecycle
 // ============================================================================
 
-onMounted(async () => {
+async function initializeCall() {
     window.addEventListener("beforeunload", () => {
         if (callState.value !== "ended") {
             endCall("hangup");
@@ -2294,28 +2629,45 @@ onMounted(async () => {
         callState.value = "error";
         return;
     }
+    let parsedData;
     try {
-        callData.value = JSON.parse(raw);
-        sessionStorage.removeItem("callData");
-
-        if (callData.value) {
-            console.log("[Call] Initialized with data:", {
-                callId: callData.value.callId,
-                chatId: callData.value.chatId,
-                chatType: (callData.value as any).chatType || "dm",
-                callType: callData.value.callType,
-                direction: callData.value.direction,
-                selfId: callData.value.selfPublicId,
-            });
-            if (callData.value.chatType === "group") {
-                callMode.value = "sfu";
-            }
-            store.selfPublicId = callData.value.selfPublicId;
-        }
-    } catch {
+        parsedData = JSON.parse(raw);
+    } catch (e) {
+        console.error("[Call] Failed to parse callData", e);
         error.value = "Data parse error.";
         callState.value = "error";
         return;
+    }
+
+    callData.value = parsedData;
+    sessionStorage.removeItem("callData");
+
+    if (callData.value) {
+        console.log("[Call] Initialized with data:", {
+            callId: callData.value.callId,
+            chatId: callData.value.chatId,
+            chatType: (callData.value as any).chatType || "dm",
+            callType: callData.value.callType,
+            direction: callData.value.direction,
+            selfId: callData.value.selfPublicId,
+        });
+        if (callData.value.chatType === "group") {
+            callMode.value = "sfu";
+        }
+        store.selfPublicId = callData.value.selfPublicId;
+
+        // Initialize Chat
+        if (callData.value.chatId) {
+            console.log("[Call] Initializing Chat for:", callData.value.chatId);
+            // Fetch the chat details using a separate try-catch so it doesn't kill the call
+            try {
+                await chatStore.refreshChat(callData.value.chatId);
+            } catch (err) {
+                console.warn("[Call] Failed to refresh chat, proceeding...", err);
+            }
+            // We don't await this to not block the call join flow
+            selectChat(callData.value.chatId);
+        }
     }
 
     const data = callData.value!;
@@ -2332,15 +2684,6 @@ onMounted(async () => {
     setupBroadcastChannel();
     setupEcho();
 
-    // If we have pending signals (from the accept buffering), we should apply them
-    // AFTER we join. But usually we need to join first to get stats.
-
-    if (data.pendingSignals) {
-        // Store them to apply after join?
-        // Actually, in mesh, we need to know WHO they are from.
-        // The new handleSignal does this. We can just replay them.
-    }
-
     if (data.direction === "incoming" && data.remoteUser) {
         // DM Call with Ringing
         playRingtone("incoming");
@@ -2351,19 +2694,12 @@ onMounted(async () => {
     }
 
     // SMART JOIN LOGIC
-    // 1. If it's a group call, always show the lobby (user requested)
-    // 2. If it's a DM, check if we can autoplay audio. If yes, auto-join.
     const isGroup =
         (data as any).chatType === "group" ||
         data.remoteUser?.publicId === "group";
 
     if (!isGroup) {
         console.log("[Call] Checking for Smart Join (DM)...");
-        // We can't perfectly check for autoplay permission synchronously,
-        // but we can check navigator.userActivation or try a silent play.
-        // For initiators (outgoing), we usually have activation from the parent window click.
-        // For receivers (incoming), if they clicked "Accept", activation may carry over in some browsers.
-
         const canAutoJoin =
             (navigator as any).userActivation?.isActive ||
             data.direction === "outgoing";
@@ -2384,6 +2720,46 @@ onMounted(async () => {
     if (store.selectedOutputDeviceId) {
         applyOutputDevice(store.selectedOutputDeviceId);
     }
+}
+
+onMounted(async () => {
+    // 1. Ensure we have the user (for public_id)
+    if (!authStore.user) {
+        console.log('[CallApp] User not found, fetching...');
+        await authStore.fetchUser();
+    }
+    
+    // 2. Initialize orchestration (Chat, etc) if available
+    if (authStore.user) {
+        console.log('[CallApp] User found, initializing chat...');
+        
+        // Get chatId from sessionStorage (since CallApp is standalone without router)
+        let chatId: string | undefined;
+        try {
+            const stored = sessionStorage.getItem('callData');
+            if (stored) {
+                const data = JSON.parse(stored);
+                chatId = data.chatId;
+                console.log('[CallApp] Retrieved chatId from sessionStorage:', chatId);
+            }
+        } catch (e) {
+            console.error('[CallApp] Failed to parse callData', e);
+        }
+
+        if (!chatId) {
+             console.warn('[CallApp] No chatId found, chat will not warn');
+        } else {
+             console.log('[CallApp] Initializing chat with ID:', chatId);
+             // Use the top-level useChat instance
+             await selectChat(chatId);
+        }
+    }
+
+    // 3. Initialize Call Logic
+    await initializeCall();
+
+    // 4. Network Stats Interval
+    statsInterval = setInterval(updateNetworkStats, 5000);
 });
 
 onBeforeUnmount(() => cleanup());
@@ -2412,8 +2788,31 @@ onBeforeUnmount(() => cleanup());
             <div class="header-info">
                 <span class="status-dot" :class="callState"></span>
                 <span class="status-text">{{ stateLabel }}</span>
+                <NetworkHealthIndicator 
+                    v-if="callState === 'connected'" 
+                    v-bind="networkStats"
+                    class="ml-2" 
+                />
             </div>
         </div>
+
+        <!-- POOR CONNECTION ALERT -->
+        <transition
+            enter-active-class="transition ease-out duration-300"
+            enter-from-class="opacity-0 -translate-y-4"
+            enter-to-class="opacity-100 translate-y-0"
+            leave-active-class="transition ease-in duration-200"
+            leave-from-class="opacity-100 translate-y-0"
+            leave-to-class="opacity-0 -translate-y-4"
+        >
+            <div 
+                v-if="callState === 'connected' && networkStats.score >= 2" 
+                class="fixed bottom-32 left-1/2 -translate-x-1/2 z-100 bg-red-600/90 backdrop-blur-md text-white px-5 py-2.5 rounded-full shadow-2xl flex items-center gap-3 text-sm font-semibold border border-red-500/50"
+            >
+                <Icon name="AlertTriangle" size="18" class="animate-pulse" />
+                <span>Your connection is unstable. Call quality may be affected.</span>
+            </div>
+        </transition>
 
         <!-- ERROR STATE -->
         <div v-if="callState === 'error'" class="call-center-content">
@@ -2471,6 +2870,9 @@ onBeforeUnmount(() => cleanup());
 
         <!-- CONNECTED LAYOUT -->
         <template v-else>
+            <div class="call-stage-container" :class="{ 'sidebar-open': showSidebar, 'layout-spotlight': layoutMode === 'spotlight' }">
+                <!-- MAIN STAGE -->
+                <div class="main-stage">
             <!-- SPOTLIGHT LAYOUT (Presentation Mode) -->
             <div v-if="layoutMode === 'spotlight'" class="spotlight-wrapper">
                 <!-- Main Stage: Screen Share -->
@@ -2485,8 +2887,13 @@ onBeforeUnmount(() => cleanup());
                             class="video-element screen-share-video mirror-off"
                         />
                          <div class="participant-info">
-                            <Icon name="Monitor" size="14" />
-                            <span class="participant-name">You are presenting</span>
+                            <div class="participant-header">
+                                <Icon name="Monitor" size="14" />
+                                <span class="participant-name">You are presenting</span>
+                            </div>
+                            <div class="status-row">
+                                <NetworkHealthIndicator v-bind="networkStats" compact />
+                            </div>
                         </div>
                     </template>
                      <template v-else-if="store.remoteScreenStreams.size > 0">
@@ -2503,10 +2910,22 @@ onBeforeUnmount(() => cleanup());
                                 class="video-element screen-share-video"
                             />
                             <div class="participant-info">
-                                <Icon name="Monitor" size="14" />
-                                <span class="participant-name">{{
-                                    participants.find(p => p.publicId === publicId)?.name || 'Someone'
-                                }}'s Screen</span>
+                                <div class="participant-header">
+                                    <Icon name="Monitor" size="14" />
+                                    <span class="participant-name"
+                                        >{{
+                                            participants.find((p) => p.publicId === publicId)
+                                                ?.name || "Someone"
+                                        }}'s Screen</span
+                                    >
+                                </div>
+                                <div class="status-row">
+                                    <NetworkHealthIndicator 
+                                        v-if="participantStats.has(publicId.toLowerCase())"
+                                        v-bind="participantStats.get(publicId.toLowerCase())"
+                                        compact
+                                    />
+                                </div>
                             </div>
                         </div>
                     </template>
@@ -2527,8 +2946,7 @@ onBeforeUnmount(() => cleanup());
                          
                          <video
                             v-if="
-                                (p.isSelf ? localHasVideo && !isCameraOff : store.remoteStreams.get(p.publicId)) &&
-                                (!isAudioOnly || (p.isSelf ? false : remoteHasVideo(p.publicId)))
+                                (p.isSelf ? localHasVideo && !isCameraOff : store.remoteStreams.get(p.publicId) && remoteHasVideo(p.publicId))
                             "
                             v-src-object="p.isSelf ? localStream : store.remoteStreams.get(p.publicId)"
                             v-sink-id
@@ -2552,7 +2970,23 @@ onBeforeUnmount(() => cleanup());
                         </div>
 
                         <div class="participant-info small">
-                             <span class="participant-name">{{ p.isSelf ? 'You' : p.name }}</span>
+                            <div class="participant-header">
+                                <span class="participant-name">{{ p.isSelf ? 'You' : p.name }}</span>
+                                <Icon v-if="handRaised.has(p.publicId.toLowerCase())" name="Hand" size="12" class="status-icon-yellow" />
+                            </div>
+                            
+                            <!-- Status Row (Always show for others, show Mute/Video for self) -->
+                            <div class="status-row">
+                                <NetworkHealthIndicator 
+                                    v-if="!p.isSelf && participantStats.has(p.publicId.toLowerCase())"
+                                    v-bind="participantStats.get(p.publicId.toLowerCase())"
+                                    compact
+                                />
+                                <div class="status-icons">
+                                    <Icon v-if="p.isSelf ? isMuted : !remoteHasAudio(p.publicId)" name="MicOff" size="12" class="status-icon-red" />
+                                    <Icon v-if="p.isSelf ? isCameraOff : !remoteHasVideo(p.publicId)" name="VideoOff" size="12" class="status-icon-red" />
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -2578,7 +3012,7 @@ onBeforeUnmount(() => cleanup());
                     <video
                         v-if="
                             store.remoteStreams.get(p.publicId) &&
-                            (!isAudioOnly || remoteHasVideo(p.publicId))
+                            remoteHasVideo(p.publicId)
                         "
                         v-src-object="store.remoteStreams.get(p.publicId)"
                         v-volume="p.publicId"
@@ -2601,39 +3035,49 @@ onBeforeUnmount(() => cleanup());
                     </div>
 
                     <div class="participant-info">
-                        <span class="participant-name">{{ p.name }}</span>
-                        
-                        <!-- Status Icons -->
-                        <div class="status-icons">
-                            <Icon v-if="!remoteHasAudio(p.publicId)" name="MicOff" size="14" class="status-icon-red" />
-                            <Icon v-if="!remoteHasVideo(p.publicId)" name="VideoOff" size="14" class="status-icon-red" />
+                        <div class="participant-header">
+                            <span class="participant-name">{{ p.name }}</span>
+                            <Icon v-if="handRaised.has(p.publicId.toLowerCase())" name="Hand" size="14" class="status-icon-yellow" />
                         </div>
-
-                        <!-- Individual Volume Control -->
-                        <div
-                            class="volume-control"
-                            v-if="store.remoteStreams.has(p.publicId)"
-                        >
-                            <div class="volume-slider-container">
-                                <input
-                                    type="range"
-                                    min="0"
-                                    max="100"
-                                    :value="store.remoteVolumes.get(p.publicId) ?? 100"
-                                    @input="(e) => store.setRemoteVolume(p.publicId, parseInt((e.target as HTMLInputElement).value))"
-                                    class="volume-slider-input"
-                                />
+                        
+                        <!-- Status Row -->
+                        <div class="status-row">
+                            <NetworkHealthIndicator 
+                                v-if="participantStats.has(p.publicId.toLowerCase())"
+                                v-bind="participantStats.get(p.publicId.toLowerCase())"
+                                compact
+                            />
+                            <div class="status-icons">
+                                <Icon v-if="!remoteHasAudio(p.publicId)" name="MicOff" size="14" class="status-icon-red" />
+                                <Icon v-if="!remoteHasVideo(p.publicId)" name="VideoOff" size="14" class="status-icon-red" />
                             </div>
-                            <button class="volume-btn">
-                                <Icon
-                                    :name="
-                                        (store.remoteVolumes.get(p.publicId) ?? 100) === 0
-                                            ? 'VolumeX'
-                                            : 'Volume2'
-                                    "
-                                    size="14"
-                                />
-                            </button>
+                            
+                            <!-- Individual Volume Control -->
+                            <div
+                                class="volume-control"
+                                v-if="store.remoteStreams.has(p.publicId)"
+                            >
+                                <div class="volume-slider-container">
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        max="100"
+                                        :value="store.remoteVolumes.get(p.publicId) ?? 100"
+                                        @input="(e) => store.setRemoteVolume(p.publicId, parseInt((e.target as HTMLInputElement).value))"
+                                        class="volume-slider-input"
+                                    />
+                                </div>
+                                <button class="volume-btn">
+                                    <Icon
+                                        :name="
+                                            (store.remoteVolumes.get(p.publicId) ?? 100) === 0
+                                                ? 'VolumeX'
+                                                : 'Volume2'
+                                        "
+                                        size="14"
+                                    />
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -2657,14 +3101,24 @@ onBeforeUnmount(() => cleanup());
                         class="video-element"
                     />
                     <div class="participant-info">
-                        <Icon name="Monitor" size="14" />
-                        <span class="participant-name"
-                            >{{
-                                participants.find(
-                                    (p) => p.publicId === publicId,
-                                )?.name || "Someone"
-                            }}'s Screen</span
-                        >
+                        <div class="participant-header">
+                            <Icon name="Monitor" size="14" />
+                            <span class="participant-name"
+                                >{{
+                                    participants.find(
+                                        (p) => p.publicId.toLowerCase() === publicId.toLowerCase(),
+                                    )?.name || "Someone"
+                                }}'s Screen</span
+                            >
+                            <Icon v-if="handRaised.has(publicId.toLowerCase())" name="Hand" size="14" class="status-icon-yellow" />
+                        </div>
+                        <div class="status-row">
+                            <NetworkHealthIndicator 
+                                v-if="participantStats.has(publicId.toLowerCase())"
+                                v-bind="participantStats.get(publicId.toLowerCase())"
+                                compact
+                            />
+                        </div>
                     </div>
                 </div>
 
@@ -2699,71 +3153,228 @@ onBeforeUnmount(() => cleanup());
                         </div>
                     </div>
                     <div class="participant-info">
-                        <span class="participant-name">You</span>
-                        <div class="status-icons">
-                            <Icon v-if="isMuted" name="MicOff" size="14" class="status-icon-red" />
-                            <Icon v-if="isCameraOff" name="VideoOff" size="14" class="status-icon-red" />
+                        <div class="participant-header">
+                            <span class="participant-name">You</span>
+                            <Icon v-if="handRaised.has(callData?.selfPublicId?.toLowerCase() || '')" name="Hand" size="14" class="status-icon-yellow" />
+                        </div>
+                        <div class="status-row">
+                             <div class="status-icons">
+                                <Icon v-if="isMuted" name="MicOff" size="14" class="status-icon-red" />
+                                <Icon v-if="isCameraOff" name="VideoOff" size="14" class="status-icon-red" />
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
 
             <!-- CONTROLS -->
-            <div class="controls-bar">
+            <div 
+                class="controls-bar" 
+                :class="{ 
+                    collapsed: isControlsCollapsed, 
+                    'is-dragging': isDragging 
+                }"
+                :style="hasMoved || layoutMode === 'spotlight' ? { 
+                    left: `${controlsPosition.x}px`, 
+                    top: `${controlsPosition.y}px`,
+                    transform: 'none',
+                    bottom: 'auto',
+                    right: 'auto'
+                } : {}"
+                @mousedown="startDrag"
+                @touchstart="startDrag"
+            >
+                <!-- Drag Handle -->
+                <div class="drag-handle" title="Drag to move">
+                    <Icon name="GripVertical" size="20" class="text-white/50" />
+                </div>
+
+                <!-- Collapse Toggle -->
                 <button
-                    class="control-btn"
-                    :class="{ off: isMuted }"
-                    @click="toggleMute"
-                    title="Toggle Mute"
+                    class="control-btn collapse-toggle"
+                    @click="isControlsCollapsed = !isControlsCollapsed"
+                    :title="isControlsCollapsed ? 'Expand Controls' : 'Collapse Controls'"
                 >
-                    <Icon :name="isMuted ? 'MicOff' : 'Mic'" size="24" />
+                     <Icon :name="isControlsCollapsed ? 'ChevronRight' : 'ChevronLeft'" size="20" />
                 </button>
 
-                <button
-                    v-if="!isAudioOnly"
-                    class="control-btn"
-                    :class="{ off: isCameraOff }"
-                    @click="toggleCamera"
-                    title="Toggle Camera"
-                >
-                    <Icon
-                        :name="isCameraOff ? 'VideoOff' : 'Video'"
-                        size="24"
-                    />
-                </button>
-                <button
-                    class="control-btn"
-                    :class="{ off: !isScreenSharing }"
-                    @click="toggleScreenShare"
-                    title="Share Screen"
-                >
-                    <Icon name="Monitor" size="24" />
-                </button>
+                <!-- Main Controls (Hidden when collapsed) -->
+                <div class="main-controls" v-show="!isControlsCollapsed">
+                    <button
+                        class="control-btn"
+                        :class="{ off: isMuted }"
+                        @click="toggleMute"
+                        title="Toggle Mute"
+                    >
+                        <Icon :name="isMuted ? 'MicOff' : 'Mic'" size="24" />
+                    </button>
 
-                <button
-                    class="control-btn"
-                    @click="showSettings = true"
-                    title="Settings"
-                >
-                    <Icon name="Settings" size="24" />
-                </button>
+                    <button
+                        v-if="!isAudioOnly"
+                        class="control-btn"
+                        :class="{ off: isCameraOff }"
+                        @click="toggleCamera"
+                        title="Toggle Camera"
+                    >
+                        <Icon
+                            :name="isCameraOff ? 'VideoOff' : 'Video'"
+                            size="24"
+                        />
+                    </button>
+                    <button
+                        class="control-btn"
+                        :class="{ off: !isScreenSharing }"
+                        @click="toggleScreenShare"
+                        title="Share Screen"
+                    >
+                        <Icon name="Monitor" size="24" />
+                    </button>
 
-                <button
-                     class="control-btn"
-                     @click="toggleChat"
-                     title="Chat"
-                >
-                    <Icon name="MessageSquare" size="24" />
-                </button>
+                    <button
+                        class="control-btn"
+                         :class="{ active: handRaised.has(store.selfPublicId?.toLowerCase() || '') }"
+                        @click="toggleHand"
+                        title="Raise Hand"
+                    >
+                        <Icon name="Hand" size="24" />
+                    </button>
 
-                <button
-                    class="control-btn hangup"
-                    @click="endCall('hangup')"
-                    title="End Call"
-                >
-                    <Icon name="PhoneOff" size="24" />
-                </button>
+                    <button
+                        class="control-btn"
+                        @click="showSettings = true"
+                        title="Settings"
+                    >
+                        <Icon name="Settings" size="24" />
+                    </button>
+
+                    <button
+                         class="control-btn"
+                         :class="{ active: showSidebar && sidebarTab === 'chat' }"
+                         @click="toggleSidebar('chat')"
+                         title="Chat"
+                    >
+                        <Icon name="MessageSquare" size="24" />
+                    </button>
+
+                    <button
+                        class="control-btn hangup"
+                        @click="endCall('hangup')"
+                        title="End Call"
+                    >
+                        <Icon name="PhoneOff" size="24" />
+                    </button>
+                </div>
+
+                <!-- Collapsed State Icons (Minimal Status) -->
+                <div class="collapsed-status" v-show="isControlsCollapsed">
+                     <Icon :name="isMuted ? 'MicOff' : 'Mic'" size="16" :class="{ 'text-red-500': isMuted }" />
+                     <Icon v-if="!isAudioOnly" :name="isCameraOff ? 'VideoOff' : 'Video'" size="16" :class="{ 'text-red-500': isCameraOff }" />
+                     <button class="control-btn hangup small" @click="endCall('hangup')">
+                        <Icon name="PhoneOff" size="16" />
+                     </button>
+                </div>
             </div>
+            </div> <!-- Close Main Stage -->
+
+            <!-- CALL SIDEBAR -->
+            <div class="call-sidebar" :class="{ open: showSidebar }">
+                <div class="sidebar-header">
+                    <button :class="{ active: sidebarTab === 'people' }" @click="sidebarTab = 'people'" title="Participants">
+                        <Icon name="Users" size="20" />
+                    </button>
+                    <button :class="{ active: sidebarTab === 'chat' }" @click="sidebarTab = 'chat'" title="Chat">
+                        <Icon name="MessageSquare" size="20" />
+                    </button>
+                    <button class="close-btn" @click="showSidebar = false" title="Close Sidebar">
+                        <Icon name="X" size="20" />
+                    </button>
+                </div>
+
+                <div class="sidebar-content">
+                    <!-- PEOPLE TAB -->
+                    <div v-if="sidebarTab === 'people'" class="people-list overflow-y-auto">
+                         <div v-for="p in participants" :key="p.publicId" class="participant-item">
+                            <div class="avatar" :style="{ background: getAvatarColor(p.name) }">
+                                {{ getInitials(p.name) }}
+                            </div>
+                            <span>{{ p.isSelf ? 'You' : p.name }}</span>
+                            <div class="status-icons" style="margin-left: auto; display: flex; gap: 6px; align-items: center;">
+                                <Icon v-if="handRaised.has(p.publicId.toLowerCase())" name="Hand" size="14" class="status-icon-yellow" />
+                                <Icon v-if="p.isSelf ? isMuted : !remoteHasAudio(p.publicId)" name="MicOff" size="14" class="text-red-500" />
+                                <Icon v-if="p.isSelf ? isCameraOff : !remoteHasVideo(p.publicId)" name="VideoOff" size="14" class="text-red-500" />
+                            </div>
+                         </div>
+                    </div>
+
+                    <!-- CHAT TAB -->
+                     <div v-if="sidebarTab === 'chat'" class="chat-panel h-full flex flex-col">
+                         <template v-if="activeChat">
+                            <!-- Messages -->
+                            <div class="flex-1 min-h-0 relative flex flex-col overflow-hidden">
+                                <CallChatList
+                                    v-if="activeChat?.public_id"
+                                    ref="chatListRef"
+                                    :chat-id="activeChat.public_id"
+                                    :messages="activeMessages"
+                                    :is-loading-more="isChatLoadingMore"
+                                    @fetch-older="loadMoreMessages"
+                                    @reply="handleMessageReply"
+                                    @jump="(id) => chatListRef?.scrollToMessage(id)"
+                                />
+                                <div v-else class="h-full flex items-center justify-center text-(--text-tertiary)">
+                                    Select a chat to start messaging
+                                </div>
+
+                                <!-- Typing Indicator -->
+                                <Transition
+                                    enter-active-class="transition duration-200 ease-out"
+                                    enter-from-class="transform translate-y-2 opacity-0"
+                                    enter-to-class="transform translate-y-0 opacity-100"
+                                    leave-active-class="transition duration-150 ease-in"
+                                    leave-from-class="transform translate-y-0 opacity-100"
+                                    leave-to-class="transform translate-y-2 opacity-0"
+                                >
+                                    <div 
+                                        v-if="typingIndicator" 
+                                        class="absolute bottom-2 left-4 z-20 flex items-center gap-2 bg-(--surface-elevated)/90 backdrop-blur-sm px-3 py-1.5 rounded-full border border-(--border-subtle) shadow-sm"
+                                    >
+                                        <div class="flex gap-1">
+                                            <span class="w-1 h-1 bg-(--interactive-primary) rounded-full animate-bounce"></span>
+                                            <span class="w-1 h-1 bg-(--interactive-primary) rounded-full animate-bounce [animation-delay:0.2s]"></span>
+                                            <span class="w-1 h-1 bg-(--interactive-primary) rounded-full animate-bounce [animation-delay:0.4s]"></span>
+                                        </div>
+                                        <span class="text-[10px] font-medium text-(--text-secondary)">{{ typingIndicator }}</span>
+                                    </div>
+                                </Transition>
+                            </div>
+
+                            <!-- Composer -->
+                            <ChatComposer
+                                v-if="activeChat?.public_id"
+                                v-model="messageInput"
+                                :chat-id="activeChat?.public_id"
+                                :reply-to="replyingTo"
+                                :pending-files="pendingFiles"
+                                :sending="isSending"
+                                :is-mobile="false"
+                                compact 
+                                class="flex-shrink-0 z-10"
+                                @send="() => { console.log('[CallChat] Sending message...', messageInput); sendMessage(); }"
+                                @typing="handleInputChange"
+                                @add-files="addFiles"
+                                @remove-file="removeFile"
+                                @cancel-reply="replyingTo = null"
+                                @send-gif="sendGif"
+                            />
+                         </template>
+                         <div v-else class="flex flex-col items-center justify-center h-full text-zinc-500 gap-2">
+                            <Icon name="Loader" size="24" class="animate-spin" />
+                            <span class="text-sm">Loading chat...</span>
+                         </div>
+                    </div>
+                </div>
+            </div>
+            </div> <!-- Close Container -->
             
             <CallSettingsModal 
                 :open="showSettings" 
@@ -2771,6 +3382,8 @@ onBeforeUnmount(() => cleanup());
                 @close="showSettings = false"
             />
         </template>
+        
+        <MediaViewer />
     </div>
 </template>
 
@@ -2833,9 +3446,10 @@ onBeforeUnmount(() => cleanup());
     border-radius: 24px;
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 16px;
     border: 1px solid var(--glass-border);
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+    pointer-events: auto; /* Re-enable pointer events for the indicator hover */
 }
 
 .status-dot {
@@ -3050,6 +3664,7 @@ onBeforeUnmount(() => cleanup());
 }
 
 /* --- SPOTLIGHT LAYOUT --- */
+/* --- SPOTLIGHT LAYOUT --- */
 .spotlight-wrapper {
     flex: 1;
     display: flex;
@@ -3058,8 +3673,41 @@ onBeforeUnmount(() => cleanup());
     z-index: 10;
     position: relative;
     padding: 16px;
-    padding-bottom: calc(100px + env(safe-area-inset-bottom, 20px));
+    padding-bottom: calc(20px + env(safe-area-inset-bottom, 20px)); /* Reduced from 100px */
     gap: 16px;
+}
+/* ... skipped spotlight-stage ... */
+
+/* Controls Bar */
+.controls-bar {
+    position: absolute;
+    bottom: calc(32px + env(safe-area-inset-bottom, 0));
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    z-index: 500;
+    transition: all 0.1s linear;
+    background: rgba(20, 20, 25, 0.8);
+    backdrop-filter: blur(24px);
+    padding: 14px 28px;
+    cursor: grab;
+    user-select: none;
+    scale: 0.8;
+    border-radius: 40px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.controls-bar:active {
+    cursor: grabbing;
+}
+
+.controls-bar.is-dragging {
+    transition: none !important;
+    pointer-events: auto;
 }
 
 .spotlight-stage {
@@ -3179,19 +3827,50 @@ onBeforeUnmount(() => cleanup());
 
 .participant-info {
     position: absolute;
-    bottom: 16px;
-    left: 16px;
-    background: rgba(9, 9, 11, 0.6);
-    backdrop-filter: blur(8px);
-    padding: 6px 14px;
+    bottom: 12px;
+    left: 12px;
+    background: rgba(9, 9, 11, 0.75);
+    backdrop-filter: blur(12px);
+    padding: 8px 12px;
     border-radius: 12px;
     display: flex;
-    align-items: center;
-    gap: 8px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
     color: white;
     font-size: 13px;
     font-weight: 600;
-    border: 1px solid var(--glass-border);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    pointer-events: auto;
+}
+
+.participant-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.status-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+}
+
+.status-icons {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.status-icon-red {
+    color: #ef4444;
+}
+
+.status-icon-yellow {
+    color: #f59e0b;
 }
 
 /* Controls Bar */
@@ -3201,18 +3880,286 @@ onBeforeUnmount(() => cleanup());
     left: 50%;
     transform: translateX(-50%);
     display: flex;
-    gap: 20px;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
     z-index: 500;
+    transition: all 0.1s linear; /* Faster transition for dragging, or remove entirely for drag */
     background: rgba(20, 20, 25, 0.8);
     backdrop-filter: blur(24px);
     padding: 14px 28px;
+    cursor: grab;
+    user-select: none;
     border-radius: 40px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
-    border: 1px solid var(--glass-border);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 }
+
+.controls-bar:active {
+    cursor: grabbing;
+}
+
+.controls-bar.is-dragging {
+    transition: none !important; 
+    pointer-events: auto;
+}
+
+.controls-bar.collapsed {
+    padding: 8px 16px;
+    gap: 8px;
+    border-radius: 24px;
+    bottom: calc(20px + env(safe-area-inset-bottom, 0));
+}
+
+.collapse-toggle {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.05);
+    border: none;
+    color: #a1a1aa;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.collapse-toggle:hover {
+    background: rgba(255,255,255,0.1);
+    color: white;
+}
+
+.main-controls {
+    display: flex;
+    gap: 20px;
+}
+
+.collapsed-status {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
 .control-btn {
-    width: 60px;
-    height: 60px;
+    width: 48px;
+    height: 48px;
+    border-radius: 24px;
+    border: none;
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+.control-btn.small {
+    width: 32px;
+    height: 32px;
+}
+
+.control-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+}
+
+.control-btn.active {
+    background: #10b981; /* Green for active/toggled state */
+    color: white;
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.4);
+}
+
+.hand-indicator {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    background: #eab308;
+    color: black;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 30;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    animation: pop-in 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes pop-in {
+    0% { transform: scale(0); }
+    100% { transform: scale(1); }
+}
+
+.call-stage-container {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    position: relative;
+}
+
+.main-stage {
+    flex: 1;
+    height: 100%;
+    position: relative;
+    transition: margin-right 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+    display: flex; /* Ensure children fill */
+    flex-direction: column;
+}
+
+.sidebar-open .main-stage {
+    margin-right: 320px;
+}
+
+.call-sidebar {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 320px;
+    height: 100%;
+    background: #18181b; /* or var(--surface-primary) */
+    border-left: 1px solid var(--glass-border);
+    transform: translateX(100%);
+    transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+    display: flex;
+    flex-direction: column;
+    z-index: 600;
+}
+
+.call-sidebar.open {
+    transform: translateX(0);
+}
+
+.sidebar-header {
+    display: flex;
+    align-items: center;
+    padding: 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    gap: 8px;
+}
+
+.sidebar-header button {
+    flex: 1;
+    padding: 10px;
+    border-radius: 8px;
+    background: transparent;
+    color: #a1a1aa;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    justify-content: center;
+}
+
+.sidebar-header button:hover {
+    background: rgba(255,255,255,0.05);
+    color: white;
+}
+
+.sidebar-header button.active {
+    background: rgba(255,255,255,0.1);
+    color: #10b981;
+}
+
+.sidebar-header button.close-btn {
+    flex: 0 0 32px;
+    margin-left: auto;
+}
+
+.sidebar-content {
+    flex: 1;
+    overflow: hidden; /* Prevent sidebar from scrolling the whole chat */
+    display: flex;
+    flex-direction: column;
+}
+
+.people-list {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.participant-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px;
+    border-radius: 8px;
+    transition: background 0.2s;
+}
+.participant-item:hover {
+    background: rgba(255,255,255,0.05);
+}
+
+.participant-item .avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: white;
+}
+
+.participant-item span {
+    font-size: 14px;
+    font-weight: 500;
+    color: white;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chat-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    /* Polished: Seamless integration */
+    background: transparent;
+    padding: 0;
+    border: none;
+    box-shadow: none;
+}
+
+/* Vertical Sidebar Mode for Spotlight - Default Start Position (Can be dragged) */
+.layout-spotlight .controls-bar {
+    /* Maintained horizontal layout as requested */
+    flex-direction: row !important;
+    padding: 14px 28px;
+    gap: 12px;
+    border-radius: 40px;
+    width: auto;
+    height: auto;
+    max-height: none; 
+    z-index: 500;
+    
+    /* We set initial position via CSS, but check if we need to override with inline styles when dragging */
+    left: 50%; 
+    top: auto;
+    bottom: 32px;
+    transform: translateX(-50%);
+    right: auto;
+}
+
+.layout-spotlight .control-btn {
+    /* Standard size */
+    width: auto; 
+    height: auto; 
+    margin: 0;
+}
+
+.control-btn {
+    width: 44px; /* Standard size */
+    height: 44px;
     border-radius: 50%;
     border: 1px solid rgba(255,255,255,0.1);
     background: rgba(255, 255, 255, 0.08);
@@ -3222,6 +4169,19 @@ onBeforeUnmount(() => cleanup());
     display:flex; align-items:center; justify-content:center;
     transition: all 0.2s;
 }
+
+.layout-spotlight .control-btn {
+    width: 38px; /* Significantly smaller */
+    height: 38px;
+    font-size: 18px; /* Smaller icon context */
+}
+
+/* Target the SVG icon inside */
+.layout-spotlight .control-btn :deep(svg) {
+    width: 18px;
+    height: 18px;
+}
+
 .control-btn:hover { background: rgba(255,255,255,0.15); transform: scale(1.1); }
 .control-btn.off { background: #fafafa; color: #09090b; }
 .control-btn.hangup { background: #ef4444; border-color: rgba(255,255,255,0.1); }
@@ -3259,13 +4219,30 @@ onBeforeUnmount(() => cleanup());
     }
     
     .controls-bar {
-        bottom: calc(20px + env(safe-area-inset-bottom, 0));
-        width: calc(100% - 40px);
-        max-width: 400px;
-        padding: 10px 20px;
+        bottom: calc(12px + env(safe-area-inset-bottom, 0));
+        width: min(calc(100% - 12px), 280px); /* Compact for S10 (360px) */
+        padding: 4px 8px;
+        gap: 4px;
         justify-content: space-evenly;
+        scale: 1;
+        border-radius: 20px;
     }
-    .control-btn { width: 48px; height: 48px; }
+    .control-btn { 
+        width: 32px; 
+        height: 32px; 
+        font-size: 14px;
+    }
+    .control-btn :deep(svg) {
+        width: 16px;
+        height: 16px;
+    }
+    .drag-handle {
+        padding: 0 2px;
+    }
+    .drag-handle :deep(svg) {
+        width: 14px;
+        height: 14px;
+    }
 
     .grid-wrapper { padding: 12px; padding-bottom: 120px; }
     .grid-2-2 .grid-wrapper, .grid-3-3 .grid-wrapper { grid-template-columns: 1fr; }
@@ -3327,11 +4304,10 @@ onBeforeUnmount(() => cleanup());
 
 /* Volume Control Styles */
 .volume-control {
-    position: relative;
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-left: 8px;
+    margin-top: 2px;
     pointer-events: auto;
 }
 

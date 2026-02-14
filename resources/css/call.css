@@ -11,6 +11,21 @@
     --accent-red: #ef4444;
     --text-primary: #ffffff;
     --text-secondary: #94a3b8;
+
+    /* Shared Component Variables (Mapped to Call Theme) */
+    --surface-primary: var(--bg-main);
+    --surface-secondary: var(--bg-surface);
+    --surface-tertiary: #252631;
+    --surface-elevated: #1e1e2d;
+
+    --border-default: rgba(255, 255, 255, 0.1);
+    --border-subtle: rgba(255, 255, 255, 0.05);
+
+    --interactive-primary: var(--accent-primary);
+    --interactive-primary-hover: #4f46e5;
+
+    --text-muted: rgba(255, 255, 255, 0.5);
+    --text-disabled: rgba(255, 255, 255, 0.3);
 }
 
 body {

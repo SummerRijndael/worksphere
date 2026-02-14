@@ -26,6 +26,12 @@
 
 <br/>
 
+<div align="center">
+    <h3>🔴 Live Demo: <a href="https://link-technologies.info">link-technologies.info</a></h3>
+</div>
+
+<br/>
+
 > [!WARNING]
 > **BETA RELEASE NOTICE**<br>
 > WorkSphere is currently in active **BETA** development. Features are subject to change, and you may encounter bugs or instability.<br>
