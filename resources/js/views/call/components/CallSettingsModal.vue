@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from "vue";
-import { Modal, Icon, Button } from "@/components/ui";
+import { Modal, Icon, Button, SelectFilter, Separator } from "@/components/ui";
 import { useVideoCallStore } from "@/stores/videocall";
 
 const props = defineProps<{
@@ -27,7 +27,29 @@ let animationFrame: number;
 const tabs = [
     { id: "audio", label: "Audio", icon: "Mic" },
     { id: "video", label: "Video", icon: "Video" },
-];
+] as const;
+
+// Format device lists for SelectFilter
+const audioInputOptions = computed(() =>
+    audioInputs.value.map((d, i) => ({
+        value: d.deviceId,
+        label: d.label || `Microphone ${i + 1}`,
+    })),
+);
+
+const audioOutputOptions = computed(() =>
+    audioOutputs.value.map((d, i) => ({
+        value: d.deviceId,
+        label: d.label || `Speaker ${i + 1}`,
+    })),
+);
+
+const videoInputOptions = computed(() =>
+    videoInputs.value.map((d, i) => ({
+        value: d.deviceId,
+        label: d.label || `Camera ${i + 1}`,
+    })),
+);
 
 // Helper to get devices
 async function loadDevices() {
@@ -47,6 +69,9 @@ async function loadDevices() {
         }
         if (!store.selectedVideoDeviceId && videoInputs.value.length > 0) {
             store.setSelectedVideoDevice(videoInputs.value[0].deviceId);
+        }
+        if (!store.selectedOutputDeviceId && audioOutputs.value.length > 0) {
+            store.setSelectedOutputDevice(audioOutputs.value[0].deviceId);
         }
     } catch (e) {
         console.error("Failed to load devices", e);
@@ -129,136 +154,188 @@ onMounted(() => {
 </script>
 
 <template>
-    <Modal
-        :open="open"
-        title="Call Settings"
-        description="Configure your audio and video devices."
-        size="2xl"
-        @update:open="$emit('update:open', $event)"
-        @close="$emit('close')"
+    <div
+        v-if="open"
+        class="fixed inset-0 z-1040 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+        @click.self="$emit('close')"
     >
-        <div class="flex h-[450px]">
-            <!-- Sidebar -->
-            <div class="w-48 border-r border-(--border-default) p-2 space-y-1">
-                <button
-                    v-for="tab in tabs"
-                    :key="tab.id"
-                    class="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-colors"
-                    :class="[
-                        activeTab === tab.id
-                            ? 'bg-(--interactive-primary) text-white'
-                            : 'text-(--text-secondary) hover:bg-(--surface-hover)'
-                    ]"
-                    @click="activeTab = tab.id"
-                >
-                    <Icon :name="tab.icon" size="16" />
-                    {{ tab.label }}
-                </button>
-            </div>
-
-            <!-- Content -->
-            <div class="flex-1 p-6 overflow-y-auto custom-scrollbar">
-                
-                <!-- Audio Settings -->
-                <div v-if="activeTab === 'audio'" class="space-y-6">
-                    <!-- Microphone -->
-                    <div class="space-y-3">
-                        <label class="text-sm font-medium text-(--text-secondary)">Microphone</label>
-                        <select
-                            v-model="store.selectedAudioDeviceId"
-                            class="w-full bg-(--surface-tertiary) border border-(--border-default) rounded-lg px-3 py-2.5 text-sm text-(--text-primary) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)"
-                        >
-                            <option v-for="device in audioInputs" :key="device.deviceId" :value="device.deviceId">
-                                {{ device.label || `Microphone ${audioInputs.indexOf(device) + 1}` }}
-                            </option>
-                        </select>
-
-                        <!-- Mic Visualizer -->
-                        <div class="bg-(--surface-tertiary) rounded-lg p-3">
-                            <div class="flex justify-between text-xs text-(--text-secondary) mb-1">
-                                <span>Input Level</span>
-                                <span>{{ Math.round(volumeLevel) }}%</span>
-                            </div>
-                            <div class="h-2 bg-(--surface-elevated) rounded-full overflow-hidden">
-                                <div 
-                                    class="h-full bg-green-500 transition-all duration-100 ease-out"
-                                    :style="{ width: `${volumeLevel}%` }"
-                                ></div>
-                            </div>
+        <div
+            class="bg-(--surface-primary) rounded-xl border border-(--border-muted) shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col h-[420px]"
+        >
+            <div class="flex-1 flex overflow-hidden">
+                <!-- Sidebar (Precision DNA) -->
+                <div class="w-44 bg-(--surface-secondary)/30 border-r border-(--border-muted) flex flex-col pt-4">
+                    <div class="px-3 pb-4 flex-1 overflow-y-auto custom-scrollbar">
+                        <div class="space-y-1">
+                            <button
+                                v-for="tab in tabs"
+                                :key="tab.id"
+                                class="w-full flex items-center gap-2.5 px-3 py-2 text-sm font-medium rounded-lg transition-all group"
+                                :class="[
+                                    activeTab === tab.id
+                                        ? 'bg-blue-600/10 text-blue-600 dark:text-blue-400'
+                                        : 'text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--surface-tertiary)/50'
+                                ]"
+                                @click="activeTab = tab.id"
+                            >
+                                <Icon 
+                                    :name="tab.icon" 
+                                    size="16" 
+                                    :class="activeTab === tab.id ? 'text-blue-600 dark:text-blue-400' : 'text-(--text-tertiary) group-hover:text-(--text-secondary)'" 
+                                />
+                                {{ tab.label }}
+                            </button>
                         </div>
                     </div>
 
-                    <!-- Speakers (Chrome only) -->
-                    <div>
-                        <h3 class="text-sm font-semibold text-(--text-secondary) uppercase tracking-wider mb-4">Speakers</h3>
-                         <div class="space-y-4">
-                            <!-- Note: Output selection is only supported in Chrome-based browsers -->
-                            <select
-                                v-if="audioOutputs.length > 0"
-                                class="w-full bg-(--surface-tertiary) border border-(--border-default) rounded-lg px-4 py-2.5 text-(--text-primary) focus:ring-2 focus:ring-(--focus-ring) outline-none"
-                            >
-                                 <option v-for="device in audioOutputs" :key="device.deviceId" :value="device.deviceId">
-                                    {{ device.label || `Speaker ${device.deviceId.slice(0, 5)}...` }}
-                                </option>
-                            </select>
-                            <p v-else class="text-sm text-(--text-muted) italic">
-                                System default speaker will be used.
-                            </p>
+                    <div class="p-4 border-t border-(--border-muted)">
+                        <div class="flex items-center gap-2 px-1">
+                            <div class="h-1.5 w-1.5 rounded-full bg-success"></div>
+                            <span class="text-[10px] font-bold uppercase tracking-tight text-(--text-muted)">Live Status</span>
+                        </div>
+                    </div>
+                </div>
 
-                             <!-- Global Volume Slider -->
-                            <div class="space-y-2">
-                                <label class="text-sm text-(--text-secondary)">Incoming Volume</label>
-                                <div class="flex items-center gap-3">
-                                    <Icon name="Volume1" size="16" class="text-(--text-tertiary)" />
-                                    <input 
-                                        type="range" 
-                                        min="0" 
-                                        max="1" 
-                                        step="0.01"
-                                        :value="store.globalVolume"
-                                        @input="(e) => store.setGlobalVolume(parseFloat((e.target as HTMLInputElement).value))"
-                                        class="flex-1 h-2 bg-(--surface-tertiary) rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white"
+                <!-- Content Area -->
+                <div class="flex-1 overflow-y-auto custom-scrollbar bg-(--surface-primary)">
+                    <div class="p-8 space-y-8">
+                        <!-- Header (Integrated) -->
+                        <div class="space-y-1">
+                            <h2 class="text-xl font-bold text-(--text-primary)">Call Settings</h2>
+                            <p class="text-xs text-(--text-secondary)">Manage your audio and video devices.</p>
+                        </div>
+
+                        <!-- Audio Settings -->
+                        <div v-if="activeTab === 'audio'" class="space-y-8">
+                            <!-- Microphone Section -->
+                            <div class="space-y-3">
+                                <div class="flex items-center justify-between">
+                                    <label class="text-sm font-semibold text-(--text-primary)">Input Device</label>
+                                    <span class="text-[10px] font-mono text-success tabular-nums font-bold">{{ Math.round(volumeLevel) }}%</span>
+                                </div>
+                                
+                                <div class="space-y-4">
+                                    <SelectFilter
+                                        v-model="store.selectedAudioDeviceId"
+                                        :options="audioInputOptions"
+                                        placeholder="Select Microphone"
+                                        class="w-full"
                                     />
-                                    <Icon name="Volume2" size="16" class="text-(--text-primary)" />
+
+                                    <!-- LED Mic Meter -->
+                                    <div class="flex gap-1 h-1.5 items-center bg-black/5 dark:bg-black/40 p-0.5 rounded-sm border border-(--border-muted) shadow-inner">
+                                        <div 
+                                            v-for="i in 20" 
+                                            :key="i"
+                                            class="flex-1 h-full rounded-[1px] transition-all duration-75"
+                                            :class="[
+                                                volumeLevel >= (i * 5) 
+                                                    ? (i > 17 ? 'bg-error' : (i > 14 ? 'bg-warning' : 'bg-success'))
+                                                    : 'bg-(--surface-tertiary)/20'
+                                            ]"
+                                        ></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Speakers Section -->
+                            <div class="space-y-3">
+                                <label class="text-sm font-semibold text-(--text-primary)">Output Device</label>
+
+                                <div class="space-y-4">
+                                    <SelectFilter
+                                        v-if="audioOutputs.length > 0"
+                                        v-model="store.selectedOutputDeviceId"
+                                        :options="audioOutputOptions"
+                                        placeholder="Select Speaker"
+                                        class="w-full"
+                                    />
+                                    <div v-else class="text-xs text-(--text-tertiary) italic">
+                                        Using system default output.
+                                    </div>
+
+                                    <!-- Standard Volume Slider -->
+                                    <div class="flex items-center gap-4">
+                                        <Icon :name="store.globalVolume === 0 ? 'VolumeX' : 'Volume1'" size="16" class="text-(--text-muted)" />
+                                        <input 
+                                            type="range" 
+                                            min="0" 
+                                            max="1" 
+                                            step="0.01"
+                                            :value="store.globalVolume"
+                                            @input="(e) => store.setGlobalVolume(parseFloat((e.target as HTMLInputElement).value))"
+                                            class="flex-1 h-1 bg-(--surface-tertiary) rounded-full appearance-none cursor-pointer 
+                                                [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 
+                                                [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-600 [&::-webkit-slider-thumb]:shadow-md
+                                                [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white dark:[&::-webkit-slider-thumb]:border-(--surface-primary)
+                                                hover:[&::-webkit-slider-thumb]:scale-110 transition-all"
+                                        />
+                                        <span class="text-[10px] font-mono text-(--text-secondary) w-8 tabular-nums font-bold">{{ Math.round(store.globalVolume * 100) }}%</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Video Settings -->
+                        <div v-if="activeTab === 'video'" class="space-y-8">
+                            <div class="space-y-3">
+                                <label class="text-sm font-semibold text-(--text-primary)">Active Camera</label>
+
+                                <div class="space-y-4">
+                                    <SelectFilter
+                                        v-model="store.selectedVideoDeviceId"
+                                        :options="videoInputOptions"
+                                        placeholder="Select Camera"
+                                        class="w-full"
+                                    />
+                                    
+                                    <!-- Compact Preview -->
+                                    <div class="aspect-video bg-(--surface-secondary)/50 rounded-xl border border-(--border-muted) flex items-center justify-center relative overflow-hidden shadow-inner">
+                                        <Icon name="CameraOff" size="24" class="text-(--text-muted) opacity-20" />
+                                        <div class="absolute bottom-3 right-3 flex items-center gap-1.5 grayscale opacity-50">
+                                            <div class="h-1 w-1 rounded-full bg-(--text-muted)"></div>
+                                            <span class="text-[9px] font-bold text-(--text-muted) uppercase tracking-wider">No Feed</span>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
-
-                <!-- Video Settings -->
-                <div v-if="activeTab === 'video'" class="space-y-6">
-                    <div class="space-y-3">
-                        <label class="text-sm font-medium text-(--text-primary)">Camera</label>
-                        <select
-                            v-model="store.selectedVideoDeviceId"
-                            class="w-full bg-(--surface-tertiary) border border-(--border-default) rounded-lg px-3 py-2.5 text-sm text-(--text-primary) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)"
-                        >
-                            <option v-for="device in videoInputs" :key="device.deviceId" :value="device.deviceId">
-                                {{ device.label || `Camera ${videoInputs.indexOf(device) + 1}` }}
-                            </option>
-                        </select>
-                        
-                        <!-- Camera Preview Placeholder -->
-                        <div class="aspect-video bg-black rounded-xl border border-(--border-default) flex items-center justify-center relative overflow-hidden group">
-                            <p class="text-(--text-muted) group-hover:opacity-0 transition-opacity">Camera Preview</p>
-                            <!-- In a real implementation, you'd mount a video element here with the selected stream -->
-                        </div>
-                    </div>
-                </div>
-
             </div>
-        </div>
-        
-        <template #footer>
-            <div class="flex justify-end">
+
+            <div class="px-6 py-4 bg-(--surface-secondary) border-t border-(--border-muted) flex justify-end gap-3 ring-1 ring-black/5">
                 <button 
-                    class="px-4 py-2 bg-(--surface-tertiary) hover:bg-(--surface-hover) text-(--text-primary) rounded-lg text-sm font-medium transition-colors"
+                    class="btn btn-ghost text-sm"
                     @click="$emit('close')"
                 >
-                    Close
+                    Cancel
                 </button>
+                <Button 
+                    @click="$emit('close')"
+                >
+                    Save Changes
+                </Button>
             </div>
-        </template>
-    </Modal>
+        </div>
+    </div>
 </template>
+
+<style scoped>
+.custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb, rgba(0, 0, 0, 0.1));
+    border-radius: 10px;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb, rgba(255, 255, 255, 0.1));
+}
+</style>

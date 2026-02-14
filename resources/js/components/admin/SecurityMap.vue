@@ -51,6 +51,8 @@ const initMap = () => {
     map = L.map(mapContainer.value, {
         center: [20, 0],
         zoom: 2,
+        minZoom: 2,
+        worldCopyJump: true,
         zoomControl: false,
         attributionControl: false
     });
@@ -78,8 +80,13 @@ const updateMapData = () => {
 
     if (!props.data || !Array.isArray(props.data) || props.data.length === 0) return;
 
-    // Prepare Heatmap Data
-    const heatPoints = props.data.map(d => [d.lat, d.lng, d.intensity]);
+    // Prepare Heatmap Data (Replicated for wrapping)
+    const heatPoints = [];
+    props.data.forEach(d => {
+        [0, -360, 360].forEach(offset => {
+            heatPoints.push([d.lat, d.lng + offset, d.intensity]);
+        });
+    });
     
     // @ts-ignore - leaflet.heat is not in types
     heatLayer = L.heatLayer(heatPoints, {
@@ -95,28 +102,30 @@ const updateMapData = () => {
         }
     }).addTo(map);
 
-    // Add dynamic markers for significant threats
+    // Add dynamic markers for significant threats (Replicated for wrapping)
     props.data.forEach(d => {
         if (d.count > 5) {
-            const marker = L.circleMarker([d.lat, d.lng], {
-                radius: Math.min(10, 4 + d.count / 5),
-                fillColor: '#ef4444',
-                color: '#fff',
-                weight: 1,
-                opacity: 0.8,
-                fillOpacity: 0.4
-            }).addTo(map);
+            [0, -360, 360].forEach(offset => {
+                const marker = L.circleMarker([d.lat, d.lng + offset], {
+                    radius: Math.min(10, 4 + d.count / 5),
+                    fillColor: '#ef4444',
+                    color: '#fff',
+                    weight: 1,
+                    opacity: 0.8,
+                    fillOpacity: 0.4
+                }).addTo(map);
 
-            marker.bindPopup(`
-                <div class="p-2 dark:text-white">
-                    <div class="font-bold text-sm text-red-500">${d.type}</div>
-                    <div class="text-xs font-mono mt-1">${d.ip}</div>
-                    <div class="text-xs text-[var(--text-secondary)] mt-1">${d.location}</div>
-                    <div class="text-xs font-bold mt-1">Hits: ${d.count}</div>
-                </div>
-            `, { className: 'custom-map-popup' });
-            
-            markers.push(marker);
+                marker.bindPopup(`
+                    <div class="p-2 dark:text-white">
+                        <div class="font-bold text-sm text-red-500">${d.type}</div>
+                        <div class="text-xs font-mono mt-1">${d.ip}</div>
+                        <div class="text-xs text-[var(--text-secondary)] mt-1">${d.location}</div>
+                        <div class="text-xs font-bold mt-1">Hits: ${d.count}</div>
+                    </div>
+                `, { className: 'custom-map-popup' });
+                
+                markers.push(marker);
+            });
         }
     });
 

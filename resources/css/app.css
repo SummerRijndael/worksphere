@@ -1007,3 +1007,33 @@ a:hover {
     background-color: transparent;
     color: inherit;
 }
+
+/* ============================================
+   CUSTOM SCROLLBAR UTILITY
+   ============================================ */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: var(--color-neutral-400);
+    border-radius: 10px;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: var(--color-neutral-700);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: var(--color-neutral-500);
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: var(--color-neutral-600);
+}
+

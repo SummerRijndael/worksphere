@@ -118,6 +118,53 @@ const vSrcObject = {
     },
 };
 
+// Helper: Apply Output Device (setSinkId) to all media elements
+// This is critical for "Speaker Control" (sc) to work.
+async function applyOutputDevice(deviceId: string | null) {
+    if (!deviceId) return;
+    console.log("[Call] Applying output device:", deviceId);
+
+    // Apply to all video and audio elements in the document
+    const elements = document.querySelectorAll("video, audio");
+    for (const el of Array.from(elements)) {
+        try {
+            if ((el as any).setSinkId) {
+                await (el as any).setSinkId(deviceId);
+            }
+        } catch (e) {
+            console.warn("[Call] Failed to setSinkId on element", e);
+        }
+    }
+
+    // Apply to ringtone if active
+    if (ringtoneAudio && (ringtoneAudio as any).setSinkId) {
+        try {
+            await (ringtoneAudio as any).setSinkId(deviceId);
+        } catch (e) {
+             console.warn("[Call] Failed to setSinkId on ringtoneAudio", e);
+        }
+    }
+}
+
+// Watch for output device changes and apply
+watch(() => store.selectedOutputDeviceId, (newId) => {
+    applyOutputDevice(newId);
+});
+
+// Directive for setSinkId (output device selection)
+const vSinkId = {
+    mounted: (el: HTMLMediaElement) => {
+        if (store.selectedOutputDeviceId && (el as any).setSinkId) {
+            (el as any).setSinkId(store.selectedOutputDeviceId).catch(() => {});
+        }
+    },
+    updated: (el: HTMLMediaElement) => {
+         if (store.selectedOutputDeviceId && (el as any).setSinkId) {
+            (el as any).setSinkId(store.selectedOutputDeviceId).catch(() => {});
+        }
+    }
+};
+
 // UI Refs
 // Timers & Channels
 let durationTimer: ReturnType<typeof setInterval> | null = null;
@@ -2332,6 +2379,11 @@ onMounted(async () => {
     } else {
         console.log("[Call] Group call detected: Showing lobby as per policy");
     }
+
+    // Initial Output Device Sync
+    if (store.selectedOutputDeviceId) {
+        applyOutputDevice(store.selectedOutputDeviceId);
+    }
 });
 
 onBeforeUnmount(() => cleanup());
@@ -2349,6 +2401,7 @@ onBeforeUnmount(() => cleanup());
                 :key="publicId + '-audio-mix'"
                 :ref="(el) => { if(el) (el as HTMLMediaElement).srcObject = stream }"
                 v-volume="publicId"
+                v-sink-id
                 autoplay
                 playsinline
             />
@@ -2385,25 +2438,34 @@ onBeforeUnmount(() => cleanup());
         </div>
 
         <!-- JOIN SCREEN -->
-        <div v-else-if="!hasJoined" class="join-screen call-center-content">
-            <div class="avatar-preview">
-                <!-- Avatar Preview -->
-                <div class="preview-circle">
-                    <span class="initials">{{ previewRemoteName[0] }}</span>
+        <div v-else-if="!hasJoined" class="lobby-minimalist">
+            <div class="lobby-content">
+                <div class="avatar-preview">
+                    <!-- Avatar Preview -->
+                    <div class="preview-circle">
+                        <span class="initials">{{ previewRemoteName[0] }}</span>
+                    </div>
                 </div>
-            </div>
-            <h1 class="join-title">Join Call</h1>
-            <p class="join-subtitle">With {{ previewRemoteName }}</p>
+                
+                <div class="join-info">
+                    <h1 class="join-title">Join</h1>
+                    <p class="join-subtitle">With {{ previewRemoteName }}</p>
+                </div>
 
-            <div class="join-actions">
-                <button class="btn-join" @click="joinCall">
-                    <Icon name="Phone" size="20" />
-                    <span>Join Now</span>
-                </button>
-                <button class="btn-decline" @click="endCall('declined')">
-                    <Icon name="X" size="20" />
-                    <span>Decline</span>
-                </button>
+                <div class="lobby-actions-grid">
+                    <button class="btn-lobby-action join" @click="joinCall">
+                        <Icon name="Phone" size="20" />
+                        <span>Join</span>
+                    </button>
+                    <button class="btn-lobby-action settings" @click="showSettings = true">
+                        <Icon name="Settings" size="20" />
+                        <span>Settings</span>
+                    </button>
+                    <button class="btn-lobby-action decline" @click="endCall('declined')">
+                        <Icon name="X" size="20" />
+                        <span>Decline</span>
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -2416,6 +2478,7 @@ onBeforeUnmount(() => cleanup());
                     <template v-if="isScreenSharing && !!screenStream">
                         <video
                             v-src-object="screenStream"
+                            v-sink-id
                             autoplay
                             muted
                             playsinline
@@ -2434,6 +2497,7 @@ onBeforeUnmount(() => cleanup());
                         >
                             <video
                                 v-src-object="stream"
+                                v-sink-id
                                 autoplay
                                 playsinline
                                 class="video-element screen-share-video"
@@ -2467,6 +2531,7 @@ onBeforeUnmount(() => cleanup());
                                 (!isAudioOnly || (p.isSelf ? false : remoteHasVideo(p.publicId)))
                             "
                             v-src-object="p.isSelf ? localStream : store.remoteStreams.get(p.publicId)"
+                            v-sink-id
                              :muted="p.isSelf"
                             autoplay
                             playsinline
@@ -2517,6 +2582,7 @@ onBeforeUnmount(() => cleanup());
                         "
                         v-src-object="store.remoteStreams.get(p.publicId)"
                         v-volume="p.publicId"
+                        v-sink-id
                         autoplay
                         playsinline
                         class="video-element"
@@ -2585,6 +2651,7 @@ onBeforeUnmount(() => cleanup());
                     <video
                         v-src-object="screenStream"
                         v-volume="publicId"
+                        v-sink-id
                         autoplay
                         playsinline
                         class="video-element"
@@ -2619,6 +2686,7 @@ onBeforeUnmount(() => cleanup());
                         v-src-object="
                             isScreenSharing ? screenStream : localStream
                         "
+                        v-sink-id
                         autoplay
                         muted
                         playsinline
@@ -2835,47 +2903,125 @@ onBeforeUnmount(() => cleanup());
     margin-bottom: 32px;
 }
 
-/* Join Screen */
-.join-screen {
-    animation: fadeIn 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+/* Lobby Minimalist Redesign */
+.lobby-minimalist {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    z-index: 10;
+    padding: 60px 24px;
+    animation: fadeIn 0.8s cubic-bezier(0.22, 1, 0.36, 1);
 }
-.avatar-preview { margin-bottom: 32px; }
+
+.lobby-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 32px;
+}
+
+.avatar-preview {
+    position: relative;
+}
+
 .preview-circle {
-    width: 140px;
-    height: 140px;
+    width: 160px;
+    height: 160px;
     border-radius: 50%;
     background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 48px;
+    font-size: 56px;
     font-weight: 700;
     color: white;
-    box-shadow: 0 12px 40px rgba(99, 102, 241, 0.4);
-    border: 4px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 20px 50px rgba(99, 102, 241, 0.4);
+    border: 4px solid rgba(255, 255, 255, 0.15);
 }
-.join-title { font-size: 32px; font-weight: 800; margin-bottom: 12px; }
-.join-subtitle { font-size: 18px; color: rgba(255, 255, 255, 0.6); margin-bottom: 48px; }
-.join-actions { display: flex; gap: 20px; width: 100%; max-width: 400px; }
 
-.btn-join, .btn-decline, .btn-secondary {
-    flex: 1;
-    padding: 16px 24px;
+.join-info {
+    text-align: center;
+}
+
+.join-title {
+    font-size: 40px;
+    font-weight: 800;
+    margin-bottom: 8px;
+    letter-spacing: -0.02em;
+    color: white;
+}
+
+.join-subtitle {
+    font-size: 20px;
+    color: rgba(255, 255, 255, 0.5);
+    font-weight: 500;
+}
+
+.lobby-actions-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    width: 100%;
+    max-width: 520px;
+    margin-top: 32px;
+}
+
+.btn-lobby-action {
+    height: 58px;
     border-radius: 18px;
     font-weight: 700;
     font-size: 16px;
     cursor: pointer;
-    border: none;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 12px;
-    transition: all 0.3s;
+    transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: white;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    white-space: nowrap;
+    width: 100%;
+    padding: 0 8px; /* Minimal side padding since width is fixed by grid */
 }
-.btn-join { background: #10b981; color: white; box-shadow: 0 8px 24px rgba(16, 185, 129, 0.3); }
-.btn-join:hover { transform: translateY(-4px) scale(1.02); }
-.btn-decline { background: rgba(255, 255, 255, 0.05); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
-.btn-decline:hover { background: rgba(239, 68, 68, 0.1); transform: translateY(-4px); }
+
+.btn-lobby-action:hover {
+    background: rgba(255, 255, 255, 0.12);
+    transform: translateY(-4px);
+    border-color: rgba(255, 255, 255, 0.2);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+}
+
+.btn-lobby-action.join {
+    background: rgba(16, 185, 129, 0.1);
+    border-color: rgba(16, 185, 129, 0.3);
+    color: #10b981 !important;
+}
+.btn-lobby-action.join:hover {
+    background: rgba(16, 185, 129, 0.2);
+    border-color: rgba(16, 185, 129, 0.5);
+    box-shadow: 0 12px 30px rgba(16, 185, 129, 0.2);
+}
+
+.btn-lobby-action.settings {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.btn-lobby-action.decline {
+    background: rgba(239, 68, 68, 0.08);
+    border-color: rgba(239, 68, 68, 0.2);
+    color: #ef4444 !important;
+}
+.btn-lobby-action.decline:hover {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.4);
+    box-shadow: 0 12px 30px rgba(239, 68, 68, 0.15);
+}
 
 /* --- GRID LAYOUT --- */
 .grid-wrapper {
