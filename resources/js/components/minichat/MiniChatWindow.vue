@@ -34,7 +34,9 @@ const toast = useToast();
 
 // Video call
 import { useVideoCall } from '@/composables/useVideoCall';
+import { useVideoCallStore } from '@/stores/videocall';
 const videoCall = useVideoCall();
+const videoCallStore = useVideoCallStore();
 
 function handleStartCall(callType: 'video' | 'audio') {
     const chat = props.window.chat;
@@ -49,6 +51,24 @@ function handleStartCall(callType: 'video' | 'audio') {
         name: (other as any).name || 'Group',
         avatar: (other as any).avatar || null,
     });
+}
+
+const activeCall = computed(() => {
+    return videoCallStore.activeCalls.get(props.window.chatId);
+});
+
+const isInCurrentCall = computed(() => {
+    return videoCallStore.currentCall?.chatId === props.window.chatId;
+});
+
+function joinCall() {
+    if (activeCall.value) {
+        videoCall.joinActiveCall(
+            props.window.chatId,
+            activeCall.value.callId,
+            activeCall.value.callType
+        );
+    }
 }
 
 
@@ -583,6 +603,9 @@ onMounted(async () => {
     // Subscribe using shared realtime service
     chatRealtime.subscribeToChat(props.window.chatId, props.window.chat.type);
 
+    // active call check
+    videoCallStore.checkActiveCall(props.window.chatId);
+
     scrollToBottom();
 
     // Mark as read if window is active
@@ -752,6 +775,16 @@ function isOwnMessage(msg: Message): boolean {
                 <span class="minichat-window-title">{{ chatTitle }}</span>
             </div>
             <div class="minichat-window-actions">
+                <!-- Join Call Button -->
+                <button
+                    v-if="activeCall && !isInCurrentCall"
+                    class="minichat-window-action text-green-500 animate-pulse"
+                    title="Join Active Call"
+                    @click.stop="joinCall"
+                >
+                    <Icon name="Video" :size="14" />
+                </button>
+
                 <!-- Call buttons -->
                 <template v-if="true">
                     <button

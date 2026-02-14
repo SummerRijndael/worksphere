@@ -115,6 +115,11 @@ class VideoCallController extends Controller
             'user_name' => auth()->user()->name,
         ]);
 
+        // Set active call pointer for the chat
+        // This allows later joiners to find the current active call ID
+        $key = "chat:active_call:{$chat->public_id}";
+        \Illuminate\Support\Facades\Cache::put($key, $callId, 7200); // 2 hours TTL matches participants TTL
+
         return response()->json([
             'status' => 'ok',
             'call_id' => $callId,
@@ -177,6 +182,60 @@ class VideoCallController extends Controller
             'type' => $metadata['type'] ?? 'video',
             'mode' => $mode,
             'app_id' => config('services.cloudflare.app_id'), // Share public AppID if SFU
+        ]);
+    }
+
+    /**
+     * Check if there is an active call in the chat.
+     */
+    public function active(Request $request, Chat $chat): JsonResponse
+    {
+        $this->findChatOrFail($chat);
+
+        // We don't have a direct "Call ID" index, so we need to rely on the frontend
+        // asking "Is there a call?".
+        // However, our cache keys are `call:participants:{chatId}:{callId}`.
+        // We can scan for keys matching this pattern. 
+        // NOTE: excessive scanning is bad for Redis performance in production, 
+        // but for now with `file` or `redis` cache driver in a smaller app, it might be okay.
+        // BETTER APPROACH: Store a "current_call:{chatId}" key when a call starts.
+
+        // Let's check if we can leverage existing metadata.
+        // For now, I will implement a "current_call" pointer in cache to make this efficient.
+        // But I need to update `initiate` to set this.
+        
+        // Revised Plan:
+        // 1. `initiate` sets `chat:active_call:{chatId}` -> `callId`
+        // 2. `end` removes it if it's the same callId.
+        // 3. `active` reads this key.
+
+        $key = "chat:active_call:{$chat->public_id}";
+        $callId = \Illuminate\Support\Facades\Cache::get($key);
+
+        if (!$callId) {
+            return response()->json(['active' => false]);
+        }
+
+        $metadata = $this->getCallMetadata($chat->public_id, $callId);
+        $participants = $this->getParticipantsList($chat->public_id, $callId);
+
+        // Double check if call is actually valid (has participants or just started)
+        // If no participants and started > 5 mins ago, consider it stale/dead.
+        if (empty($participants)) {
+             $startedAt = $metadata['started_at'] ?? 0;
+             if (now()->timestamp - $startedAt > 300) {
+                 \Illuminate\Support\Facades\Cache::forget($key);
+                 return response()->json(['active' => false]);
+             }
+        }
+
+        return response()->json([
+            'active' => true,
+            'call_id' => $callId,
+            'type' => $metadata['type'] ?? 'video',
+            'initiator_id' => $metadata['initiator_id'] ?? null,
+            'participants' => $participants,
+             'app_id' => config('services.cloudflare.app_id'),
         ]);
     }
 
@@ -427,6 +486,12 @@ class VideoCallController extends Controller
 
              // Broadcast end
              event(new CallEnded($chat, $user->public_id, $callId, $reason));
+
+             // Clear active call pointer if it matches this call
+             $key = "chat:active_call:{$chat->public_id}";
+             if (\Illuminate\Support\Facades\Cache::get($key) === $callId) {
+                 \Illuminate\Support\Facades\Cache::forget($key);
+             }
         }
 
         return response()->json(['status' => 'ok']);

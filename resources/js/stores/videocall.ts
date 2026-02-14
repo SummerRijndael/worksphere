@@ -41,6 +41,9 @@ export const useVideoCallStore = defineStore('videoCall', () => {
   const activeCallId = ref<string | null>(null); // For "Call in progress" indicator in chat
   const selfPublicId = ref<string | null>(null);
 
+  // Maps publicId -> Volume (0-100)
+  const remoteVolumes = reactive(new Map<string, number>());
+
   // Track active calls in other chats: Map<chatId, { callId: string, callType: CallType }>
   const activeCalls = ref<Map<string, { callId: string, callType: CallType }>>(new Map());
 
@@ -75,6 +78,19 @@ export const useVideoCallStore = defineStore('videoCall', () => {
 
   function unregisterActiveCall(chatId: string) {
       activeCalls.value.delete(chatId);
+  }
+
+  async function checkActiveCall(chatId: string) {
+      try {
+          const { active, call_id, type } = await import('@/services/videocall.service').then(m => m.videoCallService.getActiveCall(chatId));
+          if (active && call_id) {
+              registerActiveCall(chatId, call_id, type || 'video');
+          } else {
+              unregisterActiveCall(chatId);
+          }
+      } catch (e) {
+          console.error('Failed to check active call:', e);
+      }
   }
 
 
@@ -134,6 +150,7 @@ export const useVideoCallStore = defineStore('videoCall', () => {
 
   function removeRemoteStream(publicId: string) {
     remoteStreams.delete(publicId);
+    remoteVolumes.delete(publicId);
   }
 
   function addRemoteScreenStream(publicId: string, stream: MediaStream) {
@@ -203,6 +220,7 @@ export const useVideoCallStore = defineStore('videoCall', () => {
     localStream.value = null;
     remoteStreams.clear(); 
     remoteScreenStreams.clear();
+    remoteVolumes.clear();
     isMuted.value = false;
     isCameraOff.value = false;
     callDuration.value = 0;
@@ -249,5 +267,10 @@ export const useVideoCallStore = defineStore('videoCall', () => {
     reset,
     registerActiveCall,
     unregisterActiveCall,
+    checkActiveCall,
+    remoteVolumes,
+    setRemoteVolume: (publicId: string, volume: number) => {
+        remoteVolumes.set(publicId, volume);
+    }
   };
 });

@@ -7,7 +7,10 @@ import { useChat } from '@/composables/useChat';
 import { useThemeStore } from '@/stores/theme';
 import { useToast } from '@/composables/useToast';
 import { chatService } from '@/services/chat.service';
+import { useToast } from '@/composables/useToast';
+import { chatService } from '@/services/chat.service';
 import { useVideoCall } from '@/composables/useVideoCall';
+import { useVideoCallStore } from '@/stores/videocall';
 
 
 // Components
@@ -184,6 +187,7 @@ const handleRetryMessage = async (message: any) => {
 
 // Video call setup
 const videoCall = useVideoCall();
+const videoCallStore = useVideoCallStore();
 
 function handleStartCall(callType: 'video' | 'audio') {
     if (!activeChat.value) return;
@@ -214,6 +218,17 @@ watch(drawerOpen, (val) => {
         fetchStorageStats();
     }
 });
+
+// Watch active chat to check for active calls
+watch(
+    () => activeChat.value?.public_id,
+    (newId) => {
+        if (newId) {
+            videoCallStore.checkActiveCall(newId);
+        }
+    },
+    { immediate: true }
+);
 
 const handleStartDm = async (personOrId: any) => {
     // Determine ID - UI passes object or string

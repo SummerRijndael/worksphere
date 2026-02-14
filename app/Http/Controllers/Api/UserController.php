@@ -71,9 +71,9 @@ class UserController extends Controller
         $this->authorize('create', User::class);
 
         $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
-            'username' => ['nullable', 'string', 'max:255', 'unique:users'],
+            'name' => ['required', 'string', 'max:255', 'regex:/^[\pL\s\-\']+$/u'],
+            'email' => ['required', 'string', 'email:rfc,dns', 'max:255', 'unique:users'],
+            'username' => ['nullable', 'string', 'min:3', 'max:50', 'regex:/^[a-zA-Z0-9_\-]+$/', 'unique:users'],
             'role' => ['required', 'string', 'exists:roles,name'],
             'status' => ['required', 'string', 'in:active,inactive,suspended'],
         ]);
@@ -134,14 +134,14 @@ class UserController extends Controller
 
         // Determine which fields can be updated based on permissions
         $rules = [
-            'name' => ['sometimes', 'string', 'max:255'],
-            'username' => ['sometimes', 'nullable', 'string', 'max:255', Rule::unique('users')->ignore($user->id)],
+            'name' => ['sometimes', 'string', 'max:255', 'regex:/^[\pL\s\-\']+$/u'],
+            'username' => ['sometimes', 'nullable', 'string', 'min:3', 'max:50', 'regex:/^[a-zA-Z0-9_\-]+$/', Rule::unique('users')->ignore($user->id)],
             'phone' => ['sometimes', 'nullable', 'string', 'max:20'],
         ];
 
         // Email can only be changed by the user themselves (self-service)
         if ($authUser->is($user)) {
-            $rules['email'] = ['sometimes', 'string', 'email', 'max:255', Rule::unique('users')->ignore($user->id)];
+            $rules['email'] = ['sometimes', 'string', 'email:rfc,dns', 'max:255', Rule::unique('users')->ignore($user->id)];
         }
 
         // Role changes require users.manage_roles permission
@@ -220,14 +220,15 @@ class UserController extends Controller
         $user = $request->user();
 
         $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'email', 'max:255', Rule::unique('users')->ignore($user->id)],
-            'username' => ['nullable', 'string', 'max:255', Rule::unique('users')->ignore($user->id)],
+            'name' => ['required', 'string', 'max:255', 'regex:/^[\pL\s\-\']+$/u'],
+            'email' => ['required', 'string', 'email:rfc,dns', 'max:255', Rule::unique('users')->ignore($user->id)],
+            'username' => ['nullable', 'string', 'min:3', 'max:50', 'regex:/^[a-zA-Z0-9_\-]+$/', Rule::unique('users')->ignore($user->id)],
             'title' => ['nullable', 'string', 'max:255'],
             'bio' => ['nullable', 'string', 'max:1000'],
             'location' => ['nullable', 'string', 'max:255'],
             'website' => ['nullable', 'string', 'max:255', 'url'],
-            'skills' => ['nullable', 'array'],
+            'skills' => ['nullable', 'array', 'max:50'],
+            'skills.*' => ['string', 'max:50'],
         ]);
 
         // Check if email is changing
