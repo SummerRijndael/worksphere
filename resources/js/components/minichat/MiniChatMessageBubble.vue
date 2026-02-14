@@ -128,7 +128,7 @@ const firstUrl = computed(() => {
     </div>
 
     <!-- User Message -->
-    <div v-else class="minichat-message" :class="{ 'is-own': isMine }">
+    <div v-else class="minichat-message" :class="{ 'is-own': isMine }" :title="message.user_name">
         <Avatar
             v-if="!isMine"
             :src="message.user_avatar"

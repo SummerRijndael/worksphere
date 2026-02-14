@@ -265,7 +265,6 @@ function refreshMarkers() {
 
 <style scoped>
 /* Ensure map tiles render correctly */
-:deep(.leaflet-pane) {
-    z-index: 10;
-}
+/* Ensure map tiles render correctly */
+/* Removed harmful z-index override that was flattening map layers */
 </style>

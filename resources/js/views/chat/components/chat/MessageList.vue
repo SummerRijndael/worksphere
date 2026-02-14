@@ -3,6 +3,10 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from "vue";
 import type { Chat, Message } from "@/types/models/chat";
 import MessageBubble from "./MessageBubble.vue";
 import { Icon } from "@/components/ui";
+import { useVideoCallStore } from "@/stores/videocall";
+import { useVideoCall } from "@/composables/useVideoCall";
+import { useAuthStore } from "@/stores/auth";
+
 
 interface Props {
     messages: Message[];
@@ -23,6 +27,10 @@ const emit = defineEmits<{
     scrollToBottom: [];
     retry: [message: Message];
 }>();
+
+const videoCallStore = useVideoCallStore();
+const { joinActiveCall } = useVideoCall();
+const authStore = useAuthStore();
 
 const containerRef = ref<HTMLElement | null>(null);
 const showScrollButton = ref(false);
@@ -192,6 +200,30 @@ const handleScroll = (event: Event) => {
 const jumpToLatest = () => {
     emit("scrollToBottom");
 };
+
+// Active Call Logic
+const activeCallInvite = computed(() => {
+    if (!props.activeChat || props.activeChat.type !== 'group') return null;
+    
+    // Check if there is an active call for this chat
+    const activeCall = videoCallStore.activeCalls.get(props.activeChat.public_id);
+    if (!activeCall) return null;
+
+    // Check if we are already in it
+    const isInCall = videoCallStore.currentCall?.chatId === props.activeChat.public_id;
+    if (isInCall) return null;
+
+    return {
+        callId: activeCall.callId,
+        callType: activeCall.callType,
+        chatId: props.activeChat.public_id,
+        callerName: "Group" // Ideally we get this from the call object if available
+    };
+});
+
+function joinCall(invite: any) {
+    joinActiveCall(invite.chatId, invite.callId, invite.callType);
+}
 </script>
 
 <template>
@@ -250,9 +282,30 @@ const jumpToLatest = () => {
                 </template>
             </div>
 
+             <!-- System Message: Active Call Invite -->
+            <div v-if="activeCallInvite" class="flex justify-center py-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div class="bg-(--surface-elevated) border border-(--border-default) rounded-xl p-4 shadow-lg flex items-center gap-4 max-w-sm w-full mx-4">
+                    <div class="p-3 bg-green-500/10 text-green-500 rounded-full shrink-0">
+                         <Icon name="Video" size="24" />
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="font-medium text-(--text-primary)">Video Call Started</div>
+                        <div class="text-xs text-(--text-secondary) truncate">
+                            {{ activeCallInvite.callerName }} started a call
+                        </div>
+                    </div>
+                    <button 
+                        @click="joinCall(activeCallInvite)"
+                        class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors shadow-sm whitespace-nowrap"
+                    >
+                        Join Call
+                    </button>
+                </div>
+            </div>
+
             <!-- Empty State: Has chat but no messages -->
             <div
-                v-else-if="activeChat && !isLoading"
+                v-else-if="activeChat && !isLoading && messages.length === 0"
                 class="flex-1 flex items-center justify-center h-full min-h-[50vh]"
             >
                 <div class="text-center text-[var(--text-secondary)]">
@@ -318,3 +371,20 @@ const jumpToLatest = () => {
         </transition>
     </div>
 </template>
+
+<style scoped>
+.overflow-y-auto {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+.overflow-y-auto::-webkit-scrollbar {
+    width: 6px;
+}
+.overflow-y-auto::-webkit-scrollbar-track {
+    background: transparent;
+}
+.overflow-y-auto::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.2);
+    border-radius: 20px;
+}
+</style>

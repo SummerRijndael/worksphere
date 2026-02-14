@@ -36,28 +36,8 @@ const emit = defineEmits<{
 const authStore = useAuthStore();
 const themeStore = useThemeStore();
 const videoCallStore = useVideoCallStore();
-const { joinActiveCall } = useVideoCall();
-
-const { presenceUsers } = usePresence({ manageLifecycle: false });
 const avatar = useAvatar();
-
-const activeCall = computed(() => {
-    return videoCallStore.activeCalls.get(props.chat.public_id);
-});
-
-const isInCurrentCall = computed(() => {
-    return videoCallStore.currentCall?.chatId === props.chat.public_id;
-});
-
-function joinCall() {
-    if (activeCall.value) {
-        joinActiveCall(
-            props.chat.public_id,
-            activeCall.value.callId,
-            activeCall.value.callType
-        );
-    }
-}
+const { presenceUsers } = usePresence();
 
 const chatAvatarData = computed(() => {
     return avatar.resolveChatAvatar(props.chat, authStore.user?.public_id);
@@ -255,17 +235,6 @@ watch(
                     @click="emit('startVideoCall')"
                 >
                     <Icon name="Video" size="18" />
-                </button>
-            </template>
-            <!-- Group Call Join Button -->
-            <template v-else-if="chat.type === 'group' && activeCall && !isInCurrentCall">
-                <button
-                    class="px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white font-medium text-xs flex items-center gap-2 animate-pulse"
-                    title="Join Active Call"
-                    @click="joinCall"
-                >
-                    <Icon name="Video" size="14" />
-                    <span>Join Call</span>
                 </button>
             </template>
             <template v-else-if="chat.type === 'group'">
