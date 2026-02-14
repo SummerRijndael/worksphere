@@ -30,6 +30,14 @@ export class VideoCallService extends BaseService {
   }
 
   /**
+   * Check for active call in a chat.
+   */
+  async getActiveCall(chatId: string): Promise<{ active: boolean; call_id?: string; type?: 'video'|'audio'; participants?: any[]; app_id?: string }> {
+    const response = await this.api.get(`/api/chat/${chatId}/call/active`);
+    return response.data;
+  }
+
+  /**
    * SFU Proxy: Create New Session
    */
   async sfuSessionNew(chatId: string, offer: string, tracks?: any[]): Promise<any> {
@@ -51,10 +59,11 @@ export class VideoCallService extends BaseService {
     return response.data;
   }
 
-  async sfuSessionRenegotiate(chatId: string, sessionId: string, sdp: string | null, type: 'offer' | 'answer' | 'rollback' = 'offer', method: 'PUT' | 'POST' = 'PUT'): Promise<any> {
+  async sfuSessionRenegotiate(chatId: string, sessionId: string, sdp: string | null | undefined, type: 'offer' | 'answer' | 'rollback' = 'offer', method: 'PUT' | 'POST' = 'PUT'): Promise<any> {
     const body: any = {};
     if (sdp || type !== 'rollback') {
-      body.sessionDescription = { type, sdp };
+      // Ensure sdp is at least an empty string to preserve the key in JSON
+      body.sessionDescription = { type, sdp: sdp || '' };
     } else {
       // For rollback, Cloudflare requires sessionDescription wrapper.
       // We include an empty sdp string as some validators require the field to exist.
