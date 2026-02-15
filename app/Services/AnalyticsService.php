@@ -47,7 +47,7 @@ class AnalyticsService
             $currentBounceRate = $this->calculateBounceRate($startDate);
             $prevBounceRate = $this->calculateBounceRate($previousStartDate, $startDate);
 
-                // Active Users (last 5 minutes)
+            // Active Users (last 5 minutes)
             $activeUsers = $this->getActiveUsers();
 
             // Avg Session Duration
@@ -292,7 +292,7 @@ class AnalyticsService
 
         return Cache::remember($cacheKey, now()->addMinutes(10), function () use ($period) {
             $startDate = $this->getStartDate($period);
-            
+
             // Devices
             $devices = PageView::query()
                 ->select('device_type', DB::raw('count(*) as count'))
@@ -355,9 +355,9 @@ class AnalyticsService
     {
         // Get session durations: max(created_at) - min(created_at) per session
         // We only consider sessions with > 1 page view for duration
-        
+
         $driver = DB::connection()->getDriverName();
-        $select = $driver === 'sqlite' 
+        $select = $driver === 'sqlite'
             ? '(strftime(\'%s\', MAX(created_at)) - strftime(\'%s\', MIN(created_at))) as duration'
             : 'TIME_TO_SEC(TIMEDIFF(MAX(created_at), MIN(created_at))) as duration';
 
@@ -383,33 +383,32 @@ class AnalyticsService
     private function formatDuration(float $seconds): string
     {
         if ($seconds < 60) {
-            return round($seconds) . 's';
+            return round($seconds).'s';
         }
 
         $minutes = floor($seconds / 60);
         $remainingSeconds = round($seconds % 60);
 
-        return $minutes . 'm ' . $remainingSeconds . 's';
+        return $minutes.'m '.$remainingSeconds.'s';
     }
-
 
     private function calculateChange($current, $prev, $inverse = false): string
     {
         if ($prev == 0) {
             return $current > 0 ? '+100%' : '0%';
         }
-        
+
         $diff = $current - $prev;
         $percent = ($diff / $prev) * 100;
         $sign = $percent > 0 ? '+' : '';
 
         // For bounce rate, lower is better (so if it went down, show green/up logic in UI, but here just raw change)
-        // actually UI logic handles color based on 'inverse' flag maybe? 
+        // actually UI logic handles color based on 'inverse' flag maybe?
         // Logic in View: stat.trend === 'up' ? 'text-green-500' : 'text-red-500'
         // If bounce rate goes up, it is bad.
         // Current logic in One: 'trend' => $currentBounceRate <= $prevBounceRate ? 'up' : 'down'
         // So we just return the raw string here.
-        
+
         return $sign.round($percent, 1).'%';
     }
 }
