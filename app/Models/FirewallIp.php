@@ -2,11 +2,15 @@
 
 namespace App\Models;
 
-use Akaunting\Firewall\Models\Ip as BaseIp;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class FirewallIp extends BaseIp
+class FirewallIp extends Model
 {
+    use SoftDeletes;
+
     protected $table = 'firewall_ips';
     
     protected $fillable = [
@@ -44,5 +48,29 @@ class FirewallIp extends BaseIp
     public function isExpired(): bool
     {
         return $this->expires_at && $this->expires_at->isPast();
+    }
+
+    /**
+     * Compatibility with Akaunting\Firewall
+     */
+    public function log(): BelongsTo
+    {
+        return $this->belongsTo('Akaunting\\Firewall\\Models\\Log');
+    }
+
+    public function logs(): HasMany
+    {
+        return $this->hasMany('Akaunting\\Firewall\\Models\\Log', 'ip', 'ip');
+    }
+
+    public function scopeBlocked($query, $ip = null)
+    {
+        $q = $query->where('blocked', 1);
+
+        if ($ip) {
+            $q = $query->where('ip', $ip);
+        }
+
+        return $q;
     }
 }

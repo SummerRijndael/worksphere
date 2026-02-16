@@ -99,7 +99,7 @@ class VideoCallControllerTest extends TestCase
     }
 
     /** @test */
-    public function test_join_returns_sfu_mode_for_two_or_more_participants()
+    public function test_join_returns_mesh_mode_for_two_participants_in_dm()
     {
         Event::fake();
 
@@ -116,8 +116,42 @@ class VideoCallControllerTest extends TestCase
         $p1 = ['public_id' => $this->user->public_id, 'name' => $this->user->name, 'joined_at' => now()->timestamp];
         Cache::put("call:participants:{$this->chat->public_id}:{$callId}", [$p1], 60);
 
-        // P2 joins → count becomes 2 → should get SFU mode (Bug 2 fix: >= 2, not > 2)
+        // P2 joins → count becomes 2 → should get MESH mode in DM
         $this->actingAs($user2);
+        $res = $this->postJson("/api/chat/{$this->chat->public_id}/call/join", ['call_id' => $callId]);
+        $res->assertOk();
+        $res->assertJsonFragment(['mode' => 'mesh']);
+    }
+
+    /** @test */
+    public function test_join_returns_sfu_mode_for_three_plus_participants()
+    {
+        Event::fake();
+
+        // P1 and P2 already in call
+        $user2 = User::factory()->create();
+        $user3 = User::factory()->create();
+
+        $this->chat->participants()->attach($user2->id, [
+            'public_id' => (string) Str::ulid(),
+            'left_at' => null,
+        ]);
+        $this->chat->participants()->attach($user3->id, [
+            'public_id' => (string) Str::ulid(),
+            'left_at' => null,
+        ]);
+        
+        $callId = (string) Str::ulid();
+        Cache::put("chat:active_call:{$this->chat->public_id}", $callId, 60);
+
+        $participants = [
+            ['public_id' => $this->user->public_id, 'name' => 'P1', 'joined_at' => now()->timestamp],
+            ['public_id' => $user2->public_id, 'name' => 'P2', 'joined_at' => now()->timestamp],
+        ];
+        Cache::put("call:participants:{$this->chat->public_id}:{$callId}", $participants, 60);
+
+        // P3 joins → count becomes 3 → should get SFU mode
+        $this->actingAs($user3);
         $res = $this->postJson("/api/chat/{$this->chat->public_id}/call/join", ['call_id' => $callId]);
         $res->assertOk();
         $res->assertJsonFragment(['mode' => 'sfu']);

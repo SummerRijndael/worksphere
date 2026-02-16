@@ -38,6 +38,21 @@ const themeStore = useThemeStore();
 const videoCallStore = useVideoCallStore();
 const avatar = useAvatar();
 const { presenceUsers } = usePresence();
+const videoCall = useVideoCall();
+
+const activeCall = computed(() => {
+    return videoCallStore.activeCalls.get(props.chat.public_id);
+});
+
+function joinActiveCall() {
+    if (activeCall.value) {
+        videoCall.joinActiveCall(
+            props.chat.public_id,
+            activeCall.value.callId,
+            activeCall.value.callType
+        );
+    }
+}
 
 const chatAvatarData = computed(() => {
     return avatar.resolveChatAvatar(props.chat, authStore.user?.public_id);
@@ -238,7 +253,18 @@ watch(
                 </button>
             </template>
             <template v-else-if="chat.type === 'group'">
+                 <!-- Join Button if call active -->
                  <button
+                    v-if="activeCall"
+                    class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-all shadow-sm transform hover:scale-105"
+                    title="Join Call"
+                    @click="joinActiveCall"
+                >
+                    <Icon name="PhoneForwarded" size="16" />
+                    <span class="text-xs font-semibold uppercase tracking-wide">Join</span>
+                </button>
+                 <button
+                    v-else
                     class="p-2 rounded-lg hover:bg-(--surface-tertiary) text-(--text-primary) transition-colors"
                     title="Start Video Call"
                     @click="emit('startVideoCall')"
@@ -246,6 +272,17 @@ watch(
                     <Icon name="Video" size="18" />
                 </button>
             </template>
+
+            <!-- Join Call Button for DM if current user is not in call but it is active -->
+            <button
+                v-if="chat.type === 'dm' && activeCall"
+                class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-all shadow-sm transform hover:scale-105"
+                title="Join Call"
+                @click="joinActiveCall"
+            >
+                <Icon name="PhoneForwarded" size="16" />
+                <span class="text-xs font-semibold uppercase tracking-wide">Join</span>
+            </button>
 
             <!-- Theme Switcher -->
             <div class="relative">

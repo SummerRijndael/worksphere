@@ -53,6 +53,19 @@ function handleStartCall(callType: 'video' | 'audio') {
     });
 }
 
+function handleCallback(data: { chatId: string; callType: 'video' | 'audio' }) {
+    const chat = props.window.chat;
+    const other = chat.type === 'dm' 
+        ? chat.participants.find((p: any) => p.public_id !== currentUserPublicId.value)
+        : { public_id: 'group', name: chat.name || 'Group Chat', avatar: null };
+
+    videoCall.startCall(data.chatId, data.callType, {
+        publicId: (other as any).public_id || 'group',
+        name: (other as any).name || 'Group',
+        avatar: (other as any).avatar || null,
+    });
+}
+
 const activeCall = computed(() => {
     return videoCallStore.activeCalls.get(props.window.chatId);
 });
@@ -866,6 +879,7 @@ function isOwnMessage(msg: Message): boolean {
                         @reply="handleReply"
                         @jump="jumpToMessage" 
                         @retry="handleRetry"
+                        @callback="handleCallback"
                     />
                 </div>
             </TransitionGroup>

@@ -15,9 +15,10 @@ class SecurityDashboardController extends Controller
     /**
      * Get security statistics.
      */
-    public function stats()
+    public function stats(Request $request)
     {
         $this->authorize('viewAny', FirewallIp::class);
+        $since = $this->getFilterDate($request);
 
         $blockedIpsCount = FirewallIp::where('blocked', 1)->count();
         $whitelistedIpsCount = FirewallIp::where('blocked', 0)->count();
@@ -25,15 +26,35 @@ class SecurityDashboardController extends Controller
         $bannedUsersCount = User::where('status', 'banned')->count();
         $suspendedUsersCount = User::where('status', 'suspended')->count();
 
-        $incidentsToday = FirewallLog::whereDate('created_at', today())->count();
+        $incidentsPeriod = FirewallLog::where('created_at', '>=', $since)->count();
 
         return response()->json([
             'blocked_ips' => $blockedIpsCount,
             'banned_users' => $bannedUsersCount,
             'suspended_users' => $suspendedUsersCount,
             'whitelisted_ips' => $whitelistedIpsCount,
-            'incidents_today' => $incidentsToday,
+            'incidents_period' => $incidentsPeriod,
+            // Legacy support
+            'incidents_today' => FirewallLog::whereDate('created_at', today())->count(),
         ]);
+    }
+
+    /**
+     * Get the start date for filtering based on request period.
+     */
+    protected function getFilterDate(Request $request): \Illuminate\Support\Carbon
+    {
+        $period = $request->query('period', '1w');
+
+        return match ($period) {
+            '24h' => now()->subDay(),
+            '1w' => now()->subWeek(),
+            '1m' => now()->subMonth(),
+            '3m' => now()->subMonths(3),
+            '6m' => now()->subMonths(6),
+            '1y' => now()->subYear(),
+            default => now()->subWeek(),
+        };
     }
 
     /**
@@ -134,12 +155,24 @@ class SecurityDashboardController extends Controller
     /**
      * Get security chart data.
      */
-    public function charts()
+    public function charts(Request $request)
     {
         $this->authorize('viewAny', FirewallIp::class);
+        $since = $this->getFilterDate($request);
 
-        $days = 14;
-        $trendData = FirewallLog::where('created_at', '>=', now()->subDays($days))
+        // Determine grouping and interval based on period
+        $period = $request->query('period', '1w');
+        $days = match($period) {
+            '24h' => 1,
+            '1w' => 7,
+            '1m' => 30,
+            '3m' => 90,
+            '6m' => 180,
+            '1y' => 365,
+            default => 14
+        };
+
+        $trendData = FirewallLog::where('created_at', '>=', $since)
             ->select(DB::raw('DATE(created_at) as date'), DB::raw('count(*) as count'))
             ->groupBy('date')
             ->orderBy('date')
@@ -157,7 +190,8 @@ class SecurityDashboardController extends Controller
             ];
         }
 
-        $distributionData = FirewallLog::select('middleware', DB::raw('count(*) as count'))
+        $distributionData = FirewallLog::where('created_at', '>=', $since)
+            ->select('middleware', DB::raw('count(*) as count'))
             ->groupBy('middleware')
             ->get();
 
@@ -177,11 +211,13 @@ class SecurityDashboardController extends Controller
     /**
      * Get suspicious activity map data.
      */
-    public function mapData()
+    public function mapData(Request $request)
     {
         $this->authorize('viewAny', FirewallIp::class);
+        $since = $this->getFilterDate($request);
 
-        $activities = FirewallLog::select('ip', DB::raw('count(*) as count'))
+        $activities = FirewallLog::where('created_at', '>=', $since)
+            ->select('ip', DB::raw('count(*) as count'))
             ->groupBy('ip')
             ->orderByDesc('count')
             ->limit(100)

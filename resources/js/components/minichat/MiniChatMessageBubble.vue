@@ -15,6 +15,7 @@ const emit = defineEmits<{
     reply: [message: Message];
     jump: [messageId: string];
     retry: [messageId: string];
+    callback: [data: { chatId: string; callType: 'video' | 'audio' }];
 }>();
 
 const formatTime = (dateStr: string): string => {
@@ -104,7 +105,7 @@ const firstUrl = computed(() => {
         >
             <template v-if="message.metadata?.system_type === 'call_event'">
                 <Icon 
-                    :name="message.metadata.event === 'missed' ? 'PhoneMissed' : (message.metadata.type === 'video' ? 'Video' : 'Phone')" 
+                    :name="(message.metadata.event === 'missed' || message.metadata.event === 'no_answer') ? 'PhoneMissed' : (message.metadata.type === 'video' ? 'Video' : 'Phone')" 
                     :size="10" 
                     class="opacity-70" 
                 />
@@ -114,12 +115,22 @@ const firstUrl = computed(() => {
                 <span v-else-if="message.metadata.event === 'ended'">
                     Call ended <span v-if="message.metadata.duration">({{ formatDuration(message.metadata.duration) }})</span>
                 </span>
-                <span v-else-if="message.metadata.event === 'missed'">
+                <span v-else-if="message.metadata.event === 'missed' || message.metadata.event === 'no_answer'">
                     Missed {{ message.metadata.type }} call
+                    <span v-if="message.metadata.caller_name"> from {{ message.metadata.caller_name }}</span>
                 </span>
                 <span v-else>
                     {{ message.content }}
                 </span>
+                <!-- Call Back button -->
+                <button 
+                    v-if="message.metadata.event === 'missed' || message.metadata.event === 'no_answer'"
+                    class="ml-2 px-1.5 py-0.5 rounded-full bg-green-500 hover:bg-green-600 text-white text-[9px] font-medium transition-colors flex items-center gap-0.5 cursor-pointer not-italic"
+                    @click="emit('callback', { chatId: message.metadata.chat_id, callType: message.metadata.type as any })"
+                >
+                    <Icon name="PhoneOutgoing" :size="8" />
+                    Call Back
+                </button>
             </template>
             <template v-else>
                 <span>{{ message.content }}</span>

@@ -29,8 +29,20 @@ const emit = defineEmits<{
 }>();
 
 const videoCallStore = useVideoCallStore();
-const { joinActiveCall } = useVideoCall();
+const { startCall, joinActiveCall } = useVideoCall();
 const authStore = useAuthStore();
+
+const handleCallback = (data: { chatId: string; callType: 'video' | 'audio' }) => {
+    // Find the participant info if it's a DM, or use group placeholder
+    const chat = props.activeChat;
+    if (!chat) return;
+
+    const remoteUser = chat.type === 'dm' 
+        ? { publicId: chat.participants[0]?.public_id, name: chat.name, avatar: chat.avatar_url }
+        : { publicId: 'group', name: 'Group', avatar: null };
+
+    startCall(data.chatId, data.callType, remoteUser);
+};
 
 const containerRef = ref<HTMLElement | null>(null);
 const showScrollButton = ref(false);
@@ -278,6 +290,7 @@ function joinCall(invite: any) {
                         @reply="handleReply(msg)"
                         @jump-to-reply="handleJumpToMessage"
                         @retry="emit('retry', msg)"
+                        @callback="handleCallback"
                     />
                 </template>
             </div>
