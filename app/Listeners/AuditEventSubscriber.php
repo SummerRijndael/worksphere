@@ -50,6 +50,8 @@ class AuditEventSubscriber
      */
     public function handleLoginFailed(Failed $event): void
     {
+        $reason = $event->user ? 'Incorrect Password' : 'User Not Found';
+
         $this->auditService->logAuth(
             action: AuditAction::LoginFailed,
             user: $event->user,
@@ -58,6 +60,7 @@ class AuditEventSubscriber
                     'email' => $event->credentials['email'] ?? 'unknown',
                 ],
                 'guard' => $event->guard,
+                'reason' => $reason,
             ]
         );
     }
@@ -109,7 +112,7 @@ class AuditEventSubscriber
             action: $event->action,
             category: $event->category,
             auditable: $event->auditable,
-            user: $event->user ?? auth()->user(),
+            user: $event->user,
             oldValues: $event->oldValues,
             newValues: $event->newValues,
             context: $event->metadata

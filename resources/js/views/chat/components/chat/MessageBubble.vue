@@ -30,7 +30,7 @@ const formattedTime = computed(() => {
 // Check if message is seen (legacy compatibility)
 const isSeen = computed(() => {
     return Boolean(
-        props.message.seen_at || props.message.seen || props.message.is_seen
+        props.message.seen_at || props.message.seen || props.message.is_seen,
     );
 });
 
@@ -40,26 +40,30 @@ const avatarInitial = computed(() => {
 
 const isImage = (mime: string) => mime && mime.startsWith("image/");
 
-const files = computed<MessageAttachment[]>(() => props.message.attachments?.filter(a => !isImage(a.mime_type)) || []);
-const images = computed<MessageAttachment[]>(() => props.message.attachments?.filter(a => isImage(a.mime_type)) || []);
+const files = computed<MessageAttachment[]>(
+    () => props.message.attachments?.filter((a) => !isImage(a.mime_type)) || [],
+);
+const images = computed<MessageAttachment[]>(
+    () => props.message.attachments?.filter((a) => isImage(a.mime_type)) || [],
+);
 const giphy = computed(() => props.message.metadata?.giphy);
 
 const displayImages = computed(() => images.value.slice(0, 4));
 
 const gridClass = computed(() => {
     const count = images.value.length;
-    if (count === 1) return 'grid-cols-1 max-w-sm';
-    if (count === 2) return 'grid-cols-2 max-w-md';
-    if (count >= 3) return 'grid-cols-2 max-w-md'; 
-    return '';
+    if (count === 1) return "grid-cols-1 max-w-sm";
+    if (count === 2) return "grid-cols-2 max-w-md";
+    if (count >= 3) return "grid-cols-2 max-w-md";
+    return "";
 });
 
 function getImageClass(index: number, total: number) {
     if (total === 3) {
-        if (index === 0) return 'col-span-2 aspect-[2/1]';
-        return 'aspect-square';
+        if (index === 0) return "col-span-2 aspect-[2/1]";
+        return "aspect-square";
     }
-    return 'aspect-square'; 
+    return "aspect-square";
 }
 
 const formatFileSize = (bytes: number) => {
@@ -71,33 +75,36 @@ const formatFileSize = (bytes: number) => {
 };
 
 const formatDuration = (seconds: number) => {
-    if (!seconds && seconds !== 0) return '';
+    if (!seconds && seconds !== 0) return "";
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
     const s = seconds % 60;
-    
-    if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-    return `${m}:${String(s).padStart(2, '0')}`;
+
+    if (h > 0)
+        return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    return `${m}:${String(s).padStart(2, "0")}`;
 };
 
 function handleImageClick(img: MessageAttachment) {
     const allImages = images.value;
-    const mediaForViewer = allImages.map(i => ({
+    const mediaForViewer = allImages.map((i) => ({
         src: i.url,
         download: i.download_url || i.url,
         id: i.id,
-        type: 'image',
-        mimeType: i.mime_type
+        type: "image",
+        mimeType: i.mime_type,
     }));
 
-    const index = mediaForViewer.findIndex(m => m.id === img.id);
+    const index = mediaForViewer.findIndex((m) => m.id === img.id);
 
-    window.dispatchEvent(new CustomEvent('media-viewer:open', {
-        detail: {
-            media: mediaForViewer,
-            index: index >= 0 ? index : 0
-        }
-    }));
+    window.dispatchEvent(
+        new CustomEvent("media-viewer:open", {
+            detail: {
+                media: mediaForViewer,
+                index: index >= 0 ? index : 0,
+            },
+        }),
+    );
 }
 
 const handleJumpToReply = () => {
@@ -115,29 +122,71 @@ const firstUrl = computed(() => {
 
 <template>
     <!-- System Message -->
-    <div v-if="message.type === 'system'" class="flex justify-center py-2 px-4 my-1">
-        <div 
+    <div
+        v-if="message.type === 'system'"
+        class="flex justify-center py-2 px-4 my-1"
+    >
+        <div
             class="flex items-center gap-2 text-xs text-(--text-tertiary) bg-(--surface-tertiary)/50 border border-(--border-default) px-3 py-1 rounded-full shadow-sm"
-            :class="{ 'text-red-500! border-red-200! bg-red-50!': message.metadata?.event === 'missed' }"
+            :class="{
+                'text-red-500! border-red-200! bg-red-50!':
+                    message.metadata?.event === 'missed',
+            }"
         >
             <template v-if="message.metadata?.system_type === 'call_event'">
-                <Icon 
-                    :name="message.metadata.event === 'missed' ? 'PhoneMissed' : (message.metadata.type === 'video' ? 'Video' : 'Phone')" 
-                    :size="12" 
-                    class="opacity-70" 
+                <Icon
+                    :name="
+                        message.metadata.event === 'missed' ||
+                        message.metadata.event === 'no_answer'
+                            ? 'PhoneMissed'
+                            : message.metadata.type === 'video'
+                              ? 'Video'
+                              : 'Phone'
+                    "
+                    :size="12"
+                    class="opacity-70"
                 />
                 <span v-if="message.metadata.event === 'started'">
-                    {{ message.metadata.user_name }} started a {{ message.metadata.type }} call
+                    {{ message.metadata.user_name }} started a
+                    {{ message.metadata.type }} call
                 </span>
                 <span v-else-if="message.metadata.event === 'ended'">
-                    Call ended <span v-if="message.metadata.duration">({{ formatDuration(message.metadata.duration) }})</span>
+                    Call ended
+                    <span v-if="message.metadata.duration"
+                        >({{ formatDuration(message.metadata.duration) }})</span
+                    >
                 </span>
-                <span v-else-if="message.metadata.event === 'missed'">
+                <span
+                    v-else-if="
+                        message.metadata.event === 'missed' ||
+                        message.metadata.event === 'no_answer'
+                    "
+                >
                     Missed {{ message.metadata.type }} call
+                    <span v-if="message.metadata.caller_name">
+                        from {{ message.metadata.caller_name }}</span
+                    >
                 </span>
                 <span v-else>
                     {{ message.content }}
                 </span>
+                <!-- Call Back button for missed calls -->
+                <button
+                    v-if="
+                        message.metadata.event === 'missed' ||
+                        message.metadata.event === 'no_answer'
+                    "
+                    class="ml-2 px-2 py-0.5 rounded-full bg-green-500 hover:bg-green-600 text-white text-[10px] font-medium transition-colors flex items-center gap-1 cursor-pointer"
+                    @click="
+                        emit('callback', {
+                            chatId: message.metadata.chat_id,
+                            callType: message.metadata.type,
+                        })
+                    "
+                >
+                    <Icon name="PhoneOutgoing" :size="10" />
+                    Call Back
+                </button>
             </template>
             <template v-else>
                 <Icon name="Info" :size="12" class="opacity-70" />
@@ -213,23 +262,27 @@ const firstUrl = computed(() => {
                     v-if="images.length || files.length"
                     class="space-y-2 mb-2"
                 >
-                     <!-- Image Grid -->
-                    <div v-if="images.length" class="grid gap-1 overflow-hidden rounded-xl w-full" :class="gridClass">
-                        <div 
-                            v-for="(img, index) in displayImages" 
-                            :key="img.id" 
+                    <!-- Image Grid -->
+                    <div
+                        v-if="images.length"
+                        class="grid gap-1 overflow-hidden rounded-xl w-full"
+                        :class="gridClass"
+                    >
+                        <div
+                            v-for="(img, index) in displayImages"
+                            :key="img.id"
                             class="relative bg-black/5 dark:bg-white/5 overflow-hidden group/img ring-1 ring-black/5 dark:ring-white/10"
                             :class="[getImageClass(index, images.length)]"
                         >
-                            <img 
-                                :src="img.thumb_url || img.url" 
-                                class="w-full h-full object-cover cursor-pointer transition-transform duration-500 hover:scale-105" 
+                            <img
+                                :src="img.thumb_url || img.url"
+                                class="w-full h-full object-cover cursor-pointer transition-transform duration-500 hover:scale-105"
                                 @click="handleImageClick(img)"
                             />
-                            
+
                             <!-- +N Overlay -->
-                            <div 
-                                v-if="index === 3 && images.length > 4" 
+                            <div
+                                v-if="index === 3 && images.length > 4"
                                 class="absolute inset-0 bg-black/50 hover:bg-black/60 transition-colors flex items-center justify-center cursor-pointer text-white font-bold text-lg backdrop-blur-sm"
                                 @click="handleImageClick(img)"
                             >
@@ -256,23 +309,35 @@ const firstUrl = computed(() => {
                                 <Icon name="FileText" :size="16" />
                             </div>
                             <div class="flex-1 min-w-0">
-                                <span class="block truncate font-medium text-xs">{{ att.name }}</span>
-                                <span class="block text-[10px] opacity-70">{{ formatFileSize(att.size) }}</span>
+                                <span
+                                    class="block truncate font-medium text-xs"
+                                    >{{ att.name }}</span
+                                >
+                                <span class="block text-[10px] opacity-70">{{
+                                    formatFileSize(att.size)
+                                }}</span>
                             </div>
-                            <Icon name="Download" :size="14" class="opacity-0 group-hover/file:opacity-100 transition-opacity" />
+                            <Icon
+                                name="Download"
+                                :size="14"
+                                class="opacity-0 group-hover/file:opacity-100 transition-opacity"
+                            />
                         </a>
                     </div>
                 </div>
 
                 <!-- GIF Display -->
-                <div v-if="giphy" class="mb-2 overflow-hidden rounded-xl bg-black/5 dark:bg-black/20 flex justify-center gif-wrapper">
-                    <img 
-                        :src="giphy.url" 
+                <div
+                    v-if="giphy"
+                    class="mb-2 overflow-hidden rounded-xl bg-black/5 dark:bg-black/20 flex justify-center gif-wrapper"
+                >
+                    <img
+                        :src="giphy.url"
                         :alt="giphy.title"
                         :width="giphy.width"
                         :height="giphy.height"
                         class="max-w-full h-auto object-contain rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-                        style="max-height: 400px;"
+                        style="max-height: 400px"
                     />
                 </div>
 
@@ -297,8 +362,8 @@ const firstUrl = computed(() => {
                         message.failed
                             ? 'text-red-500 font-medium'
                             : isMine
-                            ? 'justify-end text-blue-100'
-                            : 'justify-end text-(--text-tertiary)',
+                              ? 'justify-end text-blue-100'
+                              : 'justify-end text-(--text-tertiary)',
                     ]"
                     :title="new Date(message.created_at).toLocaleString()"
                 >

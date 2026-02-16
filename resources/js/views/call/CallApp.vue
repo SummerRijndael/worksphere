@@ -692,7 +692,7 @@ async function joinCall() {
     if (!stream) return;
 
     hasJoined.value = true;
-    stopRingtone();
+    // stopRingtone(); // Moved to after join logic to maintain ringing for outgoing calls
 
     if (!callData.value) return;
 
@@ -779,11 +779,16 @@ async function joinCall() {
         }
 
         // 4. Set state
-        callState.value = "connected"; // We are "in" the call room
         hasJoined.value = true;
-        postToParent({ type: "state", state: "connected" });
-        startDurationTimer();
-        stopRingtone();
+        if (callData.value.direction === 'outgoing' && others.length === 0) {
+            callState.value = 'ringing';
+            console.log("[Call] Outgoing call started: maintaining ringing state");
+        } else {
+            callState.value = "connected"; // We are "in" the call room
+            postToParent({ type: "state", state: "connected" });
+            startDurationTimer();
+            stopRingtone();
+        }
 
         // 5. Replay pending signals
         // a) From sessionStorage (signals received before popup opened)
@@ -1347,6 +1352,15 @@ function handleParticipantJoined(event: any) {
             avatar: event.participant_avatar,
             isSelf: false,
         });
+
+        // Transition from Ringing to Connected when a remote participant joins
+        if (callState.value === "ringing") {
+            console.log("[Call] First participant joined, transitioning to connected");
+            callState.value = "connected";
+            stopRingtone();
+            startDurationTimer();
+            postToParent({ type: "state", state: "connected" });
+        }
     }
 
     // MESH: Negotiate with the new person
@@ -3330,7 +3344,7 @@ onBeforeUnmount(() => cleanup());
                     collapsed: isControlsCollapsed, 
                     'is-dragging': isDragging 
                 }"
-                :style="hasMoved || layoutMode === 'spotlight' ? { 
+                :style="hasMoved ? { 
                     left: `${controlsPosition.x}px`, 
                     top: `${controlsPosition.y}px`,
                     transform: 'none',
@@ -4343,8 +4357,29 @@ onBeforeUnmount(() => cleanup());
 .control-btn.hangup { background: #ef4444; border-color: rgba(255,255,255,0.1); }
 .control-btn.hangup:hover { background: #dc2626; }
 
-/* Mobile Overrides */
 @media (max-width: 768px) {
+    .controls-bar {
+        bottom: calc(12px + env(safe-area-inset-bottom, 0));
+        width: min(calc(100% - 16px), 400px); /* Increased from 280px to prevent clipping */
+        padding: 6px 10px; /* Refined padding */
+        gap: 6px; /* Slightly more space than 4px */
+        justify-content: center;
+        scale: 1;
+        border-radius: 24px;
+        flex-wrap: nowrap; /* Prevent wrapping */
+    }
+    
+    .control-btn { 
+        width: 36px; /* Slightly larger targets for better UX on mobile */
+        height: 36px; 
+        font-size: 16px;
+        flex-shrink: 0; /* Prevent squishing */
+    }
+
+    .main-controls {
+        gap: 8px; /* Reduce gap between buttons on mobile */
+    }
+
     .spotlight-wrapper {
         flex-direction: column;
         padding: 0;
@@ -4352,55 +4387,36 @@ onBeforeUnmount(() => cleanup());
     .spotlight-stage {
         border-radius: 0;
         border: none;
-        flex: 1; /* Take mostly all space */
+        flex: 1;
+        width: 100%;
+        height: 100%;
     }
     .filmstrip {
         width: 100%;
-        height: 120px;
+        height: 100px;
         flex-direction: row;
         overflow-x: auto;
         overflow-y: hidden;
-        padding: 12px;
-        background: #09090b;
-        border-top: 1px solid var(--glass-border);
-        padding-bottom: calc(100px + env(safe-area-inset-bottom, 20px)); /* Lift over controls */
+        padding: 8px;
+        background: rgba(9, 9, 11, 0.8);
+        backdrop-filter: blur(12px);
+        border-bottom: 1px solid var(--glass-border);
+        border-top: none;
         position: absolute;
-        bottom: 0;
-        z-index: 400; /* Under controls */
+        top: env(safe-area-inset-top, 0); /* Move to top to avoid covering presentation content */
+        bottom: auto;
+        z-index: 400;
     }
     .filmstrip-cell.video-cell {
-        width: 160px;
+        width: 140px; /* Slightly smaller for mobile filmstrip */
         height: 100%;
         aspect-ratio: 16/9;
     }
     
-    .controls-bar {
-        bottom: calc(12px + env(safe-area-inset-bottom, 0));
-        width: min(calc(100% - 12px), 280px); /* Compact for S10 (360px) */
-        padding: 4px 8px;
-        gap: 4px;
-        justify-content: space-evenly;
-        scale: 1;
-        border-radius: 20px;
+    .grid-wrapper { 
+        padding: 12px; 
+        padding-bottom: 100px; /* Reduced from 120px */
     }
-    .control-btn { 
-        width: 32px; 
-        height: 32px; 
-        font-size: 14px;
-    }
-    .control-btn :deep(svg) {
-        width: 16px;
-        height: 16px;
-    }
-    .drag-handle {
-        padding: 0 2px;
-    }
-    .drag-handle :deep(svg) {
-        width: 14px;
-        height: 14px;
-    }
-
-    .grid-wrapper { padding: 12px; padding-bottom: 120px; }
     .grid-2-2 .grid-wrapper, .grid-3-3 .grid-wrapper { grid-template-columns: 1fr; }
 }
 

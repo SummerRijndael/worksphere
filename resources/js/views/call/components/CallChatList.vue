@@ -4,6 +4,7 @@ import { useChatStore } from "@/stores/chat";
 import { useAuthStore } from "@/stores/auth";
 import { Icon } from "@/components/ui";
 import MiniChatMessageBubble from "@/components/minichat/MiniChatMessageBubble.vue";
+import { useVideoCall } from "@/composables/useVideoCall";
 import type { Message } from "@/types/models/chat";
 
 const props = defineProps<{
@@ -21,7 +22,24 @@ const emit = defineEmits<{
 
 const chatStore = useChatStore();
 const authStore = useAuthStore();
+const { startCall } = useVideoCall();
 const messagesContainer = ref<HTMLElement | null>(null);
+
+function handleCallback(data: { chatId: string; callType: 'video' | 'audio' }) {
+    // Basic participant resolution for callback
+    const chat = chatStore.chats.find(c => c.public_id === data.chatId);
+    if (!chat) return;
+
+    const other = chat.type === 'dm' 
+        ? chat.participants.find(p => p.public_id !== authStore.user?.public_id)
+        : { public_id: 'group', name: chat.name || 'Group', avatar: null };
+
+    startCall(data.chatId, data.callType, {
+        publicId: (other as any)?.public_id || 'group',
+        name: (other as any)?.name || 'Group',
+        avatar: (other as any)?.avatar || null,
+    });
+}
 const showJumpToLatest = ref(false);
 
 const storeMessages = computed(() => {
@@ -184,6 +202,7 @@ defineExpose({
                         :class="{ 'max-w-full! w-full': message.type === 'system' }"
                         @reply="(m) => emit('reply', m)"
                         @jump="(id) => emit('jump', id)"
+                        @callback="handleCallback"
                     />
                 </div>
             </div>

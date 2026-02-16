@@ -134,6 +134,16 @@
 ![Roles & Permissions](doc/screenshots/roles_perms_manager.png)
 
 
+### 🛡️ Security & Firewall
+
+*Real-time threat monitoring, geographical attack visualization, and granular audit logging.*
+- **Threat Map**: Live visualization of security incidents across the globe.
+- **Firewall Integration**: Manage blocked/whitelisted IPs and monitor system-wide firewall logs.
+- **Smart Audit Trails**: Context-aware logging that distinguishes between failure reasons (e.g., "User Not Found" vs. "Incorrect Password").
+- **Time-Based Analytics**: Filter security data by arbitrary time periods (24h to 1y) to identify trends.
+![Security Dashboard](doc/screenshots/security_dashboard.png)
+
+
 ### 🛠️ System Maintenance
 
 *System health monitoring, queue management, and backups.*

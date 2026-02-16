@@ -4,6 +4,7 @@ namespace App\Events\Chat;
 
 use App\Models\Chat\Chat;
 use App\Models\User;
+use App\Services\Chat\PresenceService;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
@@ -27,6 +28,9 @@ class CallInitiated implements ShouldBroadcastNow
     public string $callId;
 
     public string $callType; // 'video' or 'audio'
+
+    /** @var string[] Public IDs of users who were skipped due to busy/offline status */
+    public array $filteredParticipants = [];
 
     public function __construct(Chat $chat, User $caller, string $callId, string $callType = 'video')
     {
@@ -58,11 +62,22 @@ class CallInitiated implements ShouldBroadcastNow
         $channels = [new PrivateChannel("{$prefix}.{$this->chatPublicId}")];
 
         // Get all participants in the chat to notify them on their user channel
-        $chat = \App\Models\Chat\Chat::where('public_id', $this->chatPublicId)->first();
+        $chat = Chat::where('public_id', $this->chatPublicId)->first();
         if ($chat) {
+            $presenceService = app(PresenceService::class);
+
             foreach ($chat->participants as $participant) {
                 // Broadcast to all participants EXCEPT the caller
                 if ($participant->public_id !== $this->callerPublicId) {
+                    $status = $presenceService->presenceStatus($participant->id);
+
+                    // Skip busy and offline users — they should not be disturbed
+                    // Away and invisible users still ring normally
+                    if (in_array($status, ['busy', 'offline'])) {
+                        $this->filteredParticipants[] = $participant->public_id;
+                        continue;
+                    }
+
                     $channels[] = new PrivateChannel("user.{$participant->public_id}");
                 }
             }

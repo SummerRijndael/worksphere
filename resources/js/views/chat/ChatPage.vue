@@ -191,12 +191,17 @@ const videoCallStore = useVideoCallStore();
 
 function handleStartCall(callType: 'video' | 'audio') {
     if (!activeChat.value) return;
-    const other = activeChat.value.participants.find(p => p.public_id !== currentUserPublicId.value);
-    if (!other) return;
+    
+    const other = activeChat.value.type === 'dm' 
+        ? activeChat.value.participants.find(p => p.public_id !== currentUserPublicId.value)
+        : { public_id: 'group', name: activeChat.value.name || 'Group Chat', avatar: null };
+
+    if (!other && activeChat.value.type === 'dm') return;
+
     videoCall.startCall(activeChat.value.public_id, callType, {
-        publicId: other.public_id,
-        name: other.name,
-        avatar: other.avatar || null,
+        publicId: (other as any).public_id || 'group',
+        name: (other as any).name || 'Group',
+        avatar: (other as any).avatar || null,
     });
 }
 

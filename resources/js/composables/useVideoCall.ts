@@ -131,8 +131,16 @@ export function useVideoCall() {
 
     try {
       console.log('[VideoCall] Requesting call initiation from API...');
-      const { call_id } = await videoCallService.initiateCall(chatId, callType);
-      console.log('[VideoCall] API response: call_id =', call_id);
+      const res = await videoCallService.initiateCall(chatId, callType);
+      console.log('[VideoCall] API response:', res);
+      const { call_id, busy_participants, offline_participants } = res;
+
+      if (busy_participants?.length > 0) {
+          toast.info(`${busy_participants.join(', ')} ${busy_participants.length > 1 ? 'are' : 'is'} busy`);
+      }
+      if (offline_participants?.length > 0) {
+          toast.info(`${offline_participants.join(', ')} ${offline_participants.length > 1 ? 'are' : 'is'} offline`);
+      }
 
       // Create outgoing call structure with self as first participant
       const participants = new Map();
@@ -249,10 +257,20 @@ export function useVideoCall() {
     store.setState('ringing');
     playRingtone('incoming');
 
+    // Double check local presence preference
+    if (authStore.user?.presence === 'busy') {
+        console.log('[VideoCall] Suppressing incoming call ring: status is busy');
+        videoCallService.endCall(data.chat_id, data.call_id, 'busy').catch(() => {});
+        // Still register active call so user can see it in chat list, but don't show overlay
+        store.setState('idle');
+        stopRingtone();
+        return;
+    }
+
     // Auto-decline after 45 seconds
     ringtoneTimeout = setTimeout(() => {
       if (store.callState === 'ringing') {
-        declineCall();
+        timeoutCall();
       }
     }, 45000);
   }
@@ -358,6 +376,12 @@ export function useVideoCall() {
     cleanup();
   }
 
+  function timeoutCall() {
+    if (!store.currentCall) return;
+    videoCallService.endCall(store.currentCall.chatId, store.currentCall.callId, 'no_answer').catch(() => {});
+    cleanup();
+  }
+
   function handleCallEnded(data: { call_id: string; ender_public_id: string; reason: string }) {
     // Unregister active call
     for (const [chatId, activeCall] of store.activeCalls.entries()) {
@@ -380,7 +404,16 @@ export function useVideoCall() {
 
     if (callPopup && !callPopup.closed) return;
 
-    toast.info('Call ended');
+    if (data.reason === 'declined') {
+        toast.info('Call declined');
+    } else if (data.reason === 'no_answer' || data.reason === 'timeout') {
+        toast.info('Call was not answered');
+    } else if (data.reason === 'busy') {
+        toast.info('User is busy');
+    } else {
+        toast.info('Call ended');
+    }
+    
     cleanup();
   }
 
@@ -388,7 +421,7 @@ export function useVideoCall() {
   // Call Controls (from parent side)
   // ============================================================================
 
-  async function endCall(reason: 'hangup' | 'declined' | 'timeout' | 'failed' = 'hangup') {
+  async function endCall(reason: 'hangup' | 'declined' | 'timeout' | 'failed' | 'no_answer' | 'busy' = 'hangup') {
     if (store.currentCall) {
       videoCallService.endCall(store.currentCall.chatId, store.currentCall.callId, reason).catch(() => {});
     }

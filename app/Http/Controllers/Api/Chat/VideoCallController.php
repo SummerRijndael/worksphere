@@ -97,6 +97,23 @@ class VideoCallController extends Controller
         $user = Auth::user();
         $callId = (string) Str::ulid();
 
+        // Check which participants are busy/offline before broadcasting
+        $presenceService = app(\App\Services\Chat\PresenceService::class);
+        $busyParticipants = [];
+        $offlineParticipants = [];
+
+        foreach ($chat->participants as $participant) {
+            if ($participant->public_id === $user->public_id) {
+                continue;
+            }
+            $status = $presenceService->presenceStatus($participant->id);
+            if ($status === 'busy') {
+                $busyParticipants[] = $participant->name;
+            } elseif ($status === 'offline') {
+                $offlineParticipants[] = $participant->name;
+            }
+        }
+
         // Store call metadata
         $this->storeCallMetadata($chat->public_id, $callId, [
             'type' => $request->input('call_type'),
@@ -123,6 +140,8 @@ class VideoCallController extends Controller
         return response()->json([
             'status' => 'ok',
             'call_id' => $callId,
+            'busy_participants' => $busyParticipants,
+            'offline_participants' => $offlineParticipants,
         ]);
     }
 
@@ -183,10 +202,11 @@ class VideoCallController extends Controller
         $participants = $this->getParticipantsList($chat->public_id, $callId);
         $metadata = $this->getCallMetadata($chat->public_id, $callId);
 
-        // HYBRID LOGIC: Force SFU for group chats OR if total participants >= 2.
+        // HYBRID LOGIC: Force SFU for group chats OR if total participants > 2.
         // This ensures group conversations start on Cloudflare immediately,
         // preventing Mesh-to-SFU transition edge cases for existing participants.
-        $mode = ($chat->type === 'group' || count($participants) >= 2) ? 'sfu' : 'mesh';
+        // 1:1 calls (where count is 2) should consistently use "mesh" mode.
+        $mode = ($chat->type === 'group' || count($participants) > 2) ? 'sfu' : 'mesh';
 
         return response()->json([
             'status' => 'ok',
@@ -480,7 +500,7 @@ class VideoCallController extends Controller
 
         $request->validate([
             'call_id' => 'required|string|regex:/^[0-9A-Z]{26}$/|max:26',
-            'reason' => 'sometimes|in:hangup,declined,timeout,failed',
+            'reason' => 'sometimes|in:hangup,declined,timeout,failed,no_answer,busy',
         ]);
 
         $user = Auth::user();
@@ -488,15 +508,11 @@ class VideoCallController extends Controller
         $reason = $request->input('reason', 'hangup');
 
         // Sec 2: Verify user is actually a participant
+        // Allow no_answer/busy reasons if they are a chat member but haven't "joined" yet
         $participants = $this->getParticipantsList($chat->public_id, $callId);
         $isInCall = collect($participants)->contains('public_id', $user->public_id);
         
-        if (!$isInCall) {
-            // Check if they are the initiator using metadata, maybe? 
-            // Or just allow them to "leave" even if not in list (idempotent)?
-            // The risk is a random user killing the call.
-            // If they are not in the list, they can't "end" it for everyone anyway (isLastPerson check).
-            // But they shouldn't trigger "CallParticipantLeft" if they weren't there.
+        if (!$isInCall && !in_array($reason, ['no_answer', 'busy'])) {
             abort(403, 'You are not in this call.');
         }
 
@@ -524,11 +540,22 @@ class VideoCallController extends Controller
                  $duration = now()->timestamp - $metadata['started_at'];
              }
 
-             // Log event
-             $this->logCallEvent($chat, $callId, 'ended', [
+             // Determine event type for logging
+             $event = 'ended';
+             $logData = [
                  'duration' => $duration,
                  'user_name' => $user->name,
-             ]);
+             ];
+
+             if ($reason === 'no_answer' || $reason === 'timeout') {
+                 $event = 'missed';
+                 $logData['caller_name'] = User::where('public_id', $metadata['initiator_id'] ?? '')->first()?->name ?? 'Unknown';
+                 $logData['type'] = $metadata['type'] ?? 'video';
+                 $logData['chat_id'] = $chat->public_id;
+             }
+
+             // Log event
+             $this->logCallEvent($chat, $callId, $event, $logData);
 
              // Broadcast end
              event(new CallEnded($chat, $user->public_id, $callId, $reason));

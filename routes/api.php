@@ -952,6 +952,12 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
         Route::get('/flagged', [\App\Http\Controllers\Api\Chat\AdminChatController::class, 'storedFlaggedChats']);
         Route::post('/{chat}/restore', [\App\Http\Controllers\Api\Chat\AdminChatController::class, 'restore']);
     });
+
+    // Security Analytics
+    Route::middleware('permission:security.view')->prefix('admin/security')->group(function () {
+        Route::get('/analytics', [\App\Http\Controllers\Api\Admin\SecurityAnalyticsController::class, 'dashboard']);
+    });
+
     // Link Unfurling
     Route::post('/link/unfurl', [\App\Http\Controllers\Api\LinkUnfurlController::class, 'unfurl']);
 
