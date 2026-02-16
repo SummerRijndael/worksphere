@@ -238,7 +238,9 @@ class AnalyticsService
                 ->filter(function ($source) {
                     $appHost = parse_url(config('app.url'), PHP_URL_HOST);
 
-                    return $source['source'] !== $appHost && $source['source'] !== 'localhost';
+                    return $source['source'] !== $appHost 
+                        && $source['source'] !== 'localhost' 
+                        && $source['source'] !== '127.0.0.1';
                 })
                 ->values()
                 ->toArray();
@@ -393,7 +395,7 @@ class AnalyticsService
     }
 
 
-    private function calculateChange($current, $prev, $inverse = false): string
+    private function calculateChange($current, $prev): string
     {
         if ($prev == 0) {
             return $current > 0 ? '+100%' : '0%';

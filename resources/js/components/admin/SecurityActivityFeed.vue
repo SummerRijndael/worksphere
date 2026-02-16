@@ -48,16 +48,20 @@ const getActionIcon = (action) => {
     return ExclamationCircleIcon;
 };
 
-const getActionColor = (severity, action) => {
+const getActionColor = (level, action) => {
     const a = action.toLowerCase();
-    if (a.includes('fail') || severity === 'critical') return "text-red-500 bg-red-500/10 border-red-500/20";
-    if (a.includes('warn') || severity === 'warning') return "text-orange-500 bg-orange-500/10 border-orange-500/20";
-    if (a.includes('login') || a.includes('logout')) return "text-blue-500 bg-blue-500/10 border-blue-500/20";
+    const l = (level || '').toLowerCase();
+    
+    if (a.includes('fail') || l === 'high' || l === 'critical') return "text-red-500 bg-red-500/10 border-red-500/20";
+    if (a.includes('warn') || l === 'medium' || l === 'warning') return "text-orange-500 bg-orange-500/10 border-orange-500/20";
+    if (a.includes('login') || a.includes('logout') || l === 'info') return "text-blue-500 bg-blue-500/10 border-blue-500/20";
     return "text-indigo-500 bg-indigo-500/10 border-indigo-500/20";
 };
 
 const formatAction = (action) => {
-    return action.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    // Firewall logs use 'middleware' column usually, but sometimes action is implied
+    // If action is not present, use middleware name or level
+    return (action || 'Security Event').replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 };
 </script>
 
@@ -83,19 +87,19 @@ const formatAction = (action) => {
         >
             <!-- Left accent border on hover -->
             <div class="absolute left-0 top-2 bottom-2 w-1 rounded-r-full opacity-0 group-hover:opacity-100 transition-opacity duration-200" 
-                 :class="log.severity === 'critical' ? 'bg-red-500' : 'bg-[var(--interactive-primary)]'"></div>
+                 :class="(log.level === 'high' || log.level === 'critical') ? 'bg-red-500' : 'bg-[var(--interactive-primary)]'"></div>
 
             <div
                 class="flex items-center justify-center p-2.5 rounded-xl shrink-0 border"
-                :class="getActionColor(log.severity, log.action)"
+                :class="getActionColor(log.level, log.middleware || log.action || 'unknown')"
             >
-                <component :is="getActionIcon(log.action)" class="w-5 h-5" />
+                <component :is="getActionIcon(log.middleware || log.action || 'unknown')" class="w-5 h-5" />
             </div>
 
             <div class="flex-1 min-w-0 pt-0.5">
                 <div class="flex items-center justify-between gap-2 mb-1">
                     <h4 class="text-sm font-bold text-[var(--text-primary)] truncate">
-                        {{ formatAction(log.action) }}
+                        {{ formatAction(log.middleware || log.action) }}
                     </h4>
                     <span class="text-[11px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider whitespace-nowrap">
                         {{ formatRelativeTime(log.created_at) }}
@@ -111,7 +115,7 @@ const formatAction = (action) => {
                         <span class="w-1 h-1 rounded-full bg-[var(--border-default)]"></span>
                         <span class="text-[var(--text-tertiary)] font-mono flex items-center gap-1">
                             <GlobeAltIcon class="w-3.5 h-3.5 opacity-70" />
-                            {{ log.ip_address || "N/A" }}
+                            {{ log.ip || "N/A" }}
                         </span>
                     </div>
                     

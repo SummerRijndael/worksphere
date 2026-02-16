@@ -800,8 +800,10 @@ class AuthController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Social registration failed: ' . $e->getMessage());
+            
             return response()->json([
-                'message' => 'Registration failed: ' . $e->getMessage(),
+                'message' => 'Registration failed. Please try again or contact support.',
             ], 500);
         }
     }

@@ -54,6 +54,7 @@
         "leaflet.heat": "^0.2.0",
         "lodash": "^4.17.21",
         "lucide-vue-next": "^0.468.0",
+        "markdown-it": "^14.1.1",
         "nprogress": "^0.2.0",
         "pinia": "^2.3.0",
         "pinia-plugin-persistedstate": "^3.2.3",

@@ -10,6 +10,7 @@
     "license": "Apache-2.0",
     "require": {
         "php": "^8.2",
+        "akaunting/laravel-firewall": "^2.3",
         "barryvdh/laravel-dompdf": "^3.1",
         "geoip2/geoip2": "^3.3",
         "google/apiclient": "^2.19",

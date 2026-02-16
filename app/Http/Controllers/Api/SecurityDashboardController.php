@@ -2,16 +2,13 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Enums\AuditAction;
-use App\Enums\AuditCategory;
 use App\Http\Controllers\Controller;
-use App\Models\AuditLog;
-use App\Models\BlockedIp;
-use App\Models\SuspiciousActivity;
 use App\Models\User;
-use App\Models\WhitelistedIp;
+use App\Models\FirewallIp;
+use Akaunting\Firewall\Models\Log as FirewallLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Akaunting\Firewall\Facades\Firewall;
 
 class SecurityDashboardController extends Controller
 {
@@ -20,26 +17,15 @@ class SecurityDashboardController extends Controller
      */
     public function stats()
     {
-        $this->authorize('viewAny', BlockedIp::class); // Ensure user has permission (e.g., admin)
+        $this->authorize('viewAny', FirewallIp::class);
 
-        $blockedIpsCount = BlockedIp::whereNull('expires_at')
-            ->orWhere('expires_at', '>', now())
-            ->count();
+        $blockedIpsCount = FirewallIp::where('blocked', 1)->count();
+        $whitelistedIpsCount = FirewallIp::where('blocked', 0)->count();
 
         $bannedUsersCount = User::where('status', 'banned')->count();
         $suspendedUsersCount = User::where('status', 'suspended')->count();
-        $whitelistedIpsCount = WhitelistedIp::count();
 
-        // Count security incidents today
-        $incidentsToday = AuditLog::whereDate('created_at', today())
-            ->whereIn('action', [
-                AuditAction::LoginFailed,
-                AuditAction::RateLimitExceeded,
-                AuditAction::AccountSuspended,
-                AuditAction::AccountBanned,
-                AuditAction::ForceDeleted,
-            ])
-            ->count();
+        $incidentsToday = FirewallLog::whereDate('created_at', today())->count();
 
         return response()->json([
             'blocked_ips' => $blockedIpsCount,
@@ -55,18 +41,11 @@ class SecurityDashboardController extends Controller
      */
     public function activity(Request $request)
     {
-        $this->authorize('viewAny', BlockedIp::class);
+        $this->authorize('viewAny', FirewallIp::class);
 
         $limit = $request->integer('limit', 20);
 
-        $logs = AuditLog::with(['user'])
-            ->whereIn('category', [AuditCategory::Security, AuditCategory::Authentication])
-            ->orWhereIn('action', [
-                AuditAction::LoginFailed,
-                AuditAction::RateLimitExceeded,
-                AuditAction::AccountSuspended,
-                AuditAction::AccountBanned,
-            ])
+        $logs = FirewallLog::with('user')
             ->latest()
             ->paginate($limit);
 
@@ -78,9 +57,10 @@ class SecurityDashboardController extends Controller
      */
     public function blockedIps(Request $request)
     {
-        $this->authorize('viewAny', BlockedIp::class);
+        $this->authorize('viewAny', FirewallIp::class);
 
-        $ips = BlockedIp::with('blockedBy')
+        $ips = FirewallIp::where('blocked', 1)
+            ->with('user') // user who blocked it
             ->latest()
             ->paginate($request->integer('per_page', 20));
 
@@ -92,10 +72,10 @@ class SecurityDashboardController extends Controller
      */
     public function blockIp(Request $request)
     {
-        $this->authorize('create', BlockedIp::class);
+        $this->authorize('create', FirewallIp::class);
 
         $validated = $request->validate([
-            'ip_address' => 'required|ip|unique:blocked_ips,ip_address',
+            'ip_address' => 'required|ip',
             'reason' => 'nullable|string|max:255',
             'expires_at' => 'nullable|date|after:now',
         ]);
@@ -108,11 +88,17 @@ class SecurityDashboardController extends Controller
             ], 422);
         }
 
-        $blockedIp = BlockedIp::create([
-            'ip_address' => $validated['ip_address'],
+        if (FirewallIp::where('ip', $validated['ip_address'])->where('blocked', 1)->exists()) {
+             return response()->json(['message' => 'IP already blocked.'], 422);
+        }
+
+        // Use standard create to include extra fields
+        $blockedIp = FirewallIp::create([
+            'ip' => $validated['ip_address'],
+            'blocked' => 1,
             'reason' => $validated['reason'] ?? null,
+            'user_id' => $request->user()->id,
             'expires_at' => $validated['expires_at'] ?? null,
-            'blocked_by_user_id' => $request->user()->id,
         ]);
 
         return response()->json($blockedIp, 201);
@@ -121,11 +107,12 @@ class SecurityDashboardController extends Controller
     /**
      * Unblock an IP.
      */
-    public function unblockIp(BlockedIp $blockedIp)
+    public function unblockIp($id)
     {
-        $this->authorize('delete', $blockedIp);
+        $firewallIp = FirewallIp::findOrFail($id);
+        $this->authorize('delete', $firewallIp);
 
-        $blockedIp->delete();
+        $firewallIp->delete();
 
         return response()->json(['message' => 'IP unblocked successfully']);
     }
@@ -135,7 +122,6 @@ class SecurityDashboardController extends Controller
      */
     public function bannedUsers(Request $request)
     {
-        // Assuming 'users.view' or similar permission check happens in Policy or Middleware
         $this->authorize('viewAny', User::class);
 
         $users = User::whereIn('status', ['banned', 'suspended'])
@@ -150,17 +136,10 @@ class SecurityDashboardController extends Controller
      */
     public function charts()
     {
-        $this->authorize('viewAny', BlockedIp::class);
+        $this->authorize('viewAny', FirewallIp::class);
 
-        // Security Incidents Trend (Last 14 days)
         $days = 14;
-        $trendData = AuditLog::where('created_at', '>=', now()->subDays($days))
-            ->whereIn('action', [
-                AuditAction::LoginFailed,
-                AuditAction::RateLimitExceeded,
-                AuditAction::AccountSuspended,
-                AuditAction::AccountBanned,
-            ])
+        $trendData = FirewallLog::where('created_at', '>=', now()->subDays($days))
             ->select(DB::raw('DATE(created_at) as date'), DB::raw('count(*) as count'))
             ->groupBy('date')
             ->orderBy('date')
@@ -168,7 +147,6 @@ class SecurityDashboardController extends Controller
             ->pluck('count', 'date')
             ->toArray();
 
-        // Fill missing days with 0
         $trend = [];
         for ($i = $days; $i >= 0; $i--) {
             $date = now()->subDays($i)->format('Y-m-d');
@@ -179,20 +157,13 @@ class SecurityDashboardController extends Controller
             ];
         }
 
-        // Incident Distribution (By Action)
-        $distributionData = AuditLog::whereIn('action', [
-            AuditAction::LoginFailed,
-            AuditAction::RateLimitExceeded,
-            AuditAction::AccountSuspended,
-            AuditAction::AccountBanned,
-        ])
-            ->select('action', DB::raw('count(*) as count'))
-            ->groupBy('action')
+        $distributionData = FirewallLog::select('middleware', DB::raw('count(*) as count'))
+            ->groupBy('middleware')
             ->get();
 
         $distribution = $distributionData->map(function ($item) {
             return [
-                'label' => $item->action->label(),
+                'label' => ucfirst($item->middleware),
                 'count' => $item->count,
             ];
         });
@@ -208,23 +179,31 @@ class SecurityDashboardController extends Controller
      */
     public function mapData()
     {
-        $this->authorize('viewAny', BlockedIp::class);
+        $this->authorize('viewAny', FirewallIp::class);
 
-        $activities = SuspiciousActivity::whereNotNull('latitude')
-            ->whereNotNull('longitude')
-            ->select('latitude', 'longitude', 'ip_address', 'country_name', 'city', 'count', 'type')
+        $activities = FirewallLog::select('ip', DB::raw('count(*) as count'))
+            ->groupBy('ip')
+            ->orderByDesc('count')
+            ->limit(100)
             ->get()
             ->map(function ($item) {
-                return [
-                    'lat' => (float) $item->latitude,
-                    'lng' => (float) $item->longitude,
-                    'ip' => $item->ip_address,
-                    'location' => "{$item->city}, {$item->country_name}",
-                    'intensity' => min(1, $item->count / 10), // Normalized intensity for heatmap
-                    'count' => $item->count,
-                    'type' => $item->type,
-                ];
-            });
+                try {
+                    $geo = geoip($item->ip);
+                    return [
+                        'lat' => (float) $geo->lat,
+                        'lng' => (float) $geo->lon,
+                        'ip' => $item->ip,
+                        'location' => "{$geo->city}, {$geo->country}",
+                        'intensity' => min(1, $item->count / 10),
+                        'count' => $item->count,
+                        'type' => 'Firewall Event',
+                    ];
+                } catch (\Exception $e) {
+                    return null;
+                }
+            })
+            ->filter()
+            ->values();
 
         return response()->json($activities);
     }
@@ -234,9 +213,10 @@ class SecurityDashboardController extends Controller
      */
     public function whitelistedIps(Request $request)
     {
-        $this->authorize('viewAny', BlockedIp::class);
+        $this->authorize('viewAny', FirewallIp::class);
 
-        $ips = WhitelistedIp::with('creator')
+        $ips = FirewallIp::where('blocked', 0)
+            ->with('user') // added by
             ->latest()
             ->paginate($request->integer('per_page', 20));
 
@@ -248,17 +228,22 @@ class SecurityDashboardController extends Controller
      */
     public function whitelistIp(Request $request)
     {
-        $this->authorize('create', BlockedIp::class);
+        $this->authorize('create', FirewallIp::class);
 
         $validated = $request->validate([
-            'ip_address' => 'required|ip|unique:whitelisted_ips,ip_address',
+            'ip_address' => 'required|ip',
             'label' => 'nullable|string|max:100',
         ]);
 
-        $whitelisted = WhitelistedIp::create([
-            'ip_address' => $validated['ip_address'],
+        if (FirewallIp::where('ip', $validated['ip_address'])->where('blocked', 0)->exists()) {
+            return response()->json(['message' => 'IP already whitelisted.'], 422);
+        }
+
+        $whitelisted = FirewallIp::create([
+            'ip' => $validated['ip_address'],
+            'blocked' => 0,
             'label' => $validated['label'],
-            'added_by' => $request->user()?->id,
+            'user_id' => $request->user()?->id,
         ]);
 
         return response()->json([
@@ -270,11 +255,12 @@ class SecurityDashboardController extends Controller
     /**
      * Remove an IP from the whitelist.
      */
-    public function unwhitelistIp(WhitelistedIp $ip)
+    public function unwhitelistIp($id)
     {
-        $this->authorize('delete', BlockedIp::class);
+        $firewallIp = FirewallIp::findOrFail($id);
+        $this->authorize('delete', $firewallIp);
 
-        $ip->delete();
+        $firewallIp->delete();
 
         return response()->json([
             'message' => 'IP address removed from whitelist successfully',

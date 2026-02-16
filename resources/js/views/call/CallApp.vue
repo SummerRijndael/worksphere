@@ -255,6 +255,7 @@ const participants = ref<Participant[]>([]);
 const peers = new Map<string, Peer.Instance>();
 const iceServers = ref<RTCIceServer[]>([]);
 const processedSignals = new Set<string>(); // To prevent duplicate signal processing
+let turnRefreshInterval: ReturnType<typeof setInterval> | null = null;
 
 // SFU Transceiver Mapping (Robust identification even after SID/MID changes)
 const sfuTransceiverMap = new WeakMap<
@@ -706,6 +707,23 @@ async function joinCall() {
                 "[Call] ICE Servers configured:",
                 iceServers.value.length,
             );
+
+            // CF Issue 3: Refresh TURN credentials every 45 minutes (TTL = 1 hour)
+            turnRefreshInterval = setInterval(async () => {
+                try {
+                    const freshTurn = await videoCallService.getTurnCredentials(
+                        callData.value!.chatId,
+                    );
+                    iceServers.value = freshTurn.ice_servers;
+                    console.log('[Call] TURN credentials refreshed');
+                    // Trigger ICE restart if SFU connection is active
+                    if (sfuPc && sfuSessionId.value) {
+                        attemptSfuIceRestart();
+                    }
+                } catch (e) {
+                    console.warn('[Call] Failed to refresh TURN credentials:', e);
+                }
+            }, 45 * 60 * 1000);
         } catch (e) {
             console.warn(
                 "[Call] Failed to fetch TURN credentials, using defaults",
@@ -1250,6 +1268,9 @@ async function pullSFURemoteScreen(
                         });
                     }
 
+                    // CF Issue 1: Flush any buffered tracks now that we have MID mappings
+                    flushPendingTracks();
+
                     const answer = await sfuPc!.createAnswer();
                     await sfuPc!.setLocalDescription(answer);
                     await videoCallService.sfuSessionRenegotiate(
@@ -1436,12 +1457,24 @@ function handleParticipantLeft(event: any) {
     });
 
     stopAudioAnalysis(publicId);
+
+    // Bug 4: Auto-end if we're the only one left
+    const nonSelfParticipants = participants.value.filter(p => !p.isSelf);
+    if (nonSelfParticipants.length === 0 && callState.value === 'connected') {
+        console.log('[Call] Everyone left, auto-ending call');
+        endCall('hangup');
+    }
 }
 
 function handleCallEndedEvent(event: any) {
-    // This is the global "CallEnded" (force close for everyone) or strict 1:1 end
-    // For hybrid group calls, we might not use this much, relying on ParticipantLeft
-    console.log("[Call] CallEnded event received");
+    // Bug 3: Skip if we triggered the end (our own hangup already handles cleanup)
+    const selfId = callData.value?.selfPublicId?.toLowerCase();
+    if (event.ender_public_id?.toLowerCase() === selfId) {
+        console.log('[Call] Ignoring CallEnded from self');
+        return;
+    }
+
+    console.log("[Call] CallEnded event received from another participant");
     callState.value = "ended";
     postToParent({ type: "state", state: "ended", reason: event.reason });
     cleanup();
@@ -1799,23 +1832,28 @@ async function joinSFU(stream: MediaStream) {
                 (t) => t.trackName === "video",
             )?.mid;
 
+            // Bug 5: Send sfu-media-ready to each existing participant (targeted)
+            const otherParticipants = participants.value.filter(p => !p.isSelf);
             console.log(
-                `[SFU] Signaling sfu-media-ready: audio=${audioMid}, video=${videoMid}`,
+                `[SFU] Signaling sfu-media-ready to ${otherParticipants.length} participant(s): audio=${audioMid}, video=${videoMid}`,
             );
 
-            videoCallService
-                .sendSignal(
-                    callData.value!.chatId,
-                    callData.value!.callId,
-                    "signal",
-                    {
-                        type: "sfu-media-ready",
-                        sessionId: sfuSessionId.value,
-                        audioMid,
-                        videoMid,
-                    } as any,
-                )
-                .catch(() => {});
+            for (const participant of otherParticipants) {
+                videoCallService
+                    .sendSignal(
+                        callData.value!.chatId,
+                        callData.value!.callId,
+                        "signal",
+                        {
+                            type: "sfu-media-ready",
+                            sessionId: sfuSessionId.value,
+                            audioMid,
+                            videoMid,
+                        } as any,
+                        participant.publicId,
+                    )
+                    .catch(() => {});
+            }
         }
 
         // 4. Handle remote tracks (Subscribing)
@@ -1875,19 +1913,41 @@ async function joinSFU(stream: MediaStream) {
                          startAudioAnalysis(participantId, stream);
                     }
                 } else {
+                    // CF Issue 1: Buffer unresolved track events for later flush
                     console.warn(
-                        `[SFU] Could not find participant for mid ${mid}`,
+                        `[SFU] Buffering unresolved track (mid: ${mid}) — will flush when MID map is populated`,
                     );
-                    trace("TRACK", "FAILED: Unknown MID", {
-                        mid,
-                        map: Object.fromEntries(midToParticipantMap),
-                    });
+                    pendingTrackEvents.push({ track, mid: mid!, transceiver: event.transceiver, streams: event.streams });
                 }
             };
 
             track.onunmute = handleTrackActive;
             if (!track.muted) {
                 handleTrackActive();
+            }
+        };
+
+        // CF Issue 2: ICE restart handler for SFU connection recovery
+        sfuPc.oniceconnectionstatechange = () => {
+            const state = sfuPc?.iceConnectionState;
+            console.log(`[SFU] ICE connection state: ${state}`);
+
+            if (state === 'connected' || state === 'completed') {
+                sfuWasConnected = true;
+                if (sfuIceRestartTimer) {
+                    clearTimeout(sfuIceRestartTimer);
+                    sfuIceRestartTimer = null;
+                }
+            } else if (state === 'disconnected' && sfuWasConnected) {
+                // Only restart if we were previously stable — disconnected during
+                // initial negotiation is expected and self-resolves
+                sfuIceRestartTimer = setTimeout(() => {
+                    console.warn('[SFU] ICE disconnected for 5s, attempting restart');
+                    attemptSfuIceRestart();
+                }, 5000);
+            } else if (state === 'failed') {
+                console.error('[SFU] ICE failed, attempting immediate restart');
+                attemptSfuIceRestart();
             }
         };
 
@@ -2037,6 +2097,85 @@ let sfuNegotiationQueue = Promise.resolve();
 const participantPullAttempts = new Map<string, number>();
 const screenPullAttempts = new Map<string, number>();
 const midToParticipantMap = new Map<string, string>();
+const pendingTrackEvents: { track: MediaStreamTrack; mid: string; transceiver: RTCRtpTransceiver; streams: readonly MediaStream[] }[] = [];
+let sfuIceRestartTimer: ReturnType<typeof setTimeout> | null = null;
+let sfuWasConnected = false; // Only restart ICE after connection was stable at least once
+
+/**
+ * CF Issue 1: Flush any buffered track events that arrived before MID mapping was ready.
+ */
+function flushPendingTracks() {
+    if (pendingTrackEvents.length === 0) return;
+    console.log(`[SFU] Flushing ${pendingTrackEvents.length} buffered track event(s)`);
+
+    // Process all buffered events; keep any still unresolved
+    const stillPending: typeof pendingTrackEvents[number][] = [];
+    for (const evt of pendingTrackEvents) {
+        let participantId = midToParticipantMap.get(evt.mid);
+
+        // Try transceiver fallback
+        if (!participantId) {
+            const assoc = sfuTransceiverMap.get(evt.transceiver);
+            if (assoc) {
+                participantId = assoc.trackName === 'screen'
+                    ? `${assoc.participantId}:screen`
+                    : assoc.participantId;
+            }
+        }
+
+        if (participantId) {
+            let stream = evt.streams[0];
+            if (!stream) {
+                stream = new MediaStream([evt.track]);
+            }
+            if (evt.track.kind === 'video' && participantId.endsWith(':screen')) {
+                store.addRemoteScreenStream(participantId.replace(':screen', ''), stream);
+            } else {
+                store.addRemoteStream(participantId, stream);
+                startAudioAnalysis(participantId, stream);
+            }
+            console.log(`[SFU] Flushed buffered track (mid: ${evt.mid}) → ${participantId}`);
+        } else {
+            stillPending.push(evt);
+        }
+    }
+    pendingTrackEvents.length = 0;
+    stillPending.forEach(e => pendingTrackEvents.push(e));
+    if (stillPending.length > 0) {
+        console.warn(`[SFU] ${stillPending.length} track(s) still unresolved after flush`);
+    }
+}
+
+/**
+ * CF Issue 2: Attempt ICE restart on the SFU peer connection.
+ */
+async function attemptSfuIceRestart() {
+    if (!sfuPc || !sfuSessionId.value) {
+        console.warn('[SFU] Cannot restart ICE: no active SFU session');
+        return;
+    }
+    try {
+        console.log('[SFU] Creating ICE restart offer');
+        const offer = await sfuPc.createOffer({ iceRestart: true });
+        await sfuPc.setLocalDescription(offer);
+
+        const res = await videoCallService.sfuSessionRenegotiate(
+            callData.value!.chatId,
+            sfuSessionId.value,
+            mungeSdp(offer.sdp!),
+            'offer',
+        );
+
+        if (res?.sessionDescription) {
+            await sfuPc.setRemoteDescription(
+                new RTCSessionDescription(res.sessionDescription),
+            );
+            console.log('[SFU] ICE restart completed successfully');
+        }
+    } catch (err) {
+        console.error('[SFU] ICE restart failed, may need full session reset:', err);
+    }
+}
 
 async function negotiateSession(
     localDescription: RTCSessionDescriptionInit | null,
@@ -2334,6 +2473,9 @@ async function pullParticipantTracks(
                         });
                     }
 
+                    // CF Issue 1: Flush any buffered tracks now that we have MID mappings
+                    flushPendingTracks();
+
                     // SERVER OFFER -> CLIENT ANSWER flow
                     console.log(
                         `[SFU] Processing Server Offer for tracks from ${participantPublicId}`,
@@ -2610,6 +2752,16 @@ function cleanup() {
         clearInterval(statsInterval);
         statsInterval = null;
     }
+    if (turnRefreshInterval) {
+        clearInterval(turnRefreshInterval);
+        turnRefreshInterval = null;
+    }
+    if (sfuIceRestartTimer) {
+        clearTimeout(sfuIceRestartTimer);
+        sfuIceRestartTimer = null;
+    }
+    pendingTrackEvents.length = 0;
+    sfuWasConnected = false;
 }
 
 // ============================================================================
@@ -2653,6 +2805,10 @@ async function initializeCall() {
         });
         if (callData.value.chatType === "group") {
             callMode.value = "sfu";
+        }
+        // Sec 4: Override selfPublicId from authenticated session (don't trust sessionStorage)
+        if (authStore.user?.public_id) {
+            callData.value.selfPublicId = authStore.user.public_id;
         }
         store.selfPublicId = callData.value.selfPublicId;
 

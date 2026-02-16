@@ -190,6 +190,15 @@ const routes: RouteRecordRaw[] = [
                     transition: "fade",
                 },
             },
+            {
+                path: "social/verify",
+                name: "social-verify",
+                component: () => import("@/views/auth/SocialVerifyView.vue"),
+                meta: {
+                    title: "Verify Link",
+                    transition: "fade",
+                },
+            },
         ],
     },
     {

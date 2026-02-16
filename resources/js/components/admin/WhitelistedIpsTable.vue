@@ -110,10 +110,10 @@ onMounted(() => {
                              </td>
                         </tr>
                         <tr v-for="ip in ips" :key="ip.id" class="hover:bg-[var(--surface-hover)] transition-colors duration-150">
-                            <td class="px-6 py-4 font-medium font-mono text-[var(--text-primary)] text-base">{{ ip.ip_address }}</td>
+                            <td class="px-6 py-4 font-medium font-mono text-[var(--text-primary)] text-base">{{ ip.ip }}</td>
                             <td class="px-6 py-4 text-[var(--text-secondary)]">{{ ip.label || '-' }}</td>
                             <td class="px-6 py-4 text-[var(--text-secondary)]">
-                                {{ ip.creator?.name || 'System' }}
+                                {{ ip.user?.name || 'System' }}
                             </td>
                             <td class="px-6 py-4 text-[var(--text-secondary)]">
                                 {{ formatDate(ip.created_at) }}

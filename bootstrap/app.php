@@ -37,11 +37,37 @@ return Application::configure(basePath: dirname(__DIR__))
             'audit' => AuditRequest::class,
             '2fa.enforce' => \App\Http\Middleware\EnforceTwoFactor::class,
             'demo' => \App\Http\Middleware\CheckDemoMode::class,
+            // Firewall Aliases
+            'firewall.agent' => \Akaunting\Firewall\Middleware\Agent::class,
+            'firewall.bot' => \Akaunting\Firewall\Middleware\Bot::class,
+            'firewall.geo' => \Akaunting\Firewall\Middleware\Geo::class,
+            'firewall.ip' => \Akaunting\Firewall\Middleware\Ip::class,
+            'firewall.lfi' => \Akaunting\Firewall\Middleware\Lfi::class,
+            'firewall.php' => \Akaunting\Firewall\Middleware\Php::class,
+            'firewall.referrer' => \Akaunting\Firewall\Middleware\Referrer::class,
+            'firewall.rfi' => \Akaunting\Firewall\Middleware\Rfi::class,
+            'firewall.session' => \Akaunting\Firewall\Middleware\Session::class,
+            'firewall.sqli' => \Akaunting\Firewall\Middleware\Sqli::class,
+            'firewall.swear' => \Akaunting\Firewall\Middleware\Swear::class,
+            'firewall.url' => \Akaunting\Firewall\Middleware\Url::class,
+            'firewall.whitelist' => \Akaunting\Firewall\Middleware\Whitelist::class,
+            'firewall.xss' => \Akaunting\Firewall\Middleware\Xss::class,
         ]);
 
         // Append middleware to web group
         $middleware->web(append: [
-            \App\Http\Middleware\CheckBlockedIp::class,
+            \Akaunting\Firewall\Middleware\Ip::class,
+            \Akaunting\Firewall\Middleware\Agent::class,
+            \Akaunting\Firewall\Middleware\Bot::class,
+            \Akaunting\Firewall\Middleware\Lfi::class,
+            \Akaunting\Firewall\Middleware\Php::class,
+            \Akaunting\Firewall\Middleware\Referrer::class,
+            \Akaunting\Firewall\Middleware\Rfi::class,
+            \Akaunting\Firewall\Middleware\Sqli::class,
+            // \Akaunting\Firewall\Middleware\Swear::class, // Optional
+            \Akaunting\Firewall\Middleware\Xss::class,
+            // \Akaunting\Firewall\Middleware\Geo::class, // Optional, can be heavy
+            
             CheckUserStatus::class,
             \App\Http\Middleware\SecurityHeaders::class,
             \App\Http\Middleware\SetUserTimezone::class,
@@ -51,7 +77,15 @@ return Application::configure(basePath: dirname(__DIR__))
         // API middleware configuration
         $middleware->api(prepend: [
             \App\Http\Middleware\SecurityHeaders::class,  // Must be first for all responses
-            \App\Http\Middleware\CheckBlockedIp::class,
+            \Akaunting\Firewall\Middleware\Ip::class,
+            \Akaunting\Firewall\Middleware\Agent::class,
+            \Akaunting\Firewall\Middleware\Bot::class,
+            \Akaunting\Firewall\Middleware\Lfi::class,
+            \Akaunting\Firewall\Middleware\Php::class,
+            \Akaunting\Firewall\Middleware\Referrer::class,
+            \Akaunting\Firewall\Middleware\Rfi::class,
+            \Akaunting\Firewall\Middleware\Sqli::class,
+            \Akaunting\Firewall\Middleware\Xss::class,
             \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
         ]);
 

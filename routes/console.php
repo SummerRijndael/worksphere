@@ -167,3 +167,10 @@ Schedule::job(new \App\Jobs\SendScheduledEmailsJob)
     ->name('send-scheduled-emails')
     ->withoutOverlapping()
     ->onOneServer();
+
+// Firewall: Escalate repeat offenders (runs before unblockip)
+Schedule::command('firewall:escalate')
+    ->everyMinute()
+    ->name('firewall-escalate')
+    ->withoutOverlapping()
+    ->onOneServer();
