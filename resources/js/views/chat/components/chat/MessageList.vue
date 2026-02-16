@@ -7,7 +7,6 @@ import { useVideoCallStore } from "@/stores/videocall";
 import { useVideoCall } from "@/composables/useVideoCall";
 import { useAuthStore } from "@/stores/auth";
 
-
 interface Props {
     messages: Message[];
     activeChat: Chat | null;
@@ -32,14 +31,22 @@ const videoCallStore = useVideoCallStore();
 const { startCall, joinActiveCall } = useVideoCall();
 const authStore = useAuthStore();
 
-const handleCallback = (data: { chatId: string; callType: 'video' | 'audio' }) => {
+const handleCallback = (data: {
+    chatId: string;
+    callType: "video" | "audio";
+}) => {
     // Find the participant info if it's a DM, or use group placeholder
     const chat = props.activeChat;
     if (!chat) return;
 
-    const remoteUser = chat.type === 'dm' 
-        ? { publicId: chat.participants[0]?.public_id, name: chat.name, avatar: chat.avatar_url }
-        : { publicId: 'group', name: 'Group', avatar: null };
+    const remoteUser =
+        chat.type === "dm"
+            ? {
+                  publicId: chat.participants[0]?.public_id,
+                  name: chat.name,
+                  avatar: chat.avatar_url,
+              }
+            : { publicId: "group", name: "Group", avatar: null };
 
     startCall(data.chatId, data.callType, remoteUser);
 };
@@ -114,7 +121,7 @@ watch(
             isCloaked.value = false;
         }
     },
-    { immediate: true }
+    { immediate: true },
 );
 
 // Watch messages length to scroll to bottom if we are already near bottom
@@ -151,7 +158,7 @@ watch(
                 behavior: "smooth",
             });
         }
-    }
+    },
 );
 
 // Watch typing indicator
@@ -171,7 +178,7 @@ watch(
                 });
             }
         }
-    }
+    },
 );
 // ... (keep rest)
 
@@ -201,7 +208,7 @@ const handleScroll = (event: Event) => {
             console.log(
                 `[Scroll] Top: ${Math.round(distanceFromTop)}, Height: ${
                     target.scrollHeight
-                }, Client: ${target.clientHeight}, Trigger limit: 20`
+                }, Client: ${target.clientHeight}, Trigger limit: 20`,
             );
         }
     }
@@ -215,21 +222,24 @@ const jumpToLatest = () => {
 
 // Active Call Logic
 const activeCallInvite = computed(() => {
-    if (!props.activeChat || props.activeChat.type !== 'group') return null;
-    
+    if (!props.activeChat || props.activeChat.type !== "group") return null;
+
     // Check if there is an active call for this chat
-    const activeCall = videoCallStore.activeCalls.get(props.activeChat.public_id);
+    const activeCall = videoCallStore.activeCalls.get(
+        props.activeChat.public_id,
+    );
     if (!activeCall) return null;
 
     // Check if we are already in it
-    const isInCall = videoCallStore.currentCall?.chatId === props.activeChat.public_id;
+    const isInCall =
+        videoCallStore.currentCall?.chatId === props.activeChat.public_id;
     if (isInCall) return null;
 
     return {
         callId: activeCall.callId,
         callType: activeCall.callType,
         chatId: props.activeChat.public_id,
-        callerName: "Group" // Ideally we get this from the call object if available
+        callerName: "Group", // Ideally we get this from the call object if available
     };
 });
 
@@ -291,23 +301,33 @@ function joinCall(invite: any) {
                         @jump-to-reply="handleJumpToMessage"
                         @retry="emit('retry', msg)"
                         @callback="handleCallback"
+                        @join-call="joinCall"
                     />
                 </template>
             </div>
 
-             <!-- System Message: Active Call Invite -->
-            <div v-if="activeCallInvite" class="flex justify-center py-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div class="bg-(--surface-elevated) border border-(--border-default) rounded-xl p-4 shadow-lg flex items-center gap-4 max-w-sm w-full mx-4">
-                    <div class="p-3 bg-green-500/10 text-green-500 rounded-full shrink-0">
-                         <Icon name="Video" size="24" />
+            <!-- System Message: Active Call Invite -->
+            <div
+                v-if="activeCallInvite"
+                class="flex justify-center py-4 animate-in fade-in slide-in-from-bottom-4 duration-500"
+            >
+                <div
+                    class="bg-(--surface-elevated) border border-(--border-default) rounded-xl p-4 shadow-lg flex items-center gap-4 max-w-sm w-full mx-4"
+                >
+                    <div
+                        class="p-3 bg-green-500/10 text-green-500 rounded-full shrink-0"
+                    >
+                        <Icon name="Video" size="24" />
                     </div>
                     <div class="flex-1 min-w-0">
-                        <div class="font-medium text-(--text-primary)">Video Call Started</div>
+                        <div class="font-medium text-(--text-primary)">
+                            Video Call Started
+                        </div>
                         <div class="text-xs text-(--text-secondary) truncate">
                             {{ activeCallInvite.callerName }} started a call
                         </div>
                     </div>
-                    <button 
+                    <button
                         @click="joinCall(activeCallInvite)"
                         class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors shadow-sm whitespace-nowrap"
                     >

@@ -33,35 +33,49 @@ const avatar = useAvatar();
 const toast = useToast();
 
 // Video call
-import { useVideoCall } from '@/composables/useVideoCall';
-import { useVideoCallStore } from '@/stores/videocall';
+import { useVideoCall } from "@/composables/useVideoCall";
+import { useVideoCallStore } from "@/stores/videocall";
 const videoCall = useVideoCall();
 const videoCallStore = useVideoCallStore();
 
-function handleStartCall(callType: 'video' | 'audio') {
+function handleStartCall(callType: "video" | "audio") {
     const chat = props.window.chat;
-    const other = chat.type === 'dm' 
-        ? chat.participants.find((p: any) => p.public_id !== currentUserPublicId.value)
-        : { public_id: 'group', name: chat.name || 'Group Chat', avatar: null };
+    const other =
+        chat.type === "dm"
+            ? chat.participants.find(
+                  (p: any) => p.public_id !== currentUserPublicId.value,
+              )
+            : {
+                  public_id: "group",
+                  name: chat.name || "Group Chat",
+                  avatar: null,
+              };
 
-    if (!other && chat.type === 'dm') return;
+    if (!other && chat.type === "dm") return;
 
     videoCall.startCall(chat.public_id, callType, {
-        publicId: (other as any).public_id || 'group',
-        name: (other as any).name || 'Group',
+        publicId: (other as any).public_id || "group",
+        name: (other as any).name || "Group",
         avatar: (other as any).avatar || null,
     });
 }
 
-function handleCallback(data: { chatId: string; callType: 'video' | 'audio' }) {
+function handleCallback(data: { chatId: string; callType: "video" | "audio" }) {
     const chat = props.window.chat;
-    const other = chat.type === 'dm' 
-        ? chat.participants.find((p: any) => p.public_id !== currentUserPublicId.value)
-        : { public_id: 'group', name: chat.name || 'Group Chat', avatar: null };
+    const other =
+        chat.type === "dm"
+            ? chat.participants.find(
+                  (p: any) => p.public_id !== currentUserPublicId.value,
+              )
+            : {
+                  public_id: "group",
+                  name: chat.name || "Group Chat",
+                  avatar: null,
+              };
 
     videoCall.startCall(data.chatId, data.callType, {
-        publicId: (other as any).public_id || 'group',
-        name: (other as any).name || 'Group',
+        publicId: (other as any).public_id || "group",
+        name: (other as any).name || "Group",
         avatar: (other as any).avatar || null,
     });
 }
@@ -79,15 +93,15 @@ function joinCall() {
         videoCall.joinActiveCall(
             props.window.chatId,
             activeCall.value.callId,
-            activeCall.value.callType
+            activeCall.value.callType,
         );
     }
 }
 
 const activeCallInvite = computed(() => {
     const chat = props.window.chat;
-    if (!chat || chat.type !== 'group') return null;
-    
+    if (!chat || chat.type !== "group") return null;
+
     // Check if there is an active call for this chat
     const activeCall = videoCallStore.activeCalls.get(props.window.chatId);
     if (!activeCall) return null;
@@ -100,11 +114,9 @@ const activeCallInvite = computed(() => {
         callId: activeCall.callId,
         callType: activeCall.callType,
         chatId: props.window.chatId,
-        callerName: "Group" 
+        callerName: "Group",
     };
 });
-
-
 
 // Instance Identity for Debugging
 const instanceId = Math.random().toString(36).substring(7);
@@ -129,16 +141,20 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const emojiMountRef = ref<HTMLElement | null>(null);
 
-const { attach: attachMention } = useMention(textareaRef, computed(() => props.window.chat.public_id), {
-    onSelect: (item: any) => {
-        nextTick(() => {
-            if (textareaRef.value) {
-                messageInput.value = textareaRef.value.value;
-                textareaRef.value.focus();
-            }
-        });
-    }
-});
+const { attach: attachMention } = useMention(
+    textareaRef,
+    computed(() => props.window.chat.public_id),
+    {
+        onSelect: (item: any) => {
+            nextTick(() => {
+                if (textareaRef.value) {
+                    messageInput.value = textareaRef.value.value;
+                    textareaRef.value.focus();
+                }
+            });
+        },
+    },
+);
 const isSending = ref(false);
 const isLoadingMore = ref(false);
 const showScrollButton = ref(false);
@@ -186,7 +202,7 @@ const otherParticipantStatus = computed(() => {
     if (chat.type !== "dm") return null;
 
     const other = chat.participants.find(
-        (p) => p.public_id !== currentUserPublicId.value
+        (p) => p.public_id !== currentUserPublicId.value,
     );
     if (!other) return null;
 
@@ -209,9 +225,11 @@ const typingIndicator = computed(() => {
     const typerIds = chatStore.getTypingUsers(props.window.chatId);
     if (!typerIds || typerIds.length === 0) return null;
 
-    const names = typerIds.map(id => {
-        const p = props.window.chat.participants.find(user => user.public_id === id);
-        return p ? (p.name.split(' ')[0]) : 'Someone'; 
+    const names = typerIds.map((id) => {
+        const p = props.window.chat.participants.find(
+            (user) => user.public_id === id,
+        );
+        return p ? p.name.split(" ")[0] : "Someone";
     });
 
     if (names.length === 1) return `${names[0]} is typing...`;
@@ -227,16 +245,18 @@ watch(
             const lastMsg = messages.value[messages.value.length - 1];
             addDebugLog(
                 "MESSAGE",
-                `Received: ${lastMsg.id} from ${lastMsg.user_name}`
+                `Received: ${lastMsg.id} from ${lastMsg.user_name}`,
             );
         }
-    }
+    },
 );
 
 watch(typingIndicator, (newVal) => {
     if (newVal) {
         addDebugLog("TYPING", `Typing started: ${newVal}`);
-        console.log(`[MiniChat:${instanceId}] Typing started, scrolling to bottom`);
+        console.log(
+            `[MiniChat:${instanceId}] Typing started, scrolling to bottom`,
+        );
         nextTick(() => scrollToBottom());
     } else {
         addDebugLog("TYPING", "Typing stopped");
@@ -273,7 +293,7 @@ watch(
         await nextTick();
         scrollToBottom();
     },
-    { deep: true }
+    { deep: true },
 );
 
 function scrollToBottom() {
@@ -297,7 +317,7 @@ async function handleSend() {
                 props.window.chatId,
                 files,
                 content,
-                replyingTo.value?.id
+                replyingTo.value?.id,
             );
             pendingFiles.value.forEach((f) => {
                 if (f.url) URL.revokeObjectURL(f.url);
@@ -308,14 +328,14 @@ async function handleSend() {
             await chatStore.sendMessage(
                 props.window.chatId,
                 content,
-                replyingTo.value?.id
+                replyingTo.value?.id,
             );
         }
 
         replyingTo.value = null;
     } catch (error: any) {
-        console.error('Failed to send message:', error);
-        toast.error('Send Failed', error.message || 'Failed to send message');
+        console.error("Failed to send message:", error);
+        toast.error("Send Failed", error.message || "Failed to send message");
     } finally {
         isSending.value = false;
     }
@@ -323,7 +343,7 @@ async function handleSend() {
 
 async function sendGif(gif: any) {
     if (!props.window.chatId) return;
-    
+
     const metadata = {
         giphy: {
             id: gif.id,
@@ -331,20 +351,25 @@ async function sendGif(gif: any) {
             title: gif.title,
             width: gif.width,
             height: gif.height,
-            preview: gif.preview
-        }
+            preview: gif.preview,
+        },
     };
-    
+
     // Send empty content but with metadata
     // Close picker first
     showGiphy.value = false;
-    
+
     try {
-        await chatStore.sendMessage(props.window.chatId, '', replyingTo.value?.id, metadata);
+        await chatStore.sendMessage(
+            props.window.chatId,
+            "",
+            replyingTo.value?.id,
+            metadata,
+        );
         scrollToBottom();
     } catch (error: any) {
-        console.error('Failed to send GIF:', error);
-        toast.error('Send Failed', error.message || 'Failed to send GIF');
+        console.error("Failed to send GIF:", error);
+        toast.error("Send Failed", error.message || "Failed to send GIF");
     }
 }
 
@@ -431,7 +456,7 @@ const handleScroll = async (event: Event) => {
 
 const jumpToMessage = async (messageId: string) => {
     let el = messagesRef.value?.querySelector(
-        `[data-message-id="${messageId}"]`
+        `[data-message-id="${messageId}"]`,
     );
 
     if (el) {
@@ -445,7 +470,7 @@ const jumpToMessage = async (messageId: string) => {
     try {
         const result = await chatService.messagesAround(
             props.window.chatId,
-            messageId
+            messageId,
         );
 
         // Replace current messages with fetched context
@@ -455,7 +480,7 @@ const jumpToMessage = async (messageId: string) => {
 
         // Now find and scroll to target
         el = messagesRef.value?.querySelector(
-            `[data-message-id="${messageId}"]`
+            `[data-message-id="${messageId}"]`,
         );
         if (el) {
             highlightElement(el);
@@ -498,26 +523,38 @@ function handleFileSelect(e: Event) {
     const input = e.target as HTMLInputElement;
     if (input.files) {
         const newFiles = Array.from(input.files);
-        const currentTotalSize = pendingFiles.value.reduce((acc, f) => acc + f.size, 0);
-        
+        const currentTotalSize = pendingFiles.value.reduce(
+            (acc, f) => acc + f.size,
+            0,
+        );
+
         if (pendingFiles.value.length + newFiles.length > MAX_FILES) {
-             toast.error('Limit Exceeded', `You can only upload up to ${MAX_FILES} files at a time.`);
-             input.value = "";
-             return;
+            toast.error(
+                "Limit Exceeded",
+                `You can only upload up to ${MAX_FILES} files at a time.`,
+            );
+            input.value = "";
+            return;
         }
 
         let newBatchSize = 0;
-        newFiles.forEach(f => newBatchSize += f.size);
+        newFiles.forEach((f) => (newBatchSize += f.size));
 
         if (currentTotalSize + newBatchSize > MAX_TOTAL_SIZE) {
-            toast.error('Limit Exceeded', 'Total upload size cannot exceed 10MB.');
+            toast.error(
+                "Limit Exceeded",
+                "Total upload size cannot exceed 10MB.",
+            );
             input.value = "";
             return;
         }
 
         newFiles.forEach((file) => {
             if (file.size > MAX_FILE_SIZE) {
-                toast.error('File Too Large', `${file.name} exceeds the 5MB limit.`);
+                toast.error(
+                    "File Too Large",
+                    `${file.name} exceeds the 5MB limit.`,
+                );
                 return;
             }
             const isImage = file.type.startsWith("image/");
@@ -535,26 +572,38 @@ function handleFileSelect(e: Event) {
 
 function handlePaste(e: ClipboardEvent) {
     if (e.clipboardData && e.clipboardData.files.length > 0) {
-        e.preventDefault(); 
+        e.preventDefault();
         const newFiles = Array.from(e.clipboardData.files);
-        const currentTotalSize = pendingFiles.value.reduce((acc, f) => acc + f.size, 0);
+        const currentTotalSize = pendingFiles.value.reduce(
+            (acc, f) => acc + f.size,
+            0,
+        );
 
         if (pendingFiles.value.length + newFiles.length > MAX_FILES) {
-             toast.error('Limit Exceeded', `You can only upload up to ${MAX_FILES} files at a time.`);
-             return;
+            toast.error(
+                "Limit Exceeded",
+                `You can only upload up to ${MAX_FILES} files at a time.`,
+            );
+            return;
         }
 
         let newBatchSize = 0;
-        newFiles.forEach(f => newBatchSize += f.size);
+        newFiles.forEach((f) => (newBatchSize += f.size));
 
         if (currentTotalSize + newBatchSize > MAX_TOTAL_SIZE) {
-            toast.error('Limit Exceeded', 'Total upload size cannot exceed 10MB.');
+            toast.error(
+                "Limit Exceeded",
+                "Total upload size cannot exceed 10MB.",
+            );
             return;
         }
 
         newFiles.forEach((file) => {
             if (file.size > MAX_FILE_SIZE) {
-                toast.error('File Too Large', `${file.name} exceeds the 5MB limit.`);
+                toast.error(
+                    "File Too Large",
+                    `${file.name} exceeds the 5MB limit.`,
+                );
                 return;
             }
             const isImage = file.type.startsWith("image/");
@@ -652,7 +701,7 @@ onUnmounted(() => {
     // Unsubscribe using shared realtime service
     chatRealtime.unsubscribeFromChat(
         props.window.chatId,
-        props.window.chat.type
+        props.window.chat.type,
     );
 });
 
@@ -700,11 +749,11 @@ function handleDragMove(e: MouseEvent) {
 
     const newRight = Math.max(
         20,
-        Math.min(window.innerWidth - 360, startPos.value.right + deltaX)
+        Math.min(window.innerWidth - 360, startPos.value.right + deltaX),
     );
     const newBottom = Math.max(
         20,
-        Math.min(window.innerHeight - 480, startPos.value.bottom + deltaY)
+        Math.min(window.innerHeight - 480, startPos.value.bottom + deltaY),
     );
 
     miniChatStore.updateWindowPosition(props.window.chatId, {
@@ -719,10 +768,9 @@ function handleDragEnd() {
     document.removeEventListener("mouseup", handleDragEnd);
 }
 function isOwnMessage(msg: Message): boolean {
-    if (msg.type === 'system') return false;
+    if (msg.type === "system") return false;
     return msg.user_public_id === currentUserPublicId.value;
 }
-
 </script>
 
 <template>
@@ -759,22 +807,46 @@ function isOwnMessage(msg: Message): boolean {
             <!-- Connection Status -->
             <div class="border-b border-gray-800 pb-2 mb-1">
                 <div class="flex justify-between mb-1">
-                    <span>STATUS: <span :class="chatRealtime.isConnected.value ? 'text-green-400' : 'text-red-400'">{{ chatRealtime.connectionState.value }}</span></span>
+                    <span
+                        >STATUS:
+                        <span
+                            :class="
+                                chatRealtime.isConnected.value
+                                    ? 'text-green-400'
+                                    : 'text-red-400'
+                            "
+                            >{{ chatRealtime.connectionState.value }}</span
+                        ></span
+                    >
                     <span>UID: {{ currentUserPublicId.substring(0, 8) }}</span>
                 </div>
                 <div class="flex justify-between mb-1 text-[9px] text-gray-500">
-                     <span>INST: {{ instanceId }}</span>
-                     <span>VIS: {{ !!typingIndicator }}</span>
+                    <span>INST: {{ instanceId }}</span>
+                    <span>VIS: {{ !!typingIndicator }}</span>
                 </div>
                 <div class="text-gray-500">
-                    <div class="mb-1">Subscriptions ({{ chatRealtime.subscribedChannels.value.size }}):</div>
-                    <div class="break-all text-[9px] leading-tight text-gray-600">
-                        {{ Array.from(chatRealtime.subscribedChannels.value).join(', ') }}
+                    <div class="mb-1">
+                        Subscriptions ({{
+                            chatRealtime.subscribedChannels.value.size
+                        }}):
+                    </div>
+                    <div
+                        class="break-all text-[9px] leading-tight text-gray-600"
+                    >
+                        {{
+                            Array.from(
+                                chatRealtime.subscribedChannels.value,
+                            ).join(", ")
+                        }}
                     </div>
                 </div>
             </div>
 
-            <div v-for="(log, i) in debugLogs" :key="i" class="break-all border-b border-gray-900/50 pb-0.5 mb-0.5">
+            <div
+                v-for="(log, i) in debugLogs"
+                :key="i"
+                class="break-all border-b border-gray-900/50 pb-0.5 mb-0.5"
+            >
                 <span class="text-gray-500">[{{ log.time }}]</span>
                 <span
                     class="font-bold"
@@ -809,7 +881,6 @@ function isOwnMessage(msg: Message): boolean {
                 <span class="minichat-window-title">{{ chatTitle }}</span>
             </div>
             <div class="minichat-window-actions">
-
                 <!-- Call buttons -->
                 <template v-if="true">
                     <button
@@ -873,30 +944,49 @@ function isOwnMessage(msg: Message): boolean {
                     :data-message-id="msg.id"
                 >
                     <!-- Message Bubble (Handles both User and System messages) -->
-                    <MiniChatMessageBubble 
-                        :message="msg" 
+                    <MiniChatMessageBubble
+                        :message="msg"
                         :is-mine="isOwnMessage(msg)"
                         @reply="handleReply"
-                        @jump="jumpToMessage" 
+                        @jump="jumpToMessage"
                         @retry="handleRetry"
                         @callback="handleCallback"
+                        @join-call="
+                            (data) =>
+                                videoCall.joinActiveCall(
+                                    data.chatId,
+                                    data.callId,
+                                    data.callType,
+                                )
+                        "
                     />
                 </div>
             </TransitionGroup>
 
-             <!-- System Message: Active Call Invite -->
-            <div v-if="activeCallInvite" class="flex justify-center py-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div class="bg-(--surface-elevated) border border-(--border-default) rounded-xl p-4 shadow-lg flex items-center gap-3 max-w-[90%] w-full mx-auto">
-                    <div class="p-2 bg-green-500/10 text-green-500 rounded-full shrink-0">
-                         <Icon name="Video" size="20" />
+            <!-- System Message: Active Call Invite -->
+            <div
+                v-if="activeCallInvite"
+                class="flex justify-center py-4 animate-in fade-in slide-in-from-bottom-4 duration-500"
+            >
+                <div
+                    class="bg-(--surface-elevated) border border-(--border-default) rounded-xl p-4 shadow-lg flex items-center gap-3 max-w-[90%] w-full mx-auto"
+                >
+                    <div
+                        class="p-2 bg-green-500/10 text-green-500 rounded-full shrink-0"
+                    >
+                        <Icon name="Video" size="20" />
                     </div>
                     <div class="flex-1 min-w-0">
-                        <div class="font-medium text-xs text-(--text-primary)">Video Call Started</div>
-                        <div class="text-[10px] text-(--text-secondary) truncate">
+                        <div class="font-medium text-xs text-(--text-primary)">
+                            Video Call Started
+                        </div>
+                        <div
+                            class="text-[10px] text-(--text-secondary) truncate"
+                        >
                             Group Call
                         </div>
                     </div>
-                    <button 
+                    <button
                         @click.stop="joinCall"
                         class="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-lg transition-colors shadow-sm whitespace-nowrap"
                     >
@@ -904,8 +994,6 @@ function isOwnMessage(msg: Message): boolean {
                     </button>
                 </div>
             </div>
-
-
 
             <div v-if="messages.length === 0" class="minichat-window-empty">
                 <Icon name="MessageSquare" :size="24" />
@@ -929,7 +1017,7 @@ function isOwnMessage(msg: Message): boolean {
         <div
             v-if="typingIndicator"
             class="flex items-center gap-2 px-3 text-xs text-[var(--text-muted)] transition-all duration-300 w-full"
-            style="background: transparent !important;"
+            style="background: transparent !important"
         >
             <div
                 class="flex space-x-1 p-2 bg-[var(--surface-elevated)] rounded-2xl shadow-sm border border-[var(--border-default)]"
@@ -1021,7 +1109,11 @@ function isOwnMessage(msg: Message): boolean {
                 title="GIF"
                 @click.stop="toggleGiphy"
             >
-                <div class="font-bold text-[8px] leading-none border border-current rounded px-0.5 py-0.5">GIF</div>
+                <div
+                    class="font-bold text-[8px] leading-none border border-current rounded px-0.5 py-0.5"
+                >
+                    GIF
+                </div>
             </button>
 
             <!-- Emoji Picker -->
@@ -1032,10 +1124,7 @@ function isOwnMessage(msg: Message): boolean {
             />
 
             <!-- Giphy Picker -->
-            <div
-                v-if="showGiphy"
-                class="minichat-emoji-picker"
-            >
+            <div v-if="showGiphy" class="minichat-emoji-picker">
                 <GiphyPicker compact @select="sendGif" />
             </div>
 

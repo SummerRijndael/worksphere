@@ -25,6 +25,15 @@ import { useChat } from "@/composables/useChat";
 import CallChatList from "./components/CallChatList.vue";
 import ChatComposer from "../chat/components/chat/ChatComposer.vue";
 import NetworkHealthIndicator from "./components/NetworkHealthIndicator.vue";
+import {
+    SelectFilter,
+    Separator,
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "@/components/ui";
+import { useBackgroundBlur } from "@/composables/useBackgroundBlur";
 import MediaViewer from "@/components/tools/MediaViewer.vue";
 
 // ============================================================================
@@ -70,7 +79,7 @@ const authStore = useAuthStore();
 
 // Chat Integration
 const showSidebar = ref(false); // Default closed
-const sidebarTab = ref<'people' | 'chat'>('people');
+const sidebarTab = ref<"people" | "chat">("people");
 const {
     activeChat,
     activeMessages,
@@ -81,7 +90,7 @@ const {
     replyingTo,
     pendingFiles,
     typingIndicator,
-    
+
     selectChat,
     sendMessage,
     loadMoreMessages,
@@ -91,14 +100,14 @@ const {
     removeFile,
     handleInputChange,
     sendGif,
-    scrollToBottom
+    scrollToBottom,
 } = useChat({ autoFetch: true });
 
 const handleMessageReply = (message: any) => {
     setReplyTo(message);
 };
 
-const toggleSidebar = (tab?: 'people' | 'chat') => {
+const toggleSidebar = (tab?: "people" | "chat") => {
     if (tab) {
         if (showSidebar.value && sidebarTab.value === tab) {
             showSidebar.value = false; // Close if clicking same tab
@@ -127,11 +136,18 @@ const networkStats = reactive({
     bitrate: 0,
     packetLoss: 0,
     rtt: 0,
-    score: 0 // 0=Good, 1=Fair, 2=Poor
+    score: 0, // 0=Good, 1=Fair, 2=Poor
 });
-const participantStats = reactive(new Map<string, { bitrate: number; packetLoss: number; rtt: number; score: number }>());
+const participantStats = reactive(
+    new Map<
+        string,
+        { bitrate: number; packetLoss: number; rtt: number; score: number }
+    >(),
+);
 // Signaling-based remote media state (cross-browser reliable)
-const remoteMediaState = reactive(new Map<string, { muted: boolean; cameraOff: boolean }>());
+const remoteMediaState = reactive(
+    new Map<string, { muted: boolean; cameraOff: boolean }>(),
+);
 let statsInterval: ReturnType<typeof setInterval> | null = null;
 const sfuScreenMid = ref<string | null>(null);
 
@@ -148,16 +164,27 @@ const isTransportReady = ref(false);
 const chatListRef = ref<any>(null);
 
 // Link the child's scroll container to useChat composable
-watch(() => chatListRef.value?.container, (newVal) => {
-    if (newVal) messagesContainerRef.value = newVal;
-}, { immediate: true });
+watch(
+    () => chatListRef.value?.container,
+    (newVal) => {
+        if (newVal) messagesContainerRef.value = newVal;
+    },
+    { immediate: true },
+);
 
 // Mark as read when messages arrive and chat is visible
-watch([() => activeMessages.value.length, () => showSidebar.value, () => sidebarTab.value], ([newLen, visible, tab]) => {
-    if (visible && tab === 'chat' && activeChat.value?.public_id) {
-        chatStore.markAsRead(activeChat.value.public_id);
-    }
-});
+watch(
+    [
+        () => activeMessages.value.length,
+        () => showSidebar.value,
+        () => sidebarTab.value,
+    ],
+    ([newLen, visible, tab]) => {
+        if (visible && tab === "chat" && activeChat.value?.public_id) {
+            chatStore.markAsRead(activeChat.value.public_id);
+        }
+    },
+);
 const participantTransceivers = new Map<
     string,
     { audioMid?: string; videoMid?: string; screenMid?: string }
@@ -170,14 +197,19 @@ async function updateNetworkStats() {
     // 1. Global Stats (Local OUTBOUND or first Peer)
     let mainPc: RTCPeerConnection | null = null;
     if (callMode.value === "sfu" && sfuPc) mainPc = sfuPc;
-    else if (peers.size > 0) mainPc = (Array.from(peers.values())[0] as any)?._pc;
+    else if (peers.size > 0)
+        mainPc = (Array.from(peers.values())[0] as any)?._pc;
 
     if (mainPc) {
         try {
             const stats = await mainPc.getStats();
-            stats.forEach(report => {
-                if (report.type === 'candidate-pair' && report.state === 'succeeded') {
-                    networkStats.rtt = (report.currentRoundTripTime || 0) * 1000;
+            stats.forEach((report) => {
+                if (
+                    report.type === "candidate-pair" &&
+                    report.state === "succeeded"
+                ) {
+                    networkStats.rtt =
+                        (report.currentRoundTripTime || 0) * 1000;
                 }
             });
         } catch (e) {}
@@ -187,12 +219,21 @@ async function updateNetworkStats() {
     if (callMode.value === "sfu" && sfuPc) {
         try {
             const stats = await sfuPc.getStats();
-            stats.forEach(report => {
-                if (report.type === 'inbound-rtp' && (report.kind === 'audio' || report.kind === 'video')) {
+            stats.forEach((report) => {
+                if (
+                    report.type === "inbound-rtp" &&
+                    (report.kind === "audio" || report.kind === "video")
+                ) {
                     // Find participant by MID
                     let pId: string | null = null;
-                    for (const [id, mids] of participantTransceivers.entries()) {
-                        if (mids.audioMid === report.mid || mids.videoMid === report.mid) {
+                    for (const [
+                        id,
+                        mids,
+                    ] of participantTransceivers.entries()) {
+                        if (
+                            mids.audioMid === report.mid ||
+                            mids.videoMid === report.mid
+                        ) {
                             pId = id;
                             break;
                         }
@@ -200,16 +241,22 @@ async function updateNetworkStats() {
 
                     if (pId) {
                         const pIdLower = pId.toLowerCase();
-                        const current = participantStats.get(pIdLower) || { bitrate: 0, packetLoss: 0, rtt: 0, score: 0 };
-                        
+                        const current = participantStats.get(pIdLower) || {
+                            bitrate: 0,
+                            packetLoss: 0,
+                            rtt: 0,
+                            score: 0,
+                        };
+
                         const lost = report.packetsLost || 0;
                         const received = report.packetsReceived || 0;
-                        const lossPercent = (lost / (lost + received || 1)) * 100;
-                        
+                        const lossPercent =
+                            (lost / (lost + received || 1)) * 100;
+
                         current.packetLoss = lossPercent;
                         current.bitrate = (report.bytesReceived * 8) / 5000; // Rough kbps assuming 5s interval
                         current.rtt = networkStats.rtt; // Shared RTT for SFU PC
-                        
+
                         // Score
                         if (lossPercent > 10) current.score = 2;
                         else if (lossPercent > 3) current.score = 1;
@@ -228,24 +275,71 @@ async function updateNetworkStats() {
                 const stats = await pc.getStats();
                 const pIdLower = pId.toLowerCase();
                 const current = { bitrate: 0, packetLoss: 0, rtt: 0, score: 0 };
-                
-                stats.forEach(report => {
-                    if (report.type === 'inbound-rtp' && report.kind === 'audio') {
+
+                stats.forEach((report) => {
+                    if (
+                        report.type === "inbound-rtp" &&
+                        report.kind === "audio"
+                    ) {
                         const lost = report.packetsLost || 0;
                         const received = report.packetsReceived || 0;
-                        current.packetLoss = (lost / (lost + received || 1)) * 100;
+                        current.packetLoss =
+                            (lost / (lost + received || 1)) * 100;
                     }
-                    if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                    if (
+                        report.type === "candidate-pair" &&
+                        report.state === "succeeded"
+                    ) {
                         current.rtt = (report.currentRoundTripTime || 0) * 1000;
                     }
                 });
 
-                if (current.packetLoss > 10 || current.rtt > 400) current.score = 2;
-                else if (current.packetLoss > 3 || current.rtt > 200) current.score = 1;
+                if (current.packetLoss > 10 || current.rtt > 400)
+                    current.score = 2;
+                else if (current.packetLoss > 3 || current.rtt > 200)
+                    current.score = 1;
                 else current.score = 0;
+
+                if (current.score === 2) {
+                    // Poor connection: reduce sender bitrate to help
+                    limitSenderBitrate(150000); // 150kbps
+                } else if (current.score === 0) {
+                    limitSenderBitrate(1500000); // 1.5Mbps
+                }
 
                 participantStats.set(pIdLower, current);
             } catch (e) {}
+        }
+    }
+}
+
+// Adaptive Bitrate: Limit local sender bandwidth if network is struggling
+async function limitSenderBitrate(maxBitrate: number) {
+    if (!sfuPc) return;
+    const senders = sfuPc.getSenders();
+    for (const sender of senders) {
+        if (sender.track?.kind === "video") {
+            const params = sender.getParameters();
+            if (params.encodings && params.encodings.length > 0) {
+                // Adjust all active encodings to fit within the budget
+                params.encodings.forEach((e) => {
+                    e.maxBitrate = Math.min(
+                        e.maxBitrate || 1500000,
+                        maxBitrate,
+                    );
+                });
+                try {
+                    await sender.setParameters(params);
+                    console.log(
+                        `[Adaptation] Limited sender bitrate to ${maxBitrate} bps`,
+                    );
+                } catch (e) {
+                    console.warn(
+                        "[Adaptation] Failed to set sender parameters",
+                        e,
+                    );
+                }
+            }
         }
     }
 }
@@ -278,67 +372,75 @@ const startDrag = (event: MouseEvent | TouchEvent) => {
     // Only allow dragging if not clicking a button directly (unless it's the container background)
     // Actually, users might click anywhere on the bar. Let's filter out if they click a button.
     const target = event.target as HTMLElement;
-    if (target.closest('button')) return;
+    if (target.closest("button")) return;
 
     isDragging.value = true;
     hasMoved.value = false;
-    
-    const clientX = 'touches' in event ? event.touches[0].clientX : event.clientX;
-    const clientY = 'touches' in event ? event.touches[0].clientY : event.clientY;
-    
+
+    const clientX =
+        "touches" in event ? event.touches[0].clientX : event.clientX;
+    const clientY =
+        "touches" in event ? event.touches[0].clientY : event.clientY;
+
     // Calculate offset from the element's top-left corner
-    const controlsEl = document.querySelector('.controls-bar') as HTMLElement;
+    const controlsEl = document.querySelector(".controls-bar") as HTMLElement;
     if (controlsEl) {
         const rect = controlsEl.getBoundingClientRect();
         dragOffset.x = clientX - rect.left;
         dragOffset.y = clientY - rect.top;
     }
-    
-    window.addEventListener('mousemove', onDrag);
-    window.addEventListener('mouseup', stopDrag);
-    window.addEventListener('touchmove', onDrag);
-    window.addEventListener('touchend', stopDrag);
+
+    window.addEventListener("mousemove", onDrag);
+    window.addEventListener("mouseup", stopDrag);
+    window.addEventListener("touchmove", onDrag);
+    window.addEventListener("touchend", stopDrag);
 };
 
 const onDrag = (event: MouseEvent | TouchEvent) => {
     if (!isDragging.value) return;
-    
-    const clientX = 'touches' in event ? event.touches[0].clientX : (event as MouseEvent).clientX;
-    const clientY = 'touches' in event ? event.touches[0].clientY : (event as MouseEvent).clientY;
-    
+
+    const clientX =
+        "touches" in event
+            ? event.touches[0].clientX
+            : (event as MouseEvent).clientX;
+    const clientY =
+        "touches" in event
+            ? event.touches[0].clientY
+            : (event as MouseEvent).clientY;
+
     // Update position
     let newX = clientX - dragOffset.x;
     let newY = clientY - dragOffset.y;
-    
+
     // Bounds checking (keep within viewport with 16px margin)
-    const controlsEl = document.querySelector('.controls-bar') as HTMLElement;
+    const controlsEl = document.querySelector(".controls-bar") as HTMLElement;
     if (controlsEl) {
-         const rect = controlsEl.getBoundingClientRect();
-         const maxX = window.innerWidth - rect.width - 16;
-         const maxY = window.innerHeight - rect.height - 16;
-         
-         newX = Math.max(16, Math.min(newX, maxX));
-         newY = Math.max(16, Math.min(newY, maxY));
+        const rect = controlsEl.getBoundingClientRect();
+        const maxX = window.innerWidth - rect.width - 16;
+        const maxY = window.innerHeight - rect.height - 16;
+
+        newX = Math.max(16, Math.min(newX, maxX));
+        newY = Math.max(16, Math.min(newY, maxY));
     }
-    
+
     controlsPosition.x = newX;
     controlsPosition.y = newY;
-    
+
     hasMoved.value = true;
 };
 
 const stopDrag = () => {
     isDragging.value = false;
-    window.removeEventListener('mousemove', onDrag);
-    window.removeEventListener('mouseup', stopDrag);
-    window.removeEventListener('touchmove', onDrag);
-    window.removeEventListener('touchend', stopDrag);
+    window.removeEventListener("mousemove", onDrag);
+    window.removeEventListener("mouseup", stopDrag);
+    window.removeEventListener("touchmove", onDrag);
+    window.removeEventListener("touchend", stopDrag);
 };
 
 const clampControlsPosition = () => {
     // Ensure controls stay within window
     const isMobile = window.innerWidth <= 768;
-    
+
     // On mobile, we often want to lock it or restrict it heavily
     if (isMobile && !hasMoved.value) {
         controlsPosition.x = 0;
@@ -355,7 +457,7 @@ const clampControlsPosition = () => {
     controlsPosition.y = Math.max(minY, Math.min(maxY, controlsPosition.y));
 };
 
-window.addEventListener('resize', clampControlsPosition);
+window.addEventListener("resize", clampControlsPosition);
 const audioAnalysers = new Map<
     string,
     {
@@ -399,15 +501,18 @@ async function applyOutputDevice(deviceId: string | null) {
         try {
             await (ringtoneAudio as any).setSinkId(deviceId);
         } catch (e) {
-             console.warn("[Call] Failed to setSinkId on ringtoneAudio", e);
+            console.warn("[Call] Failed to setSinkId on ringtoneAudio", e);
         }
     }
 }
 
 // Watch for output device changes and apply
-watch(() => store.selectedOutputDeviceId, (newId) => {
-    applyOutputDevice(newId);
-});
+watch(
+    () => store.selectedOutputDeviceId,
+    (newId) => {
+        applyOutputDevice(newId);
+    },
+);
 
 // Directive for setSinkId (output device selection)
 const vSinkId = {
@@ -417,10 +522,10 @@ const vSinkId = {
         }
     },
     updated: (el: HTMLMediaElement) => {
-         if (store.selectedOutputDeviceId && (el as any).setSinkId) {
+        if (store.selectedOutputDeviceId && (el as any).setSinkId) {
             (el as any).setSinkId(store.selectedOutputDeviceId).catch(() => {});
         }
-    }
+    },
 };
 
 // UI Refs
@@ -468,10 +573,26 @@ const formattedDuration = computed(() => {
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
 });
 
-
-
 // UI Polish: Dynamic Layout Mode
 const layoutMode = computed(() => {
+    // Debug logging for mobile screenshare issue
+    if (store.remoteScreenStreams.size > 0) {
+        console.log(
+            "[CallApp] Layout check: Remote screen streams detected:",
+            store.remoteScreenStreams.size,
+        );
+        store.remoteScreenStreams.forEach((stream, id) => {
+            const tracks = stream.getVideoTracks();
+            console.log(`[CallApp] Stream ${id}:`, {
+                id: stream.id,
+                active: stream.active,
+                tracks: tracks.length,
+                kind: tracks[0]?.kind,
+                label: tracks[0]?.label,
+            });
+        });
+    }
+
     // If anyone (local or remote) is sharing screen -> Spotlight Mode
     if (isScreenSharing.value || store.remoteScreenStreams.size > 0) {
         return "spotlight";
@@ -481,7 +602,7 @@ const layoutMode = computed(() => {
 
 const gridClass = computed(() => {
     if (layoutMode.value === "spotlight") return "layout-spotlight";
-    
+
     // Standard Grid Logic
     const count = participants.value.length;
     if (count <= 1) return "grid-1-1";
@@ -498,26 +619,26 @@ function toggleHand() {
         handRaised.delete(selfId);
     } else {
         handRaised.add(selfId);
-        // Auto-lower hand after 30 seconds
+        // Auto-lower hand after 120 seconds
         setTimeout(() => {
             if (handRaised.has(selfId)) {
                 handRaised.delete(selfId);
-                sendSignal('hand-toggle', { raised: false });
+                sendSignal("hand-toggle", { raised: false });
             }
-        }, 30000);
+        }, 120000);
     }
-    
-    sendSignal('hand-toggle', { raised: handRaised.has(selfId) });
+
+    sendSignal("hand-toggle", { raised: handRaised.has(selfId) });
 }
 
 function sendSignal(type: string, payload: any) {
     if (!callData.value) return;
-    videoCallService.sendSignal(
-        callData.value.chatId,
-        callData.value.callId,
-        "signal",
-        { type, ...payload }
-    ).catch(e => console.warn("Failed to send signal", e));
+    videoCallService
+        .sendSignal(callData.value.chatId, callData.value.callId, "signal", {
+            type,
+            ...payload,
+        })
+        .catch((e) => console.warn("Failed to send signal", e));
 }
 
 // Helper: Get Initials from Name
@@ -548,8 +669,6 @@ function getAvatarColor(name: string) {
     return colors[Math.abs(hash) % colors.length];
 }
 
-
-
 // Helper: Check for Remote Audio (Mute State) — uses signaling state
 function remoteHasAudio(publicId: string) {
     const state = remoteMediaState.get(publicId.toLowerCase());
@@ -569,6 +688,60 @@ const toggleChat = () => {
 const previewRemoteName = computed(() => {
     if (callData.value?.remoteUser) return callData.value?.remoteUser.name;
     return "Group Call";
+});
+
+// Watch Video Effect Changes
+watch(() => store.videoEffect, async (effect) => {
+    console.log("[Call] Video effect changed:", effect);
+    if (!localStream.value) return;
+
+    const currentVideoTrack = localStream.value.getVideoTracks()[0];
+    
+    // If we don't have the original track yet (maybe started with audio only), try to get it from current stream if no effect was applied
+    if (!originalVideoTrack.value && currentVideoTrack && effect === 'blur') {
+         originalVideoTrack.value = currentVideoTrack;
+    }
+
+    if (!originalVideoTrack.value) return;
+
+    try {
+        let newTrack: MediaStreamTrack;
+
+        if (effect === 'blur') {
+             newTrack = await backgroundBlur.startBlur(originalVideoTrack.value);
+        } else {
+             backgroundBlur.stopProcessing();
+             newTrack = originalVideoTrack.value;
+        }
+
+        // Replace in Local Stream
+        const oldTrack = localStream.value.getVideoTracks()[0];
+        if (oldTrack && oldTrack.id !== newTrack.id) {
+             localStream.value.removeTrack(oldTrack);
+             localStream.value.addTrack(newTrack);
+             
+             // Restore enabled state
+             newTrack.enabled = !isCameraOff.value;
+
+             // Replace in Peer Connections (Mesh)
+             peerConnections.forEach((pc) => {
+                 const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+                 if (sender) {
+                     sender.replaceTrack(newTrack);
+                 }
+             });
+
+             // Replace in SFU
+             if (sfuPc) {
+                  const sender = sfuPc.getSenders().find(s => s.track?.kind === 'video');
+                  if (sender) {
+                      sender.replaceTrack(newTrack);
+                  }
+             }
+        }
+    } catch (e) {
+        console.error("Failed to apply video effect", e);
+    }
 });
 
 // ============================================================================
@@ -603,11 +776,24 @@ async function acquireMedia(): Promise<MediaStream | null> {
                             facingMode: "user",
                         },
                     });
+
+                    // Store original track
+                    originalVideoTrack.value = stream.getVideoTracks()[0];
+                    
+                    // Apply effects if needed
+                    if (store.videoEffect === 'blur' && originalVideoTrack.value) {
+                         const processedTrack = await backgroundBlur.startBlur(originalVideoTrack.value);
+                         stream.removeTrack(originalVideoTrack.value);
+                         stream.addTrack(processedTrack);
+                    }
+
                     localStream.value = stream;
 
                     // Apply default video state (Off)
                     if (isCameraOff.value) {
-                         stream.getVideoTracks().forEach(t => t.enabled = false);
+                        stream
+                            .getVideoTracks()
+                            .forEach((t) => (t.enabled = false));
                     }
 
                     console.log("[Call] Local media acquired:", {
@@ -709,21 +895,28 @@ async function joinCall() {
             );
 
             // CF Issue 3: Refresh TURN credentials every 45 minutes (TTL = 1 hour)
-            turnRefreshInterval = setInterval(async () => {
-                try {
-                    const freshTurn = await videoCallService.getTurnCredentials(
-                        callData.value!.chatId,
-                    );
-                    iceServers.value = freshTurn.ice_servers;
-                    console.log('[Call] TURN credentials refreshed');
-                    // Trigger ICE restart if SFU connection is active
-                    if (sfuPc && sfuSessionId.value) {
-                        attemptSfuIceRestart();
+            turnRefreshInterval = setInterval(
+                async () => {
+                    try {
+                        const freshTurn =
+                            await videoCallService.getTurnCredentials(
+                                callData.value!.chatId,
+                            );
+                        iceServers.value = freshTurn.ice_servers;
+                        console.log("[Call] TURN credentials refreshed");
+                        // Trigger ICE restart if SFU connection is active
+                        if (sfuPc && sfuSessionId.value) {
+                            attemptSfuIceRestart();
+                        }
+                    } catch (e) {
+                        console.warn(
+                            "[Call] Failed to refresh TURN credentials:",
+                            e,
+                        );
                     }
-                } catch (e) {
-                    console.warn('[Call] Failed to refresh TURN credentials:', e);
-                }
-            }, 45 * 60 * 1000);
+                },
+                45 * 60 * 1000,
+            );
         } catch (e) {
             console.warn(
                 "[Call] Failed to fetch TURN credentials, using defaults",
@@ -780,9 +973,11 @@ async function joinCall() {
 
         // 4. Set state
         hasJoined.value = true;
-        if (callData.value.direction === 'outgoing' && others.length === 0) {
-            callState.value = 'ringing';
-            console.log("[Call] Outgoing call started: maintaining ringing state");
+        if (callData.value.direction === "outgoing" && others.length === 0) {
+            callState.value = "ringing";
+            console.log(
+                "[Call] Outgoing call started: maintaining ringing state",
+            );
         } else {
             callState.value = "connected"; // We are "in" the call room
             postToParent({ type: "state", state: "connected" });
@@ -959,7 +1154,12 @@ async function handleSignal(event: any) {
     // In mesh, signals MUST be targeted or we ignore them for safety
     // EXCEPTION: "hand-toggle" is a broadcast signal that might be inadvertently targeted or should be allowed anyway
     const signalType = event.signal_data?.type;
-    if (targetId && targetId !== selfId && signalType !== 'hand-toggle' && signalType !== 'media-state') {
+    if (
+        targetId &&
+        targetId !== selfId &&
+        signalType !== "hand-toggle" &&
+        signalType !== "media-state"
+    ) {
         console.log(
             `[Call] Ignoring signal targeted at ${targetId} (I am ${selfId})`,
         );
@@ -967,7 +1167,10 @@ async function handleSignal(event: any) {
     }
 
     // Hand Raise Signaling - Process early as it's UI only and doesn't depend on media transport
-    if (signalType === "hand-toggle" || (event.signal_data?.type === "hand-toggle")) {
+    if (
+        signalType === "hand-toggle" ||
+        event.signal_data?.type === "hand-toggle"
+    ) {
         const hSignal = event.signal_data;
         if (hSignal.raised) {
             handRaised.add(senderId);
@@ -1355,7 +1558,9 @@ function handleParticipantJoined(event: any) {
 
         // Transition from Ringing to Connected when a remote participant joins
         if (callState.value === "ringing") {
-            console.log("[Call] First participant joined, transitioning to connected");
+            console.log(
+                "[Call] First participant joined, transitioning to connected",
+            );
             callState.value = "connected";
             stopRingtone();
             startDurationTimer();
@@ -1473,10 +1678,10 @@ function handleParticipantLeft(event: any) {
     stopAudioAnalysis(publicId);
 
     // Bug 4: Auto-end if we're the only one left
-    const nonSelfParticipants = participants.value.filter(p => !p.isSelf);
-    if (nonSelfParticipants.length === 0 && callState.value === 'connected') {
-        console.log('[Call] Everyone left, auto-ending call');
-        endCall('hangup');
+    const nonSelfParticipants = participants.value.filter((p) => !p.isSelf);
+    if (nonSelfParticipants.length === 0 && callState.value === "connected") {
+        console.log("[Call] Everyone left, auto-ending call");
+        endCall("hangup");
     }
 }
 
@@ -1484,7 +1689,7 @@ function handleCallEndedEvent(event: any) {
     // Bug 3: Skip if we triggered the end (our own hangup already handles cleanup)
     const selfId = callData.value?.selfPublicId?.toLowerCase();
     if (event.ender_public_id?.toLowerCase() === selfId) {
-        console.log('[Call] Ignoring CallEnded from self');
+        console.log("[Call] Ignoring CallEnded from self");
         return;
     }
 
@@ -1559,7 +1764,10 @@ function toggleMute() {
         ?.getAudioTracks()
         .forEach((t) => (t.enabled = !isMuted.value));
     // Broadcast state to all peers for cross-browser compatibility
-    sendSignal('media-state', { muted: isMuted.value, cameraOff: isCameraOff.value });
+    sendSignal("media-state", {
+        muted: isMuted.value,
+        cameraOff: isCameraOff.value,
+    });
 }
 
 function toggleCamera() {
@@ -1568,7 +1776,10 @@ function toggleCamera() {
         ?.getVideoTracks()
         .forEach((t) => (t.enabled = !isCameraOff.value));
     // Broadcast state to all peers for cross-browser compatibility
-    sendSignal('media-state', { muted: isMuted.value, cameraOff: isCameraOff.value });
+    sendSignal("media-state", {
+        muted: isMuted.value,
+        cameraOff: isCameraOff.value,
+    });
 }
 
 function remoteHasVideo(participantId: string): boolean {
@@ -1763,16 +1974,31 @@ async function joinSFU(stream: MediaStream) {
                     resolve(true);
                 }
             };
-            
+
             sfuPc!.oniceconnectionstatechange = checkState;
             // Check immediately in case it's already done (unlikely but safe)
             checkState();
         });
 
-        // 1. Add local senders
+        // 1. Add local senders with Simulcast for Video
         stream.getTracks().forEach((track) => {
             console.log(`[SFU] Adding local ${track.kind} track to session`);
-            sfuPc!.addTransceiver(track, { direction: "sendonly" });
+
+            const init: RTCRtpTransceiverInit = {
+                direction: "sendonly",
+                streams: [stream],
+            };
+
+            if (track.kind === "video") {
+                console.log("[SFU] Configuring Simulcast Encodings (h, m, l)");
+                init.sendEncodings = [
+                    { rid: "l", active: true, maxBitrate: 150000, scaleResolutionDownBy: 4 },
+                    { rid: "m", active: true, maxBitrate: 500000, scaleResolutionDownBy: 2 },
+                    { rid: "h", active: true, maxBitrate: 1500000, scaleResolutionDownBy: 1 },
+                ];
+            }
+
+            sfuPc!.addTransceiver(track, init);
         });
 
         // 2. Initial Offer to establish session and name tracks
@@ -1811,7 +2037,9 @@ async function joinSFU(stream: MediaStream) {
             // Double Tap: Explicitly register tracks to ensure they are active
             // Fire-and-forget or await? We should await to ensure state is consistent,
             // BUT we must not block ICE listeners (which we fixed by moving the promise up).
-            console.log("[SFU] Explicitly registering tracks via sfuSessionTracks (Double Tap)...");
+            console.log(
+                "[SFU] Explicitly registering tracks via sfuSessionTracks (Double Tap)...",
+            );
             try {
                 const tracksRes = await videoCallService.sfuSessionTracks(
                     callData.value!.chatId,
@@ -1819,15 +2047,15 @@ async function joinSFU(stream: MediaStream) {
                     trackObjects,
                     undefined,
                 );
-                 if (tracksRes.sessionDescription) {
+                if (tracksRes.sessionDescription) {
                     console.log("[SFU] Applying Double Tap SDP Answer");
                     await sfuPc!.setRemoteDescription(
                         new RTCSessionDescription(tracksRes.sessionDescription),
                     );
                 }
             } catch (e) {
-                 console.warn("[SFU] Double Tap track registration warning:", e);
-                 // Non-fatal, continue
+                console.warn("[SFU] Double Tap track registration warning:", e);
+                // Non-fatal, continue
             }
         }
 
@@ -1847,7 +2075,9 @@ async function joinSFU(stream: MediaStream) {
             )?.mid;
 
             // Bug 5: Send sfu-media-ready to each existing participant (targeted)
-            const otherParticipants = participants.value.filter(p => !p.isSelf);
+            const otherParticipants = participants.value.filter(
+                (p) => !p.isSelf,
+            );
             console.log(
                 `[SFU] Signaling sfu-media-ready to ${otherParticipants.length} participant(s): audio=${audioMid}, video=${videoMid}`,
             );
@@ -1910,28 +2140,41 @@ async function joinSFU(stream: MediaStream) {
                     // into streams in the SDP, or if the browser treats them as such.
                     let stream = event.streams[0];
                     if (!stream) {
-                         // Check if we already have a stream for this participant
-                         // If not, create one.
-                         // Actually, store.addRemoteStream can handle individual tracks if we manage the stream object.
-                         // For now, let's create a synthetic stream.
-                         stream = new MediaStream([track]);
-                         console.log(`[SFU] Created synthetic stream for ${participantId} (${track.kind})`);
+                        // Check if we already have a stream for this participant
+                        // If not, create one.
+                        // Actually, store.addRemoteStream can handle individual tracks if we manage the stream object.
+                        // For now, let's create a synthetic stream.
+                        stream = new MediaStream([track]);
+                        console.log(
+                            `[SFU] Created synthetic stream for ${participantId} (${track.kind})`,
+                        );
                     }
-                    
-                    if (track.kind === "video" && participantId.endsWith(":screen")) {
-                        store.addRemoteScreenStream(participantId.replace(":screen", ""), stream);
+
+                    if (
+                        track.kind === "video" &&
+                        participantId.endsWith(":screen")
+                    ) {
+                        store.addRemoteScreenStream(
+                            participantId.replace(":screen", ""),
+                            stream,
+                        );
                     } else {
-                         // Main stream (audio/video)
-                         // logic to merge tracks? store.addRemoteStream handles it?
-                         store.addRemoteStream(participantId, stream);
-                         startAudioAnalysis(participantId, stream);
+                        // Main stream (audio/video)
+                        // logic to merge tracks? store.addRemoteStream handles it?
+                        store.addRemoteStream(participantId, stream);
+                        startAudioAnalysis(participantId, stream);
                     }
                 } else {
                     // CF Issue 1: Buffer unresolved track events for later flush
                     console.warn(
                         `[SFU] Buffering unresolved track (mid: ${mid}) — will flush when MID map is populated`,
                     );
-                    pendingTrackEvents.push({ track, mid: mid!, transceiver: event.transceiver, streams: event.streams });
+                    pendingTrackEvents.push({
+                        track,
+                        mid: mid!,
+                        transceiver: event.transceiver,
+                        streams: event.streams,
+                    });
                 }
             };
 
@@ -1946,21 +2189,23 @@ async function joinSFU(stream: MediaStream) {
             const state = sfuPc?.iceConnectionState;
             console.log(`[SFU] ICE connection state: ${state}`);
 
-            if (state === 'connected' || state === 'completed') {
+            if (state === "connected" || state === "completed") {
                 sfuWasConnected = true;
                 if (sfuIceRestartTimer) {
                     clearTimeout(sfuIceRestartTimer);
                     sfuIceRestartTimer = null;
                 }
-            } else if (state === 'disconnected' && sfuWasConnected) {
+            } else if (state === "disconnected" && sfuWasConnected) {
                 // Only restart if we were previously stable — disconnected during
                 // initial negotiation is expected and self-resolves
                 sfuIceRestartTimer = setTimeout(() => {
-                    console.warn('[SFU] ICE disconnected for 5s, attempting restart');
+                    console.warn(
+                        "[SFU] ICE disconnected for 5s, attempting restart",
+                    );
                     attemptSfuIceRestart();
                 }, 5000);
-            } else if (state === 'failed') {
-                console.error('[SFU] ICE failed, attempting immediate restart');
+            } else if (state === "failed") {
+                console.error("[SFU] ICE failed, attempting immediate restart");
                 attemptSfuIceRestart();
             }
         };
@@ -2111,7 +2356,12 @@ let sfuNegotiationQueue = Promise.resolve();
 const participantPullAttempts = new Map<string, number>();
 const screenPullAttempts = new Map<string, number>();
 const midToParticipantMap = new Map<string, string>();
-const pendingTrackEvents: { track: MediaStreamTrack; mid: string; transceiver: RTCRtpTransceiver; streams: readonly MediaStream[] }[] = [];
+const pendingTrackEvents: {
+    track: MediaStreamTrack;
+    mid: string;
+    transceiver: RTCRtpTransceiver;
+    streams: readonly MediaStream[];
+}[] = [];
 let sfuIceRestartTimer: ReturnType<typeof setTimeout> | null = null;
 let sfuWasConnected = false; // Only restart ICE after connection was stable at least once
 
@@ -2120,10 +2370,12 @@ let sfuWasConnected = false; // Only restart ICE after connection was stable at 
  */
 function flushPendingTracks() {
     if (pendingTrackEvents.length === 0) return;
-    console.log(`[SFU] Flushing ${pendingTrackEvents.length} buffered track event(s)`);
+    console.log(
+        `[SFU] Flushing ${pendingTrackEvents.length} buffered track event(s)`,
+    );
 
     // Process all buffered events; keep any still unresolved
-    const stillPending: typeof pendingTrackEvents[number][] = [];
+    const stillPending: (typeof pendingTrackEvents)[number][] = [];
     for (const evt of pendingTrackEvents) {
         let participantId = midToParticipantMap.get(evt.mid);
 
@@ -2131,9 +2383,10 @@ function flushPendingTracks() {
         if (!participantId) {
             const assoc = sfuTransceiverMap.get(evt.transceiver);
             if (assoc) {
-                participantId = assoc.trackName === 'screen'
-                    ? `${assoc.participantId}:screen`
-                    : assoc.participantId;
+                participantId =
+                    assoc.trackName === "screen"
+                        ? `${assoc.participantId}:screen`
+                        : assoc.participantId;
             }
         }
 
@@ -2142,21 +2395,31 @@ function flushPendingTracks() {
             if (!stream) {
                 stream = new MediaStream([evt.track]);
             }
-            if (evt.track.kind === 'video' && participantId.endsWith(':screen')) {
-                store.addRemoteScreenStream(participantId.replace(':screen', ''), stream);
+            if (
+                evt.track.kind === "video" &&
+                participantId.endsWith(":screen")
+            ) {
+                store.addRemoteScreenStream(
+                    participantId.replace(":screen", ""),
+                    stream,
+                );
             } else {
                 store.addRemoteStream(participantId, stream);
                 startAudioAnalysis(participantId, stream);
             }
-            console.log(`[SFU] Flushed buffered track (mid: ${evt.mid}) → ${participantId}`);
+            console.log(
+                `[SFU] Flushed buffered track (mid: ${evt.mid}) → ${participantId}`,
+            );
         } else {
             stillPending.push(evt);
         }
     }
     pendingTrackEvents.length = 0;
-    stillPending.forEach(e => pendingTrackEvents.push(e));
+    stillPending.forEach((e) => pendingTrackEvents.push(e));
     if (stillPending.length > 0) {
-        console.warn(`[SFU] ${stillPending.length} track(s) still unresolved after flush`);
+        console.warn(
+            `[SFU] ${stillPending.length} track(s) still unresolved after flush`,
+        );
     }
 }
 
@@ -2165,11 +2428,11 @@ function flushPendingTracks() {
  */
 async function attemptSfuIceRestart() {
     if (!sfuPc || !sfuSessionId.value) {
-        console.warn('[SFU] Cannot restart ICE: no active SFU session');
+        console.warn("[SFU] Cannot restart ICE: no active SFU session");
         return;
     }
     try {
-        console.log('[SFU] Creating ICE restart offer');
+        console.log("[SFU] Creating ICE restart offer");
         const offer = await sfuPc.createOffer({ iceRestart: true });
         await sfuPc.setLocalDescription(offer);
 
@@ -2177,17 +2440,20 @@ async function attemptSfuIceRestart() {
             callData.value!.chatId,
             sfuSessionId.value,
             mungeSdp(offer.sdp!),
-            'offer',
+            "offer",
         );
 
         if (res?.sessionDescription) {
             await sfuPc.setRemoteDescription(
                 new RTCSessionDescription(res.sessionDescription),
             );
-            console.log('[SFU] ICE restart completed successfully');
+            console.log("[SFU] ICE restart completed successfully");
         }
     } catch (err) {
-        console.error('[SFU] ICE restart failed, may need full session reset:', err);
+        console.error(
+            "[SFU] ICE restart failed, may need full session reset:",
+            err,
+        );
     }
 }
 
@@ -2570,10 +2836,29 @@ async function publishSFUScreenTrack(stream: MediaStream) {
                 "[SFU] Reusing existing sendonly transceiver for screen",
             );
             await transceiver.sender.replaceTrack(track);
+
+            const params = transceiver.sender.getParameters();
+            if (!params.encodings) {
+                params.encodings = [];
+            }
+            if (params.encodings.length === 0) {
+                params.encodings = [
+                    { rid: "l", active: true, maxBitrate: 150000, scaleResolutionDownBy: 4 },
+                    { rid: "m", active: true, maxBitrate: 500000, scaleResolutionDownBy: 2 },
+                    { rid: "h", active: true, maxBitrate: 1500000, scaleResolutionDownBy: 1 },
+                ];
+                await transceiver.sender.setParameters(params);
+            }
         } else {
-            console.log("[SFU] Adding new sendonly transceiver for screen");
+            console.log("[SFU] Adding new screen transceiver");
             transceiver = sfuPc!.addTransceiver(track, {
                 direction: "sendonly",
+                streams: [stream],
+                sendEncodings: [
+                    { rid: "l", active: true, maxBitrate: 150000, scaleResolutionDownBy: 4 },
+                    { rid: "m", active: true, maxBitrate: 500000, scaleResolutionDownBy: 2 },
+                    { rid: "h", active: true, maxBitrate: 1500000, scaleResolutionDownBy: 1 },
+                ],
             });
         }
 
@@ -2598,14 +2883,12 @@ async function publishSFUScreenTrack(stream: MediaStream) {
                 );
             }
 
-            // GATED SIGNALING: Wait for ICE to be connected/completed before telling others.
-            // This ensures the tracks are actually flowing on Cloudflare's backend.
             await new Promise((resolve) => {
                 if (
                     sfuPc!.iceConnectionState === "connected" ||
                     sfuPc!.iceConnectionState === "completed"
                 ) {
-                    setTimeout(resolve, 500); // Grace period for media start
+                    setTimeout(resolve, 500);
                     return;
                 }
                 const check = setInterval(() => {
@@ -2620,42 +2903,31 @@ async function publishSFUScreenTrack(stream: MediaStream) {
                 setTimeout(() => {
                     clearInterval(check);
                     resolve(true);
-                }, 5000); // 5s Max Wait
+                }, 5000);
             });
 
             sfuScreenMid.value = transceiver.mid;
-            trace("PUB-SCREEN", "Screen share track published and connected", {
-                mid: transceiver.mid,
-                res,
-            });
 
-            // Signal to others
-            const signalData = {
-                type: "sfu-screen-share-started",
-                mid: transceiver.mid,
-                sessionId: sfuSessionId.value,
-            };
             videoCallService
                 .sendSignal(
                     callData.value!.chatId,
                     callData.value!.callId,
                     "signal",
-                    signalData as any,
+                    {
+                        type: "sfu-screen-share-started",
+                        mid: transceiver.mid,
+                        sessionId: sfuSessionId.value,
+                    },
                 )
                 .catch(() => {});
         } catch (e: any) {
             console.warn("[SFU] Failed to publish screen track", e);
             if (e.response?.status === 406) {
                 if (await handleSFU406Rescue()) {
-                    console.log(
-                        "[SFU] 406 Rescued during screen publish. Retrying original publish...",
-                    );
                     publishSFUScreenTrack(stream);
                 }
             } else if (sfuPc!.signalingState === "have-local-offer") {
-                await sfuPc!.setLocalDescription({
-                    type: "rollback",
-                } as any);
+                await sfuPc!.setLocalDescription({ type: "rollback" } as any);
             }
         }
     });
@@ -2754,6 +3026,13 @@ function cleanup() {
     stopEcho();
     broadcastChannel?.close();
 
+    // Background Blur Cleanup
+    if (originalVideoTrack.value) {
+        originalVideoTrack.value.stop();
+        originalVideoTrack.value = null;
+    }
+    backgroundBlur.stopProcessing();
+
     remoteSfuSessions.clear();
     participantTransceivers.clear();
     processedSignals.clear();
@@ -2833,7 +3112,10 @@ async function initializeCall() {
             try {
                 await chatStore.refreshChat(callData.value.chatId);
             } catch (err) {
-                console.warn("[Call] Failed to refresh chat, proceeding...", err);
+                console.warn(
+                    "[Call] Failed to refresh chat, proceeding...",
+                    err,
+                );
             }
             // We don't await this to not block the call join flow
             selectChat(callData.value.chatId);
@@ -2895,33 +3177,36 @@ async function initializeCall() {
 onMounted(async () => {
     // 1. Ensure we have the user (for public_id)
     if (!authStore.user) {
-        console.log('[CallApp] User not found, fetching...');
+        console.log("[CallApp] User not found, fetching...");
         await authStore.fetchUser();
     }
-    
+
     // 2. Initialize orchestration (Chat, etc) if available
     if (authStore.user) {
-        console.log('[CallApp] User found, initializing chat...');
-        
+        console.log("[CallApp] User found, initializing chat...");
+
         // Get chatId from sessionStorage (since CallApp is standalone without router)
         let chatId: string | undefined;
         try {
-            const stored = sessionStorage.getItem('callData');
+            const stored = sessionStorage.getItem("callData");
             if (stored) {
                 const data = JSON.parse(stored);
                 chatId = data.chatId;
-                console.log('[CallApp] Retrieved chatId from sessionStorage:', chatId);
+                console.log(
+                    "[CallApp] Retrieved chatId from sessionStorage:",
+                    chatId,
+                );
             }
         } catch (e) {
-            console.error('[CallApp] Failed to parse callData', e);
+            console.error("[CallApp] Failed to parse callData", e);
         }
 
         if (!chatId) {
-             console.warn('[CallApp] No chatId found, chat will not warn');
+            console.warn("[CallApp] No chatId found, chat will not warn");
         } else {
-             console.log('[CallApp] Initializing chat with ID:', chatId);
-             // Use the top-level useChat instance
-             await selectChat(chatId);
+            console.log("[CallApp] Initializing chat with ID:", chatId);
+            // Use the top-level useChat instance
+            await selectChat(chatId);
         }
     }
 
@@ -2941,11 +3226,18 @@ onBeforeUnmount(() => cleanup());
         <div class="call-overlay"></div>
 
         <!-- PERSISTENT AUDIO MIXER (Fixes "Only One Speaker" bug) -->
-        <div class="audio-mix" style="display:none; position:absolute; top:-9999px;">
+        <div
+            class="audio-mix"
+            style="display: none; position: absolute; top: -9999px"
+        >
             <audio
                 v-for="[publicId, stream] in store.remoteStreams"
                 :key="publicId + '-audio-mix'"
-                :ref="(el) => { if(el) (el as HTMLMediaElement).srcObject = stream }"
+                :ref="
+                    (el) => {
+                        if (el) (el as HTMLMediaElement).srcObject = stream;
+                    }
+                "
                 v-volume="publicId"
                 v-sink-id
                 autoplay
@@ -2958,10 +3250,10 @@ onBeforeUnmount(() => cleanup());
             <div class="header-info">
                 <span class="status-dot" :class="callState"></span>
                 <span class="status-text">{{ stateLabel }}</span>
-                <NetworkHealthIndicator 
-                    v-if="callState === 'connected'" 
+                <NetworkHealthIndicator
+                    v-if="callState === 'connected'"
                     v-bind="networkStats"
-                    class="ml-2" 
+                    class="ml-2"
                 />
             </div>
         </div>
@@ -2975,12 +3267,15 @@ onBeforeUnmount(() => cleanup());
             leave-from-class="opacity-100 translate-y-0"
             leave-to-class="opacity-0 -translate-y-4"
         >
-            <div 
-                v-if="callState === 'connected' && networkStats.score >= 2" 
+            <div
+                v-if="callState === 'connected' && networkStats.score >= 2"
                 class="fixed bottom-32 left-1/2 -translate-x-1/2 z-100 bg-red-600/90 backdrop-blur-md text-white px-5 py-2.5 rounded-full shadow-2xl flex items-center gap-3 text-sm font-semibold border border-red-500/50"
             >
                 <Icon name="AlertTriangle" size="18" class="animate-pulse" />
-                <span>Your connection is unstable. Call quality may be affected.</span>
+                <span
+                    >Your connection is unstable. Call quality may be
+                    affected.</span
+                >
             </div>
         </transition>
 
@@ -3015,7 +3310,7 @@ onBeforeUnmount(() => cleanup());
                         <span class="initials">{{ previewRemoteName[0] }}</span>
                     </div>
                 </div>
-                
+
                 <div class="join-info">
                     <h1 class="join-title">Join</h1>
                     <p class="join-subtitle">With {{ previewRemoteName }}</p>
@@ -3026,11 +3321,17 @@ onBeforeUnmount(() => cleanup());
                         <Icon name="Phone" size="20" />
                         <span>Join</span>
                     </button>
-                    <button class="btn-lobby-action settings" @click="showSettings = true">
+                    <button
+                        class="btn-lobby-action settings"
+                        @click="showSettings = true"
+                    >
                         <Icon name="Settings" size="20" />
                         <span>Settings</span>
                     </button>
-                    <button class="btn-lobby-action decline" @click="endCall('declined')">
+                    <button
+                        class="btn-lobby-action decline"
+                        @click="endCall('declined')"
+                    >
                         <Icon name="X" size="20" />
                         <span>Decline</span>
                     </button>
@@ -3040,519 +3341,858 @@ onBeforeUnmount(() => cleanup());
 
         <!-- CONNECTED LAYOUT -->
         <template v-else>
-            <div class="call-stage-container" :class="{ 'sidebar-open': showSidebar, 'layout-spotlight': layoutMode === 'spotlight' }">
+            <div
+                class="call-stage-container"
+                :class="{
+                    'sidebar-open': showSidebar,
+                    'layout-spotlight': layoutMode === 'spotlight',
+                }"
+            >
                 <!-- MAIN STAGE -->
                 <div class="main-stage">
-            <!-- SPOTLIGHT LAYOUT (Presentation Mode) -->
-            <div v-if="layoutMode === 'spotlight'" class="spotlight-wrapper">
-                <!-- Main Stage: Screen Share -->
-                <div class="spotlight-stage">
-                    <template v-if="isScreenSharing && !!screenStream">
-                        <video
-                            v-src-object="screenStream"
-                            v-sink-id
-                            autoplay
-                            muted
-                            playsinline
-                            class="video-element screen-share-video mirror-off"
-                        />
-                         <div class="participant-info">
-                            <div class="participant-header">
-                                <Icon name="Monitor" size="14" />
-                                <span class="participant-name">You are presenting</span>
-                            </div>
-                            <div class="status-row">
-                                <NetworkHealthIndicator v-bind="networkStats" compact />
+                    <!-- SPOTLIGHT LAYOUT (Presentation Mode) -->
+                    <div
+                        v-if="layoutMode === 'spotlight'"
+                        class="spotlight-wrapper"
+                    >
+                        <!-- Main Stage: Screen Share -->
+                        <div class="spotlight-stage">
+                            <template v-if="isScreenSharing && !!screenStream">
+                                <video
+                                    v-src-object="screenStream"
+                                    v-sink-id
+                                    autoplay
+                                    muted
+                                    playsinline
+                                    class="video-element screen-share-video mirror-off"
+                                />
+                                <div class="participant-info">
+                                    <div class="participant-header">
+                                        <Icon name="Monitor" size="14" />
+                                        <span class="participant-name"
+                                            >You are presenting</span
+                                        >
+                                    </div>
+                                    <div class="status-row">
+                                        <NetworkHealthIndicator
+                                            v-bind="networkStats"
+                                            compact
+                                        />
+                                    </div>
+                                </div>
+                            </template>
+                            <template
+                                v-else-if="store.remoteScreenStreams.size > 0"
+                            >
+                                <div
+                                    v-for="[
+                                        publicId,
+                                        stream,
+                                    ] in store.remoteScreenStreams"
+                                    :key="publicId + '-screen-spotlight'"
+                                    class="spotlight-content"
+                                >
+                                    <video
+                                        v-src-object="stream"
+                                        v-sink-id
+                                        autoplay
+                                        playsinline
+                                        class="video-element screen-share-video"
+                                        :data-stream-id="stream.id"
+                                        :data-track-kind="
+                                            stream.getVideoTracks()[0]?.kind
+                                        "
+                                    />
+                                    <div class="participant-info">
+                                        <div class="participant-header">
+                                            <Icon name="Monitor" size="14" />
+                                            <span class="participant-name"
+                                                >{{
+                                                    participants.find(
+                                                        (p) =>
+                                                            p.publicId ===
+                                                            publicId,
+                                                    )?.name || "Someone"
+                                                }}'s Screen</span
+                                            >
+                                        </div>
+                                        <div class="status-row">
+                                            <NetworkHealthIndicator
+                                                v-if="
+                                                    participantStats.has(
+                                                        publicId.toLowerCase(),
+                                                    )
+                                                "
+                                                v-bind="
+                                                    participantStats.get(
+                                                        publicId.toLowerCase(),
+                                                    )
+                                                "
+                                                compact
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+
+                        <!-- Side/Bottom Filmstrip: Participants -->
+                        <div class="filmstrip">
+                            <div
+                                v-for="p in participants.filter(
+                                    (p) => !p.isSelf || !isScreenSharing,
+                                )"
+                                :key="p.publicId"
+                                class="video-cell filmstrip-cell"
+                                :class="{
+                                    'is-talking': talkingParticipants.has(
+                                        p.publicId.toLowerCase(),
+                                    ),
+                                    local: p.isSelf,
+                                }"
+                            >
+                                <video
+                                    v-if="
+                                        p.isSelf
+                                            ? localHasVideo && !isCameraOff
+                                            : store.remoteStreams.get(
+                                                  p.publicId,
+                                              ) && remoteHasVideo(p.publicId)
+                                    "
+                                    v-src-object="
+                                        p.isSelf
+                                            ? localStream
+                                            : store.remoteStreams.get(
+                                                  p.publicId,
+                                              )
+                                    "
+                                    v-sink-id
+                                    :muted="p.isSelf"
+                                    autoplay
+                                    playsinline
+                                    class="video-element"
+                                    :class="{ 'mirror-off': p.isSelf && false }"
+                                />
+                                <!-- Avatar Fallback -->
+                                <div v-else class="avatar-fallback">
+                                    <div
+                                        class="avatar-placeholder"
+                                        :style="{
+                                            background: getAvatarColor(p.name),
+                                        }"
+                                    >
+                                        <span class="initials-text">{{
+                                            getInitials(p.name)
+                                        }}</span>
+                                    </div>
+                                    <div
+                                        class="audio-indicator"
+                                        v-if="!p.isSelf"
+                                    >
+                                        <Icon name="Mic" size="14" />
+                                    </div>
+                                </div>
+
+                                <div class="participant-info small">
+                                    <div class="participant-header">
+                                        <span class="participant-name">{{
+                                            p.isSelf ? "You" : p.name
+                                        }}</span>
+                                        <Icon
+                                            v-if="
+                                                handRaised.has(
+                                                    p.publicId.toLowerCase(),
+                                                )
+                                            "
+                                            name="Hand"
+                                            size="12"
+                                            class="status-icon-yellow"
+                                        />
+                                    </div>
+
+                                    <!-- Status Row (Always show for others, show Mute/Video for self) -->
+                                    <div class="status-row">
+                                        <NetworkHealthIndicator
+                                            v-if="
+                                                !p.isSelf &&
+                                                participantStats.has(
+                                                    p.publicId.toLowerCase(),
+                                                )
+                                            "
+                                            v-bind="
+                                                participantStats.get(
+                                                    p.publicId.toLowerCase(),
+                                                )
+                                            "
+                                            compact
+                                        />
+                                        <div class="status-icons">
+                                            <Icon
+                                                v-if="
+                                                    p.isSelf
+                                                        ? isMuted
+                                                        : !remoteHasAudio(
+                                                              p.publicId,
+                                                          )
+                                                "
+                                                name="MicOff"
+                                                size="12"
+                                                class="status-icon-red"
+                                            />
+                                            <Icon
+                                                v-if="
+                                                    p.isSelf
+                                                        ? isCameraOff
+                                                        : !remoteHasVideo(
+                                                              p.publicId,
+                                                          )
+                                                "
+                                                name="VideoOff"
+                                                size="12"
+                                                class="status-icon-red"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                    </template>
-                     <template v-else-if="store.remoteScreenStreams.size > 0">
+                    </div>
+
+                    <!-- STANDARD GRID LAYOUT -->
+                    <div v-else class="grid-wrapper">
+                        <!-- Remote Participants -->
                         <div
-                            v-for="[publicId, stream] in store.remoteScreenStreams"
-                            :key="publicId + '-screen-spotlight'"
-                            class="spotlight-content"
+                            v-for="p in participants.filter(
+                                (p) =>
+                                    !p.isSelf &&
+                                    p.publicId !== callData?.selfPublicId,
+                            )"
+                            :key="p.publicId"
+                            class="video-cell remote"
+                            :class="{
+                                'is-talking': talkingParticipants.has(
+                                    p.publicId.toLowerCase(),
+                                ),
+                            }"
                         >
                             <video
-                                v-src-object="stream"
+                                v-if="
+                                    store.remoteStreams.get(p.publicId) &&
+                                    remoteHasVideo(p.publicId)
+                                "
+                                v-src-object="
+                                    store.remoteStreams.get(p.publicId)
+                                "
+                                v-volume="p.publicId"
                                 v-sink-id
                                 autoplay
                                 playsinline
-                                class="video-element screen-share-video"
+                                class="video-element"
+                            />
+                            <!-- Avatar Fallback -->
+                            <div v-else class="avatar-fallback">
+                                <div
+                                    class="avatar-placeholder"
+                                    :style="{
+                                        background: getAvatarColor(p.name),
+                                    }"
+                                >
+                                    <span class="initials-text">{{
+                                        getInitials(p.name)
+                                    }}</span>
+                                </div>
+                                <div class="audio-indicator">
+                                    <Icon name="Mic" size="16" />
+                                </div>
+                            </div>
+
+                            <div class="participant-info">
+                                <div class="participant-header">
+                                    <span class="participant-name">{{
+                                        p.name
+                                    }}</span>
+                                    <Icon
+                                        v-if="
+                                            handRaised.has(
+                                                p.publicId.toLowerCase(),
+                                            )
+                                        "
+                                        name="Hand"
+                                        size="14"
+                                        class="status-icon-yellow"
+                                    />
+                                </div>
+
+                                <!-- Status Row -->
+                                <div class="status-row">
+                                    <NetworkHealthIndicator
+                                        v-if="
+                                            participantStats.has(
+                                                p.publicId.toLowerCase(),
+                                            )
+                                        "
+                                        v-bind="
+                                            participantStats.get(
+                                                p.publicId.toLowerCase(),
+                                            )
+                                        "
+                                        compact
+                                    />
+                                    <div class="status-icons">
+                                        <Icon
+                                            v-if="!remoteHasAudio(p.publicId)"
+                                            name="MicOff"
+                                            size="14"
+                                            class="status-icon-red"
+                                        />
+                                        <Icon
+                                            v-if="!remoteHasVideo(p.publicId)"
+                                            name="VideoOff"
+                                            size="14"
+                                            class="status-icon-red"
+                                        />
+                                    </div>
+
+                                    <!-- Individual Volume Control -->
+                                    <div
+                                        class="volume-control"
+                                        v-if="
+                                            store.remoteStreams.has(p.publicId)
+                                        "
+                                    >
+                                        <div class="volume-slider-container">
+                                            <input
+                                                type="range"
+                                                min="0"
+                                                max="100"
+                                                :value="
+                                                    store.remoteVolumes.get(
+                                                        p.publicId,
+                                                    ) ?? 100
+                                                "
+                                                @input="
+                                                    (e) =>
+                                                        store.setRemoteVolume(
+                                                            p.publicId,
+                                                            parseInt(
+                                                                (
+                                                                    e.target as HTMLInputElement
+                                                                ).value,
+                                                            ),
+                                                        )
+                                                "
+                                                class="volume-slider-input"
+                                            />
+                                        </div>
+                                        <button class="volume-btn">
+                                            <Icon
+                                                :name="
+                                                    (store.remoteVolumes.get(
+                                                        p.publicId,
+                                                    ) ?? 100) === 0
+                                                        ? 'VolumeX'
+                                                        : 'Volume2'
+                                                "
+                                                size="14"
+                                            />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 1b. Remote Screen Shares (SFU Mode) -->
+                        <div
+                            v-for="[
+                                publicId,
+                                screenStream,
+                            ] in store.remoteScreenStreams"
+                            :key="publicId + '-screen'"
+                            class="video-cell remote screen-share"
+                            :class="{
+                                expanded: store.remoteScreenStreams.size === 1,
+                            }"
+                        >
+                            <video
+                                v-src-object="screenStream"
+                                v-volume="publicId"
+                                v-sink-id
+                                autoplay
+                                playsinline
+                                class="video-element"
                             />
                             <div class="participant-info">
                                 <div class="participant-header">
                                     <Icon name="Monitor" size="14" />
                                     <span class="participant-name"
                                         >{{
-                                            participants.find((p) => p.publicId === publicId)
-                                                ?.name || "Someone"
+                                            participants.find(
+                                                (p) =>
+                                                    p.publicId.toLowerCase() ===
+                                                    publicId.toLowerCase(),
+                                            )?.name || "Someone"
                                         }}'s Screen</span
                                     >
+                                    <Icon
+                                        v-if="
+                                            handRaised.has(
+                                                publicId.toLowerCase(),
+                                            )
+                                        "
+                                        name="Hand"
+                                        size="14"
+                                        class="status-icon-yellow"
+                                    />
                                 </div>
                                 <div class="status-row">
-                                    <NetworkHealthIndicator 
-                                        v-if="participantStats.has(publicId.toLowerCase())"
-                                        v-bind="participantStats.get(publicId.toLowerCase())"
+                                    <NetworkHealthIndicator
+                                        v-if="
+                                            participantStats.has(
+                                                publicId.toLowerCase(),
+                                            )
+                                        "
+                                        v-bind="
+                                            participantStats.get(
+                                                publicId.toLowerCase(),
+                                            )
+                                        "
                                         compact
                                     />
                                 </div>
                             </div>
                         </div>
-                    </template>
-                </div>
 
-                <!-- Side/Bottom Filmstrip: Participants -->
-                <div class="filmstrip">
-                     <div
-                        v-for="p in participants.filter(p => !p.isSelf || !isScreenSharing)"
-                        :key="p.publicId"
-                        class="video-cell filmstrip-cell"
-                         :class="{
-                            'is-talking': talkingParticipants.has(p.publicId.toLowerCase()),
-                            'local': p.isSelf
-                        }"
-                    >
-
-                         
-                         <video
-                            v-if="
-                                (p.isSelf ? localHasVideo && !isCameraOff : store.remoteStreams.get(p.publicId) && remoteHasVideo(p.publicId))
-                            "
-                            v-src-object="p.isSelf ? localStream : store.remoteStreams.get(p.publicId)"
-                            v-sink-id
-                             :muted="p.isSelf"
-                            autoplay
-                            playsinline
-                            class="video-element"
-                            :class="{ 'mirror-off': p.isSelf && false }" 
-                        />
-                        <!-- Avatar Fallback -->
-                        <div v-else class="avatar-fallback">
-                             <div
-                                class="avatar-placeholder"
-                                :style="{ background: getAvatarColor(p.name) }"
-                            >
-                                <span class="initials-text">{{ getInitials(p.name) }}</span>
-                            </div>
-                            <div class="audio-indicator" v-if="!p.isSelf">
-                                <Icon name="Mic" size="14" />
-                            </div>
-                        </div>
-
-                        <div class="participant-info small">
-                            <div class="participant-header">
-                                <span class="participant-name">{{ p.isSelf ? 'You' : p.name }}</span>
-                                <Icon v-if="handRaised.has(p.publicId.toLowerCase())" name="Hand" size="12" class="status-icon-yellow" />
-                            </div>
-                            
-                            <!-- Status Row (Always show for others, show Mute/Video for self) -->
-                            <div class="status-row">
-                                <NetworkHealthIndicator 
-                                    v-if="!p.isSelf && participantStats.has(p.publicId.toLowerCase())"
-                                    v-bind="participantStats.get(p.publicId.toLowerCase())"
-                                    compact
-                                />
-                                <div class="status-icons">
-                                    <Icon v-if="p.isSelf ? isMuted : !remoteHasAudio(p.publicId)" name="MicOff" size="12" class="status-icon-red" />
-                                    <Icon v-if="p.isSelf ? isCameraOff : !remoteHasVideo(p.publicId)" name="VideoOff" size="12" class="status-icon-red" />
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- STANDARD GRID LAYOUT -->
-            <div v-else class="grid-wrapper">
-                <!-- Remote Participants -->
-                <div
-                    v-for="p in participants.filter(
-                        (p) => !p.isSelf && p.publicId !== callData?.selfPublicId,
-                    )"
-                    :key="p.publicId"
-                    class="video-cell remote"
-                    :class="{
-                        'is-talking': talkingParticipants.has(
-                            p.publicId.toLowerCase(),
-                        ),
-                    }"
-                >
-
-
-                    <video
-                        v-if="
-                            store.remoteStreams.get(p.publicId) &&
-                            remoteHasVideo(p.publicId)
-                        "
-                        v-src-object="store.remoteStreams.get(p.publicId)"
-                        v-volume="p.publicId"
-                        v-sink-id
-                        autoplay
-                        playsinline
-                        class="video-element"
-                    />
-                    <!-- Avatar Fallback -->
-                    <div v-else class="avatar-fallback">
+                        <!-- Local Participant (Me) -->
                         <div
-                            class="avatar-placeholder"
-                            :style="{ background: getAvatarColor(p.name) }"
+                            class="video-cell local"
+                            :class="{
+                                'pip-mode': participants.length >= 2,
+                                'audio-mode': isAudioOnly && !isScreenSharing,
+                                'is-talking': talkingParticipants.has(
+                                    callData?.selfPublicId?.toLowerCase() || '',
+                                ),
+                            }"
                         >
-                             <span class="initials-text">{{ getInitials(p.name) }}</span>
-                        </div>
-                        <div class="audio-indicator">
-                            <Icon name="Mic" size="16" />
-                        </div>
-                    </div>
-
-                    <div class="participant-info">
-                        <div class="participant-header">
-                            <span class="participant-name">{{ p.name }}</span>
-                            <Icon v-if="handRaised.has(p.publicId.toLowerCase())" name="Hand" size="14" class="status-icon-yellow" />
-                        </div>
-                        
-                        <!-- Status Row -->
-                        <div class="status-row">
-                            <NetworkHealthIndicator 
-                                v-if="participantStats.has(p.publicId.toLowerCase())"
-                                v-bind="participantStats.get(p.publicId.toLowerCase())"
-                                compact
+                            <video
+                                v-if="
+                                    isScreenSharing
+                                        ? !!screenStream
+                                        : localHasVideo && !isCameraOff
+                                "
+                                v-src-object="
+                                    isScreenSharing ? screenStream : localStream
+                                "
+                                v-sink-id
+                                autoplay
+                                muted
+                                playsinline
+                                class="video-element"
+                                :class="{ 'mirror-off': isScreenSharing }"
                             />
-                            <div class="status-icons">
-                                <Icon v-if="!remoteHasAudio(p.publicId)" name="MicOff" size="14" class="status-icon-red" />
-                                <Icon v-if="!remoteHasVideo(p.publicId)" name="VideoOff" size="14" class="status-icon-red" />
-                            </div>
-                            
-                            <!-- Individual Volume Control -->
-                            <div
-                                class="volume-control"
-                                v-if="store.remoteStreams.has(p.publicId)"
-                            >
-                                <div class="volume-slider-container">
-                                    <input
-                                        type="range"
-                                        min="0"
-                                        max="100"
-                                        :value="store.remoteVolumes.get(p.publicId) ?? 100"
-                                        @input="(e) => store.setRemoteVolume(p.publicId, parseInt((e.target as HTMLInputElement).value))"
-                                        class="volume-slider-input"
-                                    />
-                                </div>
-                                <button class="volume-btn">
-                                    <Icon
-                                        :name="
-                                            (store.remoteVolumes.get(p.publicId) ?? 100) === 0
-                                                ? 'VolumeX'
-                                                : 'Volume2'
-                                        "
-                                        size="14"
-                                    />
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 1b. Remote Screen Shares (SFU Mode) -->
-                <div
-                    v-for="[
-                        publicId,
-                        screenStream,
-                    ] in store.remoteScreenStreams"
-                    :key="publicId + '-screen'"
-                    class="video-cell remote screen-share"
-                    :class="{ expanded: store.remoteScreenStreams.size === 1 }"
-                >
-                    <video
-                        v-src-object="screenStream"
-                        v-volume="publicId"
-                        v-sink-id
-                        autoplay
-                        playsinline
-                        class="video-element"
-                    />
-                    <div class="participant-info">
-                        <div class="participant-header">
-                            <Icon name="Monitor" size="14" />
-                            <span class="participant-name"
-                                >{{
-                                    participants.find(
-                                        (p) => p.publicId.toLowerCase() === publicId.toLowerCase(),
-                                    )?.name || "Someone"
-                                }}'s Screen</span
-                            >
-                            <Icon v-if="handRaised.has(publicId.toLowerCase())" name="Hand" size="14" class="status-icon-yellow" />
-                        </div>
-                        <div class="status-row">
-                            <NetworkHealthIndicator 
-                                v-if="participantStats.has(publicId.toLowerCase())"
-                                v-bind="participantStats.get(publicId.toLowerCase())"
-                                compact
-                            />
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Local Participant (Me) -->
-                <div
-                    class="video-cell local"
-                     :class="{
-                        'pip-mode': participants.length >= 2,
-                        'audio-mode': isAudioOnly && !isScreenSharing,
-                        'is-talking': talkingParticipants.has(callData?.selfPublicId?.toLowerCase() || ''),
-                    }"
-                >
-                    <video
-                        v-if="
-                            isScreenSharing
-                                ? !!screenStream
-                                : localHasVideo && !isCameraOff
-                        "
-                        v-src-object="
-                            isScreenSharing ? screenStream : localStream
-                        "
-                        v-sink-id
-                        autoplay
-                        muted
-                        playsinline
-                        class="video-element"
-                        :class="{ 'mirror-off': isScreenSharing }"
-                    />
-                    <div v-else class="avatar-fallback">
-                        <div class="avatar-placeholder local" :style="{ background: getAvatarColor('Me') }">
-                             <span class="initials-text">Me</span>
-                        </div>
-                    </div>
-                    <div class="participant-info">
-                        <div class="participant-header">
-                            <span class="participant-name">You</span>
-                            <Icon v-if="handRaised.has(callData?.selfPublicId?.toLowerCase() || '')" name="Hand" size="14" class="status-icon-yellow" />
-                        </div>
-                        <div class="status-row">
-                             <div class="status-icons">
-                                <Icon v-if="isMuted" name="MicOff" size="14" class="status-icon-red" />
-                                <Icon v-if="isCameraOff" name="VideoOff" size="14" class="status-icon-red" />
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- CONTROLS -->
-            <div 
-                class="controls-bar" 
-                :class="{ 
-                    collapsed: isControlsCollapsed, 
-                    'is-dragging': isDragging 
-                }"
-                :style="hasMoved ? { 
-                    left: `${controlsPosition.x}px`, 
-                    top: `${controlsPosition.y}px`,
-                    transform: 'none',
-                    bottom: 'auto',
-                    right: 'auto'
-                } : {}"
-                @mousedown="startDrag"
-                @touchstart="startDrag"
-            >
-                <!-- Drag Handle -->
-                <div class="drag-handle" title="Drag to move">
-                    <Icon name="GripVertical" size="20" class="text-white/50" />
-                </div>
-
-                <!-- Collapse Toggle -->
-                <button
-                    class="control-btn collapse-toggle"
-                    @click="isControlsCollapsed = !isControlsCollapsed"
-                    :title="isControlsCollapsed ? 'Expand Controls' : 'Collapse Controls'"
-                >
-                     <Icon :name="isControlsCollapsed ? 'ChevronRight' : 'ChevronLeft'" size="20" />
-                </button>
-
-                <!-- Main Controls (Hidden when collapsed) -->
-                <div class="main-controls" v-show="!isControlsCollapsed">
-                    <button
-                        class="control-btn"
-                        :class="{ off: isMuted }"
-                        @click="toggleMute"
-                        title="Toggle Mute"
-                    >
-                        <Icon :name="isMuted ? 'MicOff' : 'Mic'" size="24" />
-                    </button>
-
-                    <button
-                        v-if="!isAudioOnly"
-                        class="control-btn"
-                        :class="{ off: isCameraOff }"
-                        @click="toggleCamera"
-                        title="Toggle Camera"
-                    >
-                        <Icon
-                            :name="isCameraOff ? 'VideoOff' : 'Video'"
-                            size="24"
-                        />
-                    </button>
-                    <button
-                        class="control-btn"
-                        :class="{ off: !isScreenSharing }"
-                        @click="toggleScreenShare"
-                        title="Share Screen"
-                    >
-                        <Icon name="Monitor" size="24" />
-                    </button>
-
-                    <button
-                        class="control-btn"
-                         :class="{ active: handRaised.has(store.selfPublicId?.toLowerCase() || '') }"
-                        @click="toggleHand"
-                        title="Raise Hand"
-                    >
-                        <Icon name="Hand" size="24" />
-                    </button>
-
-                    <button
-                        class="control-btn"
-                        @click="showSettings = true"
-                        title="Settings"
-                    >
-                        <Icon name="Settings" size="24" />
-                    </button>
-
-                    <button
-                         class="control-btn"
-                         :class="{ active: showSidebar && sidebarTab === 'chat' }"
-                         @click="toggleSidebar('chat')"
-                         title="Chat"
-                    >
-                        <Icon name="MessageSquare" size="24" />
-                    </button>
-
-                    <button
-                        class="control-btn hangup"
-                        @click="endCall('hangup')"
-                        title="End Call"
-                    >
-                        <Icon name="PhoneOff" size="24" />
-                    </button>
-                </div>
-
-                <!-- Collapsed State Icons (Minimal Status) -->
-                <div class="collapsed-status" v-show="isControlsCollapsed">
-                     <Icon :name="isMuted ? 'MicOff' : 'Mic'" size="16" :class="{ 'text-red-500': isMuted }" />
-                     <Icon v-if="!isAudioOnly" :name="isCameraOff ? 'VideoOff' : 'Video'" size="16" :class="{ 'text-red-500': isCameraOff }" />
-                     <button class="control-btn hangup small" @click="endCall('hangup')">
-                        <Icon name="PhoneOff" size="16" />
-                     </button>
-                </div>
-            </div>
-            </div> <!-- Close Main Stage -->
-
-            <!-- CALL SIDEBAR -->
-            <div class="call-sidebar" :class="{ open: showSidebar }">
-                <div class="sidebar-header">
-                    <button :class="{ active: sidebarTab === 'people' }" @click="sidebarTab = 'people'" title="Participants">
-                        <Icon name="Users" size="20" />
-                    </button>
-                    <button :class="{ active: sidebarTab === 'chat' }" @click="sidebarTab = 'chat'" title="Chat">
-                        <Icon name="MessageSquare" size="20" />
-                    </button>
-                    <button class="close-btn" @click="showSidebar = false" title="Close Sidebar">
-                        <Icon name="X" size="20" />
-                    </button>
-                </div>
-
-                <div class="sidebar-content">
-                    <!-- PEOPLE TAB -->
-                    <div v-if="sidebarTab === 'people'" class="people-list overflow-y-auto">
-                         <div v-for="p in participants" :key="p.publicId" class="participant-item">
-                            <div class="avatar" :style="{ background: getAvatarColor(p.name) }">
-                                {{ getInitials(p.name) }}
-                            </div>
-                            <span>{{ p.isSelf ? 'You' : p.name }}</span>
-                            <div class="status-icons" style="margin-left: auto; display: flex; gap: 6px; align-items: center;">
-                                <Icon v-if="handRaised.has(p.publicId.toLowerCase())" name="Hand" size="14" class="status-icon-yellow" />
-                                <Icon v-if="p.isSelf ? isMuted : !remoteHasAudio(p.publicId)" name="MicOff" size="14" class="text-red-500" />
-                                <Icon v-if="p.isSelf ? isCameraOff : !remoteHasVideo(p.publicId)" name="VideoOff" size="14" class="text-red-500" />
-                            </div>
-                         </div>
-                    </div>
-
-                    <!-- CHAT TAB -->
-                     <div v-if="sidebarTab === 'chat'" class="chat-panel h-full flex flex-col">
-                         <template v-if="activeChat">
-                            <!-- Messages -->
-                            <div class="flex-1 min-h-0 relative flex flex-col overflow-hidden">
-                                <CallChatList
-                                    v-if="activeChat?.public_id"
-                                    ref="chatListRef"
-                                    :chat-id="activeChat.public_id"
-                                    :messages="activeMessages"
-                                    :is-loading-more="isChatLoadingMore"
-                                    @fetch-older="loadMoreMessages"
-                                    @reply="handleMessageReply"
-                                    @jump="(id) => chatListRef?.scrollToMessage(id)"
-                                />
-                                <div v-else class="h-full flex items-center justify-center text-(--text-tertiary)">
-                                    Select a chat to start messaging
-                                </div>
-
-                                <!-- Typing Indicator -->
-                                <Transition
-                                    enter-active-class="transition duration-200 ease-out"
-                                    enter-from-class="transform translate-y-2 opacity-0"
-                                    enter-to-class="transform translate-y-0 opacity-100"
-                                    leave-active-class="transition duration-150 ease-in"
-                                    leave-from-class="transform translate-y-0 opacity-100"
-                                    leave-to-class="transform translate-y-2 opacity-0"
+                            <div v-else class="avatar-fallback">
+                                <div
+                                    class="avatar-placeholder local"
+                                    :style="{
+                                        background: getAvatarColor('Me'),
+                                    }"
                                 >
-                                    <div 
-                                        v-if="typingIndicator" 
-                                        class="absolute bottom-2 left-4 z-20 flex items-center gap-2 bg-(--surface-elevated)/90 backdrop-blur-sm px-3 py-1.5 rounded-full border border-(--border-subtle) shadow-sm"
-                                    >
-                                        <div class="flex gap-1">
-                                            <span class="w-1 h-1 bg-(--interactive-primary) rounded-full animate-bounce"></span>
-                                            <span class="w-1 h-1 bg-(--interactive-primary) rounded-full animate-bounce [animation-delay:0.2s]"></span>
-                                            <span class="w-1 h-1 bg-(--interactive-primary) rounded-full animate-bounce [animation-delay:0.4s]"></span>
-                                        </div>
-                                        <span class="text-[10px] font-medium text-(--text-secondary)">{{ typingIndicator }}</span>
-                                    </div>
-                                </Transition>
+                                    <span class="initials-text">Me</span>
+                                </div>
                             </div>
+                            <div class="participant-info">
+                                <div class="participant-header">
+                                    <span class="participant-name">You</span>
+                                    <Icon
+                                        v-if="
+                                            handRaised.has(
+                                                callData?.selfPublicId?.toLowerCase() ||
+                                                    '',
+                                            )
+                                        "
+                                        name="Hand"
+                                        size="14"
+                                        class="status-icon-yellow"
+                                    />
+                                </div>
+                                <div class="status-row">
+                                    <div class="status-icons">
+                                        <Icon
+                                            v-if="isMuted"
+                                            name="MicOff"
+                                            size="14"
+                                            class="status-icon-red"
+                                        />
+                                        <Icon
+                                            v-if="isCameraOff"
+                                            name="VideoOff"
+                                            size="14"
+                                            class="status-icon-red"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
 
-                            <!-- Composer -->
-                            <ChatComposer
-                                v-if="activeChat?.public_id"
-                                v-model="messageInput"
-                                :chat-id="activeChat?.public_id"
-                                :reply-to="replyingTo"
-                                :pending-files="pendingFiles"
-                                :sending="isSending"
-                                :is-mobile="false"
-                                compact 
-                                class="flex-shrink-0 z-10"
-                                @send="() => { console.log('[CallChat] Sending message...', messageInput); sendMessage(); }"
-                                @typing="handleInputChange"
-                                @add-files="addFiles"
-                                @remove-file="removeFile"
-                                @cancel-reply="replyingTo = null"
-                                @send-gif="sendGif"
+                    <!-- CONTROLS -->
+                    <div
+                        class="controls-bar"
+                        :class="{
+                            collapsed: isControlsCollapsed,
+                            'is-dragging': isDragging,
+                        }"
+                        :style="
+                            hasMoved
+                                ? {
+                                      left: `${controlsPosition.x}px`,
+                                      top: `${controlsPosition.y}px`,
+                                      transform: 'none',
+                                      bottom: 'auto',
+                                      right: 'auto',
+                                  }
+                                : {}
+                        "
+                        @mousedown="startDrag"
+                        @touchstart="startDrag"
+                    >
+                        <!-- Drag Handle -->
+                        <div class="drag-handle" title="Drag to move">
+                            <Icon
+                                name="GripVertical"
+                                size="20"
+                                class="text-white/50"
                             />
-                         </template>
-                         <div v-else class="flex flex-col items-center justify-center h-full text-zinc-500 gap-2">
-                            <Icon name="Loader" size="24" class="animate-spin" />
-                            <span class="text-sm">Loading chat...</span>
-                         </div>
+                        </div>
+
+                        <!-- Collapse Toggle -->
+                        <button
+                            class="control-btn collapse-toggle"
+                            @click="isControlsCollapsed = !isControlsCollapsed"
+                            :title="
+                                isControlsCollapsed
+                                    ? 'Expand Controls'
+                                    : 'Collapse Controls'
+                            "
+                        >
+                            <Icon
+                                :name="
+                                    isControlsCollapsed
+                                        ? 'ChevronRight'
+                                        : 'ChevronLeft'
+                                "
+                                size="20"
+                            />
+                        </button>
+
+                        <!-- Main Controls (Hidden when collapsed) -->
+                        <div
+                            class="main-controls"
+                            v-show="!isControlsCollapsed"
+                        >
+                            <button
+                                class="control-btn"
+                                :class="{ off: isMuted }"
+                                @click="toggleMute"
+                                title="Toggle Mute"
+                            >
+                                <Icon
+                                    :name="isMuted ? 'MicOff' : 'Mic'"
+                                    size="24"
+                                />
+                            </button>
+
+                            <button
+                                v-if="!isAudioOnly"
+                                class="control-btn"
+                                :class="{ off: isCameraOff }"
+                                @click="toggleCamera"
+                                title="Toggle Camera"
+                            >
+                                <Icon
+                                    :name="isCameraOff ? 'VideoOff' : 'Video'"
+                                    size="24"
+                                />
+                            </button>
+                            <button
+                                class="control-btn"
+                                :class="{ off: !isScreenSharing }"
+                                @click="toggleScreenShare"
+                                title="Share Screen"
+                            >
+                                <Icon name="Monitor" size="24" />
+                            </button>
+
+                            <button
+                                class="control-btn"
+                                :class="{
+                                    active: handRaised.has(
+                                        store.selfPublicId?.toLowerCase() || '',
+                                    ),
+                                }"
+                                @click="toggleHand"
+                                title="Raise Hand"
+                            >
+                                <Icon name="Hand" size="24" />
+                            </button>
+
+                            <button
+                                class="control-btn"
+                                @click="showSettings = true"
+                                title="Settings"
+                            >
+                                <Icon name="Settings" size="24" />
+                            </button>
+
+                            <button
+                                class="control-btn"
+                                :class="{
+                                    active:
+                                        showSidebar && sidebarTab === 'chat',
+                                }"
+                                @click="toggleSidebar('chat')"
+                                title="Chat"
+                            >
+                                <Icon name="MessageSquare" size="24" />
+                            </button>
+
+                            <button
+                                class="control-btn hangup"
+                                @click="endCall('hangup')"
+                                title="End Call"
+                            >
+                                <Icon name="PhoneOff" size="24" />
+                            </button>
+                        </div>
+
+                        <!-- Collapsed State Icons (Minimal Status) -->
+                        <div
+                            class="collapsed-status"
+                            v-show="isControlsCollapsed"
+                        >
+                            <Icon
+                                :name="isMuted ? 'MicOff' : 'Mic'"
+                                size="16"
+                                :class="{ 'text-red-500': isMuted }"
+                            />
+                            <Icon
+                                v-if="!isAudioOnly"
+                                :name="isCameraOff ? 'VideoOff' : 'Video'"
+                                size="16"
+                                :class="{ 'text-red-500': isCameraOff }"
+                            />
+                            <button
+                                class="control-btn hangup small"
+                                @click="endCall('hangup')"
+                            >
+                                <Icon name="PhoneOff" size="16" />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Close Main Stage -->
+
+                <!-- CALL SIDEBAR -->
+                <div class="call-sidebar" :class="{ open: showSidebar }">
+                    <div class="sidebar-header">
+                        <button
+                            :class="{ active: sidebarTab === 'people' }"
+                            @click="sidebarTab = 'people'"
+                            title="Participants"
+                        >
+                            <Icon name="Users" size="20" />
+                        </button>
+                        <button
+                            :class="{ active: sidebarTab === 'chat' }"
+                            @click="sidebarTab = 'chat'"
+                            title="Chat"
+                        >
+                            <Icon name="MessageSquare" size="20" />
+                        </button>
+                        <button
+                            class="close-btn"
+                            @click="showSidebar = false"
+                            title="Close Sidebar"
+                        >
+                            <Icon name="X" size="20" />
+                        </button>
+                    </div>
+
+                    <div class="sidebar-content">
+                        <!-- PEOPLE TAB -->
+                        <div
+                            v-if="sidebarTab === 'people'"
+                            class="people-list overflow-y-auto"
+                        >
+                            <div
+                                v-for="p in participants"
+                                :key="p.publicId"
+                                class="participant-item"
+                            >
+                                <div
+                                    class="avatar"
+                                    :style="{
+                                        background: getAvatarColor(p.name),
+                                    }"
+                                >
+                                    {{ getInitials(p.name) }}
+                                </div>
+                                <span>{{ p.isSelf ? "You" : p.name }}</span>
+                                <div
+                                    class="status-icons"
+                                    style="
+                                        margin-left: auto;
+                                        display: flex;
+                                        gap: 6px;
+                                        align-items: center;
+                                    "
+                                >
+                                    <Icon
+                                        v-if="
+                                            handRaised.has(
+                                                p.publicId.toLowerCase(),
+                                            )
+                                        "
+                                        name="Hand"
+                                        size="14"
+                                        class="status-icon-yellow"
+                                    />
+                                    <Icon
+                                        v-if="
+                                            p.isSelf
+                                                ? isMuted
+                                                : !remoteHasAudio(p.publicId)
+                                        "
+                                        name="MicOff"
+                                        size="14"
+                                        class="text-red-500"
+                                    />
+                                    <Icon
+                                        v-if="
+                                            p.isSelf
+                                                ? isCameraOff
+                                                : !remoteHasVideo(p.publicId)
+                                        "
+                                        name="VideoOff"
+                                        size="14"
+                                        class="text-red-500"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- CHAT TAB -->
+                        <div
+                            v-if="sidebarTab === 'chat'"
+                            class="chat-panel h-full flex flex-col"
+                        >
+                            <template v-if="activeChat">
+                                <!-- Messages -->
+                                <div
+                                    class="flex-1 min-h-0 relative flex flex-col overflow-hidden"
+                                >
+                                    <CallChatList
+                                        v-if="activeChat?.public_id"
+                                        ref="chatListRef"
+                                        :chat-id="activeChat.public_id"
+                                        :messages="activeMessages"
+                                        :is-loading-more="isChatLoadingMore"
+                                        @fetch-older="loadMoreMessages"
+                                        @reply="handleMessageReply"
+                                        @jump="
+                                            (id) =>
+                                                chatListRef?.scrollToMessage(id)
+                                        "
+                                    />
+                                    <div
+                                        v-else
+                                        class="h-full flex items-center justify-center text-(--text-tertiary)"
+                                    >
+                                        Select a chat to start messaging
+                                    </div>
+
+                                    <!-- Typing Indicator -->
+                                    <Transition
+                                        enter-active-class="transition duration-200 ease-out"
+                                        enter-from-class="transform translate-y-2 opacity-0"
+                                        enter-to-class="transform translate-y-0 opacity-100"
+                                        leave-active-class="transition duration-150 ease-in"
+                                        leave-from-class="transform translate-y-0 opacity-100"
+                                        leave-to-class="transform translate-y-2 opacity-0"
+                                    >
+                                        <div
+                                            v-if="typingIndicator"
+                                            class="absolute bottom-2 left-4 z-20 flex items-center gap-2 bg-(--surface-elevated)/90 backdrop-blur-sm px-3 py-1.5 rounded-full border border-(--border-subtle) shadow-sm"
+                                        >
+                                            <div class="flex gap-1">
+                                                <span
+                                                    class="w-1 h-1 bg-(--interactive-primary) rounded-full animate-bounce"
+                                                ></span>
+                                                <span
+                                                    class="w-1 h-1 bg-(--interactive-primary) rounded-full animate-bounce [animation-delay:0.2s]"
+                                                ></span>
+                                                <span
+                                                    class="w-1 h-1 bg-(--interactive-primary) rounded-full animate-bounce [animation-delay:0.4s]"
+                                                ></span>
+                                            </div>
+                                            <span
+                                                class="text-[10px] font-medium text-(--text-secondary)"
+                                                >{{ typingIndicator }}</span
+                                            >
+                                        </div>
+                                    </Transition>
+                                </div>
+
+                                <!-- Composer -->
+                                <ChatComposer
+                                    v-if="activeChat?.public_id"
+                                    v-model="messageInput"
+                                    :chat-id="activeChat?.public_id"
+                                    :reply-to="replyingTo"
+                                    :pending-files="pendingFiles"
+                                    :sending="isSending"
+                                    :is-mobile="false"
+                                    compact
+                                    class="flex-shrink-0 z-10"
+                                    @send="
+                                        () => {
+                                            console.log(
+                                                '[CallChat] Sending message...',
+                                                messageInput,
+                                            );
+                                            sendMessage();
+                                        }
+                                    "
+                                    @typing="handleInputChange"
+                                    @add-files="addFiles"
+                                    @remove-file="removeFile"
+                                    @cancel-reply="replyingTo = null"
+                                    @send-gif="sendGif"
+                                />
+                            </template>
+                            <div
+                                v-else
+                                class="flex flex-col items-center justify-center h-full text-zinc-500 gap-2"
+                            >
+                                <Icon
+                                    name="Loader"
+                                    size="24"
+                                    class="animate-spin"
+                                />
+                                <span class="text-sm">Loading chat...</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
-            </div> <!-- Close Container -->
-            
-            <CallSettingsModal 
-                :open="showSettings" 
-                @update:open="showSettings = $event" 
+            <!-- Close Container -->
+
+            <CallSettingsModal
+                :open="showSettings"
+                @update:open="showSettings = $event"
                 @close="showSettings = false"
             />
         </template>
-        
+
         <MediaViewer />
     </div>
 </template>
@@ -3575,7 +4215,11 @@ onBeforeUnmount(() => cleanup());
     flex-direction: column;
     position: relative;
     overflow: hidden;
-    font-family: "Inter", system-ui, -apple-system, sans-serif;
+    font-family:
+        "Inter",
+        system-ui,
+        -apple-system,
+        sans-serif;
     color: #fafafa;
 }
 
@@ -3590,7 +4234,11 @@ onBeforeUnmount(() => cleanup());
 .call-overlay {
     position: absolute;
     inset: 0;
-    background: radial-gradient(circle at center, transparent 0%, rgba(0, 0, 0, 0.6) 100%);
+    background: radial-gradient(
+        circle at center,
+        transparent 0%,
+        rgba(0, 0, 0, 0.6) 100%
+    );
     z-index: 1;
     pointer-events: none;
 }
@@ -3634,11 +4282,14 @@ onBeforeUnmount(() => cleanup());
     box-shadow: 0 0 12px rgba(16, 185, 129, 0.6);
     animation: breathing 3s infinite;
 }
-.status-dot.connecting, .status-dot.ringing {
+.status-dot.connecting,
+.status-dot.ringing {
     background: #3b82f6;
     animation: pulse 1.5s infinite;
 }
-.status-dot.error { background: #ef4444; }
+.status-dot.error {
+    background: #ef4444;
+}
 
 .status-text {
     color: rgba(255, 255, 255, 0.9);
@@ -3828,7 +4479,7 @@ onBeforeUnmount(() => cleanup());
     grid-auto-rows: 1fr;
 }
 .grid-3-3 .grid-wrapper {
-     display: grid;
+    display: grid;
     grid-template-columns: repeat(3, 1fr);
     grid-auto-rows: 1fr;
 }
@@ -3843,7 +4494,9 @@ onBeforeUnmount(() => cleanup());
     z-index: 10;
     position: relative;
     padding: 16px;
-    padding-bottom: calc(20px + env(safe-area-inset-bottom, 20px)); /* Reduced from 100px */
+    padding-bottom: calc(
+        20px + env(safe-area-inset-bottom, 20px)
+    ); /* Reduced from 100px */
     gap: 16px;
 }
 /* ... skipped spotlight-stage ... */
@@ -3890,7 +4543,7 @@ onBeforeUnmount(() => cleanup());
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
 }
 
 .spotlight-content {
@@ -3914,7 +4567,7 @@ onBeforeUnmount(() => cleanup());
     padding-right: 4px;
     /* Scrollbar styling */
     scrollbar-width: thin;
-    scrollbar-color: rgba(255,255,255,0.2) transparent;
+    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 
 .filmstrip-cell.video-cell {
@@ -3938,7 +4591,10 @@ onBeforeUnmount(() => cleanup());
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: transform 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+    transition:
+        transform 0.3s ease,
+        border-color 0.3s ease,
+        box-shadow 0.3s ease;
 }
 
 .video-cell.is-talking {
@@ -3953,7 +4609,9 @@ onBeforeUnmount(() => cleanup());
     object-fit: cover;
     background: #000;
 }
-.mirror-off { transform: scaleX(1); }
+.mirror-off {
+    transform: scaleX(1);
+}
 
 /* Avatar Fallback */
 .avatar-fallback {
@@ -3975,7 +4633,7 @@ onBeforeUnmount(() => cleanup());
     font-size: 28px;
     font-weight: 700;
     color: white;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 /* PiP for Local (in Grid 1-1) */
@@ -3991,8 +4649,8 @@ onBeforeUnmount(() => cleanup());
     aspect-ratio: 16/9; /* Standard */
     width: 200px;
     z-index: 30;
-    border: 2px solid rgba(255,255,255,0.2);
-    box-shadow: 0 16px 40px rgba(0,0,0,0.6);
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
 }
 
 .participant-info {
@@ -4070,7 +4728,7 @@ onBeforeUnmount(() => cleanup());
 }
 
 .controls-bar.is-dragging {
-    transition: none !important; 
+    transition: none !important;
     pointer-events: auto;
 }
 
@@ -4085,7 +4743,7 @@ onBeforeUnmount(() => cleanup());
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    background: rgba(255,255,255,0.05);
+    background: rgba(255, 255, 255, 0.05);
     border: none;
     color: #a1a1aa;
     display: flex;
@@ -4095,7 +4753,7 @@ onBeforeUnmount(() => cleanup());
     transition: all 0.2s;
 }
 .collapse-toggle:hover {
-    background: rgba(255,255,255,0.1);
+    background: rgba(255, 255, 255, 0.1);
     color: white;
 }
 
@@ -4156,13 +4814,17 @@ onBeforeUnmount(() => cleanup());
     align-items: center;
     justify-content: center;
     z-index: 30;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     animation: pop-in 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 @keyframes pop-in {
-    0% { transform: scale(0); }
-    100% { transform: scale(1); }
+    0% {
+        transform: scale(0);
+    }
+    100% {
+        transform: scale(1);
+    }
 }
 
 .call-stage-container {
@@ -4209,7 +4871,7 @@ onBeforeUnmount(() => cleanup());
     display: flex;
     align-items: center;
     padding: 12px;
-    border-bottom: 1px solid rgba(255,255,255,0.1);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     gap: 8px;
 }
 
@@ -4227,12 +4889,12 @@ onBeforeUnmount(() => cleanup());
 }
 
 .sidebar-header button:hover {
-    background: rgba(255,255,255,0.05);
+    background: rgba(255, 255, 255, 0.05);
     color: white;
 }
 
 .sidebar-header button.active {
-    background: rgba(255,255,255,0.1);
+    background: rgba(255, 255, 255, 0.1);
     color: #10b981;
 }
 
@@ -4264,7 +4926,7 @@ onBeforeUnmount(() => cleanup());
     transition: background 0.2s;
 }
 .participant-item:hover {
-    background: rgba(255,255,255,0.05);
+    background: rgba(255, 255, 255, 0.05);
 }
 
 .participant-item .avatar {
@@ -4309,11 +4971,11 @@ onBeforeUnmount(() => cleanup());
     border-radius: 40px;
     width: auto;
     height: auto;
-    max-height: none; 
+    max-height: none;
     z-index: 500;
-    
+
     /* We set initial position via CSS, but check if we need to override with inline styles when dragging */
-    left: 50%; 
+    left: 50%;
     top: auto;
     bottom: 32px;
     transform: translateX(-50%);
@@ -4322,8 +4984,8 @@ onBeforeUnmount(() => cleanup());
 
 .layout-spotlight .control-btn {
     /* Standard size */
-    width: auto; 
-    height: auto; 
+    width: auto;
+    height: auto;
     margin: 0;
 }
 
@@ -4331,12 +4993,14 @@ onBeforeUnmount(() => cleanup());
     width: 44px; /* Standard size */
     height: 44px;
     border-radius: 50%;
-    border: 1px solid rgba(255,255,255,0.1);
+    border: 1px solid rgba(255, 255, 255, 0.1);
     background: rgba(255, 255, 255, 0.08);
     color: white;
     font-size: 24px;
     cursor: pointer;
-    display:flex; align-items:center; justify-content:center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     transition: all 0.2s;
 }
 
@@ -4352,15 +5016,29 @@ onBeforeUnmount(() => cleanup());
     height: 18px;
 }
 
-.control-btn:hover { background: rgba(255,255,255,0.15); transform: scale(1.1); }
-.control-btn.off { background: #fafafa; color: #09090b; }
-.control-btn.hangup { background: #ef4444; border-color: rgba(255,255,255,0.1); }
-.control-btn.hangup:hover { background: #dc2626; }
+.control-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: scale(1.1);
+}
+.control-btn.off {
+    background: #fafafa;
+    color: #09090b;
+}
+.control-btn.hangup {
+    background: #ef4444;
+    border-color: rgba(255, 255, 255, 0.1);
+}
+.control-btn.hangup:hover {
+    background: #dc2626;
+}
 
 @media (max-width: 768px) {
     .controls-bar {
         bottom: calc(12px + env(safe-area-inset-bottom, 0));
-        width: min(calc(100% - 16px), 400px); /* Increased from 280px to prevent clipping */
+        width: min(
+            calc(100% - 16px),
+            400px
+        ); /* Increased from 280px to prevent clipping */
         padding: 6px 10px; /* Refined padding */
         gap: 6px; /* Slightly more space than 4px */
         justify-content: center;
@@ -4368,10 +5046,10 @@ onBeforeUnmount(() => cleanup());
         border-radius: 24px;
         flex-wrap: nowrap; /* Prevent wrapping */
     }
-    
-    .control-btn { 
+
+    .control-btn {
         width: 36px; /* Slightly larger targets for better UX on mobile */
-        height: 36px; 
+        height: 36px;
         font-size: 16px;
         flex-shrink: 0; /* Prevent squishing */
     }
@@ -4403,7 +5081,10 @@ onBeforeUnmount(() => cleanup());
         border-bottom: 1px solid var(--glass-border);
         border-top: none;
         position: absolute;
-        top: env(safe-area-inset-top, 0); /* Move to top to avoid covering presentation content */
+        top: env(
+            safe-area-inset-top,
+            0
+        ); /* Move to top to avoid covering presentation content */
         bottom: auto;
         z-index: 400;
     }
@@ -4412,17 +5093,47 @@ onBeforeUnmount(() => cleanup());
         height: 100%;
         aspect-ratio: 16/9;
     }
-    
-    .grid-wrapper { 
-        padding: 12px; 
+
+    .grid-wrapper {
+        padding: 12px;
         padding-bottom: 100px; /* Reduced from 120px */
     }
-    .grid-2-2 .grid-wrapper, .grid-3-3 .grid-wrapper { grid-template-columns: 1fr; }
+    .grid-2-2 .grid-wrapper,
+    .grid-3-3 .grid-wrapper {
+        grid-template-columns: 1fr;
+    }
 }
 
-@keyframes breathing { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.1); opacity: 0.8; } }
-@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes breathing {
+    0%,
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.1);
+        opacity: 0.8;
+    }
+}
+@keyframes float {
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-10px);
+    }
+}
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
 
 .avatar-placeholder {
     width: 100px;

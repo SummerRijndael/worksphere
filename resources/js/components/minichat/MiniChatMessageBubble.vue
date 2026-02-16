@@ -3,19 +3,28 @@ import { computed } from "vue";
 import type { Message, MessageAttachment } from "@/types/models/chat";
 import { Icon, Avatar } from "@/components/ui";
 import LinkPreview from "@/components/LinkPreview.vue";
+import { useVideoCallStore } from "@/stores/videocall";
+
+const videoCallStore = useVideoCallStore();
 
 interface Props {
     message: Message;
     isMine: boolean;
+    showJoinButton?: boolean;
 }
 
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+    showJoinButton: true,
+});
 
 const emit = defineEmits<{
     reply: [message: Message];
     jump: [messageId: string];
     retry: [messageId: string];
-    callback: [data: { chatId: string; callType: 'video' | 'audio' }];
+    callback: [data: { chatId: string; callType: "video" | "audio" }];
+    "join-call": [
+        data: { chatId: string; callId: string; callType: "video" | "audio" },
+    ];
 }>();
 
 const formatTime = (dateStr: string): string => {
@@ -27,8 +36,12 @@ const formatTime = (dateStr: string): string => {
 
 const isImage = (mime: string) => mime && mime.startsWith("image/");
 
-const files = computed<MessageAttachment[]>(() => props.message.attachments?.filter(a => !isImage(a.mime_type)) || []);
-const images = computed<MessageAttachment[]>(() => props.message.attachments?.filter(a => isImage(a.mime_type)) || []);
+const files = computed<MessageAttachment[]>(
+    () => props.message.attachments?.filter((a) => !isImage(a.mime_type)) || [],
+);
+const images = computed<MessageAttachment[]>(
+    () => props.message.attachments?.filter((a) => isImage(a.mime_type)) || [],
+);
 const giphy = computed(() => props.message.metadata?.giphy);
 
 // Limit to 4 images for grid
@@ -36,18 +49,18 @@ const displayImages = computed(() => images.value.slice(0, 4));
 
 const gridClass = computed(() => {
     const count = images.value.length;
-    if (count === 1) return 'grid-cols-1 max-w-[200px]'; // Smaller max-width for mini chat
-    if (count === 2) return 'grid-cols-2 max-w-[220px]';
-    if (count >= 3) return 'grid-cols-2 max-w-[220px]'; 
-    return '';
+    if (count === 1) return "grid-cols-1 max-w-[200px]"; // Smaller max-width for mini chat
+    if (count === 2) return "grid-cols-2 max-w-[220px]";
+    if (count >= 3) return "grid-cols-2 max-w-[220px]";
+    return "";
 });
 
 function getImageClass(index: number, total: number) {
     if (total === 3) {
-        if (index === 0) return 'col-span-2 aspect-[2/1]';
-        return 'aspect-square';
+        if (index === 0) return "col-span-2 aspect-[2/1]";
+        return "aspect-square";
     }
-    return 'aspect-square'; 
+    return "aspect-square";
 }
 
 const formatFileSize = (bytes: number) => {
@@ -59,35 +72,37 @@ const formatFileSize = (bytes: number) => {
 };
 
 const formatDuration = (seconds: number) => {
-    if (!seconds && seconds !== 0) return '';
+    if (!seconds && seconds !== 0) return "";
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
     const s = seconds % 60;
-    
-    if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-    return `${m}:${String(s).padStart(2, '0')}`;
+
+    if (h > 0)
+        return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    return `${m}:${String(s).padStart(2, "0")}`;
 };
 
 function handleImageClick(img: MessageAttachment) {
     const allImages = images.value;
-    const mediaForViewer = allImages.map(i => ({
+    const mediaForViewer = allImages.map((i) => ({
         src: i.url,
         download: i.download_url || i.url,
         id: i.id,
-        type: 'image',
-        mimeType: i.mime_type
+        type: "image",
+        mimeType: i.mime_type,
     }));
 
-    const index = mediaForViewer.findIndex(m => m.id === img.id);
+    const index = mediaForViewer.findIndex((m) => m.id === img.id);
 
-    window.dispatchEvent(new CustomEvent('media-viewer:open', {
-        detail: {
-            media: mediaForViewer,
-            index: index >= 0 ? index : 0
-        }
-    }));
+    window.dispatchEvent(
+        new CustomEvent("media-viewer:open", {
+            detail: {
+                media: mediaForViewer,
+                index: index >= 0 ? index : 0,
+            },
+        }),
+    );
 }
-
 
 const firstUrl = computed(() => {
     if (!props.message.content) return null;
@@ -99,34 +114,84 @@ const firstUrl = computed(() => {
 <template>
     <!-- System Message -->
     <div v-if="message.type === 'system'" class="flex justify-center my-2 px-4">
-        <div 
+        <div
             class="flex items-center gap-1.5 text-[10px] text-(--text-tertiary) bg-(--surface-tertiary)/50 border border-(--border-default) px-2 py-1 rounded-full shadow-sm italic"
-            :class="{ 'text-red-500! border-red-200! bg-red-50!': message.metadata?.event === 'missed' }"
+            :class="{
+                'text-red-500! border-red-200! bg-red-50!':
+                    message.metadata?.event === 'missed',
+            }"
         >
             <template v-if="message.metadata?.system_type === 'call_event'">
-                <Icon 
-                    :name="(message.metadata.event === 'missed' || message.metadata.event === 'no_answer') ? 'PhoneMissed' : (message.metadata.type === 'video' ? 'Video' : 'Phone')" 
-                    :size="10" 
-                    class="opacity-70" 
+                <Icon
+                    :name="
+                        message.metadata.event === 'missed' ||
+                        message.metadata.event === 'no_answer'
+                            ? 'PhoneMissed'
+                            : message.metadata.type === 'video'
+                              ? 'Video'
+                              : 'Phone'
+                    "
+                    :size="10"
+                    class="opacity-70"
                 />
                 <span v-if="message.metadata.event === 'started'">
-                    {{ message.metadata.user_name }} started a {{ message.metadata.type }} call
+                    {{ message.metadata.user_name }} started a
+                    {{ message.metadata.type }} call
                 </span>
                 <span v-else-if="message.metadata.event === 'ended'">
-                    Call ended <span v-if="message.metadata.duration">({{ formatDuration(message.metadata.duration) }})</span>
+                    Call ended
+                    <span v-if="message.metadata.duration"
+                        >({{ formatDuration(message.metadata.duration) }})</span
+                    >
                 </span>
-                <span v-else-if="message.metadata.event === 'missed' || message.metadata.event === 'no_answer'">
+                <span
+                    v-else-if="
+                        message.metadata.event === 'missed' ||
+                        message.metadata.event === 'no_answer'
+                    "
+                >
                     Missed {{ message.metadata.type }} call
-                    <span v-if="message.metadata.caller_name"> from {{ message.metadata.caller_name }}</span>
+                    <span v-if="message.metadata.caller_name">
+                        from {{ message.metadata.caller_name }}</span
+                    >
                 </span>
+
+                <!-- Active Call Join Button -->
+                <button
+                    v-if="
+                        showJoinButton &&
+                        message.metadata.event === 'started' &&
+                        videoCallStore.activeCalls.has(message.chat_id)
+                    "
+                    class="ml-2 px-1.5 py-0.5 rounded-full bg-green-500 hover:bg-green-600 text-white text-[9px] font-medium transition-colors flex items-center gap-0.5 cursor-pointer not-italic"
+                    @click="
+                        emit('join-call', {
+                            chatId: message.chat_id,
+                            callId: message.metadata.call_id,
+                            callType: message.metadata.type as any,
+                        })
+                    "
+                >
+                    <Icon name="PhoneIncoming" :size="8" />
+                    Join Call
+                </button>
+
                 <span v-else>
                     {{ message.content }}
                 </span>
                 <!-- Call Back button -->
-                <button 
-                    v-if="message.metadata.event === 'missed' || message.metadata.event === 'no_answer'"
+                <button
+                    v-if="
+                        message.metadata.event === 'missed' ||
+                        message.metadata.event === 'no_answer'
+                    "
                     class="ml-2 px-1.5 py-0.5 rounded-full bg-green-500 hover:bg-green-600 text-white text-[9px] font-medium transition-colors flex items-center gap-0.5 cursor-pointer not-italic"
-                    @click="emit('callback', { chatId: message.metadata.chat_id, callType: message.metadata.type as any })"
+                    @click="
+                        emit('callback', {
+                            chatId: message.metadata.chat_id,
+                            callType: message.metadata.type as any,
+                        })
+                    "
                 >
                     <Icon name="PhoneOutgoing" :size="8" />
                     Call Back
@@ -139,7 +204,12 @@ const firstUrl = computed(() => {
     </div>
 
     <!-- User Message -->
-    <div v-else class="minichat-message" :class="{ 'is-own': isMine }" :title="message.user_name">
+    <div
+        v-else
+        class="minichat-message"
+        :class="{ 'is-own': isMine }"
+        :title="message.user_name"
+    >
         <Avatar
             v-if="!isMine"
             :src="message.user_avatar"
@@ -147,7 +217,7 @@ const firstUrl = computed(() => {
             size="xs"
             class="minichat-message-avatar"
         />
-        
+
         <div class="minichat-message-wrapper">
             <!-- Reply reference -->
             <div
@@ -156,30 +226,39 @@ const firstUrl = computed(() => {
                 @click="emit('jump', String(message.reply_to.id))"
             >
                 <Icon name="CornerUpRight" :size="10" />
-                <span>{{ message.reply_to.user_name }}: {{ message.reply_to.content?.slice(0, 30) }}...</span>
+                <span
+                    >{{ message.reply_to.user_name }}:
+                    {{ message.reply_to.content?.slice(0, 30) }}...</span
+                >
             </div>
 
             <div class="minichat-message-bubble">
                 <!-- Attachments -->
-                <div v-if="images.length || files.length" class="space-y-1.5 mb-1.5">
-                    
+                <div
+                    v-if="images.length || files.length"
+                    class="space-y-1.5 mb-1.5"
+                >
                     <!-- Image Grid -->
-                    <div v-if="images.length" class="grid gap-0.5 overflow-hidden rounded-lg w-full" :class="gridClass">
-                        <div 
-                            v-for="(img, index) in displayImages" 
-                            :key="img.id" 
+                    <div
+                        v-if="images.length"
+                        class="grid gap-0.5 overflow-hidden rounded-lg w-full"
+                        :class="gridClass"
+                    >
+                        <div
+                            v-for="(img, index) in displayImages"
+                            :key="img.id"
                             class="relative bg-black/5 dark:bg-white/5 overflow-hidden group/img ring-1 ring-black/5 dark:ring-white/10"
                             :class="[getImageClass(index, images.length)]"
                         >
-                            <img 
-                                :src="img.thumb_url || img.url" 
-                                class="w-full h-full object-cover cursor-pointer transition-transform duration-500 hover:scale-105" 
+                            <img
+                                :src="img.thumb_url || img.url"
+                                class="w-full h-full object-cover cursor-pointer transition-transform duration-500 hover:scale-105"
                                 @click="handleImageClick(img)"
                             />
-                            
+
                             <!-- +N Overlay -->
-                            <div 
-                                v-if="index === 3 && images.length > 4" 
+                            <div
+                                v-if="index === 3 && images.length > 4"
                                 class="absolute inset-0 bg-black/50 hover:bg-black/60 transition-colors flex items-center justify-center cursor-pointer text-white font-bold text-sm backdrop-blur-sm"
                                 @click="handleImageClick(img)"
                             >
@@ -199,23 +278,34 @@ const firstUrl = computed(() => {
                         >
                             <Icon name="FileText" :size="14" />
                             <div class="flex-1 min-w-0">
-                                <span class="minichat-file-name">{{ att.name }}</span>
-                                <span class="minichat-file-size">({{ formatFileSize(att.size) }})</span>
+                                <span class="minichat-file-name">{{
+                                    att.name
+                                }}</span>
+                                <span class="minichat-file-size"
+                                    >({{ formatFileSize(att.size) }})</span
+                                >
                             </div>
-                            <Icon name="Download" :size="12" class="opacity-0 group-hover/file:opacity-100 transition-opacity" />
+                            <Icon
+                                name="Download"
+                                :size="12"
+                                class="opacity-0 group-hover/file:opacity-100 transition-opacity"
+                            />
                         </a>
                     </div>
                 </div>
 
                 <!-- GIF Display -->
-                <div v-if="giphy" class="mb-1.5 overflow-hidden rounded-lg bg-black/5 dark:bg-black/20 flex justify-center gif-wrapper">
-                    <img 
-                        :src="giphy.url" 
+                <div
+                    v-if="giphy"
+                    class="mb-1.5 overflow-hidden rounded-lg bg-black/5 dark:bg-black/20 flex justify-center gif-wrapper"
+                >
+                    <img
+                        :src="giphy.url"
                         :alt="giphy.title"
                         :width="giphy.width"
                         :height="giphy.height"
                         class="max-w-full h-auto object-contain rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-                        style="max-height: 250px;"
+                        style="max-height: 250px"
                     />
                 </div>
 
@@ -228,16 +318,38 @@ const firstUrl = computed(() => {
                 <div v-if="firstUrl" class="mt-2">
                     <LinkPreview :url="firstUrl" />
                 </div>
-                
+
                 <div class="flex items-center justify-end gap-1 mt-1">
-                    <span class="minichat-message-time">{{ formatTime(message.created_at) }}</span>
-                    
+                    <span class="minichat-message-time">{{
+                        formatTime(message.created_at)
+                    }}</span>
+
                     <!-- Status Indicators (Own Message Only) -->
                     <div v-if="isMine" class="flex items-center">
-                        <Icon v-if="message.pending" name="Loader2" :size="10" class="animate-spin text-(--text-muted)" />
-                        <Icon v-else-if="message.failed" name="AlertCircle" :size="10" class="text-red-300" />
-                        <Icon v-else-if="message.is_seen" name="CheckCheck" :size="10" class="text-white/90" />
-                        <Icon v-else name="Check" :size="10" class="text-white/70" />
+                        <Icon
+                            v-if="message.pending"
+                            name="Loader2"
+                            :size="10"
+                            class="animate-spin text-(--text-muted)"
+                        />
+                        <Icon
+                            v-else-if="message.failed"
+                            name="AlertCircle"
+                            :size="10"
+                            class="text-red-300"
+                        />
+                        <Icon
+                            v-else-if="message.is_seen"
+                            name="CheckCheck"
+                            :size="10"
+                            class="text-white/90"
+                        />
+                        <Icon
+                            v-else
+                            name="Check"
+                            :size="10"
+                            class="text-white/70"
+                        />
                     </div>
                 </div>
             </div>

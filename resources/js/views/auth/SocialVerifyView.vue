@@ -21,7 +21,7 @@ onMounted(async () => {
     }
 
     try {
-        await api.post('/auth/social/verify-link', { token, email });
+        await api.post('/api/auth/social/verify-link', { token, email });
         toast.success('Social account linked successfully! You can now login.');
         router.push({ name: 'login' });
     } catch (e: any) {

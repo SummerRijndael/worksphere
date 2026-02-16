@@ -54,6 +54,7 @@ export const useVideoCallStore = defineStore('videoCall', () => {
   const selectedAudioDeviceId = ref<string | null>(null);
   const selectedVideoDeviceId = ref<string | null>(null);
   const selectedOutputDeviceId = ref<string | null>(null);
+  const videoEffect = ref<'none' | 'blur'>('none');
 
   // ============================================================================
   // Getters
@@ -299,6 +300,10 @@ export const useVideoCallStore = defineStore('videoCall', () => {
     selectedOutputDeviceId,
     setRemoteVolume: (publicId: string, volume: number) => {
         remoteVolumes.set(publicId, volume);
+    },
+    videoEffect,
+    setVideoEffect: (effect: 'none' | 'blur') => {
+        videoEffect.value = effect;
     }
   };
 });
