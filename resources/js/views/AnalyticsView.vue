@@ -24,6 +24,7 @@ import {
 } from "chart.js";
 import DemographicsCharts from "./Analytics/components/DemographicsCharts.vue";
 import AnalyticsMap from "./Analytics/components/AnalyticsMap.vue";
+import CountryStatsCard from "./Analytics/components/CountryStatsCard.vue";
 
 // Register ChartJS components
 ChartJS.register(
@@ -228,6 +229,9 @@ onMounted(() => {
                     </div>
                 </div>
             </Card>
+
+            <!-- Country Stats -->
+            <CountryStatsCard />
         </div>
 
         <!-- Geo Map -->

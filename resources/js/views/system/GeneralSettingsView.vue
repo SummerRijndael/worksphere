@@ -170,6 +170,7 @@ const announcementForm = ref({
     action_text: "",
     action_url: "",
     is_dismissable: true,
+    is_public: true,
     is_active: true,
     starts_at: "",
     ends_at: "",
@@ -368,6 +369,7 @@ const openAnnouncementModal = (announcement = null) => {
             action_text: announcement.action_text || "",
             action_url: announcement.action_url || "",
             is_dismissable: announcement.is_dismissable,
+            is_public: announcement.is_public ?? true,
             is_active: announcement.is_active,
             starts_at: announcement.starts_at
                 ? announcement.starts_at.slice(0, 16)
@@ -384,6 +386,7 @@ const openAnnouncementModal = (announcement = null) => {
             action_text: "",
             action_url: "",
             is_dismissable: true,
+            is_public: true,
             is_active: true,
             starts_at: "",
             ends_at: "",
@@ -1945,145 +1948,113 @@ onMounted(async () => {
         <!-- Announcement Modal -->
         <Modal
             :open="showAnnouncementModal"
+            :title="editingAnnouncement ? 'Edit Announcement' : 'New Announcement'"
             @update:open="showAnnouncementModal = $event"
         >
-            <div class="p-6 space-y-4">
-                <div class="flex justify-between items-center">
-                    <h2 class="text-xl font-bold">
-                        {{
-                            editingAnnouncement
-                                ? "Edit Announcement"
-                                : "New Announcement"
-                        }}
-                    </h2>
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        @click="showAnnouncementModal = false"
+            <div class="space-y-4">
+                <!-- Announcement Title Field -->
+                <div class="space-y-1.5">
+                    <label class="text-sm font-medium">Title</label>
+                    <Input
+                        v-model="announcementForm.title"
+                        placeholder="System Maintenance"
+                    />
+                    <p
+                        v-if="announcementErrors.title"
+                        class="text-xs text-red-500"
                     >
-                        <X class="w-5 h-5" />
-                    </Button>
+                        {{ announcementErrors.title[0] }}
+                    </p>
                 </div>
 
-                <div class="space-y-4">
-                    <!-- Title -->
-                    <div class="space-y-1.5">
-                        <label class="text-sm font-medium">Title</label>
-                        <Input
-                            v-model="announcementForm.title"
-                            placeholder="System Maintenance"
-                        />
-                        <p
-                            v-if="announcementErrors.title"
-                            class="text-xs text-red-500"
-                        >
-                            {{ announcementErrors.title[0] }}
-                        </p>
-                    </div>
+                <!-- Message -->
+                <div class="space-y-1.5">
+                    <label class="text-sm font-medium">Message</label>
+                    <textarea
+                        v-model="announcementForm.message"
+                        rows="3"
+                        class="w-full px-3 py-2 text-sm bg-[var(--surface-primary)] border border-[var(--border-default)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+                        placeholder="We will be undergoing maintenance..."
+                    ></textarea>
+                    <p
+                        v-if="announcementErrors.message"
+                        class="text-xs text-red-500"
+                    >
+                        {{ announcementErrors.message[0] }}
+                    </p>
+                </div>
 
-                    <!-- Message -->
+                <div class="grid grid-cols-2 gap-4">
+                    <!-- Type -->
                     <div class="space-y-1.5">
-                        <label class="text-sm font-medium">Message</label>
-                        <textarea
-                            v-model="announcementForm.message"
-                            rows="3"
+                        <label class="text-sm font-medium">Type</label>
+                        <select
+                            v-model="announcementForm.type"
                             class="w-full px-3 py-2 text-sm bg-[var(--surface-primary)] border border-[var(--border-default)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
-                            placeholder="We will be undergoing maintenance..."
-                        ></textarea>
-                        <p
-                            v-if="announcementErrors.message"
-                            class="text-xs text-red-500"
                         >
-                            {{ announcementErrors.message[0] }}
-                        </p>
+                            <option
+                                v-for="type in announcementTypes"
+                                :key="type.value"
+                                :value="type.value"
+                            >
+                                {{ type.label }}
+                            </option>
+                        </select>
                     </div>
 
-                    <div class="grid grid-cols-2 gap-4">
-                        <!-- Type -->
-                        <div class="space-y-1.5">
-                            <label class="text-sm font-medium">Type</label>
-                            <select
-                                v-model="announcementForm.type"
-                                class="w-full px-3 py-2 text-sm bg-[var(--surface-primary)] border border-[var(--border-default)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
-                            >
-                                <option
-                                    v-for="type in announcementTypes"
-                                    :key="type.value"
-                                    :value="type.value"
-                                >
-                                    {{ type.label }}
-                                </option>
-                            </select>
-                        </div>
-
-                        <!-- Active Toggle -->
-                        <div class="space-y-1.5">
-                            <label class="text-sm font-medium">Status</label>
-                            <div class="flex items-center h-[38px] px-1">
-                                <label class="flex items-center gap-2 cursor-pointer">
-                                    <Switch
-                                        v-model:checked="announcementForm.is_active"
-                                    />
-                                    <span class="text-sm">{{
-                                        announcementForm.is_active
-                                            ? "Active"
-                                            : "Inactive"
-                                    }}</span>
-                                </label>
-                            </div>
+                    <!-- Active Toggle -->
+                    <div class="space-y-1.5">
+                        <label class="text-sm font-medium">Status</label>
+                        <div class="flex items-center h-[38px] px-1">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <Switch v-model="announcementForm.is_active" />
+                                <span class="text-sm">{{
+                                    announcementForm.is_active ? "Active" : "Inactive"
+                                }}</span>
+                            </label>
                         </div>
                     </div>
+                </div>
 
-                    <div class="grid grid-cols-2 gap-4">
-                        <!-- Action Text -->
-                        <div class="space-y-1.5">
-                            <label class="text-sm font-medium"
-                                >Action Text (Optional)</label
-                            >
-                            <Input
-                                v-model="announcementForm.action_text"
-                                placeholder="Read More"
-                            />
-                        </div>
-
-                        <!-- Action URL -->
-                        <div class="space-y-1.5">
-                            <label class="text-sm font-medium"
-                                >Action URL (Optional)</label
-                            >
-                            <Input
-                                v-model="announcementForm.action_url"
-                                placeholder="https://..."
-                            />
-                        </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <!-- Action Text -->
+                    <div class="space-y-1.5">
+                        <label class="text-sm font-medium">Action Text (Optional)</label>
+                        <Input v-model="announcementForm.action_text" placeholder="Read More" />
                     </div>
 
-                    <!-- Dismissable -->
+                    <!-- Action URL -->
+                    <div class="space-y-1.5">
+                        <label class="text-sm font-medium">Action URL (Optional)</label>
+                        <Input v-model="announcementForm.action_url" placeholder="https://..." />
+                    </div>
+                </div>
+
+                <!-- Toggles -->
+                <div class="flex flex-col gap-3">
                     <div class="flex items-center gap-2">
-                        <Switch
-                            v-model:checked="announcementForm.is_dismissable"
-                        />
-                        <span class="text-sm">Users can dismiss</span>
+                        <Switch v-model="announcementForm.is_public" />
+                        <span class="text-sm">Show to public (non-logged-in users)</span>
                     </div>
-
-                    <!-- Footer -->
-                    <div class="flex justify-end gap-3 pt-4">
-                        <Button
-                            variant="ghost"
-                            @click="showAnnouncementModal = false"
-                        >
-                            Cancel
-                        </Button>
-                        <Button
-                            variant="primary"
-                            @click="saveAnnouncement"
-                            :loading="isSavingAnnouncement"
-                        >
-                            Save Announcement
-                        </Button>
+                    <div class="flex items-center gap-2">
+                        <Switch v-model="announcementForm.is_dismissable" />
+                        <span class="text-sm">Users can dismiss</span>
                     </div>
                 </div>
             </div>
+
+            <template #footer>
+                <Button variant="ghost" @click="showAnnouncementModal = false">
+                    Cancel
+                </Button>
+                <Button
+                    variant="primary"
+                    @click="saveAnnouncement"
+                    :loading="isSavingAnnouncement"
+                >
+                    Save Announcement
+                </Button>
+            </template>
         </Modal>
 
         <!-- Demo Mode Password Modal -->

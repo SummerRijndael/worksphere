@@ -7,9 +7,10 @@ use Illuminate\Support\Facades\Log;
 class SecureOpenGraph
 {
     /**
-     * Private/Internal IP ranges to block.
+     * Private/Internal IP ranges to block (IPv4 and IPv6).
      */
     protected array $blockedRanges = [
+        // IPv4
         '0.0.0.0/8',
         '10.0.0.0/8',
         '100.64.0.0/10',
@@ -26,6 +27,14 @@ class SecureOpenGraph
         '224.0.0.0/4',
         '240.0.0.0/4',
         '255.255.255.255/32',
+        // IPv6
+        '::1/128',
+        '::/128',
+        'fc00::/7',
+        'fe80::/10',
+        '2002::/16', // 6to4
+        '64:ff9b::/96', // NAT64
+        '100::/64', // Discard
     ];
 
     /**
@@ -37,11 +46,24 @@ class SecureOpenGraph
         $currentUrl = $url;
         
         for ($i = 0; $i < $maxRedirects; $i++) {
-            if (!$this->validateUrl($currentUrl)) {
+            $resolvedIp = $this->resolveAndValidate($currentUrl);
+            
+            if (!$resolvedIp) {
                 throw new \Exception("Invalid or prohibited URL: " . $currentUrl);
             }
 
             $curl = curl_init($currentUrl);
+            
+            // Force curl to use the validated IP to prevent DNS Rebinding / TOCTOU
+            $parts = parse_url($currentUrl);
+            if (!$parts || !isset($parts['host'])) {
+                 throw new \Exception("Malformed URL");
+            }
+            
+            $host = $parts['host'];
+            $port = $parts['port'] ?? ($parts['scheme'] === 'https' ? 443 : 80);
+            curl_setopt($curl, CURLOPT_RESOLVE, ["{$host}:{$port}:{$resolvedIp}"]);
+
             curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($curl, CURLOPT_FOLLOWLOCATION, false); // Manual redirect handling
             curl_setopt($curl, CURLOPT_TIMEOUT, 10);
@@ -69,64 +91,75 @@ class SecureOpenGraph
     }
 
     /**
-     * Validate URL and its resolved IP address.
+     * Resolve URL to an IP and validate it.
+     * Returns the valid IP string or null.
      */
-    protected function validateUrl(string $url): bool
+    protected function resolveAndValidate(string $url): ?string
     {
         $parts = parse_url($url);
         if (!$parts || !isset($parts['host']) || !in_array($parts['scheme'], ['http', 'https'])) {
-            return false;
+            return null;
         }
 
         $host = $parts['host'];
-        $port = $parts['port'] ?? ($parts['scheme'] === 'https' ? 443 : 80);
-
-        // Resolve IP
-        $ips = gethostbynamel($host);
-        if (!$ips) {
-            return false;
+        
+        // If host is already an IP, validate directly
+        if (filter_var($host, FILTER_VALIDATE_IP)) {
+            return $this->isBlockedIp($host) ? null : $host;
         }
 
+        // Resolve DNS (IPv4 and IPv6)
+        $ips = [];
+        
+        // IPv4
+        $dnsA = dns_get_record($host, DNS_A);
+        if ($dnsA) {
+            foreach ($dnsA as $record) {
+                $ips[] = $record['ip'];
+            }
+        }
+        
+        // IPv6
+        $dnsAAAA = dns_get_record($host, DNS_AAAA);
+        if ($dnsAAAA) {
+            foreach ($dnsAAAA as $record) {
+                $ips[] = $record['ipv6'];
+            }
+        }
+
+        if (empty($ips)) {
+             // Fallback
+            $ip = gethostbyname($host);
+            if ($ip !== $host) {
+                $ips[] = $ip;
+            }
+        }
+
+        if (empty($ips)) {
+            return null;
+        }
+
+        // Validate ALL resolved IPs
         foreach ($ips as $ip) {
             if ($this->isBlockedIp($ip)) {
                 Log::warning("SSRF Attempt Blocked: Host {$host} resolved to blocked IP {$ip}");
-                return false;
+                return null; // Block if ANY IP is bad
             }
         }
 
-        return true;
+        // All good, return the first one for pinning
+        return $ips[0];
     }
 
     /**
-     * Check if an IP address is in a blocked range.
+     * Check if an IP address is in a blocked range using IpUtils.
      */
     protected function isBlockedIp(string $ip): bool
     {
-        foreach ($this->blockedRanges as $range) {
-            if ($this->ipInRage($ip, $range)) {
-                return true;
-            }
-        }
-        return false;
+        return \Symfony\Component\HttpFoundation\IpUtils::checkIp($ip, $this->blockedRanges);
     }
-
-    /**
-     * Check if IP is in CIDR range.
-     */
-    protected function ipInRage(string $ip, string $range): bool
-    {
-        if (strpos($range, '/') === false) {
-            $range .= '/32';
-        }
-        
-        list($subnet, $bits) = explode('/', $range);
-        $ip = ip2long($ip);
-        $subnet = ip2long($subnet);
-        $mask = -1 << (32 - $bits);
-        $subnet &= $mask;
-        
-        return ($ip & $mask) == $subnet;
-    }
+    
+    // Legacy ipInRage removed in favor of IpUtils
 
     /**
      * Resolve relative redirect URLs.

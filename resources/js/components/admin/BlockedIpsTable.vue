@@ -110,10 +110,10 @@ onMounted(() => {
                              </td>
                         </tr>
                         <tr v-for="ip in ips" :key="ip.id" class="hover:bg-[var(--surface-hover)] transition-colors duration-150">
-                            <td class="px-6 py-4 font-medium font-mono text-[var(--text-primary)] text-base">{{ ip.ip_address }}</td>
+                            <td class="px-6 py-4 font-medium font-mono text-[var(--text-primary)] text-base">{{ ip.ip }}</td>
                             <td class="px-6 py-4 text-[var(--text-secondary)]">{{ ip.reason || '-' }}</td>
                             <td class="px-6 py-4 text-[var(--text-secondary)]">
-                                {{ ip.blocked_by?.name || 'System' }}
+                                {{ ip.user?.name || 'System' }}
                             </td>
                             <td class="px-6 py-4 text-[var(--text-secondary)]">
                                 {{ ip.expires_at ? formatDateTime(ip.expires_at, 'MMM d, yyyy HH:mm') : 'Permanent' }}

@@ -905,20 +905,38 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
         Route::delete('/{chat}', [\App\Http\Controllers\Api\Chat\ChatApiController::class, 'delete']);
 
         // Video/Audio Call Signaling
-        Route::get('/{chat}/call/turn-credentials', [\App\Http\Controllers\Api\Chat\VideoCallController::class, 'turnCredentials']);
-        Route::post('/{chat}/call/initiate', [\App\Http\Controllers\Api\Chat\VideoCallController::class, 'initiate']);
+        Route::get('/{chat}/call/turn-credentials', [\App\Http\Controllers\Api\Chat\VideoCallController::class, 'turnCredentials'])
+            ->middleware('throttle:3,1');
+        Route::post('/{chat}/call/initiate', [\App\Http\Controllers\Api\Chat\VideoCallController::class, 'initiate'])
+            ->middleware('throttle:10,1');
         Route::post('/{chat}/call/join', [\App\Http\Controllers\Api\Chat\VideoCallController::class, 'join']);
         Route::get('/{chat}/call/active', [\App\Http\Controllers\Api\Chat\VideoCallController::class, 'active']);
         Route::get('/{chat}/call/{callId}/participants', [\App\Http\Controllers\Api\Chat\VideoCallController::class, 'participants']);
         Route::post('/{chat}/call/signal', [\App\Http\Controllers\Api\Chat\VideoCallController::class, 'signal'])
             ->withoutMiddleware('throttle:api')
+            ->withoutMiddleware([
+                \Akaunting\Firewall\Middleware\Xss::class,
+                \Akaunting\Firewall\Middleware\Sqli::class,
+                \Akaunting\Firewall\Middleware\Lfi::class,
+                \Akaunting\Firewall\Middleware\Rfi::class,
+                \Akaunting\Firewall\Middleware\Php::class,
+            ])
             ->middleware('throttle:signaling');
         Route::post('/{chat}/call/end', [\App\Http\Controllers\Api\Chat\VideoCallController::class, 'end']);
 
-        // SFU Proxy Routes
-        Route::post('/{chat}/call/sfu/sessions/new', [\App\Http\Controllers\Api\Chat\VideoCallController::class, 'sfuSessionNew']);
-        Route::post('/{chat}/call/sfu/sessions/{sessionId}/tracks/new', [\App\Http\Controllers\Api\Chat\VideoCallController::class, 'sfuSessionTracks']);
-        Route::put('/{chat}/call/sfu/sessions/{sessionId}/renegotiate', [\App\Http\Controllers\Api\Chat\VideoCallController::class, 'sfuSessionRenegotiate']);
+        // SFU Proxy Routes — exclude content-scanning firewall middleware
+        // SDP and WebRTC data triggers false positives in XSS/SQLi/LFI detectors
+        Route::withoutMiddleware([
+            \Akaunting\Firewall\Middleware\Xss::class,
+            \Akaunting\Firewall\Middleware\Sqli::class,
+            \Akaunting\Firewall\Middleware\Lfi::class,
+            \Akaunting\Firewall\Middleware\Rfi::class,
+            \Akaunting\Firewall\Middleware\Php::class,
+        ])->group(function () {
+            Route::post('/{chat}/call/sfu/sessions/new', [\App\Http\Controllers\Api\Chat\VideoCallController::class, 'sfuSessionNew']);
+            Route::post('/{chat}/call/sfu/sessions/{sessionId}/tracks/new', [\App\Http\Controllers\Api\Chat\VideoCallController::class, 'sfuSessionTracks']);
+            Route::put('/{chat}/call/sfu/sessions/{sessionId}/renegotiate', [\App\Http\Controllers\Api\Chat\VideoCallController::class, 'sfuSessionRenegotiate']);
+        });
     });
 
     // Personal Notes

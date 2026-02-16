@@ -50,7 +50,9 @@ const chartOptions = {
             position: 'right' as const,
             labels: {
                 usePointStyle: true,
-                boxWidth: 8
+                boxWidth: 20,
+                padding: 20,
+                color: '#9ca3af' // gray-400 for better visibility in dark/light mode
             }
         }
     }

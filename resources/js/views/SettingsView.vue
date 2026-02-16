@@ -803,6 +803,17 @@ const fetchSocialAccounts = async () => {
     }
 };
 
+const connectSocial = async (provider) => {
+    try {
+        const response = await api.get(`/api/auth/${provider}/redirect`);
+        if (response.data.url) {
+            window.location.href = response.data.url;
+        }
+    } catch (error) {
+        toast.error("Failed to initiate social connection");
+    }
+};
+
 // Disconnect social account
 const disconnectSocial = async (provider) => {
     if (
@@ -2493,9 +2504,8 @@ onMounted(() => {
                                 "
                                 variant="outline"
                                 size="sm"
-                                as="a"
-                                href="/auth/google/redirect"
                                 class="gap-2"
+                                @click="connectSocial('google')"
                             >
                                 <svg class="w-4 h-4" viewBox="0 0 24 24">
                                     <path
@@ -2525,9 +2535,8 @@ onMounted(() => {
                                 "
                                 variant="outline"
                                 size="sm"
-                                as="a"
-                                href="/auth/github/redirect"
                                 class="gap-2"
+                                @click="connectSocial('github')"
                             >
                                 <svg
                                     class="w-4 h-4"

@@ -58,7 +58,7 @@ class VideoCallController extends Controller
                 /** @var \Illuminate\Http\Client\Response $response */
                 $response = Http::withToken($turnApiToken)
                     ->post("https://rtc.live.cloudflare.com/v1/turn/keys/{$turnKeyId}/credentials/generate-ice-servers", [
-                        'ttl' => 86400, // 24 hours
+                        'ttl' => 3600, // 1 hour (Cloudflare recommended max)
                     ]);
 
                 if ($response->successful()) {
@@ -148,11 +148,23 @@ class VideoCallController extends Controller
         $chat = $this->findChatOrFail($chat);
 
         $request->validate([
-            'call_id' => 'required|string|max:64',
+            'call_id' => 'required|string|regex:/^[0-9A-Z]{26}$/|max:26',
         ]);
 
         $user = Auth::user();
         $callId = $request->input('call_id');
+
+        // Sec 1: Verify call_id matches the active call for this chat
+        // This prevents hijacking by injecting an arbitrary call_id
+        $key = "chat:active_call:{$chat->public_id}";
+        $activeCallId = \Illuminate\Support\Facades\Cache::get($key);
+        
+        if (!$activeCallId || $activeCallId !== $callId) {
+             // Fallback: If cache expired but call might still be valid? 
+             // Strictly speaking, if it's not the active call, we shouldn't allow joining via this route
+             // unless we want to allow joining "old" calls (which we don't, they are ephemeral).
+             abort(404, 'Call not found or inactive.');
+        }
 
         // Add to cache
         $this->addParticipant($chat->public_id, $callId, $user);
@@ -171,10 +183,10 @@ class VideoCallController extends Controller
         $participants = $this->getParticipantsList($chat->public_id, $callId);
         $metadata = $this->getCallMetadata($chat->public_id, $callId);
 
-        // HYBRID LOGIC: Force SFU for group chats OR if total participants > 2.
+        // HYBRID LOGIC: Force SFU for group chats OR if total participants >= 2.
         // This ensures group conversations start on Cloudflare immediately,
         // preventing Mesh-to-SFU transition edge cases for existing participants.
-        $mode = ($chat->type === 'group' || count($participants) > 2) ? 'sfu' : 'mesh';
+        $mode = ($chat->type === 'group' || count($participants) >= 2) ? 'sfu' : 'mesh';
 
         return response()->json([
             'status' => 'ok',
@@ -244,8 +256,14 @@ class VideoCallController extends Controller
      */
     public function sfuSessionNew(Request $request, Chat $chat): JsonResponse
     {
+        $request->validate([
+            'sessionDescription' => 'required|array',
+            'sessionDescription.sdp' => 'required|string',
+        ]);
+
         $sdp = $request->input('sessionDescription.sdp', '');
         $lastChars = substr($sdp, -10);
+
         Log::channel('videocall')->info("[SFU] sfuSessionNew called", [
             'chat_id' => $chat->id,
             'public_id' => $chat->public_id,
@@ -257,20 +275,22 @@ class VideoCallController extends Controller
         $appId = config('services.cloudflare.app_id');
         $secret = config('services.cloudflare.app_secret');
 
-        Log::channel('videocall')->info("[SFU] sfuSessionNew details", [
-            'appId' => $appId,
-            'secret_prefix' => substr($secret, 0, 5) . '...',
-            'url' => "https://rtc.live.cloudflare.com/v1/apps/{$appId}/sessions/new"
-        ]);
-
         if (!$appId || !$secret) {
             return response()->json(['error' => 'SFU not configured'], 503);
         }
 
+        Log::channel('videocall')->info("[SFU] sfuSessionNew details", [
+            'appId' => $appId,
+            'url' => "https://rtc.live.cloudflare.com/v1/apps/{$appId}/sessions/new"
+        ]);
+
+        // Only forward Cloudflare-relevant fields (exclude internal fields like call_id)
+        $cfPayload = $request->only(['sessionDescription', 'tracks']);
+
         try {
             $response = Http::withToken($secret)
                 ->timeout(60)
-                ->post("https://rtc.live.cloudflare.com/v1/apps/{$appId}/sessions/new", $request->all());
+                ->post("https://rtc.live.cloudflare.com/v1/apps/{$appId}/sessions/new", $cfPayload);
 
             if (!$response->successful()) {
                 Log::channel('videocall')->error("[SFU] Cloudflare session/new error:", [
@@ -307,7 +327,7 @@ class VideoCallController extends Controller
         try {
             $response = Http::withToken($secret)
                 ->timeout(60)
-                ->post("https://rtc.live.cloudflare.com/v1/apps/{$appId}/sessions/{$sessionId}/tracks/new", $request->all());
+                ->post("https://rtc.live.cloudflare.com/v1/apps/{$appId}/sessions/{$sessionId}/tracks/new", $request->only(['sessionDescription', 'tracks']));
 
             $responseData = $response->json();
             if (!$response->successful()) {
@@ -418,11 +438,24 @@ class VideoCallController extends Controller
         $chat = $this->findChatOrFail($chat);
 
         $request->validate([
-            'call_id' => 'required|string|max:64',
+            'call_id' => 'required|string|regex:/^[0-9A-Z]{26}$/|max:26',
             'signal_type' => 'required|in:offer,answer,ice-candidate,signal',
-            'signal_data' => 'required|array',
+            'signal_data' => 'required|array|max:50',
+            'signal_data.type' => 'sometimes|string|max:64',
+            'signal_data.sdp' => 'sometimes|string|max:20000',
             'target_public_id' => 'nullable|string',
         ]);
+
+        // Sec 5: Validate target participant exists if specified
+        if ($request->filled('target_public_id')) {
+            $participants = $this->getParticipantsList($chat->public_id, $request->input('call_id'));
+            $targetExists = collect($participants)->contains('public_id', $request->input('target_public_id'));
+            
+            if (!$targetExists) {
+                // Return 422 to let client know target is gone (prevents retry loops)
+                abort(422, 'Target participant not found in call.');
+            }
+        }
 
         $user = Auth::user();
 
@@ -446,13 +479,26 @@ class VideoCallController extends Controller
         $chat = $this->findChatOrFail($chat);
 
         $request->validate([
-            'call_id' => 'required|string|max:64',
+            'call_id' => 'required|string|regex:/^[0-9A-Z]{26}$/|max:26',
             'reason' => 'sometimes|in:hangup,declined,timeout,failed',
         ]);
 
         $user = Auth::user();
         $callId = $request->input('call_id');
         $reason = $request->input('reason', 'hangup');
+
+        // Sec 2: Verify user is actually a participant
+        $participants = $this->getParticipantsList($chat->public_id, $callId);
+        $isInCall = collect($participants)->contains('public_id', $user->public_id);
+        
+        if (!$isInCall) {
+            // Check if they are the initiator using metadata, maybe? 
+            // Or just allow them to "leave" even if not in list (idempotent)?
+            // The risk is a random user killing the call.
+            // If they are not in the list, they can't "end" it for everyone anyway (isLastPerson check).
+            // But they shouldn't trigger "CallParticipantLeft" if they weren't there.
+            abort(403, 'You are not in this call.');
+        }
 
         // Remove from cache
         $this->removeParticipant($chat->public_id, $callId, $user->public_id);
@@ -470,7 +516,7 @@ class VideoCallController extends Controller
         $participants = $this->getParticipantsList($chat->public_id, $callId);
         $isLastPerson = empty($participants);
 
-        if ($isLastPerson || $chat->type === 'dm') {
+        if ($isLastPerson) {
              // Calculate duration
              $metadata = $this->getCallMetadata($chat->public_id, $callId);
              $duration = 0;

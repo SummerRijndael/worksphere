@@ -9,6 +9,7 @@
 .phpunit.result.cache
 .claude
 CLAUDE.md
+zap-casa-config.conf
 /.fleet
 /.idea
 /.nova

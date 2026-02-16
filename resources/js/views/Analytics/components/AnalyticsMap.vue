@@ -31,16 +31,22 @@ L.Icon.Default.mergeOptions({
     ).href,
     iconUrl: new URL("leaflet/dist/images/marker-icon.png", import.meta.url)
         .href,
-    shadowUrl: new URL("leaflet/dist/images/marker-shadow.png", import.meta.url)
-        .href,
+    shadowUrl: new URL(
+        "leaflet/dist/images/marker-shadow.png",
+        import.meta.url,
+    ).href,
 });
 
+// FIX 1: Use city|country|iso_code as the dedup key instead of raw lat/lon.
+// The old key `${stat.lat},${stat.lon}` collapsed ALL points that shared
+// the same coordinates (e.g. same city with multiple device types, or
+// backend entries with lat:0/lon:0 as a null fallback) into a single point.
 const aggregatedStats = computed(() => {
     if (selectedView.value === "By Device") return store.geoStats;
 
     const aggregated: Record<string, any> = {};
     store.geoStats.forEach((stat) => {
-        const key = `${stat.lat},${stat.lon}`;
+        const key = `${stat.city}|${stat.country}|${stat.iso_code}`;
         if (!aggregated[key]) {
             aggregated[key] = { ...stat, count: 0 };
         }
@@ -55,12 +61,25 @@ onMounted(() => {
     }
 });
 
+// FIX 2: Watch store.geoStats directly with immediate:true instead of
+// watching the computed. This catches three cases the old watcher missed:
+//   a) Data already in store when component mounts (e.g. cached/period switch)
+//   b) Data arriving after mount from the parent's fetchAll()
+//   c) Period changes that replace geoStats with a fresh array reference
 watch(
-    aggregatedStats,
+    () => store.geoStats,
     () => {
-        refreshMarkers();
+        if (map && markers) refreshMarkers();
     },
-    { deep: true },
+    { deep: true, immediate: true },
+);
+
+// Re-render when user switches between Overview / By Device tabs
+watch(
+    () => selectedView.value,
+    () => {
+        if (map && markers) refreshMarkers();
+    },
 );
 
 watch(
@@ -103,8 +122,11 @@ function initMap() {
 
     updateTileLayer();
 
+    // FIX 3: Don't call refreshMarkers() here — at this point geoStats is
+    // still empty (fetchAll hasn't resolved yet). The immediate watcher above
+    // will fire right after initMap() and handle the initial render once
+    // data arrives, avoiding a wasted render pass with zero points.
     markers = L.layerGroup().addTo(map);
-    refreshMarkers();
 }
 
 function refreshMarkers() {
@@ -112,51 +134,56 @@ function refreshMarkers() {
 
     markers.clearLayers();
 
-    aggregatedStats.value.forEach((stat) => {
-        if (stat.lat && stat.lon) {
-            const popupContent = `
-                <div class="text-xs p-1">
-                    <div class="font-bold border-b border-gray-100 mb-1 pb-1">${stat.city || "Unknown City"}, ${stat.country}</div>
-                    <div class="flex items-center justify-between gap-4">
-                        <span class="text-gray-500 capitalize">${selectedView.value === "By Device" ? stat.device_type : "Total Visits"}</span>
-                        <span class="font-semibold">${stat.count}</span>
-                    </div>
+    const points = aggregatedStats.value;
+    console.log(`[AnalyticsMap] Rendering ${points.length} map point(s)`, points);
+
+    points.forEach((stat) => {
+        // FIX 4: Skip entries where backend returned lat:0/lon:0 as a null
+        // fallback — they all land in the ocean and collapse into one dot.
+        if (!stat.lat || !stat.lon || (stat.lat === 0 && stat.lon === 0)) return;
+
+        const lat = Number(stat.lat);
+        const lon = Number(stat.lon);
+
+        const popupContent = `
+            <div class="text-xs p-1">
+                <div class="font-bold border-b border-gray-100 mb-1 pb-1">${stat.city || "Unknown City"}, ${stat.country}</div>
+                <div class="flex items-center justify-between gap-4">
+                    <span class="text-gray-500 capitalize">${selectedView.value === "By Device" ? stat.device_type : "Total Visits"}</span>
+                    <span class="font-semibold">${stat.count}</span>
                 </div>
-            `;
+            </div>
+        `;
 
-            let fillColor = "#3b82f6";
-            let color = "#2563eb";
+        let fillColor = "#3b82f6";
+        let color = "#2563eb";
 
-            if (selectedView.value === "By Device") {
-                fillColor =
-                    (deviceColors as any)[stat.device_type] || "#6b7280";
-                color = fillColor;
-            } else {
-                // Overview logic: denser dots are warmer
-                if (stat.count > 50) {
-                    fillColor = "#ef4444"; // Red
-                    color = "#b91c1c";
-                } else if (stat.count > 10) {
-                    fillColor = "#f97316"; // Orange
-                    color = "#c2410c";
-                }
+        if (selectedView.value === "By Device") {
+            fillColor = (deviceColors as any)[stat.device_type] || "#6b7280";
+            color = fillColor;
+        } else {
+            // Overview: warmer color = more visits
+            if (stat.count > 50) {
+                fillColor = "#ef4444"; // red
+                color = "#b91c1c";
+            } else if (stat.count > 10) {
+                fillColor = "#f97316"; // orange
+                color = "#c2410c";
             }
-
-            [0, -360, 360].forEach(offset => {
-                L.circleMarker([stat.lat, stat.lon + offset], {
-                    radius: Math.min(Math.max(Math.sqrt(stat.count) * 4, 6), 25), // Use sqrt for better scaling
-                    fillColor: fillColor,
-                    color: color,
-                    weight: 1,
-                    opacity: 0.8,
-                    fillOpacity: 0.5,
-                })
-                    .bindPopup(popupContent, {
-                        className: "custom-map-popup",
-                    })
-                    .addTo(markers!);
-            });
         }
+
+        [0, -360, 360].forEach((offset) => {
+            L.circleMarker([lat, lon + offset], {
+                radius: Math.min(Math.max(Math.sqrt(stat.count) * 4, 6), 25),
+                fillColor,
+                color,
+                weight: 1,
+                opacity: 0.8,
+                fillOpacity: 0.5,
+            })
+                .bindPopup(popupContent, { className: "custom-map-popup" })
+                .addTo(markers!);
+        });
     });
 }
 </script>
