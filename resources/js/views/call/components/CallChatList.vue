@@ -14,10 +14,10 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-    (e: 'fetch-older'): void;
-    (e: 'jump-to-latest'): void;
-    (e: 'reply', message: Message): void;
-    (e: 'jump', messageId: string): void;
+    (e: "fetch-older"): void;
+    (e: "jump-to-latest"): void;
+    (e: "reply", message: Message): void;
+    (e: "jump", messageId: string): void;
 }>();
 
 const chatStore = useChatStore();
@@ -25,18 +25,21 @@ const authStore = useAuthStore();
 const { startCall } = useVideoCall();
 const messagesContainer = ref<HTMLElement | null>(null);
 
-function handleCallback(data: { chatId: string; callType: 'video' | 'audio' }) {
+function handleCallback(data: { chatId: string; callType: "video" | "audio" }) {
     // Basic participant resolution for callback
-    const chat = chatStore.chats.find(c => c.public_id === data.chatId);
+    const chat = chatStore.chats.find((c) => c.public_id === data.chatId);
     if (!chat) return;
 
-    const other = chat.type === 'dm' 
-        ? chat.participants.find(p => p.public_id !== authStore.user?.public_id)
-        : { public_id: 'group', name: chat.name || 'Group', avatar: null };
+    const other =
+        chat.type === "dm"
+            ? chat.participants.find(
+                  (p) => p.public_id !== authStore.user?.public_id,
+              )
+            : { public_id: "group", name: chat.name || "Group", avatar: null };
 
     startCall(data.chatId, data.callType, {
-        publicId: (other as any)?.public_id || 'group',
-        name: (other as any)?.name || 'Group',
+        publicId: (other as any)?.public_id || "group",
+        name: (other as any)?.name || "Group",
         avatar: (other as any)?.avatar || null,
     });
 }
@@ -54,7 +57,7 @@ const displayMessages = computed(() => {
 const currentUserPublicId = computed(() => authStore.user?.public_id);
 
 function isOwnMessage(message: Message) {
-    if (message.type === 'system') return false; 
+    if (message.type === "system") return false;
     return message.user_public_id === currentUserPublicId.value;
 }
 
@@ -62,7 +65,7 @@ function isOwnMessage(message: Message) {
 const groupedMessages = computed(() => {
     const list = displayMessages.value;
     if (!list || !Array.isArray(list)) return [];
-    
+
     const groups: { date: string; messages: Message[] }[] = [];
     let currentDate = "";
 
@@ -91,12 +94,14 @@ function scrollToBottom(smooth = true) {
 
 function scrollToMessage(messageId: string) {
     nextTick(() => {
-        const el = messagesContainer.value?.querySelector(`[data-message-id="${messageId}"]`);
+        const el = messagesContainer.value?.querySelector(
+            `[data-message-id="${messageId}"]`,
+        );
         if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            el.scrollIntoView({ behavior: "smooth", block: "center" });
             // Add a brief highlight effect
-            el.classList.add('highlight-message');
-            setTimeout(() => el.classList.remove('highlight-message'), 2000);
+            el.classList.add("highlight-message");
+            setTimeout(() => el.classList.remove("highlight-message"), 2000);
         }
     });
 }
@@ -104,12 +109,12 @@ function scrollToMessage(messageId: string) {
 // Watch for new messages to scroll
 watch(
     () => displayMessages.value.length,
-    () => scrollToBottom(true)
+    () => scrollToBottom(true),
 );
 
 watch(
     () => props.chatId,
-    () => scrollToBottom(false)
+    () => scrollToBottom(false),
 );
 
 function handleScroll(e: Event) {
@@ -119,11 +124,13 @@ function handleScroll(e: Event) {
     // Emit fetch-older when near top (50px threshold)
     if (container.scrollTop < 50 && !props.isLoadingMore) {
         // Prevent multiple fetches at the same position
-        emit('fetch-older');
+        emit("fetch-older");
     }
 
     // Show Jump to Latest if not at bottom (100px threshold)
-    const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+    const isAtBottom =
+        container.scrollHeight - container.scrollTop - container.clientHeight <
+        100;
     showJumpToLatest.value = !isAtBottom;
 }
 
@@ -134,12 +141,11 @@ onMounted(() => {
 });
 
 // Expose internal elements for parent linkage
-defineExpose({ 
+defineExpose({
     scrollToBottom,
     scrollToMessage,
-    container: messagesContainer
+    container: messagesContainer,
 });
-
 </script>
 <template>
     <div class="relative flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -150,78 +156,111 @@ defineExpose({
         >
             <!-- Loading More Spinner -->
             <div v-if="isLoadingMore" class="flex justify-center py-2 shrink-0">
-                <Icon name="Loader2" size="20" class="animate-spin text-(--text-muted)" />
+                <Icon
+                    name="Loader2"
+                    size="20"
+                    class="animate-spin text-(--text-muted)"
+                />
             </div>
 
             <!-- Messages List -->
-            <div v-if="displayMessages.length > 0" class="flex flex-col gap-3 pr-1">
             <div
-                v-for="(group, index) in groupedMessages"
-                :key="group.date || index"
-                class="flex flex-col gap-3"
+                v-if="displayMessages.length > 0"
+                class="flex flex-col gap-3 pr-1"
             >
-                <!-- Date Separator -->
-                <div class="flex items-center justify-center my-2 px-4 overflow-hidden">
-                    <div class="h-px flex-1 bg-(--border-muted) opacity-50"></div>
-                    <span class="mx-4 text-[10px] font-bold uppercase tracking-widest text-(--text-muted) whitespace-nowrap">
-                        {{ group.date }}
-                    </span>
-                    <div class="h-px flex-1 bg-(--border-muted) opacity-50"></div>
-                </div>
-
                 <div
-                    v-for="message in group.messages"
-                    :key="message.id"
-                    :data-message-id="message.id"
-                    class="message-container flex flex-col transition-all duration-500 rounded-lg"
-                    :class="{
-                        'items-end': isOwnMessage(message),
-                        'items-start': !isOwnMessage(message) && message.type !== 'system',
-                        'items-center': message.type === 'system'
-                    }"
+                    v-for="(group, index) in groupedMessages"
+                    :key="group.date || index"
+                    class="flex flex-col gap-3"
                 >
-                    <!-- Name for Others (Avatar 24px + Gap 8px = 32px / ml-8) -->
+                    <!-- Date Separator -->
                     <div
-                        v-if="!isOwnMessage(message) && message.type !== 'system'"
-                        class="text-[10px] font-semibold text-(--text-muted) mb-1 ml-8"
+                        class="flex items-center justify-center my-2 px-4 overflow-hidden"
                     >
-                        {{ message.user_name }}
+                        <div
+                            class="h-px flex-1 bg-(--border-muted) opacity-50"
+                        ></div>
+                        <span
+                            class="mx-4 text-[10px] font-bold uppercase tracking-widest text-(--text-muted) whitespace-nowrap"
+                        >
+                            {{ group.date }}
+                        </span>
+                        <div
+                            class="h-px flex-1 bg-(--border-muted) opacity-50"
+                        ></div>
                     </div>
 
-                    <!-- Name for Me -->
                     <div
-                        v-if="isOwnMessage(message) && message.type !== 'system'"
-                        class="text-[10px] font-semibold text-(--text-muted) mb-1 mr-1"
+                        v-for="message in group.messages"
+                        :key="message.id"
+                        :data-message-id="message.id"
+                        class="message-container flex flex-col transition-all duration-500 rounded-lg"
+                        :class="{
+                            'items-end': isOwnMessage(message),
+                            'items-start':
+                                !isOwnMessage(message) &&
+                                message.type !== 'system',
+                            'items-center': message.type === 'system',
+                        }"
                     >
-                        You
-                    </div>
+                        <!-- Name for Others (Avatar 24px + Gap 8px = 32px / ml-8) -->
+                        <div
+                            v-if="
+                                !isOwnMessage(message) &&
+                                message.type !== 'system'
+                            "
+                            class="text-[10px] font-semibold text-(--text-muted) mb-1 ml-8"
+                        >
+                            {{ message.user_name }}
+                        </div>
 
-                    <MiniChatMessageBubble
-                        :message="message"
-                        :is-mine="isOwnMessage(message)"
-                        :class="{ 'max-w-full! w-full': message.type === 'system' }"
-                        @reply="(m) => emit('reply', m)"
-                        @jump="(id) => emit('jump', id)"
-                        @callback="handleCallback"
+                        <!-- Name for Me -->
+                        <div
+                            v-if="
+                                isOwnMessage(message) &&
+                                message.type !== 'system'
+                            "
+                            class="text-[10px] font-semibold text-(--text-muted) mb-1 mr-1"
+                        >
+                            You
+                        </div>
+
+                        <MiniChatMessageBubble
+                            :message="message"
+                            :is-mine="isOwnMessage(message)"
+                            :show-join-button="false"
+                            :class="{
+                                'max-w-full! w-full': message.type === 'system',
+                            }"
+                            @reply="(m) => emit('reply', m)"
+                            @jump="(id) => emit('jump', id)"
+                            @callback="handleCallback"
+                        />
+                    </div>
+                </div>
+            </div>
+
+            <!-- No Messages State -->
+            <div
+                v-else
+                class="flex-1 flex flex-col items-center justify-center p-8 text-center"
+            >
+                <div
+                    class="w-16 h-16 rounded-full bg-(--surface-secondary) flex items-center justify-center mb-4"
+                >
+                    <Icon
+                        name="MessageSquare"
+                        size="24"
+                        class="text-(--text-muted)"
                     />
                 </div>
+                <h3 class="text-sm font-semibold text-(--text-primary) mb-1">
+                    No messages yet
+                </h3>
+                <p class="text-xs text-(--text-secondary) max-w-[200px]">
+                    Start the conversation by sending a message below.
+                </p>
             </div>
-        </div>
-
-        <!-- No Messages State -->
-        <div
-            v-else
-            class="flex-1 flex flex-col items-center justify-center p-8 text-center"
-        >
-            <div class="w-16 h-16 rounded-full bg-(--surface-secondary) flex items-center justify-center mb-4">
-                <Icon name="MessageSquare" size="24" class="text-(--text-muted)" />
-            </div>
-            <h3 class="text-sm font-semibold text-(--text-primary) mb-1">No messages yet</h3>
-            <p class="text-xs text-(--text-secondary) max-w-[200px]">
-                Start the conversation by sending a message below.
-            </p>
-        </div>
-
         </div>
 
         <!-- Jump to Latest Button -->
@@ -271,7 +310,8 @@ defineExpose({
     background: rgba(0, 0, 0, 0.4) !important;
 }
 
-.dark .custom-chat-scrollbar.custom-chat-scrollbar:hover::-webkit-scrollbar-thumb {
+.dark
+    .custom-chat-scrollbar.custom-chat-scrollbar:hover::-webkit-scrollbar-thumb {
     background: rgba(255, 255, 255, 0.2) !important;
 }
 
@@ -279,7 +319,8 @@ defineExpose({
     background: rgba(0, 0, 0, 0.6) !important;
 }
 
-.dark .custom-chat-scrollbar.custom-chat-scrollbar::-webkit-scrollbar-thumb:hover {
+.dark
+    .custom-chat-scrollbar.custom-chat-scrollbar::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.3) !important;
 }
 
@@ -291,8 +332,16 @@ defineExpose({
 }
 
 @keyframes highlightFade {
-    0% { background-color: color-mix(in srgb, var(--interactive-primary) 25%, transparent); }
-    100% { background-color: transparent; }
+    0% {
+        background-color: color-mix(
+            in srgb,
+            var(--interactive-primary) 25%,
+            transparent
+        );
+    }
+    100% {
+        background-color: transparent;
+    }
 }
 
 .highlight-message {

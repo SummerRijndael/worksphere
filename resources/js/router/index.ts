@@ -1187,6 +1187,27 @@ const routes: RouteRecordRaw[] = [
                     }
                 },
             },
+            {
+                path: "/dev/blur",
+                name: "dev-blur",
+                component: () => import("@/views/dev/BlurDebug.vue"),
+                meta: {
+                    title: "Blur Debugger",
+                    breadcrumb: "Blur Debug",
+                    transition: "none",
+                },
+                beforeEnter: (
+                    _to: RouteLocationNormalized,
+                    _from: RouteLocationNormalized,
+                    next: NavigationGuardNext,
+                ) => {
+                    if (import.meta.env.DEV) {
+                        next();
+                    } else {
+                        next({ name: "forbidden" });
+                    }
+                },
+            },
         ],
     },
     // Independent Route for Email Popup (No Layout)

@@ -94,7 +94,7 @@ class SecurityHeaders
         // Definitions
         $policy = [
             "default-src 'self'",
-            "script-src {$scriptSrc} https://www.google.com https://www.gstatic.com",
+            "script-src {$scriptSrc} https://www.google.com https://www.gstatic.com https://cdn.jsdelivr.net https://storage.googleapis.com",
             // Unsafe-inline for styles is required by many UI libraries (Vue/Tailwind components)
             // Fonts.bunny.net is used for Inter font
             "style-src {$styleSrc}",
@@ -105,7 +105,7 @@ class SecurityHeaders
             "img-src {$imgSrc}",
             // Connect to self, Vite HMR, and Reverb WebSockets (port 9000 usually)
             // Adding ws: and wss: schemes generally to allow websocket connections
-            "connect-src {$connectSrc} ws: wss: https://www.google.com",
+            "connect-src {$connectSrc} ws: wss: https://www.google.com https://cdn.jsdelivr.net https://storage.googleapis.com",
             // Frame src for reCAPTCHA
             "frame-src 'self' https://www.google.com https://www.gstatic.com",
             "object-src 'none'",

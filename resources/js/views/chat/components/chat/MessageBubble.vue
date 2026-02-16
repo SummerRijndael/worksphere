@@ -156,17 +156,32 @@ const firstUrl = computed(() => {
                         >({{ formatDuration(message.metadata.duration) }})</span
                     >
                 </span>
-                <span
-                    v-else-if="
-                        message.metadata.event === 'missed' ||
-                        message.metadata.event === 'no_answer'
-                    "
-                >
+                <span v-else-if="message.metadata.event === 'no_answer'">
                     Missed {{ message.metadata.type }} call
                     <span v-if="message.metadata.caller_name">
                         from {{ message.metadata.caller_name }}</span
                     >
                 </span>
+
+                <!-- Active Call Join Button -->
+                <button
+                    v-if="
+                        message.metadata.event === 'started' &&
+                        videoCallStore.activeCalls.has(message.chat_id)
+                    "
+                    class="ml-2 px-2 py-0.5 rounded-full bg-green-500 hover:bg-green-600 text-white text-[10px] font-medium transition-colors flex items-center gap-1 cursor-pointer"
+                    @click="
+                        emit('join-call', {
+                            chatId: message.chat_id,
+                            callId: message.metadata.call_id,
+                            callType: message.metadata.type,
+                        })
+                    "
+                >
+                    <Icon name="PhoneIncoming" :size="10" />
+                    Join Call
+                </button>
+
                 <span v-else>
                     {{ message.content }}
                 </span>
