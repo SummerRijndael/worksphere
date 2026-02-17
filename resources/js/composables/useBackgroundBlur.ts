@@ -17,6 +17,12 @@ export function useBackgroundBlur() {
     let animationFrameId: number | null = null;
     let currentRunningMode: 'VIDEO' | 'IMAGE' = 'VIDEO';
     
+    // Offscreen canvases for performance
+    let blurCanvas: HTMLCanvasElement | null = null;
+    let blurCtx: CanvasRenderingContext2D | null = null;
+    let personCanvas: HTMLCanvasElement | null = null;
+    let personCtx: CanvasRenderingContext2D | null = null;
+    
     // Internal refs to keep tracks alive
     let sourceVideo: HTMLVideoElement | null = null;
     
@@ -100,6 +106,17 @@ export function useBackgroundBlur() {
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         
+        // Setup offscreen canvases
+        if (!blurCanvas) blurCanvas = document.createElement("canvas");
+        blurCanvas.width = Math.round(video.videoWidth / 8); 
+        blurCanvas.height = Math.round(video.videoHeight / 8);
+        blurCtx = blurCanvas.getContext("2d");
+
+        if (!personCanvas) personCanvas = document.createElement("canvas");
+        personCanvas.width = video.videoWidth;
+        personCanvas.height = video.videoHeight;
+        personCtx = personCanvas.getContext("2d");
+
         console.log(`[BackgroundBlur] Video dimensions: ${video.videoWidth}x${video.videoHeight}, mode: ${currentRunningMode}`);
 
         const draw = () => {
@@ -107,6 +124,22 @@ export function useBackgroundBlur() {
                 console.warn('[BackgroundBlur] draw() skipped: missing refs', { video: !!video, canvas: !!canvas, segmenter: !!segmenter.value });
                 return;
             }
+            
+            // Handle dimension changes (e.g., orientation or camera switch)
+            if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+                console.log(`[BackgroundBlur] Updating dimensions to ${video.videoWidth}x${video.videoHeight}`);
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                if (blurCanvas) {
+                    blurCanvas.width = Math.round(video.videoWidth / 8);
+                    blurCanvas.height = Math.round(video.videoHeight / 8);
+                }
+                if (personCanvas) {
+                    personCanvas.width = video.videoWidth;
+                    personCanvas.height = video.videoHeight;
+                }
+            }
+
             // Check if video is still active/playing
             if (video.paused || video.ended) {
                 console.warn('[BackgroundBlur] draw() skipped: video paused or ended');
@@ -164,12 +197,12 @@ export function useBackgroundBlur() {
 
                  for (let i = 0; i < maskData.length; i++) {
                      // maskData[i] is confidence 0..1 that this pixel is a person
-                     const alpha = Math.round(maskData[i] * 255);
+                     const alphaValue = Math.round(maskData[i] * 255);
                      const j = i * 4;
-                     data[j] = alpha;       // R (white where person)
-                     data[j + 1] = alpha;   // G
-                     data[j + 2] = alpha;   // B
-                     data[j + 3] = 255;     // A (fully opaque — use luminance as mask)
+                     data[j] = 255;       // R
+                     data[j + 1] = 255;   // G
+                     data[j + 2] = 255;   // B
+                     data[j + 3] = alphaValue; // A (Opacity = Person confidence)
                  }
 
                  // Convert ImageData to ImageBitmap for efficient canvas drawing
@@ -195,16 +228,15 @@ export function useBackgroundBlur() {
                      maskImageDataHeight = height;
                  }
                  const data = maskImageData.data;
-                 
-                 for (let i = 0; i < maskData.length; i++) {
+                                 for (let i = 0; i < maskData.length; i++) {
                      const val = maskData[i]; // Class index
-                     const lum = val > 0 ? 255 : 0; // 0 = background
+                     const alpha = val > 0 ? 255 : 0; // 0 = background
                      
                      const j = i * 4;
-                     data[j] = lum;       // R
-                     data[j + 1] = lum;   // G
-                     data[j + 2] = lum;   // B
-                     data[j + 3] = 255;   // A
+                     data[j] = 255;       // R
+                     data[j + 1] = 255;   // G
+                     data[j + 2] = 255;   // B
+                     data[j + 3] = alpha; // A
                  }
                  
                  createImageBitmap(maskImageData).then(bmp => {
@@ -223,29 +255,31 @@ export function useBackgroundBlur() {
         };
         
         const drawComposition = (mask: ImageBitmap, shouldClose: boolean) => {
-             if (!ctx || !canvas || !video) return;
+             if (!ctx || !canvas || !video || !blurCtx || !personCtx || !blurCanvas || !personCanvas) return;
 
              const w = canvas.width;
              const h = canvas.height;
 
+             // 1. Prepare blurred background (on small canvas)
+             blurCtx.filter = 'blur(4px)'; // Blur on small canvas is very fast
+             blurCtx.drawImage(video, 0, 0, blurCanvas.width, blurCanvas.height);
+             blurCtx.filter = 'none';
+             
+             // 2. Prepare person (on person canvas)
+             personCtx.clearRect(0, 0, w, h);
+             personCtx.drawImage(video, 0, 0, w, h);
+             personCtx.globalCompositeOperation = 'destination-in';
+             personCtx.drawImage(mask, 0, 0, w, h);
+             personCtx.globalCompositeOperation = 'source-over'; // Reset
+
+             // 3. Final composition on main canvas
              ctx.clearRect(0, 0, w, h);
-             ctx.save();
+
+             // Draw scaled-up background (provides natural blur)
+             ctx.drawImage(blurCanvas, 0, 0, w, h);
              
-             // 1. Draw the luminance mask (white=person, black=background)
-             ctx.globalCompositeOperation = 'source-over';
-             ctx.drawImage(mask, 0, 0, w, h);
-             
-             // 2. Source-in: draw video only where mask is white (person)
-             ctx.globalCompositeOperation = 'source-in';
-             ctx.drawImage(video, 0, 0, w, h);
-             
-             // 3. Destination-over: draw blurred video behind the person
-             ctx.globalCompositeOperation = 'destination-over';
-             ctx.filter = 'blur(15px)';
-             ctx.drawImage(video, 0, 0, w, h);
-             ctx.filter = 'none';
-             
-             ctx.restore();
+             // Draw person on top
+             ctx.drawImage(personCanvas, 0, 0, w, h);
              
              if (shouldClose) {
                 mask.close();
