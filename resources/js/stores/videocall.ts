@@ -56,6 +56,7 @@ export const useVideoCallStore = defineStore('videoCall', () => {
   const selectedOutputDeviceId = ref<string | null>(null);
   const videoEffect = ref<'none' | 'blur' | 'image'>('none');
   const backgroundImage = ref<string | null>(null);
+  const autoFraming = ref(false);
 
   // ============================================================================
   // Getters
@@ -314,6 +315,10 @@ export const useVideoCallStore = defineStore('videoCall', () => {
     },
     setBackgroundImage: (image: string | null) => {
         backgroundImage.value = image;
+    },
+    autoFraming,
+    setAutoFraming: (enabled: boolean) => {
+        autoFraming.value = enabled;
     }
   };
 });

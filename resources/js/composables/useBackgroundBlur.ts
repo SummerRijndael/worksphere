@@ -22,10 +22,26 @@ export function useBackgroundBlur() {
     let blurCtx: CanvasRenderingContext2D | null = null;
     let personCanvas: HTMLCanvasElement | null = null;
     let personCtx: CanvasRenderingContext2D | null = null;
+    let cachedBgCanvas: HTMLCanvasElement | null = null;
+    let cachedBgCtx: CanvasRenderingContext2D | null = null;
+    
+    // Auto-framing state
+    let framing = {
+        centerX: 0.5,
+        centerY: 0.5,
+        zoom: 1.0,
+        targetCenterX: 0.5,
+        targetCenterY: 0.5,
+        targetZoom: 1.0
+    };
     
     // Internal refs to keep tracks alive
     let sourceVideo: HTMLVideoElement | null = null;
     let bgImage: HTMLImageElement | null = null;
+    let currentTrackId: string | null = null;
+    let currentEffect: 'blur' | 'image' | 'none' = 'none';
+    let currentImageUrl: string | undefined = undefined;
+    let isAutoFramingEnabled = false;
     
     async function loadModel() {
         if (isLoaded.value || isLoading.value) return;
@@ -78,8 +94,10 @@ export function useBackgroundBlur() {
     async function startVideoEffect(
         rawTrack: MediaStreamTrack,
         effect: 'blur' | 'image' = 'blur',
-        imageUrl?: string
+        imageUrl?: string,
+        autoFraming: boolean = false
     ): Promise<MediaStreamTrack> {
+        isAutoFramingEnabled = autoFraming;
         if (!isLoaded.value) {
             await loadModel();
         }
@@ -87,14 +105,24 @@ export function useBackgroundBlur() {
             throw new Error("Segmenter not loaded");
         }
 
-        // Setup canvas
-        if (!canvas) {
-            canvas = document.createElement("canvas");
-            // Initial size, will be updated when video plays
-            canvas.width = 640;
-            canvas.height = 480;
+        if (animationFrameId && currentTrackId === rawTrack.id) {
+            console.log("[BackgroundBlur] Updating effect for existing track:", effect, "autoFraming:", autoFraming);
+            currentEffect = effect;
+            currentImageUrl = imageUrl;
+            isAutoFramingEnabled = autoFraming;
+            
+            if (effect === 'image' && imageUrl && sourceVideo) {
+                await updateBackgroundImage(imageUrl, sourceVideo.videoWidth, sourceVideo.videoHeight);
+            }
+            const processedStream = canvas.captureStream(30);
+            return processedStream.getVideoTracks()[0];
         }
-        ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+        stopProcessing(); // Clean up any existing loop
+
+        currentTrackId = rawTrack.id;
+        currentEffect = effect;
+        currentImageUrl = imageUrl;
 
         const video = document.createElement("video");
         sourceVideo = video;
@@ -104,18 +132,11 @@ export function useBackgroundBlur() {
         const sourceStream = new MediaStream([rawTrack]);
         video.srcObject = sourceStream;
 
-        if (effect === 'image' && imageUrl) {
-            bgImage = new Image();
-            bgImage.crossOrigin = "anonymous";
-            bgImage.src = imageUrl;
-            await new Promise((resolve) => {
-                if (!bgImage) return resolve(null);
-                bgImage.onload = resolve;
-                bgImage.onerror = resolve;
-            });
-        }
-
         await video.play();
+
+        if (effect === 'image' && imageUrl) {
+            await updateBackgroundImage(imageUrl, video.videoWidth, video.videoHeight);
+        }
 
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
@@ -151,6 +172,9 @@ export function useBackgroundBlur() {
                 if (personCanvas) {
                     personCanvas.width = video.videoWidth;
                     personCanvas.height = video.videoHeight;
+                }
+                if (currentEffect === 'image' && currentImageUrl) {
+                    updateBackgroundImage(currentImageUrl, canvas.width, canvas.height);
                 }
             }
 
@@ -221,6 +245,9 @@ export function useBackgroundBlur() {
 
                  // Convert ImageData to ImageBitmap for efficient canvas drawing
                  createImageBitmap(maskImageData).then(bmp => {
+                     if (isAutoFramingEnabled) {
+                         updateFraming(maskData, width, height);
+                     }
                      drawComposition(bmp, true);
                  }).catch(() => {
                      // Fallback: draw raw video if bitmap creation fails
@@ -274,36 +301,64 @@ export function useBackgroundBlur() {
              const w = canvas.width;
              const h = canvas.height;
 
+             // Update smooth framing
+             if (isAutoFramingEnabled) {
+                 framing.centerX += (framing.targetCenterX - framing.centerX) * 0.05;
+                 framing.centerY += (framing.targetCenterY - framing.centerY) * 0.05;
+                 framing.zoom += (framing.targetZoom - framing.zoom) * 0.05;
+             } else {
+                 framing.centerX = 0.5;
+                 framing.centerY = 0.5;
+                 framing.zoom = 1.0;
+             }
+
+             const drawOptimized = (targetCtx: CanvasRenderingContext2D, source: CanvasImageSource, targetWidth: number, targetHeight: number) => {
+                 targetCtx.imageSmoothingEnabled = true;
+                 targetCtx.imageSmoothingQuality = 'high';
+                 
+                 if (isAutoFramingEnabled && framing.zoom > 1.0) {
+                    const sw = w / framing.zoom;
+                    const sh = h / framing.zoom;
+                    const sx = (framing.centerX * w) - (sw / 2);
+                    const sy = (framing.centerY * h) - (sh / 2);
+                    
+                    // Constrain source rect
+                    const csx = Math.max(0, Math.min(w - sw, sx));
+                    const csy = Math.max(0, Math.min(h - sh, sy));
+                    
+                    targetCtx.drawImage(source, csx, csy, sw, sh, 0, 0, targetWidth, targetHeight);
+                 } else {
+                    targetCtx.drawImage(source, 0, 0, targetWidth, targetHeight);
+                 }
+             };
+
              // 1. Prepare blurred background (on small canvas)
-             blurCtx.filter = 'blur(6px)'; // Slightly stronger blur
-             blurCtx.drawImage(video, 0, 0, blurCanvas.width, blurCanvas.height);
+             blurCtx.filter = 'blur(6px)'; 
+             drawOptimized(blurCtx, video, blurCanvas.width, blurCanvas.height);
              blurCtx.filter = 'none';
              
              // 2. Prepare person (on person canvas)
-             // Create feathered edges by blurring the mask
              personCtx.clearRect(0, 0, w, h);
              personCtx.save();
-             personCtx.filter = 'blur(3px)'; // Feathering radius
-             personCtx.drawImage(mask, 0, 0, w, h);
+             personCtx.filter = 'blur(3px)'; 
+             drawOptimized(personCtx, mask, w, h);
              personCtx.restore();
              
-             // Use the feathered mask to clip the original video
              personCtx.globalCompositeOperation = 'source-in';
-             personCtx.drawImage(video, 0, 0, w, h);
-             personCtx.globalCompositeOperation = 'source-over'; // Reset
+             drawOptimized(personCtx, video, w, h);
+             personCtx.globalCompositeOperation = 'source-over';
 
              // 3. Final composition on main canvas
+             ctx.imageSmoothingEnabled = true;
+             ctx.imageSmoothingQuality = 'high';
              ctx.clearRect(0, 0, w, h);
 
-             if (effect === 'image' && bgImage && bgImage.complete) {
-                // Draw background image
-                ctx.drawImage(bgImage, 0, 0, w, h);
+             if (currentEffect === 'image' && cachedBgCanvas) {
+                ctx.drawImage(cachedBgCanvas, 0, 0, w, h);
              } else {
-                // Draw scaled-up background (provides natural blur)
                 ctx.drawImage(blurCanvas, 0, 0, w, h);
              }
              
-             // Draw person on top
              ctx.drawImage(personCanvas, 0, 0, w, h);
              
              if (shouldClose) {
@@ -311,6 +366,44 @@ export function useBackgroundBlur() {
              }
              
             animationFrameId = requestAnimationFrame(draw);
+        };
+
+        const updateFraming = (maskData: Float32Array, width: number, height: number) => {
+            let minX = width, minY = height, maxX = 0, maxY = 0;
+            let found = false;
+
+            // Sample mask to find person bounds
+            const step = 4; // Faster sampling
+            for (let y = 0; y < height; y += step) {
+                for (let x = 0; x < width; x += step) {
+                    const val = maskData[y * width + x];
+                    if (val > 0.5) {
+                        if (x < minX) minX = x;
+                        if (x > maxX) maxX = x;
+                        if (y < minY) minY = y;
+                        if (y > maxY) maxY = y;
+                        found = true;
+                    }
+                }
+            }
+
+            if (found) {
+                // Calculate target center and zoom
+                const personWidth = (maxX - minX) / width;
+                const personHeight = (maxY - minY) / height;
+                
+                framing.targetCenterX = (minX + maxX) / (2 * width);
+                framing.targetCenterY = (minY + maxY) / (2 * height);
+                
+                // Target zoom to keep person at ~70% of frame height
+                const desiredHeight = 0.7;
+                const zoomFactor = desiredHeight / personHeight;
+                framing.targetZoom = Math.max(1.0, Math.min(2.0, zoomFactor));
+            } else {
+                framing.targetCenterX = 0.5;
+                framing.targetCenterY = 0.5;
+                framing.targetZoom = 1.0;
+            }
         };
         
         draw();
@@ -321,7 +414,36 @@ export function useBackgroundBlur() {
         return outputTrack;
     }
     
+    async function updateBackgroundImage(url: string, width: number, height: number) {
+        if (!cachedBgCanvas) {
+            cachedBgCanvas = document.createElement("canvas");
+            cachedBgCtx = cachedBgCanvas.getContext("2d");
+        }
+        
+        cachedBgCanvas.width = width;
+        cachedBgCanvas.height = height;
+
+        bgImage = new Image();
+        bgImage.crossOrigin = "anonymous";
+        bgImage.src = url;
+        
+        await new Promise((resolve) => {
+            if (!bgImage) return resolve(null);
+            bgImage.onload = () => {
+                if (cachedBgCtx && bgImage) {
+                    cachedBgCtx.drawImage(bgImage, 0, 0, width, height);
+                }
+                resolve(null);
+            };
+            bgImage.onerror = () => {
+                console.error("[BackgroundBlur] Failed to load image:", url);
+                resolve(null);
+            };
+        });
+    }
+
     function stopProcessing() {
+        console.log("[BackgroundBlur] Stopping processing");
         if (animationFrameId) {
             cancelAnimationFrame(animationFrameId);
             animationFrameId = null;
@@ -331,17 +453,35 @@ export function useBackgroundBlur() {
             sourceVideo.srcObject = null;
             sourceVideo = null;
         }
-        // segmenter.value?.close(); // Optional, keep loaded for reuse
+        currentTrackId = null;
+    }
+
+    function destroy() {
+        stopProcessing();
+        if (segmenter.value) {
+            console.log("[BackgroundBlur] Closing segmenter and releasing GPU memory");
+            segmenter.value.close();
+            segmenter.value = null;
+        }
+        isLoaded.value = false;
+        
+        // Clear cached canvases
+        canvas = null;
+        blurCanvas = null;
+        personCanvas = null;
+        cachedBgCanvas = null;
+        bgImage = null;
     }
     
     onUnmounted(() => {
-        stopProcessing();
+        destroy();
     });
 
     return {
         loadModel,
         startVideoEffect,
         stopProcessing,
+        destroy,
         isLoaded,
         isLoading,
         error

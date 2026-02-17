@@ -357,7 +357,7 @@ watch(activeTab, (tab) => {
     }
 });
 
-watch(() => store.videoEffect, async (effect) => {
+watch([() => store.videoEffect, () => store.backgroundImage, () => store.autoFraming], async ([effect, bgImage, framing]) => {
     if (!props.open || activeTab.value !== 'video' || !originalPreviewTrack) return;
 
     try {
@@ -365,7 +365,8 @@ watch(() => store.videoEffect, async (effect) => {
             const processedTrack = await backgroundBlur.startVideoEffect(
                 originalPreviewTrack, 
                 effect, 
-                store.backgroundImage || undefined
+                bgImage || undefined,
+                framing
             );
             previewProcessedStream.value = new MediaStream([processedTrack]);
             if (previewVideo.value) {
@@ -716,6 +717,33 @@ onBeforeUnmount(() => {
                                     >
                                         <Icon name="X" size="14" />
                                     </button>
+                                </div>
+
+                                <!-- Auto-Framing Toggle -->
+                                <div class="pt-4 border-t border-(--border-subtle)">
+                                    <div class="flex items-center justify-between p-3 rounded-lg border border-(--border-subtle) bg-(--surface-secondary)/50">
+                                        <div class="flex items-center gap-3">
+                                            <div class="p-2 rounded-md bg-(--surface-tertiary)">
+                                                <Icon name="Maximize" size="18" class="text-(--text-secondary)" />
+                                            </div>
+                                            <div>
+                                                <div class="text-sm font-medium text-(--text-primary)">AI Auto-Framing</div>
+                                                <div class="text-xs text-(--text-secondary)">Keep yourself centered automatically</div>
+                                            </div>
+                                        </div>
+                                        <label class="relative inline-flex items-center cursor-pointer">
+                                            <input 
+                                                type="checkbox" 
+                                                class="sr-only peer"
+                                                :checked="store.autoFraming"
+                                                @change="(e: any) => store.setAutoFraming(e.target.checked)"
+                                            >
+                                            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                                        </label>
+                                    </div>
+                                    <div class="mt-2 text-[10px] text-(--text-tertiary) px-1 italic">
+                                        Requires Blur or Virtual Background to be active.
+                                    </div>
                                 </div>
                             </div>
                         </div>

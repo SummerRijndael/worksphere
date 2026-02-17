@@ -12,6 +12,7 @@ const processingTime = ref(0);
 const frameCount = ref(0);
 const fps = ref(0);
 const currentEffect = ref<'blur' | 'image'>('blur');
+const autoFraming = ref(false);
 const testImageUrl = ref('https://images.unsplash.com/photo-1497366216548-37526070297c?q=80&w=1000');
 
 let stream: MediaStream | null = null;
@@ -53,7 +54,8 @@ async function toggleProcessing() {
             const processedTrack = await blur.startVideoEffect(
                 track, 
                 currentEffect.value, 
-                currentEffect.value === 'image' ? testImageUrl.value : undefined
+                currentEffect.value === 'image' ? testImageUrl.value : undefined,
+                autoFraming.value
             );
             const processedStream = new MediaStream([processedTrack]);
             if (videoRef.value) {
@@ -128,6 +130,11 @@ onUnmounted(() => {
                         >
                             {{ isRunning ? 'Stop Effect' : 'Start Effect' }}
                         </button>
+
+                        <label class="flex items-center gap-2 cursor-pointer pt-2 border-t border-gray-200 dark:border-gray-700">
+                            <input type="checkbox" v-model="autoFraming" />
+                            <span class="text-sm font-medium">Enable Auto-Framing</span>
+                        </label>
                     </div>
 
                     <div class="space-y-2 text-sm text-gray-600 dark:text-gray-300">

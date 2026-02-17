@@ -695,14 +695,14 @@ const previewRemoteName = computed(() => {
 });
 
 // Watch Video Effect Changes
-watch(() => store.videoEffect, async (effect) => {
-    console.log("[Call] Video effect changed:", effect);
+watch([() => store.videoEffect, () => store.backgroundImage, () => store.autoFraming], async ([effect, bgImage, framing]) => {
+    console.log("[Call] Video effect or framing changed:", { effect, framing, hasImage: !!bgImage });
     if (!localStream.value) return;
 
     const currentVideoTrack = localStream.value.getVideoTracks()[0];
     
-    // If we don't have the original track yet (maybe started with audio only), try to get it from current stream if no effect was applied
-    if (!originalVideoTrack.value && currentVideoTrack && effect === 'blur') {
+    // If we don't have the original track yet, try to get it
+    if (!originalVideoTrack.value && currentVideoTrack && (effect === 'blur' || effect === 'image')) {
          originalVideoTrack.value = currentVideoTrack;
     }
 
@@ -715,7 +715,8 @@ watch(() => store.videoEffect, async (effect) => {
              newTrack = await backgroundBlur.startVideoEffect(
                  originalVideoTrack.value, 
                  effect, 
-                 store.backgroundImage || undefined
+                 bgImage || undefined,
+                 framing
              );
              console.log(`[Call] ${effect} track received:`, newTrack?.id, 'enabled:', newTrack?.enabled);
         } else {
