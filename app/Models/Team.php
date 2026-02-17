@@ -530,4 +530,23 @@ class Team extends Model implements HasMedia
             ->singleFile() // Ensures only one avatar exists
             ->useFallbackUrl(config('app.url').'/images/defaults/team-avatar.png'); // Optional: Add default fallback
     }
+
+    /**
+     * Register the media conversions.
+     */
+    public function registerMediaConversions(?\Spatie\MediaLibrary\MediaCollections\Models\Media $media = null): void
+    {
+        $this->addMediaConversion('thumb')
+            ->width(100)
+            ->height(100)
+            ->sharpen(10)
+            ->format('webp')
+            ->optimize();
+
+        $this->addMediaConversion('optimized')
+            ->width(800)
+            ->height(800)
+            ->format('webp')
+            ->optimize();
+    }
 }
