@@ -29,7 +29,7 @@ class PaymentReceiptMail extends Mailable
     public function envelope(): Envelope
     {
         $teamName = $this->invoice->team->name ?? config('app.name');
-        
+
         return new Envelope(
             subject: "Payment Receipt for Invoice #{$this->invoice->invoice_number} - {$teamName}",
         );
@@ -57,7 +57,7 @@ class PaymentReceiptMail extends Mailable
     public function attachments(): array
     {
         return [
-            Attachment::fromPath(storage_path('app/' . $this->pdfPath))
+            Attachment::fromPath(storage_path('app/'.$this->pdfPath))
                 ->as("Receipt-{$this->invoice->invoice_number}.pdf")
                 ->withMime('application/pdf'),
         ];

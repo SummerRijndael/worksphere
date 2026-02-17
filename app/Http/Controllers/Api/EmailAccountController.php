@@ -449,7 +449,7 @@ class EmailAccountController extends Controller
                 'has_full_sync' => $existing->where('account_type', 'full')->isNotEmpty(),
                 'has_smtp_only' => $existing->where('account_type', 'smtp')->isNotEmpty(),
                 'providers' => $existing->pluck('provider')->unique()->values()->toArray(),
-            ]
+            ],
         ];
 
         return response()->json([

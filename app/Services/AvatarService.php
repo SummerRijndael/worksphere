@@ -21,6 +21,10 @@ use Spatie\MediaLibrary\HasMedia;
  */
 class AvatarService implements AvatarContract
 {
+    public function __construct(
+        protected FileSecurityValidator $fileValidator
+    ) {}
+
     /**
      * Resolve avatar data for any supported entity.
      */
@@ -36,10 +40,6 @@ class AvatarService implements AvatarContract
             );
         }
 
-        // Handle array (participant data from API)
-        if (is_array($entity)) {
-            return $this->resolveFromArray($entity);
-        }
 
         // Handle Eloquent models
         if ($entity instanceof User) {
@@ -74,7 +74,29 @@ class AvatarService implements AvatarContract
 
         // Priority 1: Media Library
         if ($user->hasMedia('avatars')) {
-            $url = $user->getFirstMediaUrl('avatars', $variant);
+            $media = $user->getFirstMedia('avatars');
+            $path = $media->getPath($variant);
+
+            // Check if file exists on disk
+            if (file_exists($path)) {
+                $url = $media->getUrl($variant);
+            } else {
+                // Log missing file
+                $logPath = storage_path('app/private/sys/logs/avatar_errors.log');
+                if (! file_exists(dirname($logPath))) {
+                    mkdir(dirname($logPath), 0755, true);
+                }
+                
+                $logMessage = sprintf(
+                    "[%s] Missing avatar file for User ID %s (UUID: %s). Expected path: %s\n",
+                    date('Y-m-d H:i:s'),
+                    $user->id,
+                    $user->public_id,
+                    $path
+                );
+                
+                file_put_contents($logPath, $logMessage, FILE_APPEND);
+            }
         }
 
         return new AvatarData(
@@ -248,6 +270,11 @@ class AvatarService implements AvatarContract
      */
     public function processUpload(UploadedFile $file, HasMedia $entity, string $collection = 'avatars'): void
     {
+        // Debugging Test Failure
+        // dd($file->getMimeType());
+
+        // 1. Security Validation (Magic Numbers, MIME, Extension)
+        $this->fileValidator->validate($file);
         // Clear existing avatars in this collection
         $entity->clearMediaCollection($collection);
 

@@ -267,4 +267,22 @@ class Chat extends Model implements HasMedia
             ->where('user_id', '!=', $user->id)
             ->count();
     }
+    /**
+     * Register the media conversions.
+     */
+    public function registerMediaConversions(?\Spatie\MediaLibrary\MediaCollections\Models\Media $media = null): void
+    {
+        $this->addMediaConversion('thumb')
+            ->width(100)
+            ->height(100)
+            ->sharpen(10)
+            ->format('webp')
+            ->optimize();
+
+        $this->addMediaConversion('optimized')
+            ->width(800)
+            ->height(800)
+            ->format('webp')
+            ->optimize();
+    }
 }

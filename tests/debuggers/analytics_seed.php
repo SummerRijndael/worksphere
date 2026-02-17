@@ -9,10 +9,10 @@ PageView::truncate();
 for ($i = 0; $i < 50; $i++) {
     $lat = rand(-90, 90);
     $lon = rand(-180, 180);
-    
+
     // Some fixed locations for clustering
     if ($i < 10) { // New York
-        $lat = 40.7128 + (rand(-100, 100) / 1000); 
+        $lat = 40.7128 + (rand(-100, 100) / 1000);
         $lon = -74.0060 + (rand(-100, 100) / 1000);
         $city = 'New York';
         $country = 'United States';
@@ -49,4 +49,4 @@ for ($i = 0; $i < 50; $i++) {
     ]);
 }
 
-echo "Seeded " . PageView::count() . " page views manually.\n";
+echo 'Seeded '.PageView::count()." page views manually.\n";

@@ -43,6 +43,7 @@ class FirewallEscalate extends Command
 
         if ($blockedIps->isEmpty()) {
             $this->components->info('No blocked IPs to evaluate.');
+
             return self::SUCCESS;
         }
 
@@ -125,6 +126,7 @@ class FirewallEscalate extends Command
         }
 
         $hours = round($durationMinutes / 60, 1);
+
         return "Escalated to {$hours}h — {$blockCount} offenses in 24h";
     }
 }

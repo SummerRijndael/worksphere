@@ -69,15 +69,6 @@ class CallInitiated implements ShouldBroadcastNow
             foreach ($chat->participants as $participant) {
                 // Broadcast to all participants EXCEPT the caller
                 if ($participant->public_id !== $this->callerPublicId) {
-                    $status = $presenceService->presenceStatus($participant->id);
-
-                    // Skip busy and offline users — they should not be disturbed
-                    // Away and invisible users still ring normally
-                    if (in_array($status, ['busy', 'offline'])) {
-                        $this->filteredParticipants[] = $participant->public_id;
-                        continue;
-                    }
-
                     $channels[] = new PrivateChannel("user.{$participant->public_id}");
                 }
             }

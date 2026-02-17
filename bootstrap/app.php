@@ -67,7 +67,7 @@ return Application::configure(basePath: dirname(__DIR__))
             // \Akaunting\Firewall\Middleware\Swear::class, // Optional
             \Akaunting\Firewall\Middleware\Xss::class,
             // \Akaunting\Firewall\Middleware\Geo::class, // Optional, can be heavy
-            
+
             CheckUserStatus::class,
             \App\Http\Middleware\SecurityHeaders::class,
             \App\Http\Middleware\SetUserTimezone::class,

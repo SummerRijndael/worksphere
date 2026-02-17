@@ -20,7 +20,7 @@ import MessageList from './components/chat/MessageList.vue';
 import ChatComposer from './components/chat/ChatComposer.vue';
 import ChatInfoDrawer from './components/drawer/ChatInfoDrawer.vue';
 import ChatSearchModal from './components/chat/ChatSearchModal.vue';
-import IncomingCallOverlay from './components/call/IncomingCallOverlay.vue';
+
 
 
 const route = useRoute();
@@ -413,7 +413,6 @@ const handleDeclineInvite = (id: any) => declineInvite(Number(id));
     />
 
     <!-- Video/Audio Call (opens in standalone popup) -->
-    <IncomingCallOverlay />
   </div>
 </template>
 

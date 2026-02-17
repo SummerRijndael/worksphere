@@ -1,9 +1,8 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
@@ -18,7 +17,7 @@ return new class extends Migration
         if (Schema::hasTable('blocked_ips')) {
             $blockedIps = DB::table('blocked_ips')->get();
             foreach ($blockedIps as $item) {
-                if (!DB::table('firewall_ips')->where('ip', $item->ip_address)->exists()) {
+                if (! DB::table('firewall_ips')->where('ip', $item->ip_address)->exists()) {
                     DB::table('firewall_ips')->insert([
                         'ip' => $item->ip_address,
                         'blocked' => 1,
@@ -39,7 +38,7 @@ return new class extends Migration
         if (Schema::hasTable('whitelisted_ips')) {
             $whitelistedIps = DB::table('whitelisted_ips')->get();
             foreach ($whitelistedIps as $item) {
-                if (!DB::table('firewall_ips')->where('ip', $item->ip_address)->exists()) {
+                if (! DB::table('firewall_ips')->where('ip', $item->ip_address)->exists()) {
                     DB::table('firewall_ips')->insert([
                         'ip' => $item->ip_address,
                         'blocked' => 0,

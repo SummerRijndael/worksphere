@@ -4,53 +4,15 @@ namespace App\Services;
 
 use Illuminate\Http\UploadedFile;
 use Illuminate\Validation\ValidationException;
+use finfo;
 
 /**
- * Service for validating file uploads using magic number (file signature) validation.
+ * Service for validating file uploads using strict MIME type verification via finfo.
  *
- * Prevents MIME type spoofing by verifying the actual file content against expected signatures.
+ * Prevents MIME type spoofing by verifying the actual file content against claimed MIME types.
  */
 class FileSecurityValidator
 {
-    /**
-     * Magic number signatures for common file types.
-     * Format: MIME type => array of possible byte signatures
-     */
-    protected const MAGIC_NUMBERS = [
-        // Images
-        'image/jpeg' => [
-            [0xFF, 0xD8, 0xFF], // JPEG start
-        ],
-        'image/png' => [
-            [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A], // PNG signature
-        ],
-        'image/gif' => [
-            [0x47, 0x49, 0x46, 0x38, 0x37, 0x61], // GIF87a
-            [0x47, 0x49, 0x46, 0x38, 0x39, 0x61], // GIF89a
-        ],
-
-        // Documents
-        'application/pdf' => [
-            [0x25, 0x50, 0x44, 0x46], // %PDF
-        ],
-        'text/plain' => [
-            // Text files don't have a magic number, validate differently
-            'text',
-        ],
-
-        // Microsoft Office (legacy)
-        'application/msword' => [
-            [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1], // DOC (OLE2)
-        ],
-
-        // Microsoft Office (OpenXML) - ZIP-based
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => [
-            [0x50, 0x4B, 0x03, 0x04], // ZIP (DOCX is ZIP-based)
-            [0x50, 0x4B, 0x05, 0x06], // Empty ZIP
-            [0x50, 0x4B, 0x07, 0x08], // Spanned ZIP
-        ],
-    ];
-
     /**
      * Dangerous file extensions that should always be blocked.
      */
@@ -59,11 +21,6 @@ class FileSecurityValidator
         'sh', 'bash', 'elf', 'app', 'deb', 'rpm', 'dmg', 'pkg',
         'php', 'asp', 'aspx', 'jsp', 'cgi', 'pl', 'py', 'rb',
     ];
-
-    /**
-     * Maximum file size to read for magic number validation (in bytes).
-     */
-    protected const MAGIC_NUMBER_READ_SIZE = 16;
 
     /**
      * Validate a file upload for security.
@@ -75,10 +32,10 @@ class FileSecurityValidator
         // Check for blocked extensions
         $this->validateExtension($file);
 
-        // Validate MIME type against allowed list
+        // Validate MIME type against allowed list (using actual content mime)
         $this->validateMimeType($file);
 
-        // Validate file signature (magic number)
+        // Validate file signature / consistency
         $this->validateFileSignature($file);
 
         // Check for double extensions
@@ -109,86 +66,66 @@ class FileSecurityValidator
     protected function validateMimeType(UploadedFile $file): void
     {
         $allowedMimes = config('email_attachments.allowed_mimes', []);
-        $fileMime = $file->getMimeType();
+        
+        // Use finfo to get the reliable MIME type based on content
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $actualMime = $finfo->file($file->getRealPath());
 
-        if (! in_array($fileMime, $allowedMimes, true)) {
+        if (! in_array($actualMime, $allowedMimes, true)) {
             throw ValidationException::withMessages([
-                'file' => "File type '".htmlspecialchars($fileMime)."' is not allowed. Allowed types: ".implode(', ', $allowedMimes),
+                'file' => "File type '".htmlspecialchars($actualMime)."' is not allowed. Allowed types: ".implode(', ', $allowedMimes),
             ]);
         }
     }
 
     /**
-     * Validate file signature (magic number) matches the claimed MIME type.
+     * Validate file signature (consistency check).
      *
      * @throws ValidationException
      */
     protected function validateFileSignature(UploadedFile $file): void
     {
-        $mimeType = $file->getMimeType();
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $actualMime = $finfo->file($file->getRealPath());
+        $claimedMime = $file->getClientMimeType();
 
-        // Skip validation for plain text (no magic number)
-        if ($mimeType === 'text/plain') {
-            return;
-        }
-
-        // Get expected signatures for this MIME type
-        if (! isset(self::MAGIC_NUMBERS[$mimeType])) {
-            // If we don't have magic numbers for this type, skip validation
-            // (should have been caught by MIME validation)
-            return;
-        }
-
-        $expectedSignatures = self::MAGIC_NUMBERS[$mimeType];
-
-        // Read the file header
-        $fileHandle = fopen($file->getRealPath(), 'rb');
-        if (! $fileHandle) {
-            throw ValidationException::withMessages([
-                'file' => 'Unable to read file for validation.',
+        // Check for MIME spoofing: strict equality check
+        // Note: Browsers sometimes guess mimes poorly (e.g. generic octet-stream), 
+        // so we might need a whitelist of "safe but mismatched" mimes eventually.
+        // For strict security, we enforce match or specific allowed aliases.
+        
+        // Strict consistency check: Does actual mime match allowed mimes? (Already checked in validateMimeType)
+        
+        // Consistency: Does actual mime match extension?
+        // This stops "image.png" being a PHP script (text/x-php).
+        // It also stops "resume.docx" being a ZIP file (application/zip).
+        
+        // Optional: Check if claimed mime matches actual mime.
+        // This is what the user suggested.
+        // But be careful: a valid CSV might be uploaded as application/vnd.ms-excel but actual is text/csv.
+        // If both are allowed, it's fine. If one is allowed, we rely on validateMimeType.
+        
+        // Let's implement the user's specific request for spoofing check, 
+        // but maybe relax it for known harmless mismatches if needed.
+        // For now, let's try strict.
+        
+        if ($actualMime !== $claimedMime) {
+             // Exception for generic octet-stream being specifically identified as something else valid
+             if ($claimedMime === 'application/octet-stream') {
+                 return;
+             }
+             
+             // Exception for Office vs Zip: 
+             // If actual is zip, but claimed is docx -> Blocked (this is the vulnerability fix).
+             // If actual is docx, but claimed is zip -> Maybe allowed?
+             
+             // The user code:
+             // if ($actualMime !== $claimedMime) throw...
+             
+             throw ValidationException::withMessages([
+                'file' => "MIME spoofing detected. Expected '{$claimedMime}', but found '{$actualMime}'.",
             ]);
         }
-
-        $fileHeader = fread($fileHandle, self::MAGIC_NUMBER_READ_SIZE);
-        fclose($fileHandle);
-
-        if ($fileHeader === false) {
-            throw ValidationException::withMessages([
-                'file' => 'Unable to read file header for validation.',
-            ]);
-        }
-
-        // Convert file header to byte array
-        $headerBytes = array_values(unpack('C*', $fileHeader));
-
-        // Check if any expected signature matches
-        $signatureMatches = false;
-        foreach ($expectedSignatures as $signature) {
-            if ($this->matchesSignature($headerBytes, $signature)) {
-                $signatureMatches = true;
-                break;
-            }
-        }
-
-        if (! $signatureMatches) {
-            throw ValidationException::withMessages([
-                'file' => "File content does not match the expected format for '".htmlspecialchars($mimeType)."'. The file may be corrupted or mislabeled.",
-            ]);
-        }
-    }
-
-    /**
-     * Check if header bytes match the expected signature.
-     */
-    protected function matchesSignature(array $headerBytes, array $signature): bool
-    {
-        foreach ($signature as $index => $expectedByte) {
-            if (! isset($headerBytes[$index]) || $headerBytes[$index] !== $expectedByte) {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     /**

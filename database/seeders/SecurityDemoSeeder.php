@@ -2,18 +2,17 @@
 
 namespace Database\Seeders;
 
-use App\Models\SuspiciousActivity;
-use App\Models\User;
+use Akaunting\Firewall\Models\Log as FirewallLog;
 use App\Enums\AuditAction;
 use App\Enums\AuditCategory;
 use App\Enums\AuditSeverity;
 use App\Models\AuditLog;
-use Akaunting\Firewall\Models\Log as FirewallLog;
-use Illuminate\Database\Seeder;
-use Illuminate\Support\Carbon;
-use Illuminate\Support\Str;
+use App\Models\SuspiciousActivity;
+use App\Models\User;
 use Faker\Factory as Faker;
+use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class SecurityDemoSeeder extends Seeder
 {
@@ -27,9 +26,10 @@ class SecurityDemoSeeder extends Seeder
 
         if ($users->isEmpty()) {
             $this->command->error('No users found. Please seed users first.');
+
             return;
         }
-        
+
         $this->command->info('Cleaning existing security logs...');
         DB::table('suspicious_activities')->truncate();
         DB::table('firewall_logs')->truncate();
@@ -54,8 +54,8 @@ class SecurityDemoSeeder extends Seeder
         $middlewares = ['sql', 'xss', 'lfi', 'rfi', 'php', 'geo', 'agent'];
 
         // Helper to get a random date within a specific period
-        $getRandomDate = function($period) {
-            return match($period) {
+        $getRandomDate = function ($period) {
+            return match ($period) {
                 '24h' => now()->subHours(rand(0, 23))->subMinutes(rand(0, 59)),
                 '1w' => now()->subDays(rand(1, 6))->subHours(rand(0, 23)),
                 '1m' => now()->subWeeks(rand(1, 3))->subDays(rand(0, 6)),
@@ -69,7 +69,7 @@ class SecurityDemoSeeder extends Seeder
 
         foreach ($periods as $period) {
             $this->command->info("Seeding data for period: $period");
-            
+
             for ($i = 0; $i < 30; $i++) {
                 try {
                     $country = $faker->randomElement($countries);
@@ -82,7 +82,7 @@ class SecurityDemoSeeder extends Seeder
                         'level' => 'warning',
                         'middleware' => $faker->randomElement($middlewares),
                         'user_id' => $faker->boolean(10) ? $users->random()->id : null,
-                        'url' => '/api/v1/resource/' . Str::random(8),
+                        'url' => '/api/v1/resource/'.Str::random(8),
                         'referrer' => $faker->url,
                         'request' => json_encode(['payload' => Str::random(100)]),
                         'created_at' => $createdAt,
@@ -128,7 +128,7 @@ class SecurityDemoSeeder extends Seeder
                         'created_at' => $createdAt,
                     ]);
                 } catch (\Exception $e) {
-                    $this->command->error("Failed at $period iteration $i: " . $e->getMessage());
+                    $this->command->error("Failed at $period iteration $i: ".$e->getMessage());
                     throw $e;
                 }
             }

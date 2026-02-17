@@ -20,6 +20,7 @@ export interface CallInfo {
   chatType: 'dm' | 'group';
   chatName: string | null;
   startedAt: number | null;
+  remoteUser?: Participant; // Added for UI context
 }
 
 export const useVideoCallStore = defineStore('videoCall', () => {

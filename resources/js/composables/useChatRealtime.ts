@@ -428,6 +428,17 @@ export function useChatRealtime() {
     // isConnected.value = false; // Also don't reset this globally
   });
 
+  // Watch for active user to subscribe to private channel (fixes race condition)
+  watch(
+    () => authStore.user,
+    (newUser) => {
+      if (newUser && newUser.public_id) {
+        subscribeToUserChannel();
+      }
+    },
+    { immediate: true }
+  );
+
   // Watch for new chats and subscribe
   watch(
     () => chatStore.chats,

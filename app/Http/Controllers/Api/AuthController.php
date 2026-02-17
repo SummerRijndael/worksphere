@@ -704,14 +704,14 @@ class AuthController extends Controller
         }
 
         try {
-            $user = \Illuminate\Support\Facades\DB::transaction(function () use ($data, $request, $cacheKey) {
+            $user = \Illuminate\Support\Facades\DB::transaction(function () use ($data, $request) {
                 // Double check if user created in the meantime
                 if (User::where('email', $data['email'])->exists()) {
-                     // If user exists, we should probably consume the cache and fail, or just fail.
-                     // But if they clicked twice, maybe we can find the user and log them in? 
-                     // For security, strict failure is safer, but let's clear cache if they exist to prevent endless loops?
-                     // Actually, if they exist, they should login normally.
-                     throw new \Exception('User already exists. Please login.');
+                    // If user exists, we should probably consume the cache and fail, or just fail.
+                    // But if they clicked twice, maybe we can find the user and log them in?
+                    // For security, strict failure is safer, but let's clear cache if they exist to prevent endless loops?
+                    // Actually, if they exist, they should login normally.
+                    throw new \Exception('User already exists. Please login.');
                 }
 
                 // Create new user
@@ -744,7 +744,7 @@ class AuthController extends Controller
                     'provider_avatar' => $data['avatar'],
                     'provider_name' => $data['name'],
                 ]);
-                
+
                 // Record Legal Agreements
                 foreach (['tos', 'privacy'] as $type) {
                     if ($config = config("legal.{$type}")) {
@@ -758,7 +758,7 @@ class AuthController extends Controller
                         ]);
                     }
                 }
-                
+
                 // Assign Role
                 $defaultRole = config('roles.default_role', 'user');
                 $user->assignRole($defaultRole);
@@ -767,13 +767,13 @@ class AuthController extends Controller
             });
 
             // Operations outside transaction that shouldn't block registration
-            
+
             // Sync avatar
             if ($data['avatar']) {
                 try {
                     app(\App\Contracts\AvatarContract::class)->syncFromSocial($data['avatar'], $user);
                 } catch (\Exception $e) {
-                    \Illuminate\Support\Facades\Log::warning('Failed to sync avatar during social registration: ' . $e->getMessage());
+                    \Illuminate\Support\Facades\Log::warning('Failed to sync avatar during social registration: '.$e->getMessage());
                     // Continue without avatar
                 }
             }
@@ -784,9 +784,9 @@ class AuthController extends Controller
                 $resetUrl = url(config('app.url').'/reset-password?token='.$token.'&email='.urlencode($user->email));
                 $user->notify(new \App\Notifications\WelcomeEmailNotification(true, $resetUrl, 'Set Password & Access Dashboard'));
             } catch (\Exception $e) {
-                \Illuminate\Support\Facades\Log::error('Failed to send welcome email: ' . $e->getMessage());
+                \Illuminate\Support\Facades\Log::error('Failed to send welcome email: '.$e->getMessage());
             }
-            
+
             // Now verify everything is good, forget cache
             \Illuminate\Support\Facades\Cache::forget($cacheKey);
 
@@ -800,8 +800,8 @@ class AuthController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('Social registration failed: ' . $e->getMessage());
-            
+            \Illuminate\Support\Facades\Log::error('Social registration failed: '.$e->getMessage());
+
             return response()->json([
                 'message' => 'Registration failed. Please try again or contact support.',
             ], 500);

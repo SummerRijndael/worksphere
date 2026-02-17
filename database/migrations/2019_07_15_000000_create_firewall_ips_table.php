@@ -19,7 +19,7 @@ class CreateFirewallIpsTable extends Migration
             $table->boolean('blocked')->default(1);
             $table->timestamps();
             $table->softDeletes();
-            
+
             $table->index('ip');
         });
     }

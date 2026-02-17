@@ -82,7 +82,7 @@ class LogViewerController extends Controller
                 // Save previous log if exists
                 if ($currentLog) {
                     $parsedLogs[] = $currentLog;
-                    
+
                     // Update stats
                     $stats['total']++;
                     $level = $currentLog['level'];
@@ -110,7 +110,7 @@ class LogViewerController extends Controller
         }
         if ($currentLog) {
             $parsedLogs[] = $currentLog;
-            
+
             // Update stats for last log
             $stats['total']++;
             $level = $currentLog['level'];
@@ -144,11 +144,11 @@ class LogViewerController extends Controller
             $valB = $b[$sortBy] ?? '';
 
             if ($sortBy === 'timestamp') {
-                return $sortDirection === 'asc' 
-                    ? strcmp($valA, $valB) 
+                return $sortDirection === 'asc'
+                    ? strcmp($valA, $valB)
                     : strcmp($valB, $valA);
             }
-            
+
             // Case-insensitive string comparison for other fields
             return $sortDirection === 'asc'
                 ? strcasecmp($valA, $valB)

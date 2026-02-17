@@ -7,6 +7,7 @@ import AppLayout from "@/layouts/AppLayout.vue";
 import api from "@/lib/api";
 import { debounce } from "lodash";
 import { SearchInput, SelectFilter } from "@/components/ui";
+import Avatar from "@/components/ui/Avatar.vue";
 import UserStatsCards from "@/views/admin/components/UserStatsCards.vue";
 import UserTrendsChart from "@/views/admin/components/UserTrendsChart.vue";
 import RoleDistributionChart from "@/views/admin/components/RoleDistributionChart.vue";
@@ -441,31 +442,23 @@ onMounted(() => {
                                                 class="flex items-center gap-4"
                                             >
                                                 <div class="relative">
-                                                    <img
-                                                        v-if="
-                                                            user.avatar_thumb_url
-                                                        "
-                                                        :src="
-                                                            user.avatar_thumb_url
-                                                        "
-                                                        alt=""
-                                                        class="w-10 h-10 rounded-full object-cover ring-2"
-                                                        :class="
-                                                            getPresenceBorder(
-                                                                user,
-                                                            )
-                                                        "
-                                                    />
-                                                    <div
-                                                        v-else
-                                                        class="w-10 h-10 rounded-full bg-[var(--surface-tertiary)] flex items-center justify-center text-[var(--interactive-primary)] font-bold ring-2"
-                                                        :class="
-                                                            getPresenceBorder(
-                                                                user,
-                                                            )
-                                                        "
-                                                    >
-                                                        {{ user.initials }}
+                                                    <div class="relative">
+                                                        <Avatar
+                                                            :src="
+                                                                user.avatar_thumb_url
+                                                            "
+                                                            :fallback="
+                                                                user.initials
+                                                            "
+                                                            :alt="user.name"
+                                                            size="md"
+                                                            class="w-10 h-10 ring-2"
+                                                            :class="
+                                                                getPresenceBorder(
+                                                                    user,
+                                                                )
+                                                            "
+                                                        />
                                                     </div>
                                                 </div>
                                                 <div>
@@ -611,20 +604,14 @@ onMounted(() => {
 
                             <!-- Avatar -->
                             <div class="relative mb-4">
-                                <img
-                                    v-if="user.avatar_url"
+                                <Avatar
                                     :src="user.avatar_url"
-                                    alt=""
-                                    class="w-20 h-20 rounded-full object-cover border-4 border-[var(--surface-elevated)] shadow-md"
+                                    :fallback="user.initials"
+                                    :alt="user.name"
+                                    size="xl"
+                                    class="w-20 h-20 border-4 border-[var(--surface-elevated)] shadow-md"
                                     :class="getPresenceBorder(user)"
                                 />
-                                <div
-                                    v-else
-                                    class="w-20 h-20 rounded-full bg-[var(--surface-tertiary)] flex items-center justify-center text-[var(--interactive-primary)] text-2xl font-bold border-4 border-[var(--surface-elevated)] shadow-md"
-                                    :class="getPresenceBorder(user)"
-                                >
-                                    {{ user.initials }}
-                                </div>
                                 <div
                                     v-if="user.has_2fa_enabled"
                                     class="absolute bottom-0 right-0 bg-green-500 text-white p-1 rounded-full border-2 border-[var(--surface-elevated)]"

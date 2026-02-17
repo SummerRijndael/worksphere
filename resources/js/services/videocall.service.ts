@@ -12,7 +12,12 @@ export class VideoCallService extends BaseService {
   /**
    * Initiate a call (notifies the other participant via broadcast).
    */
-  async initiateCall(chatId: string, callType: 'video' | 'audio'): Promise<{ call_id: string; chat_id: string }> {
+  async initiateCall(chatId: string, callType: 'video' | 'audio'): Promise<{ 
+    call_id: string; 
+    chat_id: string;
+    busy_participants?: string[];
+    offline_participants?: string[];
+  }> {
     const response = await this.api.post(`/api/chat/${chatId}/call/initiate`, {
       call_type: callType,
     });
@@ -105,12 +110,21 @@ export class VideoCallService extends BaseService {
   }
 
   /**
+   * Send a heartbeat to maintain the call lease.
+   */
+  async sendHeartbeat(chatId: string, callId: string): Promise<void> {
+    await this.api.post(`/api/chat/${chatId}/call/heartbeat`, {
+      call_id: callId,
+    });
+  }
+
+  /**
    * End a call.
    */
   async endCall(
     chatId: string,
     callId: string,
-    reason: 'hangup' | 'declined' | 'timeout' | 'failed' = 'hangup',
+    reason: 'hangup' | 'declined' | 'timeout' | 'failed' | 'busy' | 'no_answer' = 'hangup',
   ): Promise<void> {
     await this.api.post(`/api/chat/${chatId}/call/end`, {
       call_id: callId,

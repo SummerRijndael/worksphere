@@ -28,7 +28,7 @@ return [
             'redirect' => env('FIREWALL_BLOCK_REDIRECT', null),
             'abort' => env('FIREWALL_BLOCK_ABORT', false),
             'code' => env('FIREWALL_BLOCK_CODE', 403),
-            //'exception' => \Akaunting\Firewall\Exceptions\AccessDenied::class,
+            // 'exception' => \Akaunting\Firewall\Exceptions\AccessDenied::class,
         ],
 
     ],
@@ -67,7 +67,7 @@ return [
         'firewall.sqli',
         'firewall.swear',
         'firewall.xss',
-        //'App\Http\Middleware\YourCustomRule',
+        // 'App\Http\Middleware\YourCustomRule',
     ],
 
     'middleware' => [
@@ -429,7 +429,7 @@ return [
                 '#-moz-binding[\x00-\x20]*:#u',
 
                 // Unneeded tags
-                '#</*(applet|meta|xml|blink|link|style|script|embed|object|iframe|frame|frameset|ilayer|layer|bgsound|title|base|img)[^>]*>?#i'
+                '#</*(applet|meta|xml|blink|link|style|script|embed|object|iframe|frame|frameset|ilayer|layer|bgsound|title|base|img)[^>]*>?#i',
             ],
 
             'auto_block' => [

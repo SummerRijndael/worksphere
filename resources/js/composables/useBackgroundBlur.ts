@@ -144,48 +144,108 @@ export function useBackgroundBlur() {
             canvas = document.createElement("canvas");
             ctx = canvas.getContext("2d");
         }
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+        
+        // Resolution Capping for Mobile (S10 fix)
+        // Limit max dimension to 360p to reduce segmentation load further
+        let targetWidth = video.videoWidth;
+        let targetHeight = video.videoHeight;
+        
+        if (isMobile) {
+            const MAX_DIMENSION = 360; // Reduced from 480 for better stability
+            if (targetWidth > MAX_DIMENSION || targetHeight > MAX_DIMENSION) {
+                const ratio = targetWidth / targetHeight;
+                if (targetWidth > targetHeight) {
+                     targetWidth = MAX_DIMENSION;
+                     targetHeight = Math.round(MAX_DIMENSION / ratio);
+                } else {
+                     targetHeight = MAX_DIMENSION;
+                     targetWidth = Math.round(MAX_DIMENSION * ratio);
+                }
+            }
+        }
+        
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
 
         
         // Setup offscreen canvases
         if (!blurCanvas) blurCanvas = document.createElement("canvas");
         const blurDownsample = isMobile ? 12 : 8;
-        blurCanvas.width = Math.round(video.videoWidth / blurDownsample); 
-        blurCanvas.height = Math.round(video.videoHeight / blurDownsample);
+        // Blur canvas is even smaller for performance
+        blurCanvas.width = Math.round(targetWidth / blurDownsample); 
+        blurCanvas.height = Math.round(targetHeight / blurDownsample);
         blurCtx = blurCanvas.getContext("2d");
 
 
         if (!personCanvas) personCanvas = document.createElement("canvas");
-        personCanvas.width = video.videoWidth;
-        personCanvas.height = video.videoHeight;
+        personCanvas.width = targetWidth;
+        personCanvas.height = targetHeight;
         personCtx = personCanvas.getContext("2d");
 
-        console.log(`[BackgroundBlur] Video dimensions: ${video.videoWidth}x${video.videoHeight}, mode: ${currentRunningMode}`);
+        console.log(`[BackgroundBlur] Processing dimensions: ${targetWidth}x${targetHeight} (Source: ${video.videoWidth}x${video.videoHeight}), mode: ${currentRunningMode}`);
 
-        const draw = () => {
+
+        let lastFrameTime = 0;
+        const targetFps = isMobile ? 15 : 30;
+        const frameInterval = 1000 / targetFps;
+
+        const draw = (timestamp: number) => {
             if (!video || !canvas || !segmenter.value) {
                 console.warn('[BackgroundBlur] draw() skipped: missing refs', { video: !!video, canvas: !!canvas, segmenter: !!segmenter.value });
                 return;
             }
+
+            // Throttling
+            const elapsed = timestamp - lastFrameTime;
+            if (elapsed < frameInterval) {
+                animationFrameId = requestAnimationFrame(draw);
+                return;
+            }
+            lastFrameTime = timestamp - (elapsed % frameInterval);
             
             // Handle dimension changes (e.g., orientation or camera switch)
             if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-                console.log(`[BackgroundBlur] Updating dimensions to ${video.videoWidth}x${video.videoHeight}`);
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                if (blurCanvas) {
-                    const blurDownsample = isMobile ? 12 : 8;
-                    blurCanvas.width = Math.round(video.videoWidth / blurDownsample);
-                    blurCanvas.height = Math.round(video.videoHeight / blurDownsample);
+                // If native video size changes, we might want to re-evaluate our capping logic.
+                // For simplicity, we just obey the new video size IF it's smaller, or re-cap it.
+                // But re-running the full calc inside draw loop might be heavy. 
+                // Let's just update to match video for now, or keep the capped canvas if we want to force scaler?
+                // Actually, standard behavior is to adapt. Let's re-run capping logic if needed.
+                
+                let newTargetWidth = video.videoWidth;
+                let newTargetHeight = video.videoHeight;
+                
+                if (isMobile) {
+                    const MAX_DIMENSION = 360;
+                    if (newTargetWidth > MAX_DIMENSION || newTargetHeight > MAX_DIMENSION) {
+                        const ratio = newTargetWidth / newTargetHeight;
+                        if (newTargetWidth > newTargetHeight) {
+                             newTargetWidth = MAX_DIMENSION;
+                             newTargetHeight = Math.round(MAX_DIMENSION / ratio);
+                        } else {
+                             newTargetHeight = MAX_DIMENSION;
+                             newTargetWidth = Math.round(MAX_DIMENSION * ratio);
+                        }
+                    }
                 }
-
-                if (personCanvas) {
-                    personCanvas.width = video.videoWidth;
-                    personCanvas.height = video.videoHeight;
-                }
-                if (currentEffect === 'image' && currentImageUrl) {
-                    updateBackgroundImage(currentImageUrl, canvas.width, canvas.height);
+                
+                if (canvas.width !== newTargetWidth || canvas.height !== newTargetHeight) {
+                    console.log(`[BackgroundBlur] Updating dimensions to ${newTargetWidth}x${newTargetHeight}`);
+                    canvas.width = newTargetWidth;
+                    canvas.height = newTargetHeight;
+                    
+                    if (blurCanvas) {
+                        const blurDownsample = isMobile ? 12 : 8;
+                        blurCanvas.width = Math.round(newTargetWidth / blurDownsample);
+                        blurCanvas.height = Math.round(newTargetHeight / blurDownsample);
+                    }
+    
+                    if (personCanvas) {
+                        personCanvas.width = newTargetWidth;
+                        personCanvas.height = newTargetHeight;
+                    }
+                    if (currentEffect === 'image' && currentImageUrl) {
+                        updateBackgroundImage(currentImageUrl, canvas.width, canvas.height);
+                    }
                 }
             }
 
@@ -428,9 +488,12 @@ export function useBackgroundBlur() {
             }
         };
         
-        draw();
+        // Start the loop with timestamp
+        animationFrameId = requestAnimationFrame(draw);
 
-        const processedStream = canvas.captureStream(30); 
+        // Throttle FPS on mobile to prevent overheating/freezing
+        const captureFps = isMobile ? 15 : 30;
+        const processedStream = canvas.captureStream(captureFps); 
         const outputTrack = processedStream.getVideoTracks()[0];
         console.log('[BackgroundBlur] Returning canvas track:', outputTrack?.id, 'enabled:', outputTrack?.enabled);
         return outputTrack;

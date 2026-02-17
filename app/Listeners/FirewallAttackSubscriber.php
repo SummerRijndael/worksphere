@@ -22,14 +22,14 @@ class FirewallAttackSubscriber
         $log = $event->log;
 
         // Map firewall middleware to a semi-useful description
-        $reason = match($log->middleware) {
+        $reason = match ($log->middleware) {
             'sqli' => 'SQL Injection attempt detected',
-            'xss'  => 'Cross-site Scripting (XSS) attempt detected',
-            'lfi'  => 'Local File Inclusion (LFI) attempt detected',
-            'rfi'  => 'Remote File Inclusion (RFI) attempt detected',
-            'php'  => 'Malicious PHP code injection detected',
-            'bot'  => 'Blocked bot/crawler activity detected',
-            default => 'Suspicious request blocked by ' . $log->middleware,
+            'xss' => 'Cross-site Scripting (XSS) attempt detected',
+            'lfi' => 'Local File Inclusion (LFI) attempt detected',
+            'rfi' => 'Remote File Inclusion (RFI) attempt detected',
+            'php' => 'Malicious PHP code injection detected',
+            'bot' => 'Blocked bot/crawler activity detected',
+            default => 'Suspicious request blocked by '.$log->middleware,
         };
 
         $this->auditService->log(
@@ -37,13 +37,13 @@ class FirewallAttackSubscriber
             category: AuditCategory::Security,
             context: [
                 'firewall_log_id' => $log->id,
-                'middleware'      => $log->middleware,
-                'reason'          => $reason,
-                'url'             => $log->url,
-                'ip_address'      => $log->ip,
-                'user_agent'      => $log->user_agent,
-                'level'           => $log->level,
-                'request_data'    => $log->request,
+                'middleware' => $log->middleware,
+                'reason' => $reason,
+                'url' => $log->url,
+                'ip_address' => $log->ip,
+                'user_agent' => $log->user_agent,
+                'level' => $log->level,
+                'request_data' => $log->request,
             ]
         );
     }
