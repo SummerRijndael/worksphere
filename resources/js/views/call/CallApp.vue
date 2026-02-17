@@ -745,6 +745,10 @@ watch(() => store.videoEffect, async (effect) => {
         }
     } catch (e) {
         console.error("Failed to apply video effect", e);
+        // Reset effect so the user gets their regular video feed
+        if (effect === 'blur') {
+            store.setVideoEffect('none');
+        }
     }
 });
 
