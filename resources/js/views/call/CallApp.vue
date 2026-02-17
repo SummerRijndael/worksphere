@@ -127,6 +127,10 @@ const isCameraOff = ref(true); // Default to Video Off as requested
 const videoFallback = ref(false);
 const isAudioOnly = computed(() => callData.value?.callType === "audio");
 
+// Background Blur
+const backgroundBlur = useBackgroundBlur();
+const originalVideoTrack = ref<MediaStreamTrack | null>(null);
+
 // Screen Sharing
 const isScreenSharing = ref(false);
 const screenStream = ref<MediaStream | null>(null);

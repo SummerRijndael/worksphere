@@ -101,7 +101,12 @@ export const useVideoCallStore = defineStore('videoCall', () => {
 
   async function checkActiveCall(chatId: string) {
       try {
-          const { active, call_id, type } = await import('@/services/videocall.service').then(m => m.videoCallService.getActiveCall(chatId));
+          const mod = await import('@/services/videocall.service');
+          if (!mod?.videoCallService) {
+              console.warn('videoCallService not available yet');
+              return;
+          }
+          const { active, call_id, type } = await mod.videoCallService.getActiveCall(chatId);
           if (active && call_id) {
               registerActiveCall(chatId, call_id, type || 'video');
           } else {

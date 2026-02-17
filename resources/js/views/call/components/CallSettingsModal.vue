@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from "vue";
+import { ref, onMounted, onBeforeUnmount, computed, watch } from "vue";
 import { Modal, Icon, Button, SelectFilter, Separator } from "@/components/ui";
 import { useVideoCallStore } from "@/stores/videocall";
 
@@ -23,6 +23,11 @@ const analyser = ref<AnalyserNode | null>(null);
 const microphoneStream = ref<MediaStream | null>(null);
 const volumeLevel = ref(0);
 let animationFrame: number;
+
+// Camera Preview
+const previewVideo = ref<HTMLVideoElement | null>(null);
+const cameraStream = ref<MediaStream | null>(null);
+const cameraError = ref<string | null>(null);
 
 const tabs = [
     { id: "audio", label: "Audio", icon: "Mic" },
@@ -128,6 +133,42 @@ function drawVisualizer() {
     animationFrame = requestAnimationFrame(drawVisualizer);
 }
 
+// Camera Preview
+async function startCameraPreview(deviceId?: string) {
+    stopCameraPreview();
+    cameraError.value = null;
+    try {
+        const constraints: MediaStreamConstraints = {
+            video: deviceId
+                ? { deviceId: { exact: deviceId }, width: { ideal: 640 }, height: { ideal: 360 } }
+                : { width: { ideal: 640 }, height: { ideal: 360 }, facingMode: 'user' },
+            audio: false,
+        };
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        cameraStream.value = stream;
+        // Wait a tick for the ref to mount
+        await new Promise(r => setTimeout(r, 50));
+        if (previewVideo.value) {
+            previewVideo.value.srcObject = stream;
+        }
+    } catch (e: any) {
+        console.error('[CallSettings] Camera preview error:', e);
+        cameraError.value = e.name === 'NotAllowedError'
+            ? 'Camera access denied'
+            : 'Could not access camera';
+    }
+}
+
+function stopCameraPreview() {
+    if (cameraStream.value) {
+        cameraStream.value.getTracks().forEach(t => t.stop());
+        cameraStream.value = null;
+    }
+    if (previewVideo.value) {
+        previewVideo.value.srcObject = null;
+    }
+}
+
 // Watchers
 watch(() => props.open, (isOpen) => {
     if (isOpen) {
@@ -135,8 +176,12 @@ watch(() => props.open, (isOpen) => {
         if (store.selectedAudioDeviceId) {
             startVisualizer(store.selectedAudioDeviceId);
         }
+        if (activeTab.value === 'video') {
+            startCameraPreview(store.selectedVideoDeviceId || undefined);
+        }
     } else {
         stopVisualizer();
+        stopCameraPreview();
     }
 });
 
@@ -146,9 +191,28 @@ watch(() => store.selectedAudioDeviceId, (newId) => {
     }
 });
 
+watch(activeTab, (tab) => {
+    if (tab === 'video' && props.open) {
+        startCameraPreview(store.selectedVideoDeviceId || undefined);
+    } else {
+        stopCameraPreview();
+    }
+});
+
+watch(() => store.selectedVideoDeviceId, (newId) => {
+    if (newId && props.open && activeTab.value === 'video') {
+        startCameraPreview(newId);
+    }
+});
+
 onMounted(() => {
     // If modal is already open on mount (unlikely but possible)
     if (props.open) loadDevices();
+});
+
+onBeforeUnmount(() => {
+    stopVisualizer();
+    stopCameraPreview();
 });
 
 </script>
@@ -289,12 +353,27 @@ onMounted(() => {
                                         class="w-full"
                                     />
                                     
-                                    <!-- Compact Preview -->
-                                    <div class="aspect-video bg-(--surface-secondary)/50 rounded-xl border border-(--border-muted) flex items-center justify-center relative overflow-hidden shadow-inner">
-                                        <Icon name="CameraOff" size="24" class="text-(--text-muted) opacity-20" />
-                                        <div class="absolute bottom-3 right-3 flex items-center gap-1.5 grayscale opacity-50">
-                                            <div class="h-1 w-1 rounded-full bg-(--text-muted)"></div>
-                                            <span class="text-[9px] font-bold text-(--text-muted) uppercase tracking-wider">No Feed</span>
+                                    <!-- Camera Preview -->
+                                    <div class="aspect-video bg-black rounded-xl border border-(--border-muted) flex items-center justify-center relative overflow-hidden shadow-inner">
+                                        <video
+                                            v-show="cameraStream && !cameraError"
+                                            ref="previewVideo"
+                                            autoplay
+                                            playsinline
+                                            muted
+                                            class="w-full h-full object-cover rounded-xl mirror"
+                                        ></video>
+                                        <div v-if="cameraError" class="flex flex-col items-center gap-2">
+                                            <Icon name="CameraOff" size="24" class="text-red-400 opacity-60" />
+                                            <span class="text-xs text-red-400">{{ cameraError }}</span>
+                                        </div>
+                                        <div v-else-if="!cameraStream" class="flex flex-col items-center gap-2">
+                                            <Icon name="Camera" size="24" class="text-(--text-muted) opacity-30" />
+                                            <span class="text-[10px] text-(--text-muted)">Loading preview...</span>
+                                        </div>
+                                        <div v-if="cameraStream && !cameraError" class="absolute bottom-2 left-2 flex items-center gap-1.5 bg-black/50 px-2 py-1 rounded-md">
+                                            <div class="h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse"></div>
+                                            <span class="text-[9px] font-bold text-white uppercase tracking-wider">Live</span>
                                         </div>
                                     </div>
                                 </div>
@@ -361,5 +440,9 @@ onMounted(() => {
 
 .dark .custom-scrollbar::-webkit-scrollbar-thumb {
     background: var(--scrollbar-thumb, rgba(255, 255, 255, 0.1));
+}
+
+.mirror {
+    transform: scaleX(-1);
 }
 </style>
