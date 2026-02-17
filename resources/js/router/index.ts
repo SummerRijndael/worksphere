@@ -1202,7 +1202,8 @@ const routes: RouteRecordRaw[] = [
                     next: NavigationGuardNext,
                 ) => {
                     const authStore = useAuthStore();
-                    if (import.meta.env.DEV || authStore.isAdmin) {
+                    if (import.meta.env.DEV || authStore.isSuperAdmin) {
+
                         next();
                     } else {
                         next({ name: "forbidden" });

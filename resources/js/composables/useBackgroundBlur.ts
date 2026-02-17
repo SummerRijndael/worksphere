@@ -138,8 +138,13 @@ export function useBackgroundBlur() {
             await updateBackgroundImage(imageUrl, video.videoWidth, video.videoHeight);
         }
 
+        if (!canvas) {
+            canvas = document.createElement("canvas");
+            ctx = canvas.getContext("2d");
+        }
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
+
         
         // Setup offscreen canvases
         if (!blurCanvas) blurCanvas = document.createElement("canvas");
