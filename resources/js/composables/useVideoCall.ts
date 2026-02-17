@@ -223,14 +223,18 @@ export function useVideoCall() {
         if (first) processedIncomingCalls.delete(first);
     }
     if (store.isCallActive) {
-      if (!callPopup || callPopup.closed) {
-        console.log('[VideoCall] Detected stale call state in store, forcing cleanup');
+      const isDifferentCall = store.currentCall?.callId !== data.call_id;
+      const isPopupStale = !callPopup || callPopup.closed;
+
+      if (isDifferentCall || isPopupStale) {
+        console.log('[VideoCall] Detected different or stale call state, forcing cleanup');
         cleanup();
       } else {
-        console.warn('[VideoCall] Dropping incoming call: a call is already active');
+        console.warn('[VideoCall] Dropping incoming call: this call is already active');
         return;
       }
     }
+
 
     // Unified Ringing Experience for both DM and Group calls
     const chat = chatStore.chats.find(c => c.id === data.chat_id);

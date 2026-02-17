@@ -60,10 +60,9 @@ export default defineConfig(({ mode, command }) => ({
         },
     },
     esbuild: {
-        // TEMP: console stripping disabled for production debugging
-        // drop: command === 'build' && mode === 'production' ? ['debugger', 'console'] : [],
-        drop: command === 'build' && mode === 'production' ? ['debugger'] : [],
+        drop: command === 'build' && mode === 'production' ? ['debugger', 'console'] : [],
     },
+
     optimizeDeps: {
         include: ['util', 'process', 'buffer', 'events', 'simple-peer'],
     },

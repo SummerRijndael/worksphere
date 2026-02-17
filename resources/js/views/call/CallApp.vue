@@ -907,15 +907,14 @@ async function joinCall() {
     console.log("[Call] User clicked JOIN");
 
 
-    const stream = await acquireMedia();
-    if (!stream) return;
-
-    hasJoined.value = true;
-    // stopRingtone(); // Moved to after join logic to maintain ringing for outgoing calls
-
-    if (!callData.value) return;
-
     try {
+        const stream = await acquireMedia();
+        if (!stream) return;
+
+        hasJoined.value = true;
+
+        if (!callData.value) return;
+
         // 0. Fetch ICE credentials (TURN/STUN) for NAT traversal
         try {
             const turnData = await videoCallService.getTurnCredentials(
@@ -1057,6 +1056,7 @@ async function joinCall() {
 }
 
 
+
 function createPeer(
     targetPublicId: string,
     initiator: boolean,
@@ -1179,6 +1179,17 @@ async function handleSignal(event: any) {
         ""
     ).toLowerCase();
     const selfId = (callData.value?.selfPublicId || "").toLowerCase();
+    const eventCallId = event.call_id || event.callId;
+    const currentCallId = callData.value?.callId;
+
+
+
+    // Verification: ensure this signal belongs to the current call session
+    if (eventCallId && currentCallId && eventCallId !== currentCallId) {
+        console.log(`[Call] Ignoring signal for different call ID: ${eventCallId} (current: ${currentCallId})`);
+        return;
+    }
+
 
     if (senderId === selfId) {
         console.log(
@@ -1722,6 +1733,14 @@ function handleParticipantLeft(event: any) {
 }
 
 function handleCallEndedEvent(event: any) {
+    const eventCallId = event.call_id || event.callId;
+    const currentCallId = callData.value?.callId;
+
+    if (eventCallId && currentCallId && eventCallId !== currentCallId) {
+        console.log(`[Call] Ignoring CallEnded for different call ID: ${eventCallId}`);
+        return;
+    }
+
     // Bug 3: Skip if we triggered the end (our own hangup already handles cleanup)
     const selfId = callData.value?.selfPublicId?.toLowerCase();
     if (event.ender_public_id?.toLowerCase() === selfId) {
@@ -1734,6 +1753,7 @@ function handleCallEndedEvent(event: any) {
     postToParent({ type: "state", state: "ended", reason: event.reason });
     cleanup();
 }
+
 
 function setupEcho() {
     const echo = startEcho();
