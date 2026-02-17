@@ -10,6 +10,8 @@ export function useBackgroundBlur() {
     const isLoaded = ref(false);
     const isLoading = ref(false);
     const error = ref<string | null>(null);
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
 
     // Canvas for processing
     let canvas: HTMLCanvasElement | null = null;
@@ -148,9 +150,11 @@ export function useBackgroundBlur() {
         
         // Setup offscreen canvases
         if (!blurCanvas) blurCanvas = document.createElement("canvas");
-        blurCanvas.width = Math.round(video.videoWidth / 8); 
-        blurCanvas.height = Math.round(video.videoHeight / 8);
+        const blurDownsample = isMobile ? 12 : 8;
+        blurCanvas.width = Math.round(video.videoWidth / blurDownsample); 
+        blurCanvas.height = Math.round(video.videoHeight / blurDownsample);
         blurCtx = blurCanvas.getContext("2d");
+
 
         if (!personCanvas) personCanvas = document.createElement("canvas");
         personCanvas.width = video.videoWidth;
@@ -171,9 +175,11 @@ export function useBackgroundBlur() {
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
                 if (blurCanvas) {
-                    blurCanvas.width = Math.round(video.videoWidth / 8);
-                    blurCanvas.height = Math.round(video.videoHeight / 8);
+                    const blurDownsample = isMobile ? 12 : 8;
+                    blurCanvas.width = Math.round(video.videoWidth / blurDownsample);
+                    blurCanvas.height = Math.round(video.videoHeight / blurDownsample);
                 }
+
                 if (personCanvas) {
                     personCanvas.width = video.videoWidth;
                     personCanvas.height = video.videoHeight;
@@ -366,7 +372,7 @@ export function useBackgroundBlur() {
 
              // 3. Final composition on main canvas
              ctx.imageSmoothingEnabled = true;
-             ctx.imageSmoothingQuality = 'medium'; // 'high' is too slow
+             ctx.imageSmoothingQuality = isMobile ? 'low' : 'medium'; 
              ctx.clearRect(0, 0, w, h);
 
               if (currentEffect === 'image' && cachedBgCanvas) {

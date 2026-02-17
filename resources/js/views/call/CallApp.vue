@@ -71,6 +71,13 @@ const callState = ref<
     "initializing" | "ringing" | "connecting" | "connected" | "ended" | "error"
 >("initializing");
 const hasJoined = ref(false);
+const isJoining = ref(false);
+const isMobile = computed(() => {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+        navigator.userAgent,
+    );
+});
+
 const error = ref<string | null>(null);
 const store = useVideoCallStore();
 const chatStore = useChatStore();
@@ -898,7 +905,10 @@ function trace(area: string, message: string, data?: any) {
 // ============================================================================
 
 async function joinCall() {
+    if (isJoining.value || hasJoined.value) return;
+    isJoining.value = true;
     console.log("[Call] User clicked JOIN");
+
 
     const stream = await acquireMedia();
     if (!stream) return;
@@ -1044,8 +1054,11 @@ async function joinCall() {
     } catch (err) {
         console.error("[Call] Join failed:", err);
         handleCallFailed();
+    } finally {
+        isJoining.value = false;
     }
 }
+
 
 function createPeer(
     targetPublicId: string,
@@ -3343,10 +3356,16 @@ onBeforeUnmount(() => cleanup());
                 </div>
 
                 <div class="lobby-actions-grid">
-                    <button class="btn-lobby-action join" @click="joinCall">
-                        <Icon name="Phone" size="20" />
-                        <span>Join</span>
+                    <button 
+                        class="btn-lobby-action join" 
+                        @click="joinCall"
+                        :disabled="isJoining"
+                    >
+                        <Icon v-if="!isJoining" name="Phone" size="20" />
+                        <Icon v-else name="Loader" size="20" class="animate-spin" />
+                        <span>{{ isJoining ? 'Joining...' : 'Join' }}</span>
                     </button>
+
                     <button
                         class="btn-lobby-action settings"
                         @click="showSettings = true"
@@ -3583,6 +3602,39 @@ onBeforeUnmount(() => cleanup());
                             </div>
                         </div>
                     </div>
+
+                    <TooltipProvider v-if="!isMobile">
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <button
+                                    class="control-btn"
+                                    :class="{
+                                        active: isScreenSharing,
+                                        collapsed: isControlsCollapsed,
+                                    }"
+                                    @click="toggleScreenShare"
+                                >
+                                    <Icon
+                                        :name="
+                                            isScreenSharing
+                                                ? 'screen-share-off'
+                                                : 'screen-share'
+                                        "
+                                    />
+                                </button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                                <p>
+                                    {{
+                                        isScreenSharing
+                                            ? "Stop Sharing"
+                                            : "Share Screen"
+                                    }}
+                                </p>
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+
 
                     <!-- STANDARD GRID LAYOUT -->
                     <div v-else class="grid-wrapper">
@@ -3940,6 +3992,7 @@ onBeforeUnmount(() => cleanup());
                                 />
                             </button>
                             <button
+                                v-if="!isMobile"
                                 class="control-btn"
                                 :class="{ off: !isScreenSharing }"
                                 @click="toggleScreenShare"
@@ -3947,6 +4000,7 @@ onBeforeUnmount(() => cleanup());
                             >
                                 <Icon name="Monitor" size="24" />
                             </button>
+
 
                             <button
                                 class="control-btn"
