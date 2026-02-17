@@ -1201,7 +1201,9 @@ const routes: RouteRecordRaw[] = [
                     _from: RouteLocationNormalized,
                     next: NavigationGuardNext,
                 ) => {
-                    if (import.meta.env.DEV) {
+                    const authStore = useAuthStore();
+                    if (import.meta.env.DEV || authStore.isSuperAdmin) {
+
                         next();
                     } else {
                         next({ name: "forbidden" });

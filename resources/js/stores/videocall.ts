@@ -54,7 +54,9 @@ export const useVideoCallStore = defineStore('videoCall', () => {
   const selectedAudioDeviceId = ref<string | null>(null);
   const selectedVideoDeviceId = ref<string | null>(null);
   const selectedOutputDeviceId = ref<string | null>(null);
-  const videoEffect = ref<'none' | 'blur'>('none');
+  const videoEffect = ref<'none' | 'blur' | 'image'>('none');
+  const backgroundImage = ref<string | null>(null);
+  const autoFraming = ref(false);
 
   // ============================================================================
   // Getters
@@ -101,7 +103,12 @@ export const useVideoCallStore = defineStore('videoCall', () => {
 
   async function checkActiveCall(chatId: string) {
       try {
-          const { active, call_id, type } = await import('@/services/videocall.service').then(m => m.videoCallService.getActiveCall(chatId));
+          const mod = await import('@/services/videocall.service');
+          if (!mod?.videoCallService) {
+              console.warn('videoCallService not available yet');
+              return;
+          }
+          const { active, call_id, type } = await mod.videoCallService.getActiveCall(chatId);
           if (active && call_id) {
               registerActiveCall(chatId, call_id, type || 'video');
           } else {
@@ -302,8 +309,16 @@ export const useVideoCallStore = defineStore('videoCall', () => {
         remoteVolumes.set(publicId, volume);
     },
     videoEffect,
-    setVideoEffect: (effect: 'none' | 'blur') => {
+    backgroundImage,
+    setVideoEffect: (effect: 'none' | 'blur' | 'image') => {
         videoEffect.value = effect;
+    },
+    setBackgroundImage: (image: string | null) => {
+        backgroundImage.value = image;
+    },
+    autoFraming,
+    setAutoFraming: (enabled: boolean) => {
+        autoFraming.value = enabled;
     }
   };
 });

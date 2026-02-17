@@ -864,7 +864,7 @@ function isOwnMessage(msg: Message): boolean {
         <!-- Header -->
         <div
             class="minichat-window-header"
-            :class="{ '!cursor-default': miniChatStore.isDocked }"
+            :class="{ 'cursor-default!': miniChatStore.isDocked }"
             @mousedown.prevent="handleDragStart"
         >
             <div class="relative shrink-0">
@@ -931,7 +931,7 @@ function isOwnMessage(msg: Message): boolean {
             <!-- Loading Indicator -->
             <div v-if="isLoadingMore" class="flex justify-center py-2 shrink-0">
                 <div
-                    class="w-5 h-5 border-2 border-[var(--interactive-primary)] border-t-transparent rounded-full animate-spin"
+                    class="w-5 h-5 border-2 border-(--interactive-primary) border-t-transparent rounded-full animate-spin"
                 />
             </div>
 
@@ -969,7 +969,7 @@ function isOwnMessage(msg: Message): boolean {
                 class="flex justify-center py-4 animate-in fade-in slide-in-from-bottom-4 duration-500"
             >
                 <div
-                    class="bg-(--surface-elevated) border border-(--border-default) rounded-xl p-4 shadow-lg flex items-center gap-3 max-w-[90%] w-full mx-auto"
+                    class="p-8 rounded-2xl bg-(--surface-elevated) border-(--border-default) shadow-lg max-w-sm mx-auto flex items-center gap-3"
                 >
                     <div
                         class="p-2 bg-green-500/10 text-green-500 rounded-full shrink-0"
@@ -1016,20 +1016,20 @@ function isOwnMessage(msg: Message): boolean {
         <!-- Typing Indicator (Fixed above composer) -->
         <div
             v-if="typingIndicator"
-            class="flex items-center gap-2 px-3 text-xs text-[var(--text-muted)] transition-all duration-300 w-full"
+            class="flex items-center gap-2 px-3 text-xs text-(--text-muted) transition-all duration-300 w-full"
             style="background: transparent !important"
         >
             <div
-                class="flex space-x-1 p-2 bg-[var(--surface-elevated)] rounded-2xl shadow-sm border border-[var(--border-default)]"
+                class="flex space-x-1 p-2 bg-(--surface-elevated) rounded-2xl shadow-sm border border-(--border-default)"
             >
                 <div
-                    class="w-1 h-1 bg-[var(--text-tertiary)] rounded-full animate-bounce [animation-delay:-0.3s]"
+                    class="w-1 h-1 bg-(--text-tertiary) rounded-full animate-bounce [animation-delay:-0.3s]"
                 ></div>
                 <div
-                    class="w-1 h-1 bg-[var(--text-tertiary)] rounded-full animate-bounce [animation-delay:-0.15s]"
+                    class="w-1 h-1 bg-(--text-tertiary) rounded-full animate-bounce [animation-delay:-0.15s]"
                 ></div>
                 <div
-                    class="w-1 h-1 bg-[var(--text-tertiary)] rounded-full animate-bounce"
+                    class="w-1 h-1 bg-(--text-tertiary) rounded-full animate-bounce"
                 ></div>
             </div>
             <span class="animate-pulse">{{ typingIndicator }}</span>

@@ -32,13 +32,13 @@ onMounted(async () => {
 </script>
 
 <template>
-    <div class="min-h-screen flex items-center justify-center bg-[var(--surface-primary)] p-4">
-        <div class="w-full max-w-md bg-[var(--surface-card)] rounded-xl shadow-lg p-8 text-center">
-            <h2 class="text-2xl font-bold text-[var(--text-primary)] mb-4">Verifying Link...</h2>
+    <div class="min-h-screen flex items-center justify-center bg-(--surface-primary) p-4">
+        <div class="w-full max-w-md bg-(--surface-card) rounded-xl shadow-lg p-8 text-center">
+            <h2 class="text-2xl font-bold text-(--text-primary) mb-4">Verifying Link...</h2>
             
             <div v-if="verifying" class="flex flex-col items-center justify-center space-y-4">
-                <Loader2 class="w-10 h-10 animate-spin text-[var(--interactive-primary)]" />
-                <p class="text-[var(--text-secondary)]">Please wait while we verify your social account link.</p>
+                <Loader2 class="w-10 h-10 animate-spin text-(--interactive-primary)" />
+                <p class="text-(--text-secondary)">Please wait while we verify your social account link.</p>
             </div>
 
             <div v-else class="space-y-4">
@@ -47,7 +47,7 @@ onMounted(async () => {
                 </div>
                 <router-link 
                     :to="{ name: 'login' }"
-                    class="inline-block px-6 py-2 bg-[var(--interactive-primary)] text-white rounded-lg hover:bg-[var(--interactive-hover)] transition-colors"
+                    class="inline-block px-6 py-2 bg-(--interactive-primary) text-white rounded-lg hover:bg-(--interactive-hover) transition-colors"
                 >
                     Back to Login
                 </router-link>

@@ -37,8 +37,8 @@ export function useVideoCall() {
   // ============================================================================
 
   function openCallPopup(callId: string) {
-    const width = 800;
-    const height = 600;
+    const width = 1024;
+    const height = 768;
     const left = window.screenX + window.outerWidth - width - 24;
     const top = window.screenY + 80;
 
@@ -223,14 +223,18 @@ export function useVideoCall() {
         if (first) processedIncomingCalls.delete(first);
     }
     if (store.isCallActive) {
-      if (!callPopup || callPopup.closed) {
-        console.log('[VideoCall] Detected stale call state in store, forcing cleanup');
+      const isDifferentCall = store.currentCall?.callId !== data.call_id;
+      const isPopupStale = !callPopup || callPopup.closed;
+
+      if (isDifferentCall || isPopupStale) {
+        console.log('[VideoCall] Detected different or stale call state, forcing cleanup');
         cleanup();
       } else {
-        console.warn('[VideoCall] Dropping incoming call: a call is already active');
+        console.warn('[VideoCall] Dropping incoming call: this call is already active');
         return;
       }
     }
+
 
     // Unified Ringing Experience for both DM and Group calls
     const chat = chatStore.chats.find(c => c.id === data.chat_id);

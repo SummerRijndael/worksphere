@@ -26,13 +26,10 @@ import CallChatList from "./components/CallChatList.vue";
 import ChatComposer from "../chat/components/chat/ChatComposer.vue";
 import NetworkHealthIndicator from "./components/NetworkHealthIndicator.vue";
 import {
-    SelectFilter,
-    Separator,
     Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
 } from "@/components/ui";
+
+
 import { useBackgroundBlur } from "@/composables/useBackgroundBlur";
 import MediaViewer from "@/components/tools/MediaViewer.vue";
 
@@ -71,6 +68,13 @@ const callState = ref<
     "initializing" | "ringing" | "connecting" | "connected" | "ended" | "error"
 >("initializing");
 const hasJoined = ref(false);
+const isJoining = ref(false);
+const isMobile = computed(() => {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+        navigator.userAgent,
+    );
+});
+
 const error = ref<string | null>(null);
 const store = useVideoCallStore();
 const chatStore = useChatStore();
@@ -126,6 +130,10 @@ const isMuted = ref(false);
 const isCameraOff = ref(true); // Default to Video Off as requested
 const videoFallback = ref(false);
 const isAudioOnly = computed(() => callData.value?.callType === "audio");
+
+// Background Blur
+const backgroundBlur = useBackgroundBlur();
+const originalVideoTrack = ref<MediaStreamTrack | null>(null);
 
 // Screen Sharing
 const isScreenSharing = ref(false);
@@ -691,14 +699,14 @@ const previewRemoteName = computed(() => {
 });
 
 // Watch Video Effect Changes
-watch(() => store.videoEffect, async (effect) => {
-    console.log("[Call] Video effect changed:", effect);
+watch([() => store.videoEffect, () => store.backgroundImage, () => store.autoFraming], async ([effect, bgImage, framing]) => {
+    console.log("[Call] Video effect or framing changed:", { effect, framing, hasImage: !!bgImage });
     if (!localStream.value) return;
 
     const currentVideoTrack = localStream.value.getVideoTracks()[0];
     
-    // If we don't have the original track yet (maybe started with audio only), try to get it from current stream if no effect was applied
-    if (!originalVideoTrack.value && currentVideoTrack && effect === 'blur') {
+    // If we don't have the original track yet, try to get it
+    if (!originalVideoTrack.value && currentVideoTrack && (effect === 'blur' || effect === 'image')) {
          originalVideoTrack.value = currentVideoTrack;
     }
 
@@ -707,8 +715,14 @@ watch(() => store.videoEffect, async (effect) => {
     try {
         let newTrack: MediaStreamTrack;
 
-        if (effect === 'blur') {
-             newTrack = await backgroundBlur.startBlur(originalVideoTrack.value);
+        if (effect === 'blur' || effect === 'image') {
+             newTrack = await backgroundBlur.startVideoEffect(
+                 originalVideoTrack.value, 
+                 effect, 
+                 bgImage || undefined,
+                 framing
+             );
+             console.log(`[Call] ${effect} track received:`, newTrack?.id, 'enabled:', newTrack?.enabled);
         } else {
              backgroundBlur.stopProcessing();
              newTrack = originalVideoTrack.value;
@@ -716,6 +730,7 @@ watch(() => store.videoEffect, async (effect) => {
 
         // Replace in Local Stream
         const oldTrack = localStream.value.getVideoTracks()[0];
+        console.log('[Call] Track swap:', { oldId: oldTrack?.id, newId: newTrack?.id, same: oldTrack?.id === newTrack?.id });
         if (oldTrack && oldTrack.id !== newTrack.id) {
              localStream.value.removeTrack(oldTrack);
              localStream.value.addTrack(newTrack);
@@ -724,23 +739,34 @@ watch(() => store.videoEffect, async (effect) => {
              newTrack.enabled = !isCameraOff.value;
 
              // Replace in Peer Connections (Mesh)
-             peerConnections.forEach((pc) => {
-                 const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+             let meshReplaceCount = 0;
+             peers.forEach((peer) => {
+                 // @ts-ignore
+                 const pc = peer._pc as RTCPeerConnection;
+                 if (!pc) return;
+                 const sender = pc.getSenders().find((s: any) => s.track?.kind === 'video');
                  if (sender) {
                      sender.replaceTrack(newTrack);
+                     meshReplaceCount++;
                  }
              });
+             console.log(`[Call] Replaced video track in ${meshReplaceCount} mesh peer(s)`);
 
              // Replace in SFU
              if (sfuPc) {
                   const sender = sfuPc.getSenders().find(s => s.track?.kind === 'video');
                   if (sender) {
                       sender.replaceTrack(newTrack);
+                      console.log('[Call] Replaced video track in SFU');
                   }
              }
         }
     } catch (e) {
         console.error("Failed to apply video effect", e);
+        // Reset effect so the user gets their regular video feed
+        if (effect === 'blur') {
+            store.setVideoEffect('none');
+        }
     }
 });
 
@@ -781,8 +807,12 @@ async function acquireMedia(): Promise<MediaStream | null> {
                     originalVideoTrack.value = stream.getVideoTracks()[0];
                     
                     // Apply effects if needed
-                    if (store.videoEffect === 'blur' && originalVideoTrack.value) {
-                         const processedTrack = await backgroundBlur.startBlur(originalVideoTrack.value);
+                    if ((store.videoEffect === 'blur' || store.videoEffect === 'image') && originalVideoTrack.value) {
+                         const processedTrack = await backgroundBlur.startVideoEffect(
+                             originalVideoTrack.value,
+                             store.videoEffect,
+                             store.backgroundImage || undefined
+                         );
                          stream.removeTrack(originalVideoTrack.value);
                          stream.addTrack(processedTrack);
                     }
@@ -872,17 +902,19 @@ function trace(area: string, message: string, data?: any) {
 // ============================================================================
 
 async function joinCall() {
+    if (isJoining.value || hasJoined.value) return;
+    isJoining.value = true;
     console.log("[Call] User clicked JOIN");
 
-    const stream = await acquireMedia();
-    if (!stream) return;
-
-    hasJoined.value = true;
-    // stopRingtone(); // Moved to after join logic to maintain ringing for outgoing calls
-
-    if (!callData.value) return;
 
     try {
+        const stream = await acquireMedia();
+        if (!stream) return;
+
+        hasJoined.value = true;
+
+        if (!callData.value) return;
+
         // 0. Fetch ICE credentials (TURN/STUN) for NAT traversal
         try {
             const turnData = await videoCallService.getTurnCredentials(
@@ -1018,8 +1050,12 @@ async function joinCall() {
     } catch (err) {
         console.error("[Call] Join failed:", err);
         handleCallFailed();
+    } finally {
+        isJoining.value = false;
     }
 }
+
+
 
 function createPeer(
     targetPublicId: string,
@@ -1143,6 +1179,17 @@ async function handleSignal(event: any) {
         ""
     ).toLowerCase();
     const selfId = (callData.value?.selfPublicId || "").toLowerCase();
+    const eventCallId = event.call_id || event.callId;
+    const currentCallId = callData.value?.callId;
+
+
+
+    // Verification: ensure this signal belongs to the current call session
+    if (eventCallId && currentCallId && eventCallId !== currentCallId) {
+        console.log(`[Call] Ignoring signal for different call ID: ${eventCallId} (current: ${currentCallId})`);
+        return;
+    }
+
 
     if (senderId === selfId) {
         console.log(
@@ -1686,6 +1733,14 @@ function handleParticipantLeft(event: any) {
 }
 
 function handleCallEndedEvent(event: any) {
+    const eventCallId = event.call_id || event.callId;
+    const currentCallId = callData.value?.callId;
+
+    if (eventCallId && currentCallId && eventCallId !== currentCallId) {
+        console.log(`[Call] Ignoring CallEnded for different call ID: ${eventCallId}`);
+        return;
+    }
+
     // Bug 3: Skip if we triggered the end (our own hangup already handles cleanup)
     const selfId = callData.value?.selfPublicId?.toLowerCase();
     if (event.ender_public_id?.toLowerCase() === selfId) {
@@ -1698,6 +1753,7 @@ function handleCallEndedEvent(event: any) {
     postToParent({ type: "state", state: "ended", reason: event.reason });
     cleanup();
 }
+
 
 function setupEcho() {
     const echo = startEcho();
@@ -3317,10 +3373,16 @@ onBeforeUnmount(() => cleanup());
                 </div>
 
                 <div class="lobby-actions-grid">
-                    <button class="btn-lobby-action join" @click="joinCall">
-                        <Icon name="Phone" size="20" />
-                        <span>Join</span>
+                    <button 
+                        class="btn-lobby-action join" 
+                        @click="joinCall"
+                        :disabled="isJoining"
+                    >
+                        <Icon v-if="!isJoining" name="Phone" size="20" />
+                        <Icon v-else name="Loader" size="20" class="animate-spin" />
+                        <span>{{ isJoining ? 'Joining...' : 'Join' }}</span>
                     </button>
+
                     <button
                         class="btn-lobby-action settings"
                         @click="showSettings = true"
@@ -3557,6 +3619,8 @@ onBeforeUnmount(() => cleanup());
                             </div>
                         </div>
                     </div>
+
+
 
                     <!-- STANDARD GRID LAYOUT -->
                     <div v-else class="grid-wrapper">
@@ -3913,14 +3977,20 @@ onBeforeUnmount(() => cleanup());
                                     size="24"
                                 />
                             </button>
-                            <button
-                                class="control-btn"
-                                :class="{ off: !isScreenSharing }"
-                                @click="toggleScreenShare"
-                                title="Share Screen"
+                            <Tooltip
+                                v-if="!isMobile"
+                                :content="isScreenSharing ? 'Stop Sharing' : 'Share Screen'"
                             >
-                                <Icon name="Monitor" size="24" />
-                            </button>
+                                <button
+                                    class="control-btn"
+                                    :class="{ off: !isScreenSharing }"
+                                    @click="toggleScreenShare"
+                                >
+                                    <Icon name="Monitor" size="24" />
+                                </button>
+                            </Tooltip>
+
+
 
                             <button
                                 class="control-btn"

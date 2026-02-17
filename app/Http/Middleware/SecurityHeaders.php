@@ -64,7 +64,7 @@ class SecurityHeaders
         // Allow unsafe-eval in local development for Vue DevTools / Vite HMR
         $scriptSrc = "'self' 'nonce-{$nonce}'";
         $connectSrc = "'self' https://rtc.live.cloudflare.com"; // Cloudflare Calls Origin
-        $styleSrc = "'self' 'unsafe-inline' https://fonts.bunny.net https://fonts.googleapis.com https://*.indeed.com";
+        $styleSrc = "'self' 'unsafe-inline' https://fonts.bunny.net https://fonts.googleapis.com";
 
         // Vite Dev Server Handling
         if (app()->isLocal()) {
@@ -78,7 +78,7 @@ class SecurityHeaders
                     // Normalize URL to just origin if needed, or simple add
                     $scriptSrc .= " {$viteUrl}";
                     $styleSrc .= " {$viteUrl}";
-                    // Websocket connection for HMR (ws://...)
+                    // Websocket connection for HMR (ws://...
                     $connectSrc .= ' ws://'.parse_url($viteUrl, PHP_URL_HOST).':'.parse_url($viteUrl, PHP_URL_PORT);
                     $connectSrc .= " {$viteUrl}";
                 }
@@ -94,7 +94,8 @@ class SecurityHeaders
         // Definitions
         $policy = [
             "default-src 'self'",
-            "script-src {$scriptSrc} https://www.google.com https://www.gstatic.com https://cdn.jsdelivr.net https://storage.googleapis.com",
+            "script-src {$scriptSrc} 'wasm-unsafe-eval' https://www.google.com https://www.gstatic.com https://cdn.jsdelivr.net https://storage.googleapis.com https://static.cloudflareinsights.com",
+            "script-src-elem {$scriptSrc} https://www.google.com https://www.gstatic.com https://cdn.jsdelivr.net https://storage.googleapis.com https://static.cloudflareinsights.com",
             // Unsafe-inline for styles is required by many UI libraries (Vue/Tailwind components)
             // Fonts.bunny.net is used for Inter font
             "style-src {$styleSrc}",
@@ -105,7 +106,7 @@ class SecurityHeaders
             "img-src {$imgSrc}",
             // Connect to self, Vite HMR, and Reverb WebSockets (port 9000 usually)
             // Adding ws: and wss: schemes generally to allow websocket connections
-            "connect-src {$connectSrc} ws: wss: https://www.google.com https://cdn.jsdelivr.net https://storage.googleapis.com",
+            "connect-src {$connectSrc} ws: wss: https://www.google.com https://cdn.jsdelivr.net https://storage.googleapis.com https://static.cloudflareinsights.com",
             // Frame src for reCAPTCHA
             "frame-src 'self' https://www.google.com https://www.gstatic.com",
             "object-src 'none'",
