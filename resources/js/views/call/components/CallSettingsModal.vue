@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, computed, watch, nextTick } from "vue";
 import { Modal, Icon, Button, SelectFilter, Separator } from "@/components/ui";
+import { ProgressRoot, ProgressIndicator } from "reka-ui";
 import { useVideoCallStore } from "@/stores/videocall";
 import { useBackgroundBlur } from "@/composables/useBackgroundBlur";
 
@@ -163,7 +164,10 @@ function drawVisualizer() {
     
     // Convert to percentage (RMS of ~0.5 is very loud for mic input)
     // Scale so normal speech (~0.05-0.15 RMS) fills ~40-80% of the meter
+    // Convert to percentage (RMS of ~0.5 is very loud for mic input)
+    // Scale so normal speech (~0.05-0.15 RMS) fills ~40-80% of the meter
     const target = Math.min(100, Math.max(0, rms * 400));
+    
     volumeLevel.value = volumeLevel.value * 0.2 + target * 0.8;
     
     animationFrame = requestAnimationFrame(drawVisualizer);
@@ -244,7 +248,9 @@ function drawSpeakerMeter() {
     const rms = Math.sqrt(sumSquares / bufferLength);
     
     // Scale for speaker output (louder than mic, so use lower multiplier)
+    // Scale for speaker output (louder than mic, so use lower multiplier)
     const target = Math.min(100, Math.max(0, rms * 250));
+
     speakerLevel.value = speakerLevel.value * 0.2 + target * 0.8;
     
     speakerAnimationFrame = requestAnimationFrame(drawSpeakerMeter);
@@ -502,19 +508,21 @@ onBeforeUnmount(() => {
                                         class="w-full"
                                     />
 
-                                    <!-- LED Mic Meter -->
-                                    <div class="flex gap-1 h-1.5 items-center bg-black/5 dark:bg-black/40 p-0.5 rounded-sm border border-(--border-muted) shadow-inner">
-                                        <div 
-                                            v-for="i in 20" 
-                                            :key="i"
-                                            class="flex-1 h-full rounded-[1px] transition-all duration-75"
-                                            :class="[
-                                                volumeLevel >= (i * 5) 
-                                                    ? (i > 17 ? 'bg-error' : (i > 14 ? 'bg-warning' : 'bg-success'))
-                                                    : 'bg-(--surface-tertiary)/20'
-                                            ]"
-                                        ></div>
-                                    </div>
+                                    <!-- LED Mic Meter (Reka UI) -->
+                                    <ProgressRoot 
+                                        :model-value="volumeLevel" 
+                                        :max="100" 
+                                        class="relative h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700" 
+                                        style="transform: translateZ(0)"
+                                    >
+                                        <ProgressIndicator 
+                                            class="h-full w-full transition-transform duration-100 ease-out will-change-transform" 
+                                            :style="{ 
+                                                transform: `translateX(-${100 - volumeLevel}%)`,
+                                                backgroundColor: volumeLevel > 85 ? '#ef4444' : (volumeLevel > 70 ? '#eab308' : '#22c55e')
+                                            }" 
+                                        />
+                                    </ProgressRoot>
 
                                     <!-- Mic Input Volume / Gain Slider -->
                                     <div class="flex items-center gap-4">
@@ -564,20 +572,22 @@ onBeforeUnmount(() => {
                                         Using system default output.
                                     </div>
 
-                                    <!-- Speaker LED Meter (visible during test) -->
-                                    <div class="flex gap-1 h-1.5 items-center bg-black/5 dark:bg-black/40 p-0.5 rounded-sm border border-(--border-muted) shadow-inner">
-                                        <div 
-                                            v-for="i in 20" 
-                                            :key="i"
-                                            class="flex-1 h-full rounded-[1px] transition-all duration-75"
-                                            :class="[
-                                                speakerLevel >= (i * 5) 
-                                                    ? (i > 17 ? 'bg-error' : (i > 14 ? 'bg-warning' : 'bg-blue-500'))
-                                                    : 'bg-(--surface-tertiary)/20'
-                                            ]"
-                                        ></div>
-                                    </div>
-
+                                    <!-- Speaker LED Meter (Reka UI) -->
+                                    <ProgressRoot 
+                                        :model-value="speakerLevel" 
+                                        :max="100" 
+                                        class="relative h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700" 
+                                        style="transform: translateZ(0)"
+                                    >
+                                        <ProgressIndicator 
+                                            class="h-full w-full transition-transform duration-100 ease-out will-change-transform" 
+                                            :style="{ 
+                                                transform: `translateX(-${100 - speakerLevel}%)`,
+                                                backgroundColor: speakerLevel > 85 ? '#ef4444' : (speakerLevel > 70 ? '#eab308' : '#22c55e')
+                                            }" 
+                                        />
+                                    </ProgressRoot>
+                                    
                                     <!-- Speaker Volume Slider -->
                                     <div class="flex items-center gap-4">
                                         <Icon :name="store.globalVolume === 0 ? 'VolumeX' : 'Volume1'" size="16" class="text-(--text-muted)" />
@@ -788,5 +798,10 @@ onBeforeUnmount(() => {
 
 .mirror {
     transform: scaleX(-1);
+}
+
+/* Fallback for inactive meter color in dark mode if CSS var is used */
+.dark {
+    --meter-bg-inactive: #374151;
 }
 </style>

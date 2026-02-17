@@ -326,7 +326,7 @@ watch(
         <!-- Input Row -->
         <div class="flex gap-3" :class="compact ? 'items-center' : 'items-end'">
             <!-- Left Actions Group -->
-            <div class="flex items-center gap-1" :class="{ 'mb-2': !compact }">
+            <div class="flex items-center gap-1" :class="{ 'mb-1.5': !compact }">
                 <!-- Attach Button -->
                 <label
                     class="p-2.5 rounded-full cursor-pointer text-(--text-secondary) hover:text-(--interactive-primary) hover:bg-(--surface-secondary) transition-all duration-200 group relative"
@@ -411,7 +411,8 @@ watch(
                     isValidMessage || pendingFiles.length > 0
                         ? 'bg-(--interactive-primary) text-white shadow-md hover:bg-(--interactive-primary-hover)'
                         : 'bg-(--surface-tertiary) text-(--text-tertiary)',
-                    compact ? 'w-9 h-9' : 'w-10 h-10'
+                    compact ? 'w-9 h-9' : 'w-10 h-10',
+                    !compact ? 'mb-1.5 pr-0.5' : ''
                 ]"
             >
                 <Icon name="Send" :size="compact ? 16 : 18" />

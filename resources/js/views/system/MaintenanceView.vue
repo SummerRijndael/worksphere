@@ -36,6 +36,7 @@ import {
     Shield,
     ChevronLeft,
     ChevronRight,
+    Users,
 } from "lucide-vue-next";
 import { toast } from "vue-sonner";
 import axios from "axios";
@@ -1228,6 +1229,54 @@ onUnmounted(() => {
                 <p class="text-lg font-semibold text-[var(--text-primary)]">
                     {{ systemInfo.uptime || "N/A" }}
                 </p>
+            </div>
+        </div>
+
+        <!-- Online Users -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <div
+                class="bg-[var(--surface-elevated)] rounded-xl border border-[var(--border-default)] overflow-hidden md:col-span-2"
+            >
+                <div
+                    class="p-4 border-b border-[var(--border-default)] flex items-center gap-3"
+                >
+                    <div
+                        class="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center"
+                    >
+                        <Users class="w-4 h-4 text-blue-600" />
+                    </div>
+                    <h3 class="font-medium text-[var(--text-primary)]">
+                        Online Users
+                    </h3>
+                </div>
+                <div class="p-4">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="p-3 bg-[var(--surface-secondary)] rounded-lg">
+                            <div class="flex flex-col gap-1">
+                                <span class="text-xs text-[var(--text-secondary)]">Total Online</span>
+                                <span class="text-2xl font-bold text-[var(--text-primary)]">
+                                    {{ systemInfo.online_stats?.total ?? 0 }}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="p-3 bg-[var(--surface-secondary)] rounded-lg">
+                            <div class="flex flex-col gap-1">
+                                <span class="text-xs text-[var(--text-secondary)]">Administrators</span>
+                                <span class="text-2xl font-bold text-[var(--text-primary)]">
+                                    {{ systemInfo.online_stats?.administrators ?? 0 }}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="p-3 bg-[var(--surface-secondary)] rounded-lg">
+                            <div class="flex flex-col gap-1">
+                                <span class="text-xs text-[var(--text-secondary)]">IT Support</span>
+                                <span class="text-2xl font-bold text-[var(--text-primary)]">
+                                    {{ systemInfo.online_stats?.it_support ?? 0 }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 

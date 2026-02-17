@@ -503,6 +503,32 @@ export function usePresence(options: UsePresenceOptions = {}) {
         }
     });
 
+    // 2-way Sync between currentStatus and authStore.user.presence
+    // 1. When local currentStatus changes, update store
+    watch(currentStatus, (status) => {
+        if (authStore.user) {
+            console.log('[Presence] Syncing status to authStore:', status);
+            authStore.user.presence = status;
+        }
+    });
+
+    // 2. When user loads, sync current status to it
+    watch(() => authStore.user, (user) => {
+        if (user) {
+            // If we have a local status that isn't offline, prefer it? 
+            // Or prefer what the user object says?
+            // Usually, we want the local session to drive "online" status.
+            if (currentStatus.value !== 'offline') {
+                console.log('[Presence] Syncing status to new user object:', currentStatus.value);
+                user.presence = currentStatus.value;
+            } else if (user.presence) {
+                // If local is offline (default?) but user has status, probably adopt it
+                console.log('[Presence] Adopting status from user object:', user.presence);
+                currentStatus.value = user.presence;
+            }
+        }
+    }, { immediate: true });
+
     if (manageLifecycle) {
         onMounted(() => {
             initialize();

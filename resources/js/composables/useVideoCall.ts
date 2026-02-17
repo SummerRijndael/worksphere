@@ -9,7 +9,7 @@
  *
  * All WebRTC logic lives in CallApp.vue (the popup).
  */
-import { ref, onBeforeUnmount } from 'vue';
+import { ref } from 'vue';
 import { useVideoCallStore, type CallType } from '@/stores/videocall';
 import { videoCallService } from '@/services/videocall.service';
 import { useAuthStore } from '@/stores/auth';
@@ -143,10 +143,17 @@ export function useVideoCall() {
       console.log('[VideoCall] API response:', res);
       const { call_id, busy_participants, offline_participants } = res;
 
-      if (busy_participants?.length > 0) {
+      if (busy_participants && busy_participants.length > 0) {
+          if (user.publicId !== 'group' && busy_participants.includes(user.name)) {
+              toast.error(`${user.name} is busy`);
+              // Notify backend we are also leaving/cancelling this call session
+              videoCallService.endCall(chatId, call_id, 'busy').catch(() => {});
+              store.setState('idle');
+              return;
+          }
           toast.info(`${busy_participants.join(', ')} ${busy_participants.length > 1 ? 'are' : 'is'} busy`);
       }
-      if (offline_participants?.length > 0) {
+      if (offline_participants && offline_participants.length > 0) {
           toast.info(`${offline_participants.join(', ')} ${offline_participants.length > 1 ? 'are' : 'is'} offline`);
       }
 
@@ -171,6 +178,7 @@ export function useVideoCall() {
         participants, // Initially empty for group, populated for DM below
         isOutgoing: true,
         chatType,
+        chatName: user.name, // Use user name as chat name for DM/Group initial
         startedAt: null,
       });
 
@@ -307,6 +315,8 @@ export function useVideoCall() {
           callType,
           participants: new Map(),
           isOutgoing: false,
+          chatType: 'group',
+          chatName: 'Group Call',
           startedAt: null,
       });
       store.setState('connecting');
@@ -385,6 +395,27 @@ export function useVideoCall() {
 
     ensureBroadcastChannel();
     openCallPopup(callId);
+  }
+
+  function handleParticipantLeft(data: { call_id: string; participant_public_id: string; reason: string }) {
+      if (!store.currentCall || store.currentCall.callId !== data.call_id) return;
+      
+      const pId = data.participant_public_id.toLowerCase();
+      const isDM = store.currentCall.chatType === 'dm';
+      const remoteUser = store.currentCall.participants.get(data.participant_public_id) || store.currentCall.remoteUser;
+      const isTarget = isDM && (remoteUser?.publicId?.toLowerCase() === pId);
+
+      if (isTarget) {
+          console.log(`[VideoCall] Target participant left: ${pId}, reason: ${data.reason}`);
+          if (data.reason === 'busy') toast.error("User is busy");
+          else if (data.reason === 'declined') toast.info("Call declined");
+          else if (data.reason === 'no_answer' || data.reason === 'timeout') toast.info("Call was not answered");
+          
+          if (!callPopup || callPopup.closed) {
+              // Notify backend that we are also ending the session
+              endCall(data.reason as any);
+          }
+      }
   }
 
   function declineCall() {
@@ -499,6 +530,9 @@ export function useVideoCall() {
     });
     window.addEventListener('videocall:ended', (e: Event) => {
       handleCallEnded((e as CustomEvent).detail);
+    });
+    window.addEventListener('videocall:left', (e: Event) => {
+      handleParticipantLeft((e as CustomEvent).detail);
     });
     // Group call specific events are handled inside the popup mainly, 
     // but the parent might want to know about joins/leaves for the "Call Active" indicator

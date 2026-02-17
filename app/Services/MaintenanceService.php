@@ -17,6 +17,10 @@ use Throwable;
 
 class MaintenanceService
 {
+    public function __construct(
+        protected \App\Services\Chat\PresenceService $presenceService
+    ) {}
+
     /**
      * Get completed jobs from Horizon.
      */
@@ -95,7 +99,33 @@ class MaintenanceService
 
             // Real Health Status
             'health' => $this->getSystemHealth(),
+
+            // Online Users
+            'online_stats' => $this->getOnlineUserStats(),
         ];
+    }
+
+    /**
+     * Get online user statistics.
+     */
+    public function getOnlineUserStats(): array
+    {
+        try {
+            $activeUsers = $this->presenceService->getActiveUsers();
+            
+            return [
+                'total' => $activeUsers->count(),
+                'administrators' => $activeUsers->filter(fn ($user) => $user->hasRole('administrator'))->count(),
+                'it_support' => $activeUsers->filter(fn ($user) => $user->hasRole('it_support'))->count(),
+            ];
+        } catch (Throwable $e) {
+            Log::warning('Failed to get online user stats', ['error' => $e->getMessage()]);
+            return [
+                'total' => 0,
+                'administrators' => 0,
+                'it_support' => 0,
+            ];
+        }
     }
 
     /**

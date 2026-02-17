@@ -102,13 +102,30 @@ class VideoCallController extends Controller
         $existingCallId = \Illuminate\Support\Facades\Cache::get($key);
 
         if ($existingCallId) {
-            // Verify it's not a stale key by checking metadata/participants
-            // (Optional, but good for robustness. For now, trust the key as 'active' implies ongoing)
-            return response()->json([
-                'error' => 'Call already active in this chat.',
-                'code' => 'CALL_ALREADY_ACTIVE',
-                'call_id' => $existingCallId,
-            ], 409);
+            // Self-Cleaning check: If current user is in the existing call, 
+            // OR if all participants are offline, we can clean and take over.
+            $participants = $this->getParticipantsList($chat->public_id, $existingCallId);
+            $presenceService = app(\App\Services\Chat\PresenceService::class);
+            
+            $othersOnline = false;
+            foreach ($participants as $p) {
+                if ($p['public_id'] !== $user->public_id && $presenceService->isUserActive(User::where('public_id', $p['public_id'])->first()?->id ?? 0)) {
+                    $othersOnline = true;
+                    break;
+                }
+            }
+
+            if (! $othersOnline) {
+                // Clear the stale/ghost lock
+                \Illuminate\Support\Facades\Cache::forget($key);
+                Log::info("Cleaning up stale/ghost call lock for chat {$chat->public_id}");
+            } else {
+                return response()->json([
+                    'error' => 'Call already active in this chat.',
+                    'code' => 'CALL_ALREADY_ACTIVE',
+                    'call_id' => $existingCallId,
+                ], 409);
+            }
         }
 
         $callId = (string) Str::ulid();
@@ -148,10 +165,9 @@ class VideoCallController extends Controller
             'user_name' => auth()->user()->name,
         ]);
 
-        // Set active call pointer for the chat
-        // This allows later joiners to find the current active call ID
+        // Set active call pointer for the chat (Short Lease: 3 mins)
         $key = "chat:active_call:{$chat->public_id}";
-        \Illuminate\Support\Facades\Cache::put($key, $callId, 7200); // 2 hours TTL matches participants TTL
+        \Illuminate\Support\Facades\Cache::put($key, $callId, 180); 
 
         return response()->json([
             'status' => 'ok',
@@ -234,28 +250,47 @@ class VideoCallController extends Controller
     }
 
     /**
+     * Refresh the call lease/lock (Heartbeat).
+     */
+    public function heartbeat(Request $request, Chat $chat): JsonResponse
+    {
+        $this->findChatOrFail($chat);
+        
+        $request->validate([
+            'call_id' => 'required|string|regex:/^[0-9A-Z]{26}$/|max:26',
+        ]);
+
+        $callId = $request->input('call_id');
+        $key = "chat:active_call:{$chat->public_id}";
+        $activeCallId = \Illuminate\Support\Facades\Cache::get($key);
+
+        if ($activeCallId === $callId) {
+            // Refresh Lease (3 mins)
+            \Illuminate\Support\Facades\Cache::put($key, $callId, 180);
+            
+            // Also refresh meta and participants to keep everything in sync
+            $metaKey = "call:meta:{$chat->public_id}:{$callId}";
+            $partKey = $this->getCacheKey($chat->public_id, $callId);
+            
+            if ($meta = \Illuminate\Support\Facades\Cache::get($metaKey)) {
+                \Illuminate\Support\Facades\Cache::put($metaKey, $meta, 180);
+            }
+            if ($parts = \Illuminate\Support\Facades\Cache::get($partKey)) {
+                \Illuminate\Support\Facades\Cache::put($partKey, $parts, 180);
+            }
+
+            return response()->json(['status' => 'ok', 'refreshed' => true]);
+        }
+
+        return response()->json(['status' => 'inactive', 'refreshed' => false], 410);
+    }
+
+    /**
      * Check if there is an active call in the chat.
      */
     public function active(Request $request, Chat $chat): JsonResponse
     {
         $this->findChatOrFail($chat);
-
-        // We don't have a direct "Call ID" index, so we need to rely on the frontend
-        // asking "Is there a call?".
-        // However, our cache keys are `call:participants:{chatId}:{callId}`.
-        // We can scan for keys matching this pattern.
-        // NOTE: excessive scanning is bad for Redis performance in production,
-        // but for now with `file` or `redis` cache driver in a smaller app, it might be okay.
-        // BETTER APPROACH: Store a "current_call:{chatId}" key when a call starts.
-
-        // Let's check if we can leverage existing metadata.
-        // For now, I will implement a "current_call" pointer in cache to make this efficient.
-        // But I need to update `initiate` to set this.
-
-        // Revised Plan:
-        // 1. `initiate` sets `chat:active_call:{chatId}` -> `callId`
-        // 2. `end` removes it if it's the same callId.
-        // 3. `active` reads this key.
 
         $key = "chat:active_call:{$chat->public_id}";
         $callId = \Illuminate\Support\Facades\Cache::get($key);
@@ -267,13 +302,12 @@ class VideoCallController extends Controller
         $metadata = $this->getCallMetadata($chat->public_id, $callId);
         $participants = $this->getParticipantsList($chat->public_id, $callId);
 
-        // Double check if call is actually valid (has participants or just started)
-        // If no participants and started > 5 mins ago, consider it stale/dead.
+        // Presence-aware cleanup if we have a lock but no actual activity
+        // If it's looking stale, we try to clear it
         if (empty($participants)) {
             $startedAt = $metadata['started_at'] ?? 0;
-            if (now()->timestamp - $startedAt > 300) {
+            if (now()->timestamp - $startedAt > 120) { // 2 mins idle with no participants
                 \Illuminate\Support\Facades\Cache::forget($key);
-
                 return response()->json(['active' => false]);
             }
         }
@@ -616,8 +650,8 @@ class VideoCallController extends Controller
         $participants = array_filter($participants, fn ($p) => $p['public_id'] !== $user->public_id);
         $participants[] = $participant;
 
-        // Expire after 2 hours to clean up stale calls
-        \Illuminate\Support\Facades\Cache::put($key, $participants, 7200);
+        // Expire after 3 minutes to clean up stale calls
+        \Illuminate\Support\Facades\Cache::put($key, $participants, 180);
     }
 
     private function removeParticipant(string $chatId, string $callId, string $userPublicId): void
@@ -630,7 +664,7 @@ class VideoCallController extends Controller
         if (empty($participants)) {
             \Illuminate\Support\Facades\Cache::forget($key);
         } else {
-            \Illuminate\Support\Facades\Cache::put($key, $participants, 7200);
+            \Illuminate\Support\Facades\Cache::put($key, $participants, 180);
         }
     }
 
@@ -644,7 +678,7 @@ class VideoCallController extends Controller
     private function storeCallMetadata(string $chatId, string $callId, array $metadata): void
     {
         $key = "call:meta:{$chatId}:{$callId}";
-        \Illuminate\Support\Facades\Cache::put($key, $metadata, 7200);
+        \Illuminate\Support\Facades\Cache::put($key, $metadata, 180);
     }
 
     private function getCallMetadata(string $chatId, string $callId): array

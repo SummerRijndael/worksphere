@@ -911,6 +911,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
             ->middleware('throttle:10,1');
         Route::post('/{chat}/call/join', [\App\Http\Controllers\Api\Chat\VideoCallController::class, 'join']);
         Route::get('/{chat}/call/active', [\App\Http\Controllers\Api\Chat\VideoCallController::class, 'active']);
+        Route::post('/{chat}/call/heartbeat', [\App\Http\Controllers\Api\Chat\VideoCallController::class, 'heartbeat']);
         Route::get('/{chat}/call/{callId}/participants', [\App\Http\Controllers\Api\Chat\VideoCallController::class, 'participants']);
         Route::post('/{chat}/call/signal', [\App\Http\Controllers\Api\Chat\VideoCallController::class, 'signal'])
             ->withoutMiddleware('throttle:api')

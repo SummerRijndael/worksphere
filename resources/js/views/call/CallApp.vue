@@ -9,6 +9,7 @@ import {
     ref,
     computed,
     onMounted,
+    onUnmounted,
     onBeforeUnmount,
     watch,
     reactive,
@@ -107,6 +108,31 @@ const {
     scrollToBottom,
 } = useChat({ autoFetch: true });
 
+// Auto-Close Logic
+watch(
+    callState,
+    (newState) => {
+        if (newState === 'ended') {
+            console.log("[CallApp] Call ended. Closing window in 2s...");
+            setTimeout(() => {
+                window.close();
+            }, 2000);
+        }
+    }
+);
+
+watch(
+    () => store.error,
+    (newError) => {
+        if (newError) {
+            console.warn("[CallApp] Critical error detected. Closing window in 5s...", newError);
+            setTimeout(() => {
+                window.close();
+            }, 5000);
+        }
+    }
+);
+
 const handleMessageReply = (message: any) => {
     setReplyTo(message);
 };
@@ -170,6 +196,53 @@ const remoteSfuTracks = reactive(
 );
 const isTransportReady = ref(false);
 const chatListRef = ref<any>(null);
+
+// Heartbeat Management
+let heartbeatTimeout: ReturnType<typeof setTimeout> | null = null;
+
+async function runHeartbeat() {
+    if (callState.value !== "connected" && callState.value !== "ringing") {
+        return;
+    }
+    if (!callData.value) return;
+
+    try {
+        await videoCallService.sendHeartbeat(
+            callData.value.chatId,
+            callData.value.callId,
+        );
+    } catch (e) {
+        console.warn("[CallApp] Heartbeat failed:", e);
+    } finally {
+        // Schedule next heartbeat with 60s base + random jitter (0-10s)
+        // This prevents "Self-DDOS" / Thundering Herd if many clients are in a group call
+        const jitter = Math.floor(Math.random() * 10000);
+        const nextInterval = 60000 + jitter;
+        
+        heartbeatTimeout = setTimeout(runHeartbeat, nextInterval);
+    }
+}
+
+function startHeartbeat() {
+    stopHeartbeat();
+    // Start first heartbeat after 30s
+    heartbeatTimeout = setTimeout(runHeartbeat, 30000);
+}
+
+function stopHeartbeat() {
+    if (heartbeatTimeout) {
+        clearTimeout(heartbeatTimeout);
+        heartbeatTimeout = null;
+    }
+}
+
+watch(callState, (newState) => {
+    if (newState === "connected" || newState === "ringing") {
+        startHeartbeat();
+    } else {
+        stopHeartbeat();
+    }
+});
 
 // Link the child's scroll container to useChat composable
 watch(
@@ -1717,7 +1790,8 @@ function handleParticipantLeft(event: any) {
         event.participant_publicId ||
         ""
     ).toLowerCase();
-    console.log("[Call] Participant left:", publicId);
+    const reason = event.reason || 'hangup';
+    console.log(`[Call] Participant left: ${publicId}, reason: ${reason}`);
 
     // Remove from list
     participants.value = participants.value.filter(
@@ -1741,8 +1815,29 @@ function handleParticipantLeft(event: any) {
 
     stopAudioAnalysis(publicId);
 
-    // Bug 4: Auto-end if we're the only one left
+    // Auto-end logic
     const nonSelfParticipants = participants.value.filter((p) => !p.isSelf);
+    
+    // In a 1:1 call (DM), if the other side leaves/declines/is busy, we end the call
+    const isDM = callData.value?.chatType === 'dm';
+    const isTarget = isDM && (
+        publicId === callData.value?.remoteUser?.publicId?.toLowerCase() ||
+        nonSelfParticipants.length === 0
+    );
+
+    if (isTarget && (callState.value === "connected" || callState.value === "ringing" || callState.value === "connecting")) {
+        console.log(`[Call] Remote participant left (${reason}). Auto-ending.`);
+        
+        if (reason === 'busy') toast.error("User is busy");
+        else if (reason === 'declined') toast.info("Call declined");
+        else if (reason === 'no_answer' || reason === 'timeout') toast.info("Call was not answered");
+
+        // Notify backend and parent before closing
+        endCall(reason as any);
+        return;
+    }
+
+    // Bug 4: Auto-end if we're the only one left in general (Group calls)
     if (nonSelfParticipants.length === 0 && callState.value === "connected") {
         console.log("[Call] Everyone left, auto-ending call");
         endCall("hangup");
@@ -3049,7 +3144,7 @@ function playRingtone(type: "incoming" | "outgoing") {
         );
         ringtoneAudio.loop = true;
         ringtoneAudio.volume = 0.5;
-        ringtoneAudio.play().catch(() => {});
+        ringtoneAudio.play().catch((e) => console.warn("[Call] Ringtone play failed (autoplay policy?):", e));
     } catch {}
 }
 
@@ -3078,6 +3173,7 @@ function setupBroadcastChannel() {
 }
 
 function cleanup() {
+    stopHeartbeat();
     stopRingtone();
     if (localStream.value) {
         localStream.value.getTracks().forEach((t) => t.stop());
@@ -3379,14 +3475,18 @@ onBeforeUnmount(() => cleanup());
             <div class="lobby-content">
                 <div class="avatar-preview">
                     <!-- Avatar Preview -->
-                    <div class="preview-circle">
+                    <div class="preview-circle" :class="{ 'animate-pulse': callData?.direction === 'incoming' }">
                         <span class="initials">{{ previewRemoteName[0] }}</span>
                     </div>
                 </div>
 
                 <div class="join-info">
-                    <h1 class="join-title">Join</h1>
-                    <p class="join-subtitle">With {{ previewRemoteName }}</p>
+                    <h1 class="join-title">
+                        {{ callData?.direction === 'incoming' ? 'Incoming Call' : 'Join Call' }}
+                    </h1>
+                    <p class="join-subtitle">
+                        {{ callData?.direction === 'incoming' ? 'From' : 'With' }} {{ previewRemoteName }}
+                    </p>
                 </div>
 
                 <div class="lobby-actions-grid">
@@ -3395,9 +3495,11 @@ onBeforeUnmount(() => cleanup());
                         @click="joinCall"
                         :disabled="isJoining"
                     >
-                        <Icon v-if="!isJoining" name="Phone" size="20" />
+                        <Icon v-if="!isJoining" :name="callData?.direction === 'incoming' ? 'PhoneCall' : 'Phone'" size="20" />
                         <Icon v-else name="Loader" size="20" class="animate-spin" />
-                        <span>{{ isJoining ? 'Joining...' : 'Join' }}</span>
+                        <span>
+                            {{ isJoining ? 'Joining...' : (callData?.direction === 'incoming' ? 'Accept' : 'Join') }}
+                        </span>
                     </button>
 
                     <button
