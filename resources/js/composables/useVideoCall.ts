@@ -37,8 +37,8 @@ export function useVideoCall() {
   // ============================================================================
 
   function openCallPopup(callId: string) {
-    const width = 800;
-    const height = 600;
+    const width = 1024;
+    const height = 768;
     const left = window.screenX + window.outerWidth - width - 24;
     const top = window.screenY + 80;
 

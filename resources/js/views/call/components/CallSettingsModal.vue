@@ -224,7 +224,7 @@ onBeforeUnmount(() => {
         @click.self="$emit('close')"
     >
         <div
-            class="bg-(--surface-primary) rounded-xl border border-(--border-subtle) ring-1 ring-black/5 dark:ring-white/5 shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col h-[420px]"
+            class="bg-(--surface-primary) rounded-xl border border-(--border-subtle) ring-1 ring-black/5 dark:ring-white/5 shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col h-[540px]"
         >
             <div class="flex-1 flex overflow-hidden">
                 <!-- Sidebar (Precision DNA) -->
