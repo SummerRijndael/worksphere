@@ -3,6 +3,7 @@ import { computed } from "vue";
 import type { Message, MessageAttachment } from "@/types/models/chat";
 import { Icon } from "@/components/ui";
 import LinkPreview from "@/components/LinkPreview.vue";
+import { useVideoCallStore } from "@/stores/videocall";
 
 interface Props {
     message: Message;
@@ -17,8 +18,11 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
     reply: [];
     jumpToReply: [messageId: string];
-    retry: [message: Message]; // Add retry event
+    retry: [message: Message];
+    'join-call': [payload: { chatId: string; callId: string; callType: string }];
 }>();
+
+const videoCallStore = useVideoCallStore();
 
 const formattedTime = computed(() => {
     return new Date(props.message.created_at).toLocaleTimeString([], {

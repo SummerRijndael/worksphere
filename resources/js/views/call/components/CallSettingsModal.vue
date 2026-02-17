@@ -101,9 +101,16 @@ async function startVisualizer(deviceId: string) {
         microphoneStream.value = stream;
 
         audioContext.value = new AudioContext();
+        // Resume in case browser suspended it
+        if (audioContext.value.state === 'suspended') {
+            await audioContext.value.resume();
+        }
+        
         analyser.value = audioContext.value.createAnalyser();
-        analyser.value.fftSize = 256;
-        analyser.value.smoothingTimeConstant = 0.8;
+        analyser.value.fftSize = 512;
+        analyser.value.smoothingTimeConstant = 0.4;
+        analyser.value.minDecibels = -90;
+        analyser.value.maxDecibels = -10;
         
         const source = audioContext.value.createMediaStreamSource(stream);
         
@@ -113,6 +120,7 @@ async function startVisualizer(deviceId: string) {
         
         source.connect(gainNode);
         gainNode.connect(analyser.value);
+        // Don't connect to destination — we just want to read levels, not play back mic audio
         
         drawVisualizer();
     } catch (e) {
@@ -136,17 +144,23 @@ function stopVisualizer() {
 
 function drawVisualizer() {
     if (!analyser.value) return;
-    const dataArray = new Uint8Array(analyser.value.frequencyBinCount);
-    analyser.value.getByteFrequencyData(dataArray);
     
-    // Average volume
-    let sum = 0;
-    for (const v of dataArray) sum += v;
-    const average = sum / dataArray.length;
+    // Use time-domain data (waveform) for more responsive level metering
+    const bufferLength = analyser.value.fftSize;
+    const dataArray = new Float32Array(bufferLength);
+    analyser.value.getFloatTimeDomainData(dataArray);
     
-    // Normalize with smoothing
-    const target = Math.min(100, Math.max(0, (average / 128) * 100));
-    volumeLevel.value = volumeLevel.value * 0.3 + target * 0.7;
+    // Calculate RMS (root mean square) for accurate volume
+    let sumSquares = 0;
+    for (let i = 0; i < bufferLength; i++) {
+        sumSquares += dataArray[i] * dataArray[i];
+    }
+    const rms = Math.sqrt(sumSquares / bufferLength);
+    
+    // Convert to percentage (RMS of ~0.5 is very loud for mic input)
+    // Scale so normal speech (~0.05-0.15 RMS) fills ~40-80% of the meter
+    const target = Math.min(100, Math.max(0, rms * 400));
+    volumeLevel.value = volumeLevel.value * 0.2 + target * 0.8;
     
     animationFrame = requestAnimationFrame(drawVisualizer);
 }
@@ -183,8 +197,16 @@ async function toggleSpeakerTest() {
         
         // Create AudioContext for level metering
         speakerAudioContext = new AudioContext();
+        // Resume in case browser suspended it
+        if (speakerAudioContext.state === 'suspended') {
+            await speakerAudioContext.resume();
+        }
+        
         speakerAnalyser = speakerAudioContext.createAnalyser();
-        speakerAnalyser.fftSize = 256;
+        speakerAnalyser.fftSize = 512;
+        speakerAnalyser.smoothingTimeConstant = 0.4;
+        speakerAnalyser.minDecibels = -90;
+        speakerAnalyser.maxDecibels = -10;
         
         const source = speakerAudioContext.createMediaElementSource(speakerTestAudio);
         source.connect(speakerAnalyser);
@@ -205,14 +227,22 @@ async function toggleSpeakerTest() {
 function drawSpeakerMeter() {
     if (!speakerAnalyser || !speakerTestPlaying.value) return;
     
-    const dataArray = new Uint8Array(speakerAnalyser.frequencyBinCount);
-    speakerAnalyser.getByteFrequencyData(dataArray);
+    // Use time-domain data for responsive level metering
+    const bufferLength = speakerAnalyser.fftSize;
+    const dataArray = new Float32Array(bufferLength);
+    speakerAnalyser.getFloatTimeDomainData(dataArray);
     
-    let sum = 0;
-    for (const v of dataArray) sum += v;
-    const average = sum / dataArray.length;
+    // Calculate RMS
+    let sumSquares = 0;
+    for (let i = 0; i < bufferLength; i++) {
+        sumSquares += dataArray[i] * dataArray[i];
+    }
+    const rms = Math.sqrt(sumSquares / bufferLength);
     
-    speakerLevel.value = Math.min(100, Math.max(0, (average / 128) * 100));
+    // Scale for speaker output (louder than mic, so use lower multiplier)
+    const target = Math.min(100, Math.max(0, rms * 250));
+    speakerLevel.value = speakerLevel.value * 0.2 + target * 0.8;
+    
     speakerAnimationFrame = requestAnimationFrame(drawSpeakerMeter);
 }
 

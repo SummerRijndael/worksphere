@@ -99,11 +99,19 @@ export function useBackgroundBlur() {
 
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
+        
+        console.log(`[BackgroundBlur] Video dimensions: ${video.videoWidth}x${video.videoHeight}, mode: ${currentRunningMode}`);
 
         const draw = () => {
-            if (!video || !canvas || !segmenter.value) return;
+            if (!video || !canvas || !segmenter.value) {
+                console.warn('[BackgroundBlur] draw() skipped: missing refs', { video: !!video, canvas: !!canvas, segmenter: !!segmenter.value });
+                return;
+            }
             // Check if video is still active/playing
-            if (video.paused || video.ended) return;
+            if (video.paused || video.ended) {
+                console.warn('[BackgroundBlur] draw() skipped: video paused or ended');
+                return;
+            }
             
             try {
                 if (currentRunningMode === 'IMAGE') {
@@ -119,19 +127,28 @@ export function useBackgroundBlur() {
             }
         };
 
+        let frameCount = 0;
         const renderResult = (result: ImageSegmenterResult) => {
             if (!ctx || !canvas) {
                  animationFrameId = requestAnimationFrame(draw);
                  return;
             }
             
+            frameCount++;
+            if (frameCount <= 3) {
+                console.log(`[BackgroundBlur] Frame ${frameCount}:`, {
+                    confidenceMasks: result.confidenceMasks?.length ?? 0,
+                    categoryMask: !!result.categoryMask,
+                });
+            }
+            
             // Handle GPU (Confidence Mask) vs CPU (Category Mask)
             let personMaskBitmap: ImageBitmap | null = null;
             let needsClose = false;
 
-            if (result.confidenceMasks && result.confidenceMasks[1]) {
-                 // GPU Path: Use simple confidence mask
-                 personMaskBitmap = result.confidenceMasks[1].getAsImageBitmap(); 
+            if (result.confidenceMasks && result.confidenceMasks.length > 0) {
+                 // GPU Path: Use the first confidence mask (person segmentation)
+                 personMaskBitmap = result.confidenceMasks[0].getAsImageBitmap(); 
                  needsClose = true;
             } else if (result.categoryMask) {
                  // CPU Path: Process category mask (Multiclass: 0=bg, >0=person)
@@ -215,7 +232,9 @@ export function useBackgroundBlur() {
         draw();
 
         const processedStream = canvas.captureStream(30); 
-        return processedStream.getVideoTracks()[0];
+        const outputTrack = processedStream.getVideoTracks()[0];
+        console.log('[BackgroundBlur] Returning canvas track:', outputTrack?.id, 'enabled:', outputTrack?.enabled);
+        return outputTrack;
     }
     
     function stopProcessing() {

@@ -713,6 +713,7 @@ watch(() => store.videoEffect, async (effect) => {
 
         if (effect === 'blur') {
              newTrack = await backgroundBlur.startBlur(originalVideoTrack.value);
+             console.log('[Call] Blur track received:', newTrack?.id, 'enabled:', newTrack?.enabled);
         } else {
              backgroundBlur.stopProcessing();
              newTrack = originalVideoTrack.value;
@@ -720,6 +721,7 @@ watch(() => store.videoEffect, async (effect) => {
 
         // Replace in Local Stream
         const oldTrack = localStream.value.getVideoTracks()[0];
+        console.log('[Call] Track swap:', { oldId: oldTrack?.id, newId: newTrack?.id, same: oldTrack?.id === newTrack?.id });
         if (oldTrack && oldTrack.id !== newTrack.id) {
              localStream.value.removeTrack(oldTrack);
              localStream.value.addTrack(newTrack);
@@ -728,6 +730,7 @@ watch(() => store.videoEffect, async (effect) => {
              newTrack.enabled = !isCameraOff.value;
 
              // Replace in Peer Connections (Mesh)
+             let meshReplaceCount = 0;
              peers.forEach((peer) => {
                  // @ts-ignore
                  const pc = peer._pc as RTCPeerConnection;
@@ -735,14 +738,17 @@ watch(() => store.videoEffect, async (effect) => {
                  const sender = pc.getSenders().find((s: any) => s.track?.kind === 'video');
                  if (sender) {
                      sender.replaceTrack(newTrack);
+                     meshReplaceCount++;
                  }
              });
+             console.log(`[Call] Replaced video track in ${meshReplaceCount} mesh peer(s)`);
 
              // Replace in SFU
              if (sfuPc) {
                   const sender = sfuPc.getSenders().find(s => s.track?.kind === 'video');
                   if (sender) {
                       sender.replaceTrack(newTrack);
+                      console.log('[Call] Replaced video track in SFU');
                   }
              }
         }
