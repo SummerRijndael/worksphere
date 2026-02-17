@@ -261,15 +261,21 @@ export function useBackgroundBlur() {
              const h = canvas.height;
 
              // 1. Prepare blurred background (on small canvas)
-             blurCtx.filter = 'blur(4px)'; // Blur on small canvas is very fast
+             blurCtx.filter = 'blur(6px)'; // Slightly stronger blur
              blurCtx.drawImage(video, 0, 0, blurCanvas.width, blurCanvas.height);
              blurCtx.filter = 'none';
              
              // 2. Prepare person (on person canvas)
+             // Create feathered edges by blurring the mask
              personCtx.clearRect(0, 0, w, h);
-             personCtx.drawImage(video, 0, 0, w, h);
-             personCtx.globalCompositeOperation = 'destination-in';
+             personCtx.save();
+             personCtx.filter = 'blur(3px)'; // Feathering radius
              personCtx.drawImage(mask, 0, 0, w, h);
+             personCtx.restore();
+             
+             // Use the feathered mask to clip the original video
+             personCtx.globalCompositeOperation = 'source-in';
+             personCtx.drawImage(video, 0, 0, w, h);
              personCtx.globalCompositeOperation = 'source-over'; // Reset
 
              // 3. Final composition on main canvas
