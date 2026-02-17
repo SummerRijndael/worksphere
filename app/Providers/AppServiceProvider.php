@@ -138,18 +138,19 @@ class AppServiceProvider extends ServiceProvider
     {
 
         if (config('app.env') === 'local' && env('DISABLE_RATE_LIMITS', false)) {
-        $noLimit = function () {
-            return Limit::none();
-        };
+            $noLimit = function () {
+                return Limit::none();
+            };
 
-        RateLimiter::for('api', $noLimit);
-        RateLimiter::for('guest', $noLimit);
-        RateLimiter::for('sensitive', $noLimit);
-        RateLimiter::for('password-reset', $noLimit);
-        RateLimiter::for('login', $noLimit);
-        RateLimiter::for('signaling', $noLimit);
-        return;
-    }
+            RateLimiter::for('api', $noLimit);
+            RateLimiter::for('guest', $noLimit);
+            RateLimiter::for('sensitive', $noLimit);
+            RateLimiter::for('password-reset', $noLimit);
+            RateLimiter::for('login', $noLimit);
+            RateLimiter::for('signaling', $noLimit);
+
+            return;
+        }
 
         // Rate limiter for authenticated API requests
         RateLimiter::for('api', function (Request $request) {

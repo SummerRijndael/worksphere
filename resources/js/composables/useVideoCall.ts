@@ -118,8 +118,16 @@ export function useVideoCall() {
   // Outgoing Call
   // ============================================================================
 
-  async function startCall(chatId: string, callType: CallType, user: { publicId: string; name: string; avatar: string | null }) {
-    console.log('[VideoCall] startCall initiated:', { chatId, callType, user: user.name });
+  async function startCall(chatId: string, callType: CallType, user: { publicId: string; name: string; avatar: string | null }): Promise<void> {
+    console.log('[VideoCall] startCall initiated:', { chatId, callType, user });
+
+    // Check local store for split-brain prevention
+    const existingCall = store.activeCalls.get(chatId);
+    if (existingCall) {
+        console.warn('[VideoCall] Blocked: call already active in this chat', existingCall);
+        toast.info('A call is already active in this chat. Please join it instead.');
+        return;
+    }
 
     if (store.isCallActive) {
       console.warn('[VideoCall] Blocked: call already active');
@@ -262,12 +270,17 @@ export function useVideoCall() {
     playRingtone('incoming');
 
     // Double check local presence preference
-    if (authStore.user?.presence === 'busy') {
-        console.log('[VideoCall] Suppressing incoming call ring: status is busy');
+    // If user is busy OR offline (but app is open), suppress the ring
+    const presence = authStore.user?.presence || 'online';
+    if (presence === 'busy' || presence === 'offline') {
+        console.log(`[VideoCall] Suppressing incoming call ring: status is ${presence}`);
         videoCallService.endCall(data.chat_id, data.call_id, 'busy').catch(() => {});
         // Still register active call so user can see it in chat list, but don't show overlay
         store.setState('idle');
         stopRingtone();
+        
+        // If it was a group call, ensure we don't kill the call for everyone
+        // The backend `endCall` logic handles leaving without ending for others unless last person.
         return;
     }
 

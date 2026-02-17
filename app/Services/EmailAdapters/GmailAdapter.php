@@ -357,7 +357,7 @@ class GmailAdapter extends BaseEmailAdapter
             $filename = $part->getFilename();
             $mimeType = $part->getMimeType();
             $body = $part->getBody();
-            if (!$body) {
+            if (! $body) {
                 return;
             }
             $attachmentId = $body->getAttachmentId();
@@ -496,7 +496,7 @@ class GmailAdapter extends BaseEmailAdapter
             if ($messages->isEmpty()) {
                 // If we have a page token but no messages, we must advance to the next page
                 // to avoid getting stuck in an infinite loop.
-                if (!empty($result['nextPageToken'])) {
+                if (! empty($result['nextPageToken'])) {
                     $cursor = $account->sync_cursor ?? [];
                     $cursor['backfill_page_token'] = $result['nextPageToken'];
                     $account->update(['sync_cursor' => $cursor]);

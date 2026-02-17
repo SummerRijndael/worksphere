@@ -4,7 +4,6 @@ namespace App\Livewire\Pulse;
 
 use App\Models\Email;
 use App\Models\EmailAccount;
-use Illuminate\Support\Facades\DB;
 use Laravel\Pulse\Livewire\Card;
 use Livewire\Attributes\Lazy;
 

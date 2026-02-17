@@ -32,7 +32,7 @@ class ArchiveAnalytics extends Command
         $daysToRetain = (int) $this->option('days');
         $today = now()->startOfDay();
 
-        $this->info("Starting analytics archiving process...");
+        $this->info('Starting analytics archiving process...');
 
         // 1. Find days that have raw data but no archive entry
         // We look for any day before TODAY
@@ -47,7 +47,7 @@ class ArchiveAnalytics extends Command
 
         $count = $datesToArchive->count();
         if ($count === 0) {
-            $this->info("No new days to archive.");
+            $this->info('No new days to archive.');
         } else {
             $this->info("Found {$count} days to archive.");
             $bar = $this->output->createProgressBar($count);
@@ -77,16 +77,18 @@ class ArchiveAnalytics extends Command
 
         // Calculate Stats
         $views = PageView::whereBetween('created_at', [$start, $end]);
-        
+
         $totalViews = $views->count();
-        if ($totalViews === 0) return;
+        if ($totalViews === 0) {
+            return;
+        }
 
         $uniqueVisitors = $views->distinct('session_id')->count('session_id');
 
         // Avg Duration
         // SQLite vs MySQL logic for diff
         $driver = DB::connection()->getDriverName();
-        $select = $driver === 'sqlite' 
+        $select = $driver === 'sqlite'
             ? '(strftime(\'%s\', MAX(created_at)) - strftime(\'%s\', MIN(created_at))) as duration'
             : 'TIME_TO_SEC(TIMEDIFF(MAX(created_at), MIN(created_at))) as duration';
 
@@ -96,7 +98,7 @@ class ArchiveAnalytics extends Command
             ->havingRaw('count(*) > 1')
             ->get()
             ->pluck('duration');
-        
+
         $avgDuration = $durations->isEmpty() ? 0 : $durations->avg();
 
         // Bounce Rate
@@ -107,7 +109,7 @@ class ArchiveAnalytics extends Command
                 ->groupBy('session_id')
                 ->havingRaw('count(*) = 1');
         }, 'bounces')->count();
-        
+
         $totalSessions = $views->distinct('session_id')->count('session_id');
         $bounceRate = $totalSessions > 0 ? ($bounces / $totalSessions) * 100 : 0;
 

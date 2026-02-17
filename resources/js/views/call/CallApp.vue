@@ -754,13 +754,30 @@ watch([() => store.videoEffect, () => store.backgroundImage, () => store.autoFra
 
              // Replace in SFU
              if (sfuPc) {
-                  const sender = sfuPc.getSenders().find(s => s.track?.kind === 'video');
-                  if (sender) {
-                      sender.replaceTrack(newTrack);
-                      console.log('[Call] Replaced video track in SFU');
+                  const senders = sfuPc.getSenders();
+                  const videoSender = senders.find(s => s.track?.kind === 'video' || (s.track === null && s.dtmf === null)); // Fallback to find the video sender/transceiver
+                  
+                  // More robust check: check transceiver mid or direction if track is missing
+                  // cloudflare calls usually sets up 1 audio 1 video.
+                  
+                  if (videoSender) {
+                      console.log('[Call] Found SFU Video Sender:', videoSender.track?.id);
+                      videoSender.replaceTrack(newTrack)
+                        .then(() => console.log('[Call] Successfully replaced video track in SFU'))
+                        .catch(err => console.error('[Call] Failed to replace SFU track:', err));
+                  } else {
+                      console.warn('[Call] Could not find SFU Video Sender to replace track');
+                      // Try finding via transceivers
+                      const transceivers = sfuPc.getTransceivers();
+                      const videoTransceiver = transceivers.find(t => t.sender.track?.kind === 'video' || t.receiver.track?.kind === 'video');
+                      if (videoTransceiver) {
+                          console.log('[Call] Found SFU Video Transceiver, replacing sender track...');
+                          videoTransceiver.sender.replaceTrack(newTrack).catch(e => console.error('[Call] Transceiver replace failed:', e));
+                      }
                   }
              }
         }
+
     } catch (e) {
         console.error("Failed to apply video effect", e);
         // Reset effect so the user gets their regular video feed

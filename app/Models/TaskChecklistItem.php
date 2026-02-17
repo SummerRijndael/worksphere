@@ -12,7 +12,7 @@ use Illuminate\Support\Str;
 class TaskChecklistItem extends Model
 {
     /** @use HasFactory<\Database\Factories\TaskChecklistItemFactory> */
-    use HasFactory, Auditable;
+    use Auditable, HasFactory;
 
     /**
      * The attributes that are mass assignable.

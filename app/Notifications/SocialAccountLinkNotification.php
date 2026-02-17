@@ -44,7 +44,7 @@ class SocialAccountLinkNotification extends Notification implements ShouldQueue
     {
         // Route should be defined to handle the verification
         // Point to frontend route which handles the API call
-        $url = url('/auth/social/verify') . '?' . http_build_query([
+        $url = url('/auth/social/verify').'?'.http_build_query([
             'token' => $this->token,
             'email' => $notifiable->email,
         ]);

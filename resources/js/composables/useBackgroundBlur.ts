@@ -144,24 +144,46 @@ export function useBackgroundBlur() {
             canvas = document.createElement("canvas");
             ctx = canvas.getContext("2d");
         }
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+        
+        // Resolution Capping for Mobile (S10 fix)
+        // Limit max dimension to 480p to reduce segmentation load
+        let targetWidth = video.videoWidth;
+        let targetHeight = video.videoHeight;
+        
+        if (isMobile) {
+            const MAX_DIMENSION = 480;
+            if (targetWidth > MAX_DIMENSION || targetHeight > MAX_DIMENSION) {
+                const ratio = targetWidth / targetHeight;
+                if (targetWidth > targetHeight) {
+                     targetWidth = MAX_DIMENSION;
+                     targetHeight = Math.round(MAX_DIMENSION / ratio);
+                } else {
+                     targetHeight = MAX_DIMENSION;
+                     targetWidth = Math.round(MAX_DIMENSION * ratio);
+                }
+            }
+        }
+        
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
 
         
         // Setup offscreen canvases
         if (!blurCanvas) blurCanvas = document.createElement("canvas");
         const blurDownsample = isMobile ? 12 : 8;
-        blurCanvas.width = Math.round(video.videoWidth / blurDownsample); 
-        blurCanvas.height = Math.round(video.videoHeight / blurDownsample);
+        // Blur canvas is even smaller for performance
+        blurCanvas.width = Math.round(targetWidth / blurDownsample); 
+        blurCanvas.height = Math.round(targetHeight / blurDownsample);
         blurCtx = blurCanvas.getContext("2d");
 
 
         if (!personCanvas) personCanvas = document.createElement("canvas");
-        personCanvas.width = video.videoWidth;
-        personCanvas.height = video.videoHeight;
+        personCanvas.width = targetWidth;
+        personCanvas.height = targetHeight;
         personCtx = personCanvas.getContext("2d");
 
-        console.log(`[BackgroundBlur] Video dimensions: ${video.videoWidth}x${video.videoHeight}, mode: ${currentRunningMode}`);
+        console.log(`[BackgroundBlur] Processing dimensions: ${targetWidth}x${targetHeight} (Source: ${video.videoWidth}x${video.videoHeight}), mode: ${currentRunningMode}`);
+
 
         const draw = () => {
             if (!video || !canvas || !segmenter.value) {
@@ -430,7 +452,11 @@ export function useBackgroundBlur() {
         
         draw();
 
-        const processedStream = canvas.captureStream(30); 
+        draw();
+
+        // Throttle FPS on mobile to prevent overheating/freezing
+        const captureFps = isMobile ? 15 : 30;
+        const processedStream = canvas.captureStream(captureFps); 
         const outputTrack = processedStream.getVideoTracks()[0];
         console.log('[BackgroundBlur] Returning canvas track:', outputTrack?.id, 'enabled:', outputTrack?.enabled);
         return outputTrack;

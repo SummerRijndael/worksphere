@@ -2,13 +2,12 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
-use App\Models\User;
-use App\Models\FirewallIp;
 use Akaunting\Firewall\Models\Log as FirewallLog;
+use App\Http\Controllers\Controller;
+use App\Models\FirewallIp;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Akaunting\Firewall\Facades\Firewall;
 
 class SecurityDashboardController extends Controller
 {
@@ -110,7 +109,7 @@ class SecurityDashboardController extends Controller
         }
 
         if (FirewallIp::where('ip', $validated['ip_address'])->where('blocked', 1)->exists()) {
-             return response()->json(['message' => 'IP already blocked.'], 422);
+            return response()->json(['message' => 'IP already blocked.'], 422);
         }
 
         // Use standard create to include extra fields
@@ -162,7 +161,7 @@ class SecurityDashboardController extends Controller
 
         // Determine grouping and interval based on period
         $period = $request->query('period', '1w');
-        $days = match($period) {
+        $days = match ($period) {
             '24h' => 1,
             '1w' => 7,
             '1m' => 30,
@@ -225,6 +224,7 @@ class SecurityDashboardController extends Controller
             ->map(function ($item) {
                 try {
                     $geo = geoip($item->ip);
+
                     return [
                         'lat' => (float) $geo->lat,
                         'lng' => (float) $geo->lon,

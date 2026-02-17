@@ -10,7 +10,6 @@ use App\Models\FirewallIp;
 use App\Models\SuspiciousActivity;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 class SecurityAnalyticsController extends Controller
 {

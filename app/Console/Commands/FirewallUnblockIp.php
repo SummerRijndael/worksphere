@@ -38,6 +38,7 @@ class FirewallUnblockIp extends Command
                     $ip->update(['blocked' => false]);
                     $unblocked++;
                 }
+
                 return;
             }
 

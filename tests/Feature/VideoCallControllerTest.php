@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Events\Chat\CallEnded;
 use App\Models\Chat\Chat;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -9,14 +10,13 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Tests\TestCase;
-use App\Events\Chat\CallEnded;
-use App\Events\Chat\CallSignal;
 
 class VideoCallControllerTest extends TestCase
 {
     use RefreshDatabase;
 
     protected $user;
+
     protected $chat;
 
     protected function setUp(): void
@@ -140,7 +140,7 @@ class VideoCallControllerTest extends TestCase
             'public_id' => (string) Str::ulid(),
             'left_at' => null,
         ]);
-        
+
         $callId = (string) Str::ulid();
         Cache::put("chat:active_call:{$this->chat->public_id}", $callId, 60);
 
