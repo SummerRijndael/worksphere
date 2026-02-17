@@ -54,7 +54,8 @@ export const useVideoCallStore = defineStore('videoCall', () => {
   const selectedAudioDeviceId = ref<string | null>(null);
   const selectedVideoDeviceId = ref<string | null>(null);
   const selectedOutputDeviceId = ref<string | null>(null);
-  const videoEffect = ref<'none' | 'blur'>('none');
+  const videoEffect = ref<'none' | 'blur' | 'image'>('none');
+  const backgroundImage = ref<string | null>(null);
 
   // ============================================================================
   // Getters
@@ -307,8 +308,12 @@ export const useVideoCallStore = defineStore('videoCall', () => {
         remoteVolumes.set(publicId, volume);
     },
     videoEffect,
-    setVideoEffect: (effect: 'none' | 'blur') => {
+    backgroundImage,
+    setVideoEffect: (effect: 'none' | 'blur' | 'image') => {
         videoEffect.value = effect;
+    },
+    setBackgroundImage: (image: string | null) => {
+        backgroundImage.value = image;
     }
   };
 });

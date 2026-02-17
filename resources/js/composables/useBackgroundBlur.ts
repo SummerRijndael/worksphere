@@ -25,6 +25,7 @@ export function useBackgroundBlur() {
     
     // Internal refs to keep tracks alive
     let sourceVideo: HTMLVideoElement | null = null;
+    let bgImage: HTMLImageElement | null = null;
     
     async function loadModel() {
         if (isLoaded.value || isLoading.value) return;
@@ -74,8 +75,10 @@ export function useBackgroundBlur() {
         }
     }
 
-    async function startBlur(
-        rawTrack: MediaStreamTrack
+    async function startVideoEffect(
+        rawTrack: MediaStreamTrack,
+        effect: 'blur' | 'image' = 'blur',
+        imageUrl?: string
     ): Promise<MediaStreamTrack> {
         if (!isLoaded.value) {
             await loadModel();
@@ -100,6 +103,17 @@ export function useBackgroundBlur() {
         video.muted = true;
         const sourceStream = new MediaStream([rawTrack]);
         video.srcObject = sourceStream;
+
+        if (effect === 'image' && imageUrl) {
+            bgImage = new Image();
+            bgImage.crossOrigin = "anonymous";
+            bgImage.src = imageUrl;
+            await new Promise((resolve) => {
+                if (!bgImage) return resolve(null);
+                bgImage.onload = resolve;
+                bgImage.onerror = resolve;
+            });
+        }
 
         await video.play();
 
@@ -281,8 +295,13 @@ export function useBackgroundBlur() {
              // 3. Final composition on main canvas
              ctx.clearRect(0, 0, w, h);
 
-             // Draw scaled-up background (provides natural blur)
-             ctx.drawImage(blurCanvas, 0, 0, w, h);
+             if (effect === 'image' && bgImage && bgImage.complete) {
+                // Draw background image
+                ctx.drawImage(bgImage, 0, 0, w, h);
+             } else {
+                // Draw scaled-up background (provides natural blur)
+                ctx.drawImage(blurCanvas, 0, 0, w, h);
+             }
              
              // Draw person on top
              ctx.drawImage(personCanvas, 0, 0, w, h);
@@ -321,7 +340,7 @@ export function useBackgroundBlur() {
 
     return {
         loadModel,
-        startBlur,
+        startVideoEffect,
         stopProcessing,
         isLoaded,
         isLoading,

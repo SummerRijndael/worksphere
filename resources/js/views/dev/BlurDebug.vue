@@ -11,6 +11,8 @@ const showMask = ref(false);
 const processingTime = ref(0);
 const frameCount = ref(0);
 const fps = ref(0);
+const currentEffect = ref<'blur' | 'image'>('blur');
+const testImageUrl = ref('https://images.unsplash.com/photo-1497366216548-37526070297c?q=80&w=1000');
 
 let stream: MediaStream | null = null;
 let animationFrame: number;
@@ -48,7 +50,11 @@ async function toggleProcessing() {
         const track = stream?.getVideoTracks()[0];
         if (track) {
             isRunning.value = true;
-            const processedTrack = await blur.startBlur(track);
+            const processedTrack = await blur.startVideoEffect(
+                track, 
+                currentEffect.value, 
+                currentEffect.value === 'image' ? testImageUrl.value : undefined
+            );
             const processedStream = new MediaStream([processedTrack]);
             if (videoRef.value) {
                 videoRef.value.srcObject = processedStream;
@@ -106,13 +112,23 @@ onUnmounted(() => {
                 <div class="p-4 bg-gray-100 dark:bg-gray-800 rounded-lg space-y-4">
                     <h3 class="font-semibold">Controls</h3>
                     
-                    <button 
-                        @click="toggleProcessing"
-                        class="px-4 py-2 rounded-lg font-medium transition-colors"
-                        :class="isRunning ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-blue-500 text-white hover:bg-blue-600'"
-                    >
-                        {{ isRunning ? 'Stop Blur' : 'Start Blur' }}
-                    </button>
+                    <div class="flex flex-col gap-2">
+                        <select 
+                            v-model="currentEffect"
+                            class="px-3 py-2 rounded-lg bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-sm"
+                        >
+                            <option value="blur">Blur Background</option>
+                            <option value="image">Virtual Image</option>
+                        </select>
+
+                        <button 
+                            @click="toggleProcessing"
+                            class="px-4 py-2 rounded-lg font-medium transition-colors"
+                            :class="isRunning ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-blue-500 text-white hover:bg-blue-600'"
+                        >
+                            {{ isRunning ? 'Stop Effect' : 'Start Effect' }}
+                        </button>
+                    </div>
 
                     <div class="space-y-2 text-sm text-gray-600 dark:text-gray-300">
                         <div class="flex justify-between">

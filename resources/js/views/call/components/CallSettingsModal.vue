@@ -361,8 +361,12 @@ watch(() => store.videoEffect, async (effect) => {
     if (!props.open || activeTab.value !== 'video' || !originalPreviewTrack) return;
 
     try {
-        if (effect === 'blur') {
-            const processedTrack = await backgroundBlur.startBlur(originalPreviewTrack);
+        if (effect === 'blur' || effect === 'image') {
+            const processedTrack = await backgroundBlur.startVideoEffect(
+                originalPreviewTrack, 
+                effect, 
+                store.backgroundImage || undefined
+            );
             previewProcessedStream.value = new MediaStream([processedTrack]);
             if (previewVideo.value) {
                 previewVideo.value.srcObject = previewProcessedStream.value;
@@ -381,6 +385,34 @@ watch(() => store.videoEffect, async (effect) => {
         console.error('[CallSettings] Error switching video effect:', e);
     }
 });
+
+const presetImages = [
+    { id: 'office', url: 'https://images.unsplash.com/photo-1497366216548-37526070297c?q=80&w=1000' },
+    { id: 'living-room', url: 'https://images.unsplash.com/photo-1583847268964-b28dc8f51f92?q=80&w=1000' },
+    { id: 'beach', url: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1000' },
+    { id: 'mountain', url: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?q=80&w=1000' }
+];
+
+const handleImageUpload = (event: Event) => {
+    const input = event.target as HTMLInputElement;
+    if (input.files && input.files[0]) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const result = e.target?.result as string;
+            store.setBackgroundImage(result);
+            if (store.videoEffect === 'image') {
+                // Re-trigger watcher by setting same value (or just call startVideoEffect)
+                store.setVideoEffect('image');
+            }
+        };
+        reader.readAsDataURL(input.files[0]);
+    }
+};
+
+const selectPreset = (url: string) => {
+    store.setBackgroundImage(url);
+    store.setVideoEffect('image');
+};
 
 watch(() => store.selectedVideoDeviceId, (newId) => {
     if (newId && props.open && activeTab.value === 'video') {
@@ -606,27 +638,84 @@ onBeforeUnmount(() => {
                                 </div>
                             </div>
 
-                            <div class="space-y-3">
-                                <label class="text-sm font-semibold text-(--text-primary)">Video Effects</label>
-                                <div class="flex items-center justify-between p-3 rounded-lg border border-(--border-subtle) bg-(--surface-secondary)/50">
-                                    <div class="flex items-center gap-3">
-                                        <div class="p-2 rounded-md bg-(--surface-tertiary)">
-                                            <Icon name="Aperture" size="18" class="text-(--text-secondary)" />
+                            <div class="space-y-4 pt-4 border-t border-(--border-subtle)">
+                                <label class="text-xs font-semibold uppercase tracking-wider text-(--text-tertiary)">Background Effects</label>
+                                <div class="grid grid-cols-4 gap-3">
+                                    <!-- None -->
+                                    <button 
+                                        @click="store.setVideoEffect('none')"
+                                        class="aspect-video rounded-lg border-2 flex flex-col items-center justify-center gap-1.5 transition-all bg-(--surface-tertiary)/10 hover:bg-(--surface-tertiary)/20 group"
+                                        :class="store.videoEffect === 'none' ? 'border-blue-500 bg-blue-500/5' : 'border-transparent hover:border-(--border-subtle)'"
+                                    >
+                                        <div class="p-1.5 rounded-full bg-(--surface-tertiary)/30 group-hover:scale-110 transition-transform">
+                                            <Icon name="Ban" size="14" class="text-(--text-secondary)" />
                                         </div>
-                                        <div>
-                                            <div class="text-sm font-medium text-(--text-primary)">Background Blur</div>
-                                            <div class="text-xs text-(--text-secondary)">Blur your surroundings</div>
+                                        <span class="text-[10px] font-medium text-(--text-secondary)">Off</span>
+                                    </button>
+
+                                    <!-- Blur -->
+                                    <button 
+                                        @click="store.setVideoEffect('blur')"
+                                        class="aspect-video rounded-lg border-2 flex flex-col items-center justify-center gap-1.5 transition-all bg-(--surface-tertiary)/10 hover:bg-(--surface-tertiary)/20 group"
+                                        :class="store.videoEffect === 'blur' ? 'border-blue-500 bg-blue-500/5' : 'border-transparent hover:border-(--border-subtle)'"
+                                    >
+                                        <div class="p-1.5 rounded-full bg-(--surface-tertiary)/30 group-hover:scale-110 transition-transform">
+                                            <Icon name="Aperture" size="14" class="text-(--text-secondary)" />
                                         </div>
-                                    </div>
-                                    <label class="relative inline-flex items-center cursor-pointer">
-                                        <input 
-                                            type="checkbox" 
-                                            class="sr-only peer"
-                                            :checked="store.videoEffect === 'blur'"
-                                            @change="(e: any) => store.setVideoEffect(e.target.checked ? 'blur' : 'none')"
-                                        >
-                                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                                        <span class="text-[10px] font-medium text-(--text-secondary)">Blur</span>
+                                    </button>
+
+                                    <!-- Presets -->
+                                    <button 
+                                        v-for="img in presetImages"
+                                        :key="img.id"
+                                        @click="selectPreset(img.url)"
+                                        class="aspect-video rounded-lg border-2 overflow-hidden transition-all relative group"
+                                        :class="store.videoEffect === 'image' && store.backgroundImage === img.url ? 'border-blue-500' : 'border-transparent hover:border-(--border-subtle)'"
+                                    >
+                                        <img :src="img.url" class="w-full h-full object-cover transition-transform group-hover:scale-110" />
+                                        <div class="absolute inset-0 bg-blue-600/20 flex items-center justify-center transition-opacity pointer-events-none" :class="store.videoEffect === 'image' && store.backgroundImage === img.url ? 'opacity-100' : 'opacity-0'">
+                                            <div class="bg-blue-600 rounded-full p-1 shadow-lg scale-90 group-hover:scale-100 transition-transform">
+                                                <Icon name="Check" size="10" class="text-white" />
+                                            </div>
+                                        </div>
+                                    </button>
+
+                                    <!-- Custom Upload -->
+                                    <label 
+                                        class="aspect-video rounded-lg border-2 border-dashed border-(--border-subtle) flex flex-col items-center justify-center gap-1.5 cursor-pointer hover:bg-(--surface-tertiary)/10 hover:border-blue-500/50 transition-all group"
+                                    >
+                                        <input type="file" class="hidden" accept="image/*" @change="handleImageUpload" />
+                                        <div class="p-1.5 rounded-full bg-(--surface-tertiary)/30 group-hover:scale-110 transition-transform">
+                                            <Icon name="Plus" size="14" class="text-(--text-secondary)" />
+                                        </div>
+                                        <span class="text-[10px] font-medium text-(--text-secondary)">Custom</span>
                                     </label>
+                                </div>
+
+                                <div class="flex items-center gap-1.5 text-[10px] text-(--text-tertiary) italic px-1">
+                                    <Icon name="Info" size="12" />
+                                    <span>Custom backgrounds are only stored in memory for the current session.</span>
+                                </div>
+
+                                <!-- Selected Custom Image (if it's not a preset) -->
+                                <div 
+                                    v-if="store.videoEffect === 'image' && !presetImages.find(p => p.url === store.backgroundImage) && store.backgroundImage"
+                                    class="p-2 rounded-lg bg-blue-500/5 border border-blue-500/20 flex items-center gap-3 animate-in fade-in slide-in-from-top-1"
+                                >
+                                    <div class="w-12 h-8 rounded border border-(--border-subtle) overflow-hidden shrink-0 shadow-sm">
+                                        <img :src="store.backgroundImage" class="w-full h-full object-cover" />
+                                    </div>
+                                    <div class="flex-1 min-w-0 text-left">
+                                        <div class="text-[11px] font-bold text-blue-600">Custom background active</div>
+                                        <div class="text-[10px] text-blue-500/60 truncate">Your uploaded image is being applied</div>
+                                    </div>
+                                    <button 
+                                        @click="store.setVideoEffect('none')"
+                                        class="p-1.5 hover:bg-blue-500/10 rounded-md text-blue-600 transition-colors"
+                                    >
+                                        <Icon name="X" size="14" />
+                                    </button>
                                 </div>
                             </div>
                         </div>

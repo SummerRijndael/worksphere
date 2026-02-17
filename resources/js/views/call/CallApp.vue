@@ -711,9 +711,13 @@ watch(() => store.videoEffect, async (effect) => {
     try {
         let newTrack: MediaStreamTrack;
 
-        if (effect === 'blur') {
-             newTrack = await backgroundBlur.startBlur(originalVideoTrack.value);
-             console.log('[Call] Blur track received:', newTrack?.id, 'enabled:', newTrack?.enabled);
+        if (effect === 'blur' || effect === 'image') {
+             newTrack = await backgroundBlur.startVideoEffect(
+                 originalVideoTrack.value, 
+                 effect, 
+                 store.backgroundImage || undefined
+             );
+             console.log(`[Call] ${effect} track received:`, newTrack?.id, 'enabled:', newTrack?.enabled);
         } else {
              backgroundBlur.stopProcessing();
              newTrack = originalVideoTrack.value;
@@ -798,8 +802,12 @@ async function acquireMedia(): Promise<MediaStream | null> {
                     originalVideoTrack.value = stream.getVideoTracks()[0];
                     
                     // Apply effects if needed
-                    if (store.videoEffect === 'blur' && originalVideoTrack.value) {
-                         const processedTrack = await backgroundBlur.startBlur(originalVideoTrack.value);
+                    if ((store.videoEffect === 'blur' || store.videoEffect === 'image') && originalVideoTrack.value) {
+                         const processedTrack = await backgroundBlur.startVideoEffect(
+                             originalVideoTrack.value,
+                             store.videoEffect,
+                             store.backgroundImage || undefined
+                         );
                          stream.removeTrack(originalVideoTrack.value);
                          stream.addTrack(processedTrack);
                     }
