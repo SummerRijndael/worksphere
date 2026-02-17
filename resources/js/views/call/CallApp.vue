@@ -26,13 +26,10 @@ import CallChatList from "./components/CallChatList.vue";
 import ChatComposer from "../chat/components/chat/ChatComposer.vue";
 import NetworkHealthIndicator from "./components/NetworkHealthIndicator.vue";
 import {
-    SelectFilter,
-    Separator,
     Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
 } from "@/components/ui";
+
+
 import { useBackgroundBlur } from "@/composables/useBackgroundBlur";
 import MediaViewer from "@/components/tools/MediaViewer.vue";
 
@@ -3603,37 +3600,6 @@ onBeforeUnmount(() => cleanup());
                         </div>
                     </div>
 
-                    <TooltipProvider v-if="!isMobile">
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <button
-                                    class="control-btn"
-                                    :class="{
-                                        active: isScreenSharing,
-                                        collapsed: isControlsCollapsed,
-                                    }"
-                                    @click="toggleScreenShare"
-                                >
-                                    <Icon
-                                        :name="
-                                            isScreenSharing
-                                                ? 'screen-share-off'
-                                                : 'screen-share'
-                                        "
-                                    />
-                                </button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                                <p>
-                                    {{
-                                        isScreenSharing
-                                            ? "Stop Sharing"
-                                            : "Share Screen"
-                                    }}
-                                </p>
-                            </TooltipContent>
-                        </Tooltip>
-                    </TooltipProvider>
 
 
                     <!-- STANDARD GRID LAYOUT -->
@@ -3991,15 +3957,19 @@ onBeforeUnmount(() => cleanup());
                                     size="24"
                                 />
                             </button>
-                            <button
+                            <Tooltip
                                 v-if="!isMobile"
-                                class="control-btn"
-                                :class="{ off: !isScreenSharing }"
-                                @click="toggleScreenShare"
-                                title="Share Screen"
+                                :content="isScreenSharing ? 'Stop Sharing' : 'Share Screen'"
                             >
-                                <Icon name="Monitor" size="24" />
-                            </button>
+                                <button
+                                    class="control-btn"
+                                    :class="{ off: !isScreenSharing }"
+                                    @click="toggleScreenShare"
+                                >
+                                    <Icon name="Monitor" size="24" />
+                                </button>
+                            </Tooltip>
+
 
 
                             <button
