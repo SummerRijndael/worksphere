@@ -249,10 +249,10 @@ export function useBackgroundBlur() {
                  }
 
                  // Convert ImageData to ImageBitmap for efficient canvas drawing
+                 if (isAutoFramingEnabled) {
+                     updateFraming(maskData, width, height);
+                 }
                  createImageBitmap(maskImageData).then(bmp => {
-                     if (isAutoFramingEnabled) {
-                         updateFraming(maskData, width, height);
-                     }
                      drawComposition(bmp, true);
                  }).catch(() => {
                      // Fallback: draw raw video if bitmap creation fails
@@ -274,7 +274,7 @@ export function useBackgroundBlur() {
                      maskImageDataHeight = height;
                  }
                  const data = maskImageData.data;
-                                 for (let i = 0; i < maskData.length; i++) {
+                 for (let i = 0; i < maskData.length; i++) {
                      const val = maskData[i]; // Class index
                      const alpha = val > 0 ? 255 : 0; // 0 = background
                      
@@ -285,6 +285,15 @@ export function useBackgroundBlur() {
                      data[j + 3] = alpha; // A
                  }
                  
+                 if (isAutoFramingEnabled) {
+                     // Convert Uint8Array to Float32Array for updateFraming
+                     const floatMaskData = new Float32Array(maskData.length);
+                     for (let i = 0; i < maskData.length; i++) {
+                         floatMaskData[i] = maskData[i] > 0 ? 1.0 : 0.0;
+                     }
+                     updateFraming(floatMaskData, width, height);
+                 }
+
                  createImageBitmap(maskImageData).then(bmp => {
                      drawComposition(bmp, true);
                  }).catch(() => {
@@ -306,46 +315,48 @@ export function useBackgroundBlur() {
              const w = canvas.width;
              const h = canvas.height;
 
-             // Update smooth framing
-             if (isAutoFramingEnabled) {
-                 framing.centerX += (framing.targetCenterX - framing.centerX) * 0.05;
-                 framing.centerY += (framing.targetCenterY - framing.centerY) * 0.05;
-                 framing.zoom += (framing.targetZoom - framing.zoom) * 0.05;
-             } else {
+              // Update smooth framing
+              if (isAutoFramingEnabled) {
+                  const lerpFactor = 0.08; // Slightly faster but still smooth
+                  framing.centerX += (framing.targetCenterX - framing.centerX) * lerpFactor;
+                  framing.centerY += (framing.targetCenterY - framing.centerY) * lerpFactor;
+                  framing.zoom += (framing.targetZoom - framing.zoom) * lerpFactor;
+              } else {
                  framing.centerX = 0.5;
                  framing.centerY = 0.5;
                  framing.zoom = 1.0;
              }
 
-             const drawOptimized = (targetCtx: CanvasRenderingContext2D, source: CanvasImageSource, targetWidth: number, targetHeight: number) => {
-                 targetCtx.imageSmoothingEnabled = true;
-                 targetCtx.imageSmoothingQuality = 'high';
-                 
-                 if (isAutoFramingEnabled && framing.zoom > 1.0) {
-                    const sw = w / framing.zoom;
-                    const sh = h / framing.zoom;
-                    const sx = (framing.centerX * w) - (sw / 2);
-                    const sy = (framing.centerY * h) - (sh / 2);
-                    
-                    // Constrain source rect
-                    const csx = Math.max(0, Math.min(w - sw, sx));
-                    const csy = Math.max(0, Math.min(h - sh, sy));
-                    
-                    targetCtx.drawImage(source, csx, csy, sw, sh, 0, 0, targetWidth, targetHeight);
-                 } else {
-                    targetCtx.drawImage(source, 0, 0, targetWidth, targetHeight);
-                 }
-             };
+              const drawOptimized = (targetCtx: CanvasRenderingContext2D, source: CanvasImageSource, targetWidth: number, targetHeight: number) => {
+                  const sourceW = (source as any).width || (source as HTMLVideoElement).videoWidth;
+                  const sourceH = (source as any).height || (source as HTMLVideoElement).videoHeight;
+
+                  if (isAutoFramingEnabled && framing.zoom > 1.0) {
+                     const sw_zoom = sourceW / framing.zoom;
+                     const sh_zoom = sourceH / framing.zoom;
+                     const sx_zoom = (framing.centerX * sourceW) - (sw_zoom / 2);
+                     const sy_zoom = (framing.centerY * sourceH) - (sh_zoom / 2);
+                     
+                     // Constrain source rect
+                     const csx = Math.max(0, Math.min(sourceW - sw_zoom, sx_zoom));
+                     const csy = Math.max(0, Math.min(sourceH - sh_zoom, sy_zoom));
+                     
+                     targetCtx.drawImage(source, csx, csy, sw_zoom, sh_zoom, 0, 0, targetWidth, targetHeight);
+                  } else {
+                     targetCtx.drawImage(source, 0, 0, targetWidth, targetHeight);
+                  }
+              };
+
 
              // 1. Prepare blurred background (on small canvas)
-             blurCtx.filter = 'blur(6px)'; 
+             blurCtx.filter = 'blur(4px)'; // Reduced from 6px
              drawOptimized(blurCtx, video, blurCanvas.width, blurCanvas.height);
              blurCtx.filter = 'none';
              
              // 2. Prepare person (on person canvas)
              personCtx.clearRect(0, 0, w, h);
              personCtx.save();
-             personCtx.filter = 'blur(3px)'; 
+             personCtx.filter = 'blur(2px)'; // Reduced from 3px
              drawOptimized(personCtx, mask, w, h);
              personCtx.restore();
              
@@ -355,14 +366,14 @@ export function useBackgroundBlur() {
 
              // 3. Final composition on main canvas
              ctx.imageSmoothingEnabled = true;
-             ctx.imageSmoothingQuality = 'high';
+             ctx.imageSmoothingQuality = 'medium'; // 'high' is too slow
              ctx.clearRect(0, 0, w, h);
 
-             if (currentEffect === 'image' && cachedBgCanvas) {
-                ctx.drawImage(cachedBgCanvas, 0, 0, w, h);
-             } else {
-                ctx.drawImage(blurCanvas, 0, 0, w, h);
-             }
+              if (currentEffect === 'image' && cachedBgCanvas) {
+                 drawOptimized(ctx, cachedBgCanvas, w, h);
+              } else {
+                 ctx.drawImage(blurCanvas, 0, 0, w, h);
+              }
              
              ctx.drawImage(personCanvas, 0, 0, w, h);
              
@@ -399,11 +410,11 @@ export function useBackgroundBlur() {
                 
                 framing.targetCenterX = (minX + maxX) / (2 * width);
                 framing.targetCenterY = (minY + maxY) / (2 * height);
-                
-                // Target zoom to keep person at ~70% of frame height
-                const desiredHeight = 0.7;
-                const zoomFactor = desiredHeight / personHeight;
-                framing.targetZoom = Math.max(1.0, Math.min(2.0, zoomFactor));
+                // Target zoom to keep person at ~60% of frame height (better balance)
+                 const desiredHeight = 0.6;
+                 const zoomFactor = desiredHeight / personHeight;
+                 framing.targetZoom = Math.max(1.0, Math.min(2.5, zoomFactor));
+
             } else {
                 framing.targetCenterX = 0.5;
                 framing.targetCenterY = 0.5;
