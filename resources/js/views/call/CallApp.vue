@@ -728,8 +728,11 @@ watch(() => store.videoEffect, async (effect) => {
              newTrack.enabled = !isCameraOff.value;
 
              // Replace in Peer Connections (Mesh)
-             peerConnections.forEach((pc) => {
-                 const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+             peers.forEach((peer) => {
+                 // @ts-ignore
+                 const pc = peer._pc as RTCPeerConnection;
+                 if (!pc) return;
+                 const sender = pc.getSenders().find((s: any) => s.track?.kind === 'video');
                  if (sender) {
                      sender.replaceTrack(newTrack);
                  }

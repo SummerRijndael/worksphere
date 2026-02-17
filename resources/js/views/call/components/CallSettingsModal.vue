@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, computed, watch } from "vue";
+import { ref, onMounted, onBeforeUnmount, computed, watch, nextTick } from "vue";
 import { Modal, Icon, Button, SelectFilter, Separator } from "@/components/ui";
 import { useVideoCallStore } from "@/stores/videocall";
 
@@ -17,12 +17,24 @@ const audioInputs = ref<MediaDeviceInfo[]>([]);
 const audioOutputs = ref<MediaDeviceInfo[]>([]);
 const videoInputs = ref<MediaDeviceInfo[]>([]);
 
-// Visualizer
+// Mic Visualizer
 const audioContext = ref<AudioContext | null>(null);
 const analyser = ref<AnalyserNode | null>(null);
 const microphoneStream = ref<MediaStream | null>(null);
 const volumeLevel = ref(0);
 let animationFrame: number;
+
+// Mic Volume (Gain)
+const micGain = ref(1.0); // 0.0 to 2.0
+let gainNode: GainNode | null = null;
+
+// Speaker Test
+const speakerTestPlaying = ref(false);
+const speakerLevel = ref(0);
+let speakerTestAudio: HTMLAudioElement | null = null;
+let speakerAudioContext: AudioContext | null = null;
+let speakerAnalyser: AnalyserNode | null = null;
+let speakerAnimationFrame: number | null = null;
 
 // Camera Preview
 const previewVideo = ref<HTMLVideoElement | null>(null);
@@ -59,10 +71,6 @@ const videoInputOptions = computed(() =>
 // Helper to get devices
 async function loadDevices() {
     try {
-        // Ensure permissions are granted so labels show up
-        // We might already have streams, but let's be safe.
-        // In a real app, you might want to only do this if streams exist.
-        
         const devices = await navigator.mediaDevices.enumerateDevices();
         audioInputs.value = devices.filter((d) => d.kind === "audioinput");
         audioOutputs.value = devices.filter((d) => d.kind === "audiooutput");
@@ -95,9 +103,16 @@ async function startVisualizer(deviceId: string) {
         audioContext.value = new AudioContext();
         analyser.value = audioContext.value.createAnalyser();
         analyser.value.fftSize = 256;
+        analyser.value.smoothingTimeConstant = 0.8;
         
         const source = audioContext.value.createMediaStreamSource(stream);
-        source.connect(analyser.value);
+        
+        // Add gain node for mic volume control
+        gainNode = audioContext.value.createGain();
+        gainNode.gain.value = micGain.value;
+        
+        source.connect(gainNode);
+        gainNode.connect(analyser.value);
         
         drawVisualizer();
     } catch (e) {
@@ -115,6 +130,8 @@ function stopVisualizer() {
         audioContext.value.close();
         audioContext.value = null;
     }
+    gainNode = null;
+    volumeLevel.value = 0;
 }
 
 function drawVisualizer() {
@@ -127,10 +144,95 @@ function drawVisualizer() {
     for (const v of dataArray) sum += v;
     const average = sum / dataArray.length;
     
-    // Smooth transition
-    volumeLevel.value = Math.min(100, Math.max(0, (average / 128) * 100)); // Normalize roughly
+    // Normalize with smoothing
+    const target = Math.min(100, Math.max(0, (average / 128) * 100));
+    volumeLevel.value = volumeLevel.value * 0.3 + target * 0.7;
     
     animationFrame = requestAnimationFrame(drawVisualizer);
+}
+
+// Mic Gain Control
+function setMicGain(value: number) {
+    micGain.value = value;
+    if (gainNode) {
+        gainNode.gain.value = value;
+    }
+}
+
+// Speaker Test Logic
+async function toggleSpeakerTest() {
+    if (speakerTestPlaying.value) {
+        stopSpeakerTest();
+        return;
+    }
+    
+    try {
+        // Create audio element with ringer sound
+        speakerTestAudio = new Audio('/static/sounds/inbound-call.mp3');
+        speakerTestAudio.volume = store.globalVolume;
+        speakerTestAudio.loop = false;
+        
+        // Set output device if supported
+        if (store.selectedOutputDeviceId && (speakerTestAudio as any).setSinkId) {
+            try {
+                await (speakerTestAudio as any).setSinkId(store.selectedOutputDeviceId);
+            } catch (e) {
+                console.warn('[CallSettings] Could not set output device:', e);
+            }
+        }
+        
+        // Create AudioContext for level metering
+        speakerAudioContext = new AudioContext();
+        speakerAnalyser = speakerAudioContext.createAnalyser();
+        speakerAnalyser.fftSize = 256;
+        
+        const source = speakerAudioContext.createMediaElementSource(speakerTestAudio);
+        source.connect(speakerAnalyser);
+        speakerAnalyser.connect(speakerAudioContext.destination);
+        
+        speakerTestAudio.addEventListener('ended', () => {
+            stopSpeakerTest();
+        });
+        
+        await speakerTestAudio.play();
+        speakerTestPlaying.value = true;
+        drawSpeakerMeter();
+    } catch (e) {
+        console.error('[CallSettings] Speaker test failed:', e);
+    }
+}
+
+function drawSpeakerMeter() {
+    if (!speakerAnalyser || !speakerTestPlaying.value) return;
+    
+    const dataArray = new Uint8Array(speakerAnalyser.frequencyBinCount);
+    speakerAnalyser.getByteFrequencyData(dataArray);
+    
+    let sum = 0;
+    for (const v of dataArray) sum += v;
+    const average = sum / dataArray.length;
+    
+    speakerLevel.value = Math.min(100, Math.max(0, (average / 128) * 100));
+    speakerAnimationFrame = requestAnimationFrame(drawSpeakerMeter);
+}
+
+function stopSpeakerTest() {
+    if (speakerTestAudio) {
+        speakerTestAudio.pause();
+        speakerTestAudio.currentTime = 0;
+        speakerTestAudio = null;
+    }
+    if (speakerAnimationFrame) {
+        cancelAnimationFrame(speakerAnimationFrame);
+        speakerAnimationFrame = null;
+    }
+    if (speakerAudioContext) {
+        speakerAudioContext.close();
+        speakerAudioContext = null;
+    }
+    speakerAnalyser = null;
+    speakerTestPlaying.value = false;
+    speakerLevel.value = 0;
 }
 
 // Camera Preview
@@ -146,7 +248,6 @@ async function startCameraPreview(deviceId?: string) {
         };
         const stream = await navigator.mediaDevices.getUserMedia(constraints);
         cameraStream.value = stream;
-        // Wait a tick for the ref to mount
         await new Promise(r => setTimeout(r, 50));
         if (previewVideo.value) {
             previewVideo.value.srcObject = stream;
@@ -170,10 +271,11 @@ function stopCameraPreview() {
 }
 
 // Watchers
-watch(() => props.open, (isOpen) => {
+watch(() => props.open, async (isOpen) => {
     if (isOpen) {
-        loadDevices();
-        if (store.selectedAudioDeviceId) {
+        await loadDevices();
+        await nextTick();
+        if (activeTab.value === 'audio' && store.selectedAudioDeviceId) {
             startVisualizer(store.selectedAudioDeviceId);
         }
         if (activeTab.value === 'video') {
@@ -182,20 +284,27 @@ watch(() => props.open, (isOpen) => {
     } else {
         stopVisualizer();
         stopCameraPreview();
+        stopSpeakerTest();
     }
 });
 
 watch(() => store.selectedAudioDeviceId, (newId) => {
-    if (newId && props.open) {
+    if (newId && props.open && activeTab.value === 'audio') {
         startVisualizer(newId);
     }
 });
 
 watch(activeTab, (tab) => {
-    if (tab === 'video' && props.open) {
-        startCameraPreview(store.selectedVideoDeviceId || undefined);
-    } else {
+    if (!props.open) return;
+    if (tab === 'audio') {
         stopCameraPreview();
+        if (store.selectedAudioDeviceId) {
+            startVisualizer(store.selectedAudioDeviceId);
+        }
+    } else if (tab === 'video') {
+        stopVisualizer();
+        stopSpeakerTest();
+        startCameraPreview(store.selectedVideoDeviceId || undefined);
     }
 });
 
@@ -206,13 +315,13 @@ watch(() => store.selectedVideoDeviceId, (newId) => {
 });
 
 onMounted(() => {
-    // If modal is already open on mount (unlikely but possible)
     if (props.open) loadDevices();
 });
 
 onBeforeUnmount(() => {
     stopVisualizer();
     stopCameraPreview();
+    stopSpeakerTest();
 });
 
 </script>
@@ -299,12 +408,42 @@ onBeforeUnmount(() => {
                                             ]"
                                         ></div>
                                     </div>
+
+                                    <!-- Mic Input Volume / Gain Slider -->
+                                    <div class="flex items-center gap-4">
+                                        <Icon :name="micGain === 0 ? 'MicOff' : 'Mic'" size="16" class="text-(--text-muted)" />
+                                        <input 
+                                            type="range" 
+                                            min="0" 
+                                            max="2" 
+                                            step="0.01"
+                                            :value="micGain"
+                                            @input="(e) => setMicGain(parseFloat((e.target as HTMLInputElement).value))"
+                                            class="flex-1 h-1 bg-(--surface-tertiary) rounded-full appearance-none cursor-pointer 
+                                                [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 
+                                                [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-600 [&::-webkit-slider-thumb]:shadow-md
+                                                [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white dark:[&::-webkit-slider-thumb]:border-(--surface-primary)
+                                                hover:[&::-webkit-slider-thumb]:scale-110 transition-all"
+                                        />
+                                        <span class="text-[10px] font-mono text-(--text-secondary) w-8 tabular-nums font-bold">{{ Math.round(micGain * 100) }}%</span>
+                                    </div>
                                 </div>
                             </div>
 
                             <!-- Speakers Section -->
                             <div class="space-y-3">
-                                <label class="text-sm font-semibold text-(--text-primary)">Output Device</label>
+                                <div class="flex items-center justify-between">
+                                    <label class="text-sm font-semibold text-(--text-primary)">Output Device</label>
+                                    <button
+                                        class="text-[10px] font-bold uppercase tracking-tight px-2 py-1 rounded-md transition-all"
+                                        :class="speakerTestPlaying 
+                                            ? 'bg-blue-600 text-white' 
+                                            : 'bg-(--surface-tertiary) text-(--text-secondary) hover:bg-(--surface-tertiary)/80'"
+                                        @click="toggleSpeakerTest"
+                                    >
+                                        {{ speakerTestPlaying ? '■ Stop' : '▶ Test' }}
+                                    </button>
+                                </div>
 
                                 <div class="space-y-4">
                                     <SelectFilter
@@ -318,7 +457,21 @@ onBeforeUnmount(() => {
                                         Using system default output.
                                     </div>
 
-                                    <!-- Standard Volume Slider -->
+                                    <!-- Speaker LED Meter (visible during test) -->
+                                    <div class="flex gap-1 h-1.5 items-center bg-black/5 dark:bg-black/40 p-0.5 rounded-sm border border-(--border-muted) shadow-inner">
+                                        <div 
+                                            v-for="i in 20" 
+                                            :key="i"
+                                            class="flex-1 h-full rounded-[1px] transition-all duration-75"
+                                            :class="[
+                                                speakerLevel >= (i * 5) 
+                                                    ? (i > 17 ? 'bg-error' : (i > 14 ? 'bg-warning' : 'bg-blue-500'))
+                                                    : 'bg-(--surface-tertiary)/20'
+                                            ]"
+                                        ></div>
+                                    </div>
+
+                                    <!-- Speaker Volume Slider -->
                                     <div class="flex items-center gap-4">
                                         <Icon :name="store.globalVolume === 0 ? 'VolumeX' : 'Volume1'" size="16" class="text-(--text-muted)" />
                                         <input 

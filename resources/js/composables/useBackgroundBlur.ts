@@ -15,6 +15,7 @@ export function useBackgroundBlur() {
     let canvas: HTMLCanvasElement | null = null;
     let ctx: CanvasRenderingContext2D | null = null;
     let animationFrameId: number | null = null;
+    let currentRunningMode: 'VIDEO' | 'IMAGE' = 'VIDEO';
     
     // Internal refs to keep tracks alive
     let sourceVideo: HTMLVideoElement | null = null;
@@ -32,11 +33,12 @@ export function useBackgroundBlur() {
                         "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite",
                     delegate: "GPU",
                 },
-                runningMode: "VIDEO",
+                runningMode: "VIDEO" as const,
                 outputCategoryMask: false, 
                 outputConfidenceMasks: true,
             });
             isLoaded.value = true;
+            currentRunningMode = 'VIDEO';
             console.log("[BackgroundBlur] Model loaded (GPU)");
         } catch(e) {
             console.warn("GPU Failed, trying CPU", e);
@@ -50,11 +52,12 @@ export function useBackgroundBlur() {
                                 "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite",
                             delegate: "CPU",
                         },
-                        runningMode: "IMAGE", // Use IMAGE mode for CPU to avoid implicit GPU requirements
+                        runningMode: "IMAGE" as const, // Use IMAGE mode for CPU to avoid implicit GPU requirements
                         outputCategoryMask: false, 
                         outputConfidenceMasks: true, // Try confidence mask on CPU to avoid TensorsToSegmentationCalculator GPU error
                     });
                      isLoaded.value = true;
+                     currentRunningMode = 'IMAGE';
                      console.log("[BackgroundBlur] Model loaded (CPU)");
              } catch (retryError) {
                  error.value = "Failed to load blur model";
@@ -103,7 +106,7 @@ export function useBackgroundBlur() {
             if (video.paused || video.ended) return;
             
             try {
-                if (segmenter.value.getOptions().runningMode === 'IMAGE') {
+                if (currentRunningMode === 'IMAGE') {
                     const result = segmenter.value.segment(video);
                     renderResult(result);
                 } else {
