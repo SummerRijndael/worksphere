@@ -25,7 +25,7 @@ export function useBackgroundBlur() {
         isLoading.value = true;
         try {
              const vision = await FilesetResolver.forVisionTasks(
-                "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm"
+                "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.32/wasm"
             );
             segmenter.value = await ImageSegmenter.createFromOptions(vision, {
                 baseOptions: {
@@ -44,7 +44,7 @@ export function useBackgroundBlur() {
             console.warn("GPU Failed, trying CPU", e);
              try {
                     const vision = await FilesetResolver.forVisionTasks(
-                        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm"
+                        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.32/wasm"
                     );
                     segmenter.value = await ImageSegmenter.createFromOptions(vision, {
                         baseOptions: {
@@ -127,6 +127,11 @@ export function useBackgroundBlur() {
             }
         };
 
+        // Reusable ImageData for mask rendering (avoids per-frame allocation)
+        let maskImageData: ImageData | null = null;
+        let maskImageDataWidth = 0;
+        let maskImageDataHeight = 0;
+
         let frameCount = 0;
         const renderResult = (result: ImageSegmenterResult) => {
             if (!ctx || !canvas) {
@@ -141,15 +146,42 @@ export function useBackgroundBlur() {
                     categoryMask: !!result.categoryMask,
                 });
             }
-            
-            // Handle GPU (Confidence Mask) vs CPU (Category Mask)
-            let personMaskBitmap: ImageBitmap | null = null;
-            let needsClose = false;
 
             if (result.confidenceMasks && result.confidenceMasks.length > 0) {
-                 // GPU Path: Use the first confidence mask (person segmentation)
-                 personMaskBitmap = result.confidenceMasks[0].getAsImageBitmap(); 
-                 needsClose = true;
+                 // Confidence mask: getAsFloat32Array returns values [0,1] per pixel
+                 const mask = result.confidenceMasks[0];
+                 const width = mask.width;
+                 const height = mask.height;
+                 const maskData = mask.getAsFloat32Array();
+
+                 // Reuse or create ImageData for mask
+                 if (!maskImageData || maskImageDataWidth !== width || maskImageDataHeight !== height) {
+                     maskImageData = new ImageData(width, height);
+                     maskImageDataWidth = width;
+                     maskImageDataHeight = height;
+                 }
+                 const data = maskImageData.data;
+
+                 for (let i = 0; i < maskData.length; i++) {
+                     // maskData[i] is confidence 0..1 that this pixel is a person
+                     const alpha = Math.round(maskData[i] * 255);
+                     const j = i * 4;
+                     data[j] = alpha;       // R (white where person)
+                     data[j + 1] = alpha;   // G
+                     data[j + 2] = alpha;   // B
+                     data[j + 3] = 255;     // A (fully opaque — use luminance as mask)
+                 }
+
+                 // Convert ImageData to ImageBitmap for efficient canvas drawing
+                 createImageBitmap(maskImageData).then(bmp => {
+                     drawComposition(bmp, true);
+                 }).catch(() => {
+                     // Fallback: draw raw video if bitmap creation fails
+                     if (ctx && canvas) {
+                         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                     }
+                     animationFrameId = requestAnimationFrame(draw);
+                 });
             } else if (result.categoryMask) {
                  // CPU Path: Process category mask (Multiclass: 0=bg, >0=person)
                  const mask = result.categoryMask;
@@ -157,40 +189,32 @@ export function useBackgroundBlur() {
                  const height = mask.height;
                  const maskData = mask.getAsUint8Array();
                  
-                 // Create an ImageData to draw
-                 const imageData = new ImageData(width, height);
-                 const data = imageData.data;
+                 if (!maskImageData || maskImageDataWidth !== width || maskImageDataHeight !== height) {
+                     maskImageData = new ImageData(width, height);
+                     maskImageDataWidth = width;
+                     maskImageDataHeight = height;
+                 }
+                 const data = maskImageData.data;
                  
                  for (let i = 0; i < maskData.length; i++) {
                      const val = maskData[i]; // Class index
-                     const isPerson = val > 0; // 0 is background
-                     const alpha = isPerson ? 255 : 0;
+                     const lum = val > 0 ? 255 : 0; // 0 = background
                      
                      const j = i * 4;
-                     data[j] = 0;     // R (Doesn't matter, we use as mask)
-                     data[j + 1] = 0; // G
-                     data[j + 2] = 0; // B
-                     data[j + 3] = alpha; // Alpha defines the mask
+                     data[j] = lum;       // R
+                     data[j + 1] = lum;   // G
+                     data[j + 2] = lum;   // B
+                     data[j + 3] = 255;   // A
                  }
                  
-                 // Temporary canvas to convert ImageData to ImageBitmap (or just draw ImageData)
-                 // Drawing ImageData directly to main canvas is fine for CPU fallback
-                 // But we need to scale it if mask size != video size? 
-                 // Multiclass is 256x256. Canvas is Video Size (e.g. 640x480).
-                 // putImageData requires strict size.
-                 // So we must use an offscreen canvas to scale.
-                 
-                 // Note: Creating new canvas/ImageData every frame is slow. 
-                 // Optimized approach: Reuse a small canvas.
-                 // For now, let's just create a quick bitmap via createImageBitmap which handles scaling when drawn.
-                 createImageBitmap(imageData).then(bmp => {
+                 createImageBitmap(maskImageData).then(bmp => {
                      drawComposition(bmp, true);
+                 }).catch(() => {
+                     if (ctx && canvas) {
+                         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                     }
+                     animationFrameId = requestAnimationFrame(draw);
                  });
-                 return; // Async completion
-            }
-
-            if (personMaskBitmap) {
-                drawComposition(personMaskBitmap, needsClose);
             } else {
                  // Fallback: draw raw video
                  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -201,31 +225,32 @@ export function useBackgroundBlur() {
         const drawComposition = (mask: ImageBitmap, shouldClose: boolean) => {
              if (!ctx || !canvas || !video) return;
 
-             ctx.clearRect(0, 0, canvas.width, canvas.height);
+             const w = canvas.width;
+             const h = canvas.height;
+
+             ctx.clearRect(0, 0, w, h);
              ctx.save();
              
-             // 1. Draw Mask
-             // We draw the mask scaled to the canvas size
-             ctx.drawImage(mask, 0, 0, canvas.width, canvas.height);
+             // 1. Draw the luminance mask (white=person, black=background)
+             ctx.globalCompositeOperation = 'source-over';
+             ctx.drawImage(mask, 0, 0, w, h);
              
-             // 2. Keep Person (Source-In)
+             // 2. Source-in: draw video only where mask is white (person)
              ctx.globalCompositeOperation = 'source-in';
-             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+             ctx.drawImage(video, 0, 0, w, h);
              
-             // 3. Draw Blurred Background (Destination-Over)
+             // 3. Destination-over: draw blurred video behind the person
              ctx.globalCompositeOperation = 'destination-over';
              ctx.filter = 'blur(15px)';
-             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+             ctx.drawImage(video, 0, 0, w, h);
              ctx.filter = 'none';
              
              ctx.restore();
              
-             if (shouldClose && typeof (mask as any).close === 'function') {
-                (mask as any).close();
+             if (shouldClose) {
+                mask.close();
              }
              
-            // For IMAGE mode (sync), we need to schedule next frame manually here
-            // For VIDEO mode (async callback), we also do it here
             animationFrameId = requestAnimationFrame(draw);
         };
         

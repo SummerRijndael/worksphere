@@ -2,6 +2,7 @@
 import { ref, onMounted, onBeforeUnmount, computed, watch, nextTick } from "vue";
 import { Modal, Icon, Button, SelectFilter, Separator } from "@/components/ui";
 import { useVideoCallStore } from "@/stores/videocall";
+import { useBackgroundBlur } from "@/composables/useBackgroundBlur";
 
 const props = defineProps<{
     open: boolean;
@@ -39,7 +40,10 @@ let speakerAnimationFrame: number | null = null;
 // Camera Preview
 const previewVideo = ref<HTMLVideoElement | null>(null);
 const cameraStream = ref<MediaStream | null>(null);
+const previewProcessedStream = ref<MediaStream | null>(null);
 const cameraError = ref<string | null>(null);
+const backgroundBlur = useBackgroundBlur();
+let originalPreviewTrack: MediaStreamTrack | null = null;
 
 const tabs = [
     { id: "audio", label: "Audio", icon: "Mic" },
@@ -278,8 +282,17 @@ async function startCameraPreview(deviceId?: string) {
         };
         const stream = await navigator.mediaDevices.getUserMedia(constraints);
         cameraStream.value = stream;
+        originalPreviewTrack = stream.getVideoTracks()[0];
+        
         await new Promise(r => setTimeout(r, 50));
-        if (previewVideo.value) {
+        
+        if (store.videoEffect === 'blur' && originalPreviewTrack) {
+            const processedTrack = await backgroundBlur.startBlur(originalPreviewTrack);
+            previewProcessedStream.value = new MediaStream([processedTrack]);
+            if (previewVideo.value) {
+                previewVideo.value.srcObject = previewProcessedStream.value;
+            }
+        } else if (previewVideo.value) {
             previewVideo.value.srcObject = stream;
         }
     } catch (e: any) {
@@ -291,10 +304,16 @@ async function startCameraPreview(deviceId?: string) {
 }
 
 function stopCameraPreview() {
+    backgroundBlur.stopProcessing();
     if (cameraStream.value) {
         cameraStream.value.getTracks().forEach(t => t.stop());
         cameraStream.value = null;
     }
+    if (previewProcessedStream.value) {
+        previewProcessedStream.value.getTracks().forEach(t => t.stop());
+        previewProcessedStream.value = null;
+    }
+    originalPreviewTrack = null;
     if (previewVideo.value) {
         previewVideo.value.srcObject = null;
     }
@@ -335,6 +354,31 @@ watch(activeTab, (tab) => {
         stopVisualizer();
         stopSpeakerTest();
         startCameraPreview(store.selectedVideoDeviceId || undefined);
+    }
+});
+
+watch(() => store.videoEffect, async (effect) => {
+    if (!props.open || activeTab.value !== 'video' || !originalPreviewTrack) return;
+
+    try {
+        if (effect === 'blur') {
+            const processedTrack = await backgroundBlur.startBlur(originalPreviewTrack);
+            previewProcessedStream.value = new MediaStream([processedTrack]);
+            if (previewVideo.value) {
+                previewVideo.value.srcObject = previewProcessedStream.value;
+            }
+        } else {
+            backgroundBlur.stopProcessing();
+            if (previewProcessedStream.value) {
+                previewProcessedStream.value.getTracks().forEach(t => t.stop());
+                previewProcessedStream.value = null;
+            }
+            if (previewVideo.value && cameraStream.value) {
+                previewVideo.value.srcObject = cameraStream.value;
+            }
+        }
+    } catch (e) {
+        console.error('[CallSettings] Error switching video effect:', e);
     }
 });
 

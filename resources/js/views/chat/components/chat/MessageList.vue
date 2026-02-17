@@ -259,7 +259,7 @@ function joinCall(invite: any) {
             <!-- Loading indicator (Infinite Scroll) -->
             <div v-if="isLoading" class="flex justify-center py-2">
                 <div
-                    class="w-6 h-6 border-2 border-[var(--interactive-primary)] border-t-transparent rounded-full animate-spin"
+                    class="w-6 h-6 border-2 border-(--interactive-primary) border-t-transparent rounded-full animate-spin"
                 />
             </div>
 
@@ -277,13 +277,13 @@ function joinCall(invite: any) {
                         v-if="shouldShowDateDivider(messages, index)"
                         class="flex items-center justify-center gap-3 py-6"
                     >
-                        <div class="h-px w-16 bg-[var(--border-default)]" />
+                        <div class="h-px w-16 bg-(--border-default)" />
                         <span
-                            class="text-xs text-[var(--text-tertiary)] font-medium uppercase tracking-wider"
+                            class="text-xs text-(--text-tertiary) font-medium uppercase tracking-wider"
                         >
                             {{ formatMessageDate(msg.created_at) }}
                         </span>
-                        <div class="h-px w-16 bg-[var(--border-default)]" />
+                        <div class="h-px w-16 bg-(--border-default)" />
                     </div>
 
                     <!-- Message Bubble -->
@@ -341,7 +341,7 @@ function joinCall(invite: any) {
                 v-else-if="activeChat && !isLoading && messages.length === 0"
                 class="flex-1 flex items-center justify-center h-full min-h-[50vh]"
             >
-                <div class="text-center text-[var(--text-secondary)]">
+                <div class="text-(--text-primary) text-(--text-secondary)">
                     <div class="text-3xl mb-3 opacity-50">
                         <Icon name="MessageSquare" size="48" />
                     </div>
@@ -355,15 +355,15 @@ function joinCall(invite: any) {
                 class="flex-1 flex items-center justify-center h-full min-h-[50vh]"
             >
                 <div
-                    class="text-center p-8 rounded-2xl bg-[var(--surface-elevated)] border border-[var(--border-default)] shadow-lg max-w-sm"
+                    class="text-center p-8 rounded-2xl bg-(--surface-elevated) border-(--border-default) shadow-lg max-w-sm"
                 >
                     <div class="text-5xl mb-4">💬</div>
                     <div
-                        class="text-lg font-semibold text-[var(--text-primary)] mb-2"
+                        class="text-lg font-semibold text-(--text-primary) mb-2"
                     >
                         Welcome back!
                     </div>
-                    <div class="text-[var(--text-secondary)]">
+                    <div class="text-(--text-secondary)">
                         Select a chat from the sidebar to start messaging.
                     </div>
                 </div>
@@ -382,7 +382,7 @@ function joinCall(invite: any) {
             <button
                 v-if="showScrollButton"
                 @click="jumpToLatest"
-                class="absolute bottom-6 right-6 p-3 rounded-full bg-[var(--surface-elevated)] text-[var(--interactive-primary)] shadow-lg border border-[var(--border-default)] hover:bg-[var(--surface-tertiary)] transition-all z-10"
+                class="absolute bottom-6 right-6 p-3 rounded-full bg-(--surface-elevated) text-(--interactive-primary) border-(--border-default) hover:bg-(--surface-tertiary) transition-all z-10"
                 title="Jump to latest"
             >
                 <svg
