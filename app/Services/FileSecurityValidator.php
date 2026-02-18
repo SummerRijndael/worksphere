@@ -2,9 +2,9 @@
 
 namespace App\Services;
 
+use finfo;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Validation\ValidationException;
-use finfo;
 
 /**
  * Service for validating file uploads using strict MIME type verification via finfo.
@@ -66,7 +66,7 @@ class FileSecurityValidator
     protected function validateMimeType(UploadedFile $file): void
     {
         $allowedMimes = config('email_attachments.allowed_mimes', []);
-        
+
         // Use finfo to get the reliable MIME type based on content
         $finfo = new finfo(FILEINFO_MIME_TYPE);
         $actualMime = $finfo->file($file->getRealPath());
@@ -90,39 +90,39 @@ class FileSecurityValidator
         $claimedMime = $file->getClientMimeType();
 
         // Check for MIME spoofing: strict equality check
-        // Note: Browsers sometimes guess mimes poorly (e.g. generic octet-stream), 
+        // Note: Browsers sometimes guess mimes poorly (e.g. generic octet-stream),
         // so we might need a whitelist of "safe but mismatched" mimes eventually.
         // For strict security, we enforce match or specific allowed aliases.
-        
+
         // Strict consistency check: Does actual mime match allowed mimes? (Already checked in validateMimeType)
-        
+
         // Consistency: Does actual mime match extension?
         // This stops "image.png" being a PHP script (text/x-php).
         // It also stops "resume.docx" being a ZIP file (application/zip).
-        
+
         // Optional: Check if claimed mime matches actual mime.
         // This is what the user suggested.
         // But be careful: a valid CSV might be uploaded as application/vnd.ms-excel but actual is text/csv.
         // If both are allowed, it's fine. If one is allowed, we rely on validateMimeType.
-        
-        // Let's implement the user's specific request for spoofing check, 
+
+        // Let's implement the user's specific request for spoofing check,
         // but maybe relax it for known harmless mismatches if needed.
         // For now, let's try strict.
-        
+
         if ($actualMime !== $claimedMime) {
-             // Exception for generic octet-stream being specifically identified as something else valid
-             if ($claimedMime === 'application/octet-stream') {
-                 return;
-             }
-             
-             // Exception for Office vs Zip: 
-             // If actual is zip, but claimed is docx -> Blocked (this is the vulnerability fix).
-             // If actual is docx, but claimed is zip -> Maybe allowed?
-             
-             // The user code:
-             // if ($actualMime !== $claimedMime) throw...
-             
-             throw ValidationException::withMessages([
+            // Exception for generic octet-stream being specifically identified as something else valid
+            if ($claimedMime === 'application/octet-stream') {
+                return;
+            }
+
+            // Exception for Office vs Zip:
+            // If actual is zip, but claimed is docx -> Blocked (this is the vulnerability fix).
+            // If actual is docx, but claimed is zip -> Maybe allowed?
+
+            // The user code:
+            // if ($actualMime !== $claimedMime) throw...
+
+            throw ValidationException::withMessages([
                 'file' => "MIME spoofing detected. Expected '{$claimedMime}', but found '{$actualMime}'.",
             ]);
         }

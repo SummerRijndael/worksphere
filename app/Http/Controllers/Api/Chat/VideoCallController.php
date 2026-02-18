@@ -102,11 +102,11 @@ class VideoCallController extends Controller
         $existingCallId = \Illuminate\Support\Facades\Cache::get($key);
 
         if ($existingCallId) {
-            // Self-Cleaning check: If current user is in the existing call, 
+            // Self-Cleaning check: If current user is in the existing call,
             // OR if all participants are offline, we can clean and take over.
             $participants = $this->getParticipantsList($chat->public_id, $existingCallId);
             $presenceService = app(\App\Services\Chat\PresenceService::class);
-            
+
             $othersOnline = false;
             foreach ($participants as $p) {
                 if ($p['public_id'] !== $user->public_id && $presenceService->isUserActive(User::where('public_id', $p['public_id'])->first()?->id ?? 0)) {
@@ -167,7 +167,7 @@ class VideoCallController extends Controller
 
         // Set active call pointer for the chat (Short Lease: 3 mins)
         $key = "chat:active_call:{$chat->public_id}";
-        \Illuminate\Support\Facades\Cache::put($key, $callId, 180); 
+        \Illuminate\Support\Facades\Cache::put($key, $callId, 180);
 
         return response()->json([
             'status' => 'ok',
@@ -255,7 +255,7 @@ class VideoCallController extends Controller
     public function heartbeat(Request $request, Chat $chat): JsonResponse
     {
         $this->findChatOrFail($chat);
-        
+
         $request->validate([
             'call_id' => 'required|string|regex:/^[0-9A-Z]{26}$/|max:26',
         ]);
@@ -267,11 +267,11 @@ class VideoCallController extends Controller
         if ($activeCallId === $callId) {
             // Refresh Lease (3 mins)
             \Illuminate\Support\Facades\Cache::put($key, $callId, 180);
-            
+
             // Also refresh meta and participants to keep everything in sync
             $metaKey = "call:meta:{$chat->public_id}:{$callId}";
             $partKey = $this->getCacheKey($chat->public_id, $callId);
-            
+
             if ($meta = \Illuminate\Support\Facades\Cache::get($metaKey)) {
                 \Illuminate\Support\Facades\Cache::put($metaKey, $meta, 180);
             }
@@ -308,6 +308,7 @@ class VideoCallController extends Controller
             $startedAt = $metadata['started_at'] ?? 0;
             if (now()->timestamp - $startedAt > 120) { // 2 mins idle with no participants
                 \Illuminate\Support\Facades\Cache::forget($key);
+
                 return response()->json(['active' => false]);
             }
         }

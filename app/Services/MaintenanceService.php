@@ -112,7 +112,7 @@ class MaintenanceService
     {
         try {
             $activeUsers = $this->presenceService->getActiveUsers();
-            
+
             return [
                 'total' => $activeUsers->count(),
                 'administrators' => $activeUsers->filter(fn ($user) => $user->hasRole('administrator'))->count(),
@@ -120,6 +120,7 @@ class MaintenanceService
             ];
         } catch (Throwable $e) {
             Log::warning('Failed to get online user stats', ['error' => $e->getMessage()]);
+
             return [
                 'total' => 0,
                 'administrators' => 0,

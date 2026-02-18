@@ -267,6 +267,7 @@ class Chat extends Model implements HasMedia
             ->where('user_id', '!=', $user->id)
             ->count();
     }
+
     /**
      * Register the media conversions.
      */

@@ -6,6 +6,7 @@ use App\Enums\AuditAction;
 use App\Models\BlockedUrl;
 use App\Services\AuditService;
 use App\Services\LinkUnfurlService;
+use App\Services\SecureOpenGraph;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Mockery;
@@ -17,6 +18,8 @@ class LinkUnfurlServiceTest extends TestCase
 
     protected $auditService;
 
+    protected $secureOpenGraph;
+
     protected $service;
 
     protected function setUp(): void
@@ -24,7 +27,8 @@ class LinkUnfurlServiceTest extends TestCase
         parent::setUp();
 
         $this->auditService = Mockery::mock(AuditService::class);
-        $this->service = new LinkUnfurlService($this->auditService);
+        $this->secureOpenGraph = Mockery::mock(SecureOpenGraph::class);
+        $this->service = new LinkUnfurlService($this->auditService, $this->secureOpenGraph);
     }
 
     public function test_it_unfurls_valid_url()
@@ -42,8 +46,9 @@ class LinkUnfurlServiceTest extends TestCase
 
         $url = 'https://example.com';
 
-        Cache::shouldReceive('remember')
+        Cache::shouldReceive('get')
             ->once()
+            ->with('link_unfurl:'.md5($url))
             ->andReturn([
                 'title' => 'Example',
                 'url' => $url,
