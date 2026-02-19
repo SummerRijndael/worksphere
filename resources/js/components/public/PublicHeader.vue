@@ -16,14 +16,14 @@ const authStore = useAuthStore();
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex items-center justify-between h-16">
                 <!-- Logo -->
-                <a href="/" target="_blank" class="flex items-center gap-2">
+                <RouterLink to="/" class="flex items-center gap-2">
                     <div class="h-9 w-9 rounded-xl bg-gradient-to-br from-[var(--color-primary-500)] to-[var(--color-primary-700)] flex items-center justify-center shadow-lg shadow-[var(--color-primary-500)]/25">
                         <svg class="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
                         </svg>
                     </div>
                     <span class="text-xl font-bold text-[var(--text-primary)]">{{ appConfig.name }}</span>
-                </a>
+                </RouterLink>
 
                 <!-- Desktop Navigation -->
                 <nav class="hidden md:flex items-center gap-8">
@@ -36,7 +36,7 @@ const authStore = useAuthStore();
                     <a href="/#reviews" class="text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
                         Reviews
                     </a>
-                    <RouterLink to="/support" class="text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
+                    <RouterLink to="/public/support" class="text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
                         Support
                     </RouterLink>
                     <RouterLink to="/public/faq" class="text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
@@ -93,7 +93,7 @@ const authStore = useAuthStore();
                         <a href="/#reviews" class="px-3 py-2 text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)] rounded-lg transition-colors" @click="mobileMenuOpen = false">
                             Reviews
                         </a>
-                        <RouterLink to="/support" class="px-3 py-2 text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)] rounded-lg transition-colors" @click="mobileMenuOpen = false">
+                        <RouterLink to="/public/support" class="px-3 py-2 text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)] rounded-lg transition-colors" @click="mobileMenuOpen = false">
                             Support
                         </RouterLink>
                         <RouterLink to="/public/faq" class="px-3 py-2 text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)] rounded-lg transition-colors" @click="mobileMenuOpen = false">

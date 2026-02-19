@@ -26,8 +26,6 @@ class AccountLockoutService
     {
         // 1. Check if user is already currently suspended
         if ($user->suspended_until?->isFuture()) {
-            // Already serving a penalty. Do not escalate further until this expires.
-            // (Prevents bots from banning a user instantly by spamming 100 times)
             return;
         }
 

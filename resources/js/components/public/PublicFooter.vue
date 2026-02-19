@@ -47,7 +47,7 @@ import { appConfig } from '@/config/app';
                             </RouterLink>
                         </li>
                         <li>
-                            <RouterLink to="/support" class="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
+                            <RouterLink to="/public/support" class="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
                                 Support
                             </RouterLink>
                         </li>

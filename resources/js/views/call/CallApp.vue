@@ -3448,6 +3448,30 @@ onBeforeUnmount(() => cleanup());
             </div>
         </transition>
 
+        <!-- HARDWARE CONSTRAINT ALERT (Background Blur) -->
+        <transition
+            enter-active-class="transition ease-out duration-300"
+            enter-from-class="opacity-0 -translate-y-4"
+            enter-to-class="opacity-100 translate-y-0"
+            leave-active-class="transition ease-in duration-200"
+            leave-from-class="opacity-100 translate-y-0"
+            leave-to-class="opacity-0 -translate-y-4"
+        >
+            <div
+                v-if="backgroundBlur.error.value"
+                class="fixed top-24 left-1/2 -translate-x-1/2 z-100 bg-amber-600/95 backdrop-blur-md text-white px-5 py-2.5 rounded-xl shadow-2xl flex items-center gap-3 text-sm font-medium border border-amber-400/30 max-w-[90vw] text-center"
+            >
+                <Icon name="ZapOff" size="18" />
+                <span>{{ backgroundBlur.error.value }}</span>
+                <button 
+                    @click="backgroundBlur.error.value = null"
+                    class="ml-2 hover:bg-white/20 p-1 rounded-full transition-colors"
+                >
+                    <Icon name="X" size="14" />
+                </button>
+            </div>
+        </transition>
+
         <!-- ERROR STATE -->
         <div v-if="callState === 'error'" class="call-center-content">
             <div class="state-icon error">

@@ -14,6 +14,8 @@
     <img src="https://img.shields.io/badge/PHP-8.2%2B-777BB4?style=for-the-badge&logo=php&logoColor=white" alt="PHP 8.2+">
     <img src="https://img.shields.io/badge/Laravel-12.x-FF2D20?style=for-the-badge&logo=laravel&logoColor=white" alt="Laravel 12">
     <img src="https://img.shields.io/badge/Vue.js-3.5-4FC08D?style=for-the-badge&logo=vue.js&logoColor=white" alt="Vue 3">
+    <br>
+    <img src="https://img.shields.io/badge/OWASP%20ZAP-Tested-blue?style=for-the-badge&logo=owasp&logoColor=white" alt="OWASP ZAP Tested">
 </p>
 
 <!-- Support -->
@@ -51,7 +53,8 @@
 | ![Reverb](https://img.shields.io/badge/Laravel_Reverb-FF2D20?style=flat-square&logo=laravel&logoColor=white) **Real-time (WebSocket)** | ![Pinia](https://img.shields.io/badge/Pinia-State_Management-yellow?style=flat-square&logo=vue.js&logoColor=white) **State Management** |
 | ![MySQL](https://img.shields.io/badge/MySQL_8-4479A1?style=flat-square&logo=mysql&logoColor=white) **Database** | ![Tailwind](https://img.shields.io/badge/Tailwind_CSS_4.0-38B2AC?style=flat-square&logo=tailwind-css&logoColor=white) **Styling** |
 | ![Redis](https://img.shields.io/badge/Redis-Cache-DC382D?style=flat-square&logo=redis&logoColor=white) **Cache/Queue** | ![Vite](https://img.shields.io/badge/Vite_6.0-646CFF?style=flat-square&logo=vite&logoColor=white) **Build Tool** |
-| **Authentication:** Fortify + Sanctum + Socialite | **Key Libs:** Tiptap, FullCalendar, Chart.js |
+| ![Firewall](https://img.shields.io/badge/Laravel_Firewall-2.3-FF2D20?style=flat-square&logo=laravel&logoColor=white) **Security** | ![WebRTC](https://img.shields.io/badge/WebRTC-SimplePeer-333333?style=flat-square&logo=webrtc&logoColor=white) **Real-time Calls** |
+| **Authentication:** Fortify + Sanctum + Socialite | **Key Libs:** Tiptap, FullCalendar, Chart.js, sdp-transform |
 
 ## ✨ Core Features & Modules
 

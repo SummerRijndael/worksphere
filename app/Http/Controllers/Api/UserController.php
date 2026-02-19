@@ -72,7 +72,7 @@ class UserController extends Controller
 
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255', 'regex:/^[\pL\s\-\']+$/u'],
-            'email' => ['required', 'string', 'email:rfc,dns', 'max:255', 'unique:users'],
+            'email' => ['required', 'string', 'email:rfc', 'max:255', 'unique:users'],
             'username' => ['nullable', 'string', 'min:3', 'max:50', 'regex:/^[a-zA-Z0-9_\-]+$/', 'unique:users'],
             'role' => ['required', 'string', 'exists:roles,name'],
             'status' => ['required', 'string', 'in:active,inactive,suspended'],
@@ -141,7 +141,7 @@ class UserController extends Controller
 
         // Email can only be changed by the user themselves (self-service)
         if ($authUser->is($user)) {
-            $rules['email'] = ['sometimes', 'string', 'email:rfc,dns', 'max:255', Rule::unique('users')->ignore($user->id)];
+            $rules['email'] = ['sometimes', 'string', 'email:rfc', 'max:255', Rule::unique('users')->ignore($user->id)];
         }
 
         // Role changes require users.manage_roles permission
@@ -221,7 +221,7 @@ class UserController extends Controller
 
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255', 'regex:/^[\pL\s\-\']+$/u'],
-            'email' => ['required', 'string', 'email:rfc,dns', 'max:255', Rule::unique('users')->ignore($user->id)],
+            'email' => ['required', 'string', 'email:rfc', 'max:255', Rule::unique('users')->ignore($user->id)],
             'username' => ['nullable', 'string', 'min:3', 'max:50', 'regex:/^[a-zA-Z0-9_\-]+$/', Rule::unique('users')->ignore($user->id)],
             'title' => ['nullable', 'string', 'max:255'],
             'bio' => ['nullable', 'string', 'max:1000'],

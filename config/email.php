@@ -3,6 +3,19 @@
 return [
     /*
     |--------------------------------------------------------------------------
+    | IMAP Default Settings (System Receiver)
+    |--------------------------------------------------------------------------
+    */
+    'imap_defaults' => [
+        'host' => env('MAIL_IMAP_HOST'),
+        'port' => env('MAIL_IMAP_PORT', 993),
+        'encryption' => env('MAIL_IMAP_ENCRYPTION', 'ssl'),
+        'username' => env('MAIL_IMAP_USERNAME'),
+        'password' => env('MAIL_IMAP_PASSWORD'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Email Sending Configuration
     |--------------------------------------------------------------------------
     */

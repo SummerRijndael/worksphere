@@ -6,7 +6,7 @@
         "build": "vite build",
         "dev": "vite",
         "vue-tsc": "vue-tsc --noEmit",
-        "start-all": "php artisan storage:link 2>/dev/null && php artisan optimize:clear && concurrently \"php artisan monitor:stream\" \"php artisan boost:mcp\" \"php artisan serve --host=0.0.0.0\" \"php artisan reverb:start --port=9000 --debug\" \"php artisan schedule:work\" \"npm run pulse\" \"npm run dev -- --host\" \"php artisan horizon\" --names=\"stream,serve,reverb,sched,pulse,vite,horizon\" --prefix-colors=\"gray,blue,red,yellow,cyan,magenta,cyan\"",
+        "start-all": "php artisan storage:link 2>/dev/null && php artisan optimize:clear && concurrently \"npm run dev\" \"php artisan monitor:stream\" \"php artisan boost:mcp\" \"php artisan serve --host=0.0.0.0\" \"php artisan reverb:start --port=9000 --debug\" \"php artisan schedule:work\" \"php artisan horizon\" --names=\"vite,stream,mcp,serve,reverb,sched,horizon\" --prefix-colors=\"green,gray,red,blue,yellow,magenta,cyan\"",
         "pulse": "while true; do php artisan pulse:check; sleep 5; done"
     },
     "dependencies": {

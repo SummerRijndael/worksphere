@@ -22,12 +22,25 @@ class SecurityHeaders
      */
     public function handle(Request $request, Closure $next): Response
     {
+        // 1. Host Header Validation (Fixes Red Flag: Cloud Metadata Exposure)
+        // Prevent Host Header Poisoning by ensuring the request matches our APP_URL domain
+        $host = $request->getHost();
+        $allowedHost = parse_url(config('app.url'), PHP_URL_HOST);
+        
+        // Also allow the actual local IP if scanning via IP
+        $allowedIps = ['127.0.0.1', 'localhost', '192.168.37.128'];
+        
+        if ($host !== $allowedHost && !in_array($host, $allowedIps)) {
+            // Block requests with malicious or unexpected Host headers
+            return response()->json(['message' => 'Invalid Host header.'], 403);
+        }
+
         $response = $next($request);
 
         // Prevent MIME-type sniffing
         $response->headers->set('X-Content-Type-Options', 'nosniff');
 
-        // Prevent clickjacking - allow same origin framing only
+        // Prevent clickjacking - allow same origin framing only (redundant but safe)
         $response->headers->set('X-Frame-Options', 'SAMEORIGIN');
 
         // Legacy XSS protection (modern browsers use CSP instead)
@@ -36,20 +49,20 @@ class SecurityHeaders
         // Control referrer information
         $response->headers->set('Referrer-Policy', 'strict-origin-when-cross-origin');
 
-        // Remove server version disclosure (PHP level and response level)
+        // Add HSTS (Strict-Transport-Security) for 1 year
+        // Note: Only effective over HTTPS
+        $response->headers->set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+
+        // Remove server version disclosure
         if (function_exists('header_remove')) {
             header_remove('X-Powered-By');
         }
         $response->headers->remove('X-Powered-By');
 
-        // Permissions Policy (formerly Feature Policy)
-        // geolocation=(): Disabled (empty list)
-        // microphone=(self): Allowed for this origin
-        // camera=(self): Allowed for this origin
-        // display-capture=(self): Allowed for this origin (Required for Screen Sharing)
+        // Permissions Policy
         $response->headers->set('Permissions-Policy', 'geolocation=(), microphone=(self), camera=(self), display-capture=(self)');
 
-        // Content Security Policy (skip for Horizon and Pulse which use inline scripts/Livewire)
+        // Content Security Policy
         if (! $request->is('horizon*', 'pulse*')) {
             $this->addCspHeader($response);
         }
@@ -75,17 +88,29 @@ class SecurityHeaders
             if (file_exists($hotFile)) {
                 $viteUrl = trim(file_get_contents($hotFile));
                 if ($viteUrl) {
-                    // Normalize URL to just origin if needed, or simple add
                     $scriptSrc .= " {$viteUrl}";
                     $styleSrc .= " {$viteUrl}";
-                    // Websocket connection for HMR (ws://...
                     $connectSrc .= ' ws://'.parse_url($viteUrl, PHP_URL_HOST).':'.parse_url($viteUrl, PHP_URL_PORT);
                     $connectSrc .= " {$viteUrl}";
                 }
             }
         }
 
-        // Allow images from self, data URIs (base64), and S3/R2 (https)
+        // Reverb WebSocket Connection (Explicitly add Reverb Host)
+        // We use the app URL's host or localhost, and the configured Reverb port
+        $reverbHost = parse_url(config('app.url'), PHP_URL_HOST) ?? 'localhost';
+        $reverbPort = config('reverb.servers.reverb.port', 8080);
+        // Also add the REVERB_PORT from .env if it differs (usually 9000)
+        $envReverbPort = env('REVERB_PORT', 9000);
+
+        $connectSrc .= " ws://{$reverbHost}:{$reverbPort} wss://{$reverbHost}:{$reverbPort}";
+        $connectSrc .= " ws://localhost:{$reverbPort} ws://127.0.0.1:{$reverbPort}";
+        
+        if ($envReverbPort != $reverbPort) {
+             $connectSrc .= " ws://{$reverbHost}:{$envReverbPort} wss://{$reverbHost}:{$envReverbPort}";
+             $connectSrc .= " ws://localhost:{$envReverbPort} ws://127.0.0.1:{$envReverbPort}";
+        }
+
         $imgSrc = "'self' data: https: blob: cid:";
         if (app()->isLocal()) {
             $imgSrc .= ' http:';
@@ -96,19 +121,12 @@ class SecurityHeaders
             "default-src 'self'",
             "script-src {$scriptSrc} 'wasm-unsafe-eval' https://www.google.com https://www.gstatic.com https://cdn.jsdelivr.net https://storage.googleapis.com https://static.cloudflareinsights.com",
             "script-src-elem {$scriptSrc} https://www.google.com https://www.gstatic.com https://cdn.jsdelivr.net https://storage.googleapis.com https://static.cloudflareinsights.com",
-            // Unsafe-inline for styles is required by many UI libraries (Vue/Tailwind components)
-            // Fonts.bunny.net is used for Inter font
             "style-src {$styleSrc}",
-            // Allow data: fonts (often used by icon sets or inline fonts)
-            // Using quote to match the exact string from view_file
             "font-src 'self' https://fonts.bunny.net https://fonts.gstatic.com data:",
-            // Allow images from self, data URIs (base64), and S3/R2 (https)
             "img-src {$imgSrc}",
-            // Connect to self, Vite HMR, and Reverb WebSockets (port 9000 usually)
-            // Adding ws: and wss: schemes generally to allow websocket connections
-            "connect-src {$connectSrc} ws: wss: https://www.google.com https://cdn.jsdelivr.net https://storage.googleapis.com https://static.cloudflareinsights.com",
-            // Frame src for reCAPTCHA
+            "connect-src {$connectSrc} https://www.google.com https://cdn.jsdelivr.net https://storage.googleapis.com https://static.cloudflareinsights.com",
             "frame-src 'self' https://www.google.com https://www.gstatic.com",
+            "frame-ancestors 'self'",
             "object-src 'none'",
             "base-uri 'self'",
             "form-action 'self'",

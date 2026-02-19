@@ -64,9 +64,7 @@ return Application::configure(basePath: dirname(__DIR__))
             \Akaunting\Firewall\Middleware\Referrer::class,
             \Akaunting\Firewall\Middleware\Rfi::class,
             \Akaunting\Firewall\Middleware\Sqli::class,
-            // \Akaunting\Firewall\Middleware\Swear::class, // Optional
             \Akaunting\Firewall\Middleware\Xss::class,
-            // \Akaunting\Firewall\Middleware\Geo::class, // Optional, can be heavy
 
             CheckUserStatus::class,
             \App\Http\Middleware\SecurityHeaders::class,
@@ -76,7 +74,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // API middleware configuration
         $middleware->api(prepend: [
-            \App\Http\Middleware\SecurityHeaders::class,  // Must be first for all responses
+            \App\Http\Middleware\SecurityHeaders::class,
             \Akaunting\Firewall\Middleware\Ip::class,
             \Akaunting\Firewall\Middleware\Agent::class,
             \Akaunting\Firewall\Middleware\Bot::class,
@@ -101,7 +99,12 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Exclude certain API routes from CSRF verification
         // These routes are protected by auth:sanctum and rate limiting
+        // Exclude certain API routes from CSRF verification
+        // These routes are protected by auth:sanctum and rate limiting
         $middleware->validateCsrfTokens(except: [
+            // 'api/*', // Temporarily Allow All API for ZAP Scan
+            'stripe/*',
+            'reverb/*',
             'api/two-factor-challenge',
             'api/two-factor-challenge/*',
             'api/email/verification-notification',
