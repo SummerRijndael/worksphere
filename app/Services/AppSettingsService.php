@@ -20,49 +20,79 @@ class AppSettingsService
     /**
      * Mapping of setting keys to env/config keys.
      */
+    /**
+     * Settings that require password confirmation to change.
+     */
+    protected array $criticalSettings = [
+        'app.url',
+        'app.is_demo_mode',
+        'auth.registration_enabled',
+        'auth.email_verification',
+        'auth.social_login_enabled',
+        'mail.host',
+        'mail.username',
+        'mail.password',
+        'mail.imap_host',
+        'mail.imap_username',
+        'mail.imap_password',
+        'recaptcha.site_key',
+        'recaptcha.secret_key',
+        'google.client_id',
+        'google.client_secret',
+        'github.client_id',
+        'github.client_secret',
+        'twilio.sid',
+        'twilio.auth_token',
+        'twilio.verify_sid',
+        'openai.api_key',
+    ];
+
+    /**
+     * Mapping of setting keys to config keys.
+     */
     protected array $envMappings = [
         // Application
-        'app.name' => ['env' => 'APP_NAME', 'config' => 'app.name'],
-        'app.url' => ['env' => 'APP_URL', 'config' => 'app.url'],
-        'app.timezone' => ['env' => 'APP_TIMEZONE', 'config' => 'app.timezone'],
-        'app.locale' => ['env' => 'APP_LOCALE', 'config' => 'app.locale'],
-        'app.is_demo_mode' => ['env' => 'APP_DEMO_MODE', 'config' => 'app.is_demo_mode', 'default' => false],
+        'app.name' => ['config' => 'app.name'],
+        'app.url' => ['config' => 'app.url'],
+        'app.timezone' => ['config' => 'app.timezone'],
+        'app.locale' => ['config' => 'app.locale'],
+        'app.is_demo_mode' => ['config' => 'app.is_demo_mode', 'default' => false],
         // Security
         'auth.registration_enabled' => ['config' => 'auth.registration_enabled', 'default' => true],
         'auth.email_verification' => ['config' => 'auth.email_verification', 'default' => true],
-        'session.lifetime' => ['env' => 'SESSION_LIFETIME', 'config' => 'session.lifetime'],
+        'session.lifetime' => ['config' => 'session.lifetime'],
         // Mail (System Default Sender)
-        'mail.from_address' => ['env' => 'MAIL_FROM_ADDRESS', 'config' => 'mail.from.address'],
-        'mail.from_name' => ['env' => 'MAIL_FROM_NAME', 'config' => 'mail.from.name'],
-        'mail.host' => ['env' => 'MAIL_HOST', 'config' => 'mail.mailers.smtp.host'],
-        'mail.port' => ['env' => 'MAIL_PORT', 'config' => 'mail.mailers.smtp.port'],
-        'mail.username' => ['env' => 'MAIL_USERNAME', 'config' => 'mail.mailers.smtp.username'],
-        'mail.password' => ['env' => 'MAIL_PASSWORD', 'config' => 'mail.mailers.smtp.password'],
-        'mail.encryption' => ['env' => 'MAIL_ENCRYPTION', 'config' => 'mail.mailers.smtp.encryption'],
+        'mail.from_address' => ['config' => 'mail.from.address'],
+        'mail.from_name' => ['config' => 'mail.from.name'],
+        'mail.host' => ['config' => 'mail.mailers.smtp.host'],
+        'mail.port' => ['config' => 'mail.mailers.smtp.port'],
+        'mail.username' => ['config' => 'mail.mailers.smtp.username'],
+        'mail.password' => ['config' => 'mail.mailers.smtp.password'],
+        'mail.encryption' => ['config' => 'mail.mailers.smtp.encryption'],
         // IMAP (System Default Receiver)
-        'mail.imap_host' => ['env' => 'MAIL_IMAP_HOST', 'config' => 'email.imap_defaults.host'],
-        'mail.imap_port' => ['env' => 'MAIL_IMAP_PORT', 'config' => 'email.imap_defaults.port'],
-        'mail.imap_username' => ['env' => 'MAIL_IMAP_USERNAME', 'config' => 'email.imap_defaults.username'],
-        'mail.imap_password' => ['env' => 'MAIL_IMAP_PASSWORD', 'config' => 'email.imap_defaults.password'],
-        'mail.imap_encryption' => ['env' => 'MAIL_IMAP_ENCRYPTION', 'config' => 'email.imap_defaults.encryption'],
+        'mail.imap_host' => ['config' => 'email.imap_defaults.host'],
+        'mail.imap_port' => ['config' => 'email.imap_defaults.port'],
+        'mail.imap_username' => ['config' => 'email.imap_defaults.username'],
+        'mail.imap_password' => ['config' => 'email.imap_defaults.password'],
+        'mail.imap_encryption' => ['config' => 'email.imap_defaults.encryption'],
         // reCAPTCHA
-        'recaptcha.site_key' => ['env' => 'RECAPTCHA_V3_SITE_KEY'],
-        'recaptcha.secret_key' => ['env' => 'RECAPTCHA_V3_SECRET_KEY'],
+        'recaptcha.site_key' => ['config' => 'recaptcha.site_key'],
+        'recaptcha.secret_key' => ['config' => 'recaptcha.secret_key'],
         // Google OAuth
-        'google.client_id' => ['env' => 'GOOGLE_CLIENT_ID', 'config' => 'services.google.client_id'],
-        'google.client_secret' => ['env' => 'GOOGLE_CLIENT_SECRET', 'config' => 'services.google.client_secret'],
+        'google.client_id' => ['config' => 'services.google.client_id'],
+        'google.client_secret' => ['config' => 'services.google.client_secret'],
         // GitHub OAuth
-        'github.client_id' => ['env' => 'GITHUB_CLIENT_ID', 'config' => 'services.github.client_id'],
-        'github.client_secret' => ['env' => 'GITHUB_CLIENT_SECRET', 'config' => 'services.github.client_secret'],
+        'github.client_id' => ['config' => 'services.github.client_id'],
+        'github.client_secret' => ['config' => 'services.github.client_secret'],
         // Social Control
         'auth.social_login_enabled' => ['config' => 'auth.social_login_enabled', 'default' => true],
         // Twilio
-        'twilio.sid' => ['env' => 'TWILIO_SID'],
-        'twilio.auth_token' => ['env' => 'TWILIO_AUTH_TOKEN'],
-        'twilio.verify_sid' => ['env' => 'TWILIO_VERIFY_SERVICE_SID'],
+        'twilio.sid' => ['config' => 'services.twilio.sid'],
+        'twilio.auth_token' => ['config' => 'services.twilio.token'],
+        'twilio.verify_sid' => ['config' => 'services.twilio.verify_sid'],
         // OpenAI
-        'openai.api_key' => ['env' => 'OPENAI_API_KEY'],
-        'openai.organization' => ['env' => 'OPENAI_ORGANIZATION'],
+        'openai.api_key' => ['config' => 'services.openai.api_key'],
+        'openai.organization' => ['config' => 'services.openai.organization'],
         // Storage
         'storage.max_team_storage' => ['config' => 'storage.max_team_storage', 'default' => 1024], // MB
         // Team Lifecycle
@@ -86,8 +116,24 @@ class AppSettingsService
             return $settings[$key];
         }
 
-        // Fall back to env/config
-        return $this->getEnvFallback($key, $default);
+        // Fall back to config
+        return $this->getConfigFallback($key, $default);
+    }
+
+    /**
+     * Get list of critical settings.
+     */
+    public function getCriticalSettings(): array
+    {
+        return $this->criticalSettings;
+    }
+
+    /**
+     * Check if a key is critical.
+     */
+    public function isCritical(string $key): bool
+    {
+        return in_array($key, $this->criticalSettings);
     }
 
     /**
@@ -180,9 +226,9 @@ class AppSettingsService
     }
 
     /**
-     * Get the fallback value from env/config.
+     * Get the fallback value from config.
      */
-    protected function getEnvFallback(string $key, mixed $default = null): mixed
+    protected function getConfigFallback(string $key, mixed $default = null): mixed
     {
         $mapping = $this->envMappings[$key] ?? null;
 
@@ -190,17 +236,9 @@ class AppSettingsService
             return $default;
         }
 
-        // Try config first (it already reads from env)
+        // Try config
         if (isset($mapping['config'])) {
             $value = config($mapping['config']);
-            if ($value !== null) {
-                return $value;
-            }
-        }
-
-        // Try env directly
-        if (isset($mapping['env'])) {
-            $value = env($mapping['env']);
             if ($value !== null) {
                 return $value;
             }

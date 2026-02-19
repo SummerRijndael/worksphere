@@ -19,6 +19,7 @@ import {
     Share2,
     Upload,
     X,
+    Lock,
 } from "lucide-vue-next";
 import { toast } from "vue-sonner";
 import axios from "axios";
@@ -37,6 +38,7 @@ const isSaving = ref(false);
 const showPasswords = ref({});
 
 // Settings state - organized by group
+const originalSettings = ref({});
 const settings = ref({
     // General
     "app.name": "",
@@ -121,6 +123,57 @@ const sensitiveFields = [
     "twilio.auth_token",
     "openai.api_key",
 ];
+
+// Critical settings that require password verification
+const criticalSettings = [
+    "app.url",
+    "app.is_demo_mode",
+    "auth.registration_enabled",
+    "auth.email_verification",
+    "auth.social_login_enabled",
+    "mail.host",
+    "mail.username",
+    "mail.password",
+    "mail.imap_host",
+    "mail.imap_username",
+    "mail.imap_password",
+    "recaptcha.site_key",
+    "recaptcha.secret_key",
+    "google.client_id",
+    "google.client_secret",
+    "github.client_id",
+    "github.client_secret",
+    "twilio.sid",
+    "twilio.auth_token",
+    "twilio.verify_sid",
+    "openai.api_key",
+];
+
+const showCriticalConfirmation = ref(false);
+const criticalConfirmationForm = ref({ password: "", reason: "" });
+const isConfirmingCritical = ref(false);
+const criticalChangesList = ref([]);
+let resolveCriticalSave = null;
+let rejectCriticalSave = null;
+
+const confirmCriticalSave = async () => {
+    if (
+        !criticalConfirmationForm.value.password ||
+        !criticalConfirmationForm.value.reason
+    ) {
+        toast.error("Password and reason are required");
+        return;
+    }
+
+    showCriticalConfirmation.value = false;
+    if (resolveCriticalSave) resolveCriticalSave(true);
+};
+
+const cancelCriticalSave = () => {
+    showCriticalConfirmation.value = false;
+    criticalConfirmationForm.value = { password: "", reason: "" };
+    if (rejectCriticalSave) rejectCriticalSave(new Error("Cancelled by user"));
+};
 
 // Timezone options
 const timezones = [
@@ -216,6 +269,9 @@ const fetchSettings = async () => {
                 }
             });
         });
+
+        // Store original for change detection
+        originalSettings.value = JSON.parse(JSON.stringify(settings.value));
     } catch (error) {
         console.error("Failed to fetch settings:", error);
         toast.error("Failed to load settings");
@@ -278,11 +334,13 @@ const handleFileSelect = (event, type) => {
 };
 
 const updateBrowserFavicon = (url) => {
-    const link = document.querySelector("link[rel*='icon']") || document.createElement('link');
-    link.type = 'image/x-icon';
-    link.rel = 'shortcut icon';
+    const link =
+        document.querySelector("link[rel*='icon']") ||
+        document.createElement("link");
+    link.type = "image/x-icon";
+    link.rel = "shortcut icon";
     link.href = url;
-    document.getElementsByTagName('head')[0].appendChild(link);
+    document.getElementsByTagName("head")[0].appendChild(link);
 };
 
 const uploadBranding = async (type) => {
@@ -294,20 +352,24 @@ const uploadBranding = async (type) => {
     formData.append(type, file);
 
     try {
-        const response = await axios.post(`/api/settings/upload-${type}`, formData, {
-            headers: {
-                "Content-Type": "multipart/form-data",
+        const response = await axios.post(
+            `/api/settings/upload-${type}`,
+            formData,
+            {
+                headers: {
+                    "Content-Type": "multipart/form-data",
+                },
             },
-        });
+        );
 
         settings.value[`app.${type}`] = response.data.url;
         selectedFiles.value[type] = null; // Clear selection
-        
+
         // Reset file input
         const fileInput = document.getElementById(`${type}-upload`);
-        if (fileInput) fileInput.value = '';
+        if (fileInput) fileInput.value = "";
 
-        if (type === 'favicon') {
+        if (type === "favicon") {
             updateBrowserFavicon(response.data.url);
         }
 
@@ -330,6 +392,51 @@ const uploadBranding = async (type) => {
 const saveSettings = async () => {
     isSaving.value = true;
     try {
+        // Detect changes
+        const changedKeys = [];
+        const criticalKeys = [];
+
+        Object.keys(settings.value).forEach((key) => {
+            if (
+                JSON.stringify(settings.value[key]) !==
+                JSON.stringify(originalSettings.value[key])
+            ) {
+                changedKeys.push(key);
+                if (criticalSettings.includes(key)) {
+                    criticalKeys.push(key);
+                }
+            }
+        });
+
+        if (changedKeys.length === 0) {
+            toast.info("No changes to save");
+            isSaving.value = false;
+            return;
+        }
+
+        // Handle Critical Settings
+        let authData = {};
+        if (criticalKeys.length > 0) {
+            criticalChangesList.value = criticalKeys;
+            criticalConfirmationForm.value = { password: "", reason: "" };
+            showCriticalConfirmation.value = true;
+
+            try {
+                await new Promise((resolve, reject) => {
+                    resolveCriticalSave = resolve;
+                    rejectCriticalSave = reject;
+                });
+
+                authData = {
+                    password: criticalConfirmationForm.value.password,
+                    reason: criticalConfirmationForm.value.reason,
+                };
+            } catch (e) {
+                isSaving.value = false;
+                return; // Cancelled
+            }
+        }
+
         const settingsArray = Object.entries(settings.value)
             .map(([key, value]) => {
                 const isSensitive = sensitiveFields.includes(key);
@@ -348,13 +455,28 @@ const saveSettings = async () => {
             })
             .filter((s) => s.value !== "" && s.value !== null); // Only save non-empty values
 
-        await axios.put("/api/settings", { settings: settingsArray });
+        await axios.put("/api/settings", {
+            settings: settingsArray,
+            ...authData,
+        });
+
+        // Update original settings after successful save
+        originalSettings.value = JSON.parse(JSON.stringify(settings.value));
+
         toast.success("Settings saved successfully");
     } catch (error) {
         console.error("Failed to save settings:", error);
-        toast.error("Failed to save settings");
+
+        if (error.response?.status === 423 || error.response?.status === 403) {
+            toast.error(
+                error.response.data.message || "Security verification failed",
+            );
+        } else {
+            toast.error("Failed to save settings");
+        }
     } finally {
         isSaving.value = false;
+        criticalConfirmationForm.value = { password: "", reason: "" }; // Clear sensitive data
     }
 };
 
@@ -467,43 +589,45 @@ const handleDemoModeToggle = (newValue) => {
     // Let's require it for BOTH to be safe, or just ensuring accidental toggles don't happen.
     // Usually disabling is the sensitive part (re-enabling writes), but enabling can be DOS.
     // Let's require it for toggle.
-    
+
     // Reset toggle visually until verified (we manually handle v-model update)
     // Actually, v-model will update it. We need to revert if cancelled.
-    
+
     pendingDemoState.value = newValue;
     // settings.value['app.is_demo_mode'] is already updated by v-model before this likely change event?
     // If using <Switch :checked="val" @update:checked="..."> it's better.
     // If using v-model, we might need to revert.
-    
-    // We'll assume we catch it before save? 
+
+    // We'll assume we catch it before save?
     // Wait, the "Save Changes" button saves ALL settings.
     // So the toggle just changes the local state.
     // If we want to guard the CHANGE, we should intercept the change.
-    
+
     // But typically "Demo Mode" is a setting that takes effect immediately or on save?
     // If it's just a setting in the big form, the password should probably be required *to change the setting in the form*.
-    
+
     // Revert change first
-    settings.value['app.is_demo_mode'] = !newValue;
-    
+    settings.value["app.is_demo_mode"] = !newValue;
+
     showDemoPasswordModal.value = true;
 };
 
 const verifyDemoPassword = async () => {
     if (!demoPassword.value) return;
-    
+
     isVerifyingDemoPassword.value = true;
     try {
-        const response = await axios.post('/api/settings/verify-demo', {
-            password: demoPassword.value
+        const response = await axios.post("/api/settings/verify-demo", {
+            password: demoPassword.value,
         });
-        
+
         if (response.data.success) {
-            settings.value['app.is_demo_mode'] = pendingDemoState.value;
+            settings.value["app.is_demo_mode"] = pendingDemoState.value;
             showDemoPasswordModal.value = false;
             demoPassword.value = "";
-            toast.success("Demo mode access verified. Click 'Save Changes' to apply.");
+            toast.success(
+                "Demo mode access verified. Click 'Save Changes' to apply.",
+            );
         }
     } catch (error) {
         toast.error(error.response?.data?.message || "Invalid secret phrase");
@@ -593,9 +717,10 @@ onMounted(async () => {
                     </div>
                     <div class="space-y-1.5">
                         <label
-                            class="text-sm font-medium text-[var(--text-secondary)]"
-                            >Application URL</label
-                        >
+                            class="text-sm font-medium text-[var(--text-secondary)] flex items-center gap-1.5"
+                            >Application URL
+                            <Lock class="w-3 h-3 text-amber-500"
+                        /></label>
                         <Input
                             v-model="settings['app.url']"
                             type="url"
@@ -641,16 +766,23 @@ onMounted(async () => {
                         </div>
                     </div>
 
-                     <!-- Demo Mode Toggle -->
-                    <div class="p-4 bg-orange-500/5 rounded-lg border border-orange-200 mt-4 flex items-center justify-between">
+                    <!-- Demo Mode Toggle -->
+                    <div
+                        class="p-4 bg-orange-500/5 rounded-lg border border-orange-200 mt-4 flex items-center justify-between"
+                    >
                         <div class="flex items-start gap-3">
-                            <div class="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center shrink-0">
-                                 <Key class="w-4 h-4 text-orange-600" />
+                            <div
+                                class="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center shrink-0"
+                            >
+                                <Key class="w-4 h-4 text-orange-600" />
                             </div>
                             <div>
-                                <h4 class="text-sm font-medium text-orange-900">Demo Mode</h4>
+                                <h4 class="text-sm font-medium text-orange-900">
+                                    Demo Mode
+                                </h4>
                                 <p class="text-xs text-orange-700 mt-0.5">
-                                    Restrict destructive actions. Requires secret phrase to toggle.
+                                    Restrict destructive actions. Requires
+                                    secret phrase to toggle.
                                 </p>
                             </div>
                         </div>
@@ -680,7 +812,9 @@ onMounted(async () => {
                 </div>
                 <div class="p-6 space-y-4">
                     <p class="text-sm text-[var(--text-secondary)] mb-4">
-                        These email addresses will be displayed in legal documents (Terms, Privacy) and throughout the application.
+                        These email addresses will be displayed in legal
+                        documents (Terms, Privacy) and throughout the
+                        application.
                     </p>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div class="space-y-1.5">
@@ -757,10 +891,13 @@ onMounted(async () => {
                                 Application Logo
                             </label>
                             <p class="text-xs text-[var(--text-muted)]">
-                                Upload a logo for your application (min 100x100).
+                                Upload a logo for your application (min
+                                100x100).
                             </p>
                         </div>
-                        <div class="flex flex-row items-center gap-4 w-full sm:w-auto">
+                        <div
+                            class="flex flex-row items-center gap-4 w-full sm:w-auto"
+                        >
                             <div
                                 class="w-16 h-16 shrink-0 rounded-lg border border-[var(--border-default)] bg-[var(--surface-secondary)] flex items-center justify-center overflow-hidden relative group"
                             >
@@ -776,25 +913,35 @@ onMounted(async () => {
                                     >No Logo</span
                                 >
                             </div>
-                            
+
                             <div class="flex flex-col gap-2 min-w-[120px]">
                                 <div class="relative w-full">
                                     <input
                                         id="logo-upload"
                                         type="file"
-                                        @change="(e) => handleFileSelect(e, 'logo')"
+                                        @change="
+                                            (e) => handleFileSelect(e, 'logo')
+                                        "
                                         class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                                         accept="image/*"
                                     />
-                                    <Button variant="outline" size="sm" class="w-full justify-center">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        class="w-full justify-center"
+                                    >
                                         <div class="truncate">
-                                            {{ selectedFiles.logo ? 'Change' : 'Select File' }}
+                                            {{
+                                                selectedFiles.logo
+                                                    ? "Change"
+                                                    : "Select File"
+                                            }}
                                         </div>
                                     </Button>
                                 </div>
-                                <Button 
+                                <Button
                                     v-if="selectedFiles.logo"
-                                    variant="primary" 
+                                    variant="primary"
                                     size="xs"
                                     class="w-full"
                                     :loading="brandingUploading.logo"
@@ -803,7 +950,10 @@ onMounted(async () => {
                                     <Upload class="w-3 h-3 mr-1" />
                                     Upload
                                 </Button>
-                                <p v-if="selectedFiles.logo" class="text-[10px] text-[var(--text-primary)] truncate max-w-[120px]">
+                                <p
+                                    v-if="selectedFiles.logo"
+                                    class="text-[10px] text-[var(--text-primary)] truncate max-w-[120px]"
+                                >
                                     {{ selectedFiles.logo.name }}
                                 </p>
                             </div>
@@ -821,10 +971,13 @@ onMounted(async () => {
                                 Favicon
                             </label>
                             <p class="text-xs text-[var(--text-muted)]">
-                                Upload a favicon (max 512x512). ICO, PNG, or SVG.
+                                Upload a favicon (max 512x512). ICO, PNG, or
+                                SVG.
                             </p>
                         </div>
-                        <div class="flex flex-row items-center gap-4 w-full sm:w-auto">
+                        <div
+                            class="flex flex-row items-center gap-4 w-full sm:w-auto"
+                        >
                             <div
                                 class="w-12 h-12 shrink-0 rounded-lg border border-[var(--border-default)] bg-[var(--surface-secondary)] flex items-center justify-center overflow-hidden"
                             >
@@ -840,25 +993,36 @@ onMounted(async () => {
                                     >None</span
                                 >
                             </div>
-                            
+
                             <div class="flex flex-col gap-2 min-w-[120px]">
                                 <div class="relative w-full">
                                     <input
                                         id="favicon-upload"
                                         type="file"
-                                        @change="(e) => handleFileSelect(e, 'favicon')"
+                                        @change="
+                                            (e) =>
+                                                handleFileSelect(e, 'favicon')
+                                        "
                                         class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                                         accept="image/x-icon,image/png,image/svg+xml"
                                     />
-                                    <Button variant="outline" size="sm" class="w-full justify-center">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        class="w-full justify-center"
+                                    >
                                         <div class="truncate">
-                                            {{ selectedFiles.favicon ? 'Change' : 'Select File' }}
+                                            {{
+                                                selectedFiles.favicon
+                                                    ? "Change"
+                                                    : "Select File"
+                                            }}
                                         </div>
                                     </Button>
                                 </div>
-                                <Button 
+                                <Button
                                     v-if="selectedFiles.favicon"
-                                    variant="primary" 
+                                    variant="primary"
                                     size="xs"
                                     class="w-full"
                                     :loading="brandingUploading.favicon"
@@ -867,7 +1031,10 @@ onMounted(async () => {
                                     <Upload class="w-3 h-3 mr-1" />
                                     Upload
                                 </Button>
-                                <p v-if="selectedFiles.favicon" class="text-[10px] text-[var(--text-primary)] truncate max-w-[120px]">
+                                <p
+                                    v-if="selectedFiles.favicon"
+                                    class="text-[10px] text-[var(--text-primary)] truncate max-w-[120px]"
+                                >
                                     {{ selectedFiles.favicon.name }}
                                 </p>
                             </div>
@@ -885,10 +1052,13 @@ onMounted(async () => {
                                 Social Share Image (OpenGraph)
                             </label>
                             <p class="text-xs text-[var(--text-muted)]">
-                                The image displayed when sharing links on social media.
+                                The image displayed when sharing links on social
+                                media.
                             </p>
                         </div>
-                        <div class="flex flex-row items-center gap-4 w-full sm:w-auto">
+                        <div
+                            class="flex flex-row items-center gap-4 w-full sm:w-auto"
+                        >
                             <div
                                 class="w-32 h-16 shrink-0 rounded-lg border border-[var(--border-default)] bg-[var(--surface-secondary)] flex items-center justify-center overflow-hidden relative"
                             >
@@ -898,30 +1068,44 @@ onMounted(async () => {
                                     alt="OpenGraph Image"
                                     class="w-full h-full object-cover"
                                 />
-                                <div v-else class="flex flex-col items-center justify-center text-[var(--text-muted)]">
+                                <div
+                                    v-else
+                                    class="flex flex-col items-center justify-center text-[var(--text-muted)]"
+                                >
                                     <Share2 class="w-4 h-4 mb-1 opacity-50" />
                                     <span class="text-[10px]">No Image</span>
                                 </div>
                             </div>
-                            
+
                             <div class="flex flex-col gap-2 min-w-[120px]">
                                 <div class="relative w-full">
                                     <input
                                         id="opengraph-upload"
                                         type="file"
-                                        @change="(e) => handleFileSelect(e, 'opengraph')"
+                                        @change="
+                                            (e) =>
+                                                handleFileSelect(e, 'opengraph')
+                                        "
                                         class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                                         accept="image/png,image/jpeg,image/webp"
                                     />
-                                    <Button variant="outline" size="sm" class="w-full justify-center">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        class="w-full justify-center"
+                                    >
                                         <div class="truncate">
-                                            {{ selectedFiles.opengraph ? 'Change' : 'Select File' }}
+                                            {{
+                                                selectedFiles.opengraph
+                                                    ? "Change"
+                                                    : "Select File"
+                                            }}
                                         </div>
                                     </Button>
                                 </div>
-                                <Button 
+                                <Button
                                     v-if="selectedFiles.opengraph"
-                                    variant="primary" 
+                                    variant="primary"
                                     size="xs"
                                     class="w-full"
                                     :loading="brandingUploading.opengraph"
@@ -930,7 +1114,10 @@ onMounted(async () => {
                                     <Upload class="w-3 h-3 mr-1" />
                                     Upload
                                 </Button>
-                                <p v-if="selectedFiles.opengraph" class="text-[10px] text-[var(--text-primary)] truncate max-w-[120px]">
+                                <p
+                                    v-if="selectedFiles.opengraph"
+                                    class="text-[10px] text-[var(--text-primary)] truncate max-w-[120px]"
+                                >
                                     {{ selectedFiles.opengraph.name }}
                                 </p>
                             </div>
@@ -962,6 +1149,9 @@ onMounted(async () => {
                                 class="text-sm font-medium text-[var(--text-primary)]"
                             >
                                 User Registration
+                                <Lock
+                                    class="w-3 h-3 inline-block ml-1 text-amber-500"
+                                />
                             </p>
                             <p class="text-xs text-[var(--text-muted)]">
                                 Allow new users to register
@@ -1244,9 +1434,10 @@ onMounted(async () => {
                     </div>
                     <div class="space-y-1.5">
                         <label
-                            class="text-sm font-medium text-[var(--text-secondary)]"
-                            >SMTP Host</label
-                        >
+                            class="text-sm font-medium text-[var(--text-secondary)] flex items-center gap-1.5"
+                            >SMTP Host
+                            <Lock class="w-3 h-3 text-amber-500" />
+                        </label>
                         <Input
                             v-model="settings['mail.host']"
                             placeholder="smtp.example.com"
@@ -1906,13 +2097,17 @@ onMounted(async () => {
                                     <span v-if="a.starts_at || a.ends_at"
                                         >{{
                                             a.starts_at
-                                                ? formatDateComposible(a.starts_at)
+                                                ? formatDateComposible(
+                                                      a.starts_at,
+                                                  )
                                                 : "Now"
                                         }}
                                         →
                                         {{
                                             a.ends_at
-                                                ? formatDateComposible(a.ends_at)
+                                                ? formatDateComposible(
+                                                      a.ends_at,
+                                                  )
                                                 : "Forever"
                                         }}</span
                                     >
@@ -1948,7 +2143,9 @@ onMounted(async () => {
         <!-- Announcement Modal -->
         <Modal
             :open="showAnnouncementModal"
-            :title="editingAnnouncement ? 'Edit Announcement' : 'New Announcement'"
+            :title="
+                editingAnnouncement ? 'Edit Announcement' : 'New Announcement'
+            "
             @update:open="showAnnouncementModal = $event"
         >
             <div class="space-y-4">
@@ -2006,10 +2203,14 @@ onMounted(async () => {
                     <div class="space-y-1.5">
                         <label class="text-sm font-medium">Status</label>
                         <div class="flex items-center h-[38px] px-1">
-                            <label class="flex items-center gap-2 cursor-pointer">
+                            <label
+                                class="flex items-center gap-2 cursor-pointer"
+                            >
                                 <Switch v-model="announcementForm.is_active" />
                                 <span class="text-sm">{{
-                                    announcementForm.is_active ? "Active" : "Inactive"
+                                    announcementForm.is_active
+                                        ? "Active"
+                                        : "Inactive"
                                 }}</span>
                             </label>
                         </div>
@@ -2019,14 +2220,24 @@ onMounted(async () => {
                 <div class="grid grid-cols-2 gap-4">
                     <!-- Action Text -->
                     <div class="space-y-1.5">
-                        <label class="text-sm font-medium">Action Text (Optional)</label>
-                        <Input v-model="announcementForm.action_text" placeholder="Read More" />
+                        <label class="text-sm font-medium"
+                            >Action Text (Optional)</label
+                        >
+                        <Input
+                            v-model="announcementForm.action_text"
+                            placeholder="Read More"
+                        />
                     </div>
 
                     <!-- Action URL -->
                     <div class="space-y-1.5">
-                        <label class="text-sm font-medium">Action URL (Optional)</label>
-                        <Input v-model="announcementForm.action_url" placeholder="https://..." />
+                        <label class="text-sm font-medium"
+                            >Action URL (Optional)</label
+                        >
+                        <Input
+                            v-model="announcementForm.action_url"
+                            placeholder="https://..."
+                        />
                     </div>
                 </div>
 
@@ -2034,7 +2245,9 @@ onMounted(async () => {
                 <div class="flex flex-col gap-3">
                     <div class="flex items-center gap-2">
                         <Switch v-model="announcementForm.is_public" />
-                        <span class="text-sm">Show to public (non-logged-in users)</span>
+                        <span class="text-sm"
+                            >Show to public (non-logged-in users)</span
+                        >
                     </div>
                     <div class="flex items-center gap-2">
                         <Switch v-model="announcementForm.is_dismissable" />
@@ -2058,8 +2271,8 @@ onMounted(async () => {
         </Modal>
 
         <!-- Demo Mode Password Modal -->
-         <Modal 
-            :open="showDemoPasswordModal" 
+        <Modal
+            :open="showDemoPasswordModal"
             @update:open="showDemoPasswordModal = $event"
             title="Verification Required"
             :description="`${pendingDemoState ? 'Enabling' : 'Disabling'} Demo Mode requires authentication. Please enter the secret phrase.`"
@@ -2073,12 +2286,80 @@ onMounted(async () => {
                     autoFocus
                 />
                 <div class="flex justify-end gap-3">
-                    <Button variant="ghost" @click="showDemoPasswordModal = false">Cancel</Button>
-                    <Button variant="primary" :loading="isVerifyingDemoPassword" @click="verifyDemoPassword">
+                    <Button
+                        variant="ghost"
+                        @click="showDemoPasswordModal = false"
+                        >Cancel</Button
+                    >
+                    <Button
+                        variant="primary"
+                        :loading="isVerifyingDemoPassword"
+                        @click="verifyDemoPassword"
+                    >
                         Verify & Toggle
                     </Button>
                 </div>
             </div>
         </Modal>
     </div>
+
+    <!-- Critical Settings Confirmation Modal -->
+    <Modal
+        :open="showCriticalConfirmation"
+        @update:open="if (!$event) cancelCriticalSave();"
+        title="Critical Setting Change"
+        description="You are about to modify sensitive system configurations. Verification and a reason are required."
+    >
+        <div class="space-y-4">
+            <div
+                class="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3"
+            >
+                <p class="text-xs text-amber-600 font-medium mb-1">
+                    Changing the following settings:
+                </p>
+                <ul class="list-disc list-inside text-xs text-amber-700">
+                    <li v-for="key in criticalChangesList" :key="key">
+                        {{ key }}
+                    </li>
+                </ul>
+            </div>
+
+            <div class="space-y-1.5">
+                <label class="text-sm font-medium">Your Password</label>
+                <Input
+                    v-model="criticalConfirmationForm.password"
+                    type="password"
+                    placeholder="Current password..."
+                    autoFocus
+                    @keyup.enter="confirmCriticalSave"
+                />
+            </div>
+
+            <div class="space-y-1.5">
+                <label class="text-sm font-medium">Reason for Change</label>
+                <textarea
+                    v-model="criticalConfirmationForm.reason"
+                    rows="2"
+                    class="w-full px-3 py-2 text-sm bg-[var(--surface-primary)] border border-[var(--border-default)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+                    placeholder="e.g., Updating mail host for new provider..."
+                ></textarea>
+            </div>
+
+            <div class="flex justify-end gap-3 pt-2">
+                <Button variant="ghost" @click="cancelCriticalSave"
+                    >Cancel</Button
+                >
+                <Button
+                    variant="primary"
+                    @click="confirmCriticalSave"
+                    :disabled="
+                        !criticalConfirmationForm.password ||
+                        !criticalConfirmationForm.reason
+                    "
+                >
+                    Confirm & Save
+                </Button>
+            </div>
+        </div>
+    </Modal>
 </template>

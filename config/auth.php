@@ -2,6 +2,20 @@
 
 return [
 
+
+    /*
+    |--------------------------------------------------------------------------
+    | Feature Toggles
+    |--------------------------------------------------------------------------
+    |
+    | These flags control registration, verification, and social login availability.
+    |
+    */
+
+    'registration_enabled' => env('AUTH_REGISTRATION_ENABLED', true),
+    'email_verification' => env('AUTH_EMAIL_VERIFICATION', true),
+    'social_login_enabled' => env('AUTH_SOCIAL_LOGIN_ENABLED', true),
+
     /*
     |--------------------------------------------------------------------------
     | Authentication Defaults

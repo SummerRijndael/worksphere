@@ -74,16 +74,16 @@ export function useBackgroundBlur() {
                     segmenter.value = await ImageSegmenter.createFromOptions(vision, {
                         baseOptions: {
                             modelAssetPath:
-                                "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite",
+                                "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite",
                             delegate: "CPU",
                         },
-                        runningMode: "IMAGE" as const, // Use IMAGE mode for CPU to avoid implicit GPU requirements
+                        runningMode: "VIDEO" as const,
                         outputCategoryMask: false, 
-                        outputConfidenceMasks: true, // Try confidence mask on CPU to avoid TensorsToSegmentationCalculator GPU error
+                        outputConfidenceMasks: true,
                     });
                      isLoaded.value = true;
-                     currentRunningMode = 'IMAGE';
-                     console.log("[BackgroundBlur] Model loaded (CPU)");
+                     currentRunningMode = 'VIDEO';
+                     console.log("[BackgroundBlur] Model loaded (CPU - Lightweight)");
              } catch (retryError) {
                  error.value = "Failed to load blur model";
                  console.error(retryError);
@@ -186,6 +186,9 @@ export function useBackgroundBlur() {
 
 
         let lastFrameTime = 0;
+        let lastSuccessfulFrameTime = performance.now();
+        let isAutoDowngraded = false;
+        
         const targetFps = isMobile ? 15 : 30;
         const frameInterval = 1000 / targetFps;
 
@@ -256,6 +259,21 @@ export function useBackgroundBlur() {
             }
             
             try {
+                // Watchdog: If we haven't had a successful frame in 3 seconds, or we are consistently slow, fallback.
+                const timeSinceSuccess = performance.now() - lastSuccessfulFrameTime;
+                if (timeSinceSuccess > 3000 && !isAutoDowngraded) {
+                    console.error("[BackgroundBlur] Watchdog Triggered: Video effect unsupported on this hardware/browser combination.");
+                    isAutoDowngraded = true;
+                    error.value = "Your device is struggling to run video effects. We've disabled them to keep your video running smoothly.";
+                }
+
+                if (isAutoDowngraded) {
+                    // Just draw raw video
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    animationFrameId = requestAnimationFrame(draw);
+                    return;
+                }
+
                 if (currentRunningMode === 'IMAGE') {
                     const result = segmenter.value.segment(video);
                     renderResult(result);
@@ -265,6 +283,10 @@ export function useBackgroundBlur() {
                 }
             } catch (e) {
                 console.error("Segmentation error:", e);
+                // Resilient fallback: Always show at least the raw video
+                if (ctx && canvas && video) {
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                }
                 animationFrameId = requestAnimationFrame(draw);
             }
         };
@@ -290,6 +312,7 @@ export function useBackgroundBlur() {
             }
 
             if (result.confidenceMasks && result.confidenceMasks.length > 0) {
+                 lastSuccessfulFrameTime = performance.now();
                  // Confidence mask: getAsFloat32Array returns values [0,1] per pixel
                  const mask = result.confidenceMasks[0];
                  const width = mask.width;

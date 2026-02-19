@@ -138,6 +138,15 @@ const routes: RouteRecordRaw[] = [
         },
     },
     {
+        path: "/public/support",
+        name: "public.support",
+        component: () => import("@/views/public/SupportView.vue"),
+        meta: {
+            title: "Submit a Ticket",
+            transition: "fade",
+        },
+    },
+    {
         path: "/dialer",
         name: "dialer",
         component: () => import("@/views/dialer/DialerApp.vue"),

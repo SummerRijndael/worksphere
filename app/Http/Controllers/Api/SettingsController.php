@@ -64,18 +64,29 @@ class SettingsController extends Controller
             'settings.*.type' => 'sometimes|string|in:string,boolean,integer,json',
             'settings.*.group' => 'sometimes|string',
             'settings.*.is_sensitive' => 'sometimes|boolean',
+            'password' => 'sometimes|string',
+            'reason' => 'sometimes|string',
         ]);
 
         $oldValues = [];
         $newValues = [];
+        $criticalChanges = [];
 
         foreach ($validated['settings'] as $setting) {
             $key = $setting['key'];
             $value = $setting['value'];
 
-            // Capture old value
-            $oldValues[$key] = $this->settingsService->get($key);
-            $newValues[$key] = $value;
+            // Check if value actually changed
+            $currentValue = $this->settingsService->get($key);
+            if ($currentValue !== $value) {
+                if ($this->settingsService->isCritical($key)) {
+                    $criticalChanges[] = $key;
+                }
+                
+                // Capture old value
+                $oldValues[$key] = $currentValue;
+                $newValues[$key] = $value;
+            }
 
             $attributes = [
                 'type' => $setting['type'] ?? 'string',
@@ -83,7 +94,33 @@ class SettingsController extends Controller
                 'is_sensitive' => $setting['is_sensitive'] ?? false,
             ];
 
-            $this->settingsService->set($key, $value, $attributes);
+            // Defer saving until validation passes
+        }
+
+        // If any critical settings changed, require password and reason
+        if (! empty($criticalChanges)) {
+            if (! $request->filled('password') || ! $request->filled('reason')) {
+                return response()->json([
+                    'message' => 'Critical settings require password confirmation and a reason.',
+                    'required_confirmation' => true,
+                    'critical_keys' => $criticalChanges,
+                ], 423); // Locked
+            }
+
+            if (! \Illuminate\Support\Facades\Hash::check($request->password, $request->user()->password)) {
+                return response()->json([
+                    'message' => 'Invalid password provided for confirmation.',
+                ], 403);
+            }
+        }
+
+        // Apply changes
+        foreach ($validated['settings'] as $setting) {
+            $this->settingsService->set($setting['key'], $setting['value'], [
+                'type' => $setting['type'] ?? 'string',
+                'group' => $setting['group'] ?? 'general',
+                'is_sensitive' => $setting['is_sensitive'] ?? false,
+            ]);
         }
 
         // Log the update
@@ -93,6 +130,8 @@ class SettingsController extends Controller
                 category: \App\Enums\AuditCategory::System,
                 context: [
                     'changes_count' => count($newValues),
+                    'critical_changes' => $criticalChanges,
+                    'reason' => $request->input('reason'),
                 ],
                 oldValues: $oldValues,
                 newValues: $newValues
