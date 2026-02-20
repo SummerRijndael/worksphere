@@ -191,7 +191,14 @@ const getChatPresenceStatus = (chat: Chat) => {
                             : 'Search chats...'
                     "
                     class="w-full pl-10 pr-4 py-2.5 rounded-xl bg-[var(--surface-elevated)] border border-[var(--border-default)] text-[var(--text-primary)] placeholder-[var(--text-muted)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--interactive-primary)] focus:border-transparent"
-                    @input="e => emit(activeTab === 'people' ? 'update:peopleSearchQuery' : 'update:searchQuery', (e.target as HTMLInputElement).value)"
+                    @input="(e: Event) => {
+                        const val = (e.target as HTMLInputElement).value;
+                        if (activeTab === 'people') {
+                            emit('update:peopleSearchQuery', val);
+                        } else {
+                            emit('update:searchQuery', val);
+                        }
+                    }"
                     @keydown.enter="
                         activeTab === 'people' && emit('searchPeople')
                     "

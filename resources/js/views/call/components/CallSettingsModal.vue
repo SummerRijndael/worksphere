@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, computed, watch, nextTick } from "vue";
-import { Modal, Icon, Button, SelectFilter, Separator } from "@/components/ui";
+import { Icon, Button, SelectFilter } from "@/components/ui";
 import { ProgressRoot, ProgressIndicator } from "reka-ui";
 import { useVideoCallStore } from "@/stores/videocall";
 import { useBackgroundBlur } from "@/composables/useBackgroundBlur";
@@ -293,7 +293,7 @@ async function startCameraPreview(deviceId?: string) {
         await new Promise(r => setTimeout(r, 50));
         
         if (store.videoEffect === 'blur' && originalPreviewTrack) {
-            const processedTrack = await backgroundBlur.startBlur(originalPreviewTrack);
+            const processedTrack = await backgroundBlur.startVideoEffect(originalPreviewTrack, 'blur');
             previewProcessedStream.value = new MediaStream([processedTrack]);
             if (previewVideo.value) {
                 previewVideo.value.srcObject = previewProcessedStream.value;

@@ -17,6 +17,8 @@ return new class extends Migration
             $table->foreignId('team_id')->constrained()->onDelete('cascade');
             $table->string('name');
             $table->string('slug');
+            $table->string('prefix', 10)->nullable();
+            $table->unsignedInteger('last_task_number')->default(0);
             $table->text('description')->nullable();
             $table->string('status')->default('draft'); // draft, active, on_hold, completed, archived
             $table->string('priority')->default('medium'); // low, medium, high, urgent

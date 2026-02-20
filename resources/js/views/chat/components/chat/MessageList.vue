@@ -5,7 +5,6 @@ import MessageBubble from "./MessageBubble.vue";
 import { Icon } from "@/components/ui";
 import { useVideoCallStore } from "@/stores/videocall";
 import { useVideoCall } from "@/composables/useVideoCall";
-import { useAuthStore } from "@/stores/auth";
 
 interface Props {
     messages: Message[];
@@ -29,7 +28,7 @@ const emit = defineEmits<{
 
 const videoCallStore = useVideoCallStore();
 const { startCall, joinActiveCall } = useVideoCall();
-const authStore = useAuthStore();
+// const authStore = useAuthStore();
 
 const handleCallback = (data: {
     chatId: string;
@@ -43,7 +42,7 @@ const handleCallback = (data: {
         chat.type === "dm"
             ? {
                   publicId: chat.participants[0]?.public_id,
-                  name: chat.name,
+                  name: chat.name || "Unknown",
                   avatar: chat.avatar_url,
               }
             : { publicId: "group", name: "Group", avatar: null };
@@ -54,7 +53,7 @@ const handleCallback = (data: {
 const containerRef = ref<HTMLElement | null>(null);
 const showScrollButton = ref(false);
 const isCloaked = ref(true);
-const typingRef = ref<HTMLElement | null>(null);
+// const typingRef = ref<HTMLElement | null>(null);
 
 // Expose public methods/properties for parent
 defineExpose({
@@ -243,7 +242,11 @@ const activeCallInvite = computed(() => {
     };
 });
 
-function joinCall(invite: any) {
+function joinCall(invite: {
+    chatId: string;
+    callId: string;
+    callType: "video" | "audio";
+}) {
     joinActiveCall(invite.chatId, invite.callId, invite.callType);
 }
 </script>

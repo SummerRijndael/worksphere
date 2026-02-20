@@ -84,9 +84,9 @@ const activeCall = computed(() => {
     return videoCallStore.activeCalls.get(props.window.chatId);
 });
 
-const isInCurrentCall = computed(() => {
-    return videoCallStore.currentCall?.chatId === props.window.chatId;
-});
+// const isInCurrentCall = computed(() => {
+//     return videoCallStore.currentCall?.chatId === props.window.chatId;
+// });
 
 function joinCall() {
     if (activeCall.value) {

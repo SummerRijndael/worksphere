@@ -13,15 +13,19 @@ return new class extends Migration
     {
         Schema::create('events', function (Blueprint $table) {
             $table->id();
+            $table->ulid('public_id')->unique();
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
             $table->string('title');
             $table->text('description')->nullable();
             $table->dateTime('start_time');
             $table->dateTime('end_time');
+            $table->json('external_attendees')->nullable();
             $table->string('location')->nullable();
             $table->boolean('is_all_day')->default(false);
             $table->integer('reminder_minutes_before')->nullable();
             $table->timestamp('notification_sent_at')->nullable();
+            $table->string('google_event_id')->nullable()->index();
+            $table->timestamp('last_synced_at')->nullable();
             $table->timestamps();
         });
     }

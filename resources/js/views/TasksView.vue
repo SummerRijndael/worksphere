@@ -19,7 +19,7 @@ import QuickAssignModal from "@/components/tasks/QuickAssignModal.vue";
 import { useAuthStore } from "@/stores/auth";
 import axios from "axios";
 
-const route = useRoute();
+// const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
 const hasTeams = computed(() => authStore.hasTeams);
@@ -33,13 +33,13 @@ const can = (permission: string) => {
 };
 
 // Role Logic - DEPRECATED: Use permissions via can() helper instead
-const userRole = computed(() => {
-    if (!authStore.user || !authStore.currentTeamId) return null;
-    const team = authStore.user.teams.find(
-        (t) => t.public_id === authStore.currentTeamId,
-    );
-    return team?.membership?.role || null;
-});
+// const userRole = computed(() => {
+//     if (!authStore.user || !authStore.currentTeamId) return null;
+//     const team = authStore.user.teams.find(
+//         (t) => t.public_id === authStore.currentTeamId,
+//     );
+//     return team?.membership?.role || null;
+// });
 
 // State
 const tasks = ref<any[]>([]);
@@ -290,7 +290,7 @@ const loadState = () => {
 // Initial Load
 onMounted(async () => {
     // 1. Populate Team Options
-    if (authStore.user?.teams?.length > 0) {
+    if (authStore.user?.teams && authStore.user.teams.length > 0) {
         teamOptions.value = authStore.user.teams.map((t: any) => ({
             label: t.name,
             value: t.public_id,

@@ -73,7 +73,7 @@ class UserController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255', 'regex:/^[\pL\s\-\']+$/u'],
             'email' => ['required', 'string', 'email:rfc', 'max:255', 'unique:users'],
-            'username' => ['nullable', 'string', 'min:3', 'max:50', 'regex:/^[a-zA-Z0-9_\-]+$/', 'unique:users'],
+            'username' => ['nullable', 'string', 'min:3', 'max:50', 'regex:/^[a-zA-Z0-9_\-\.]+$/', 'unique:users'],
             'role' => ['required', 'string', 'exists:roles,name'],
             'status' => ['required', 'string', 'in:active,inactive,suspended'],
         ]);
@@ -135,7 +135,7 @@ class UserController extends Controller
         // Determine which fields can be updated based on permissions
         $rules = [
             'name' => ['sometimes', 'string', 'max:255', 'regex:/^[\pL\s\-\']+$/u'],
-            'username' => ['sometimes', 'nullable', 'string', 'min:3', 'max:50', 'regex:/^[a-zA-Z0-9_\-]+$/', Rule::unique('users')->ignore($user->id)],
+            'username' => ['sometimes', 'nullable', 'string', 'min:3', 'max:50', 'regex:/^[a-zA-Z0-9_\-\.]+$/', Rule::unique('users')->ignore($user->id)],
             'phone' => ['sometimes', 'nullable', 'string', 'max:20'],
         ];
 
@@ -222,7 +222,7 @@ class UserController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255', 'regex:/^[\pL\s\-\']+$/u'],
             'email' => ['required', 'string', 'email:rfc', 'max:255', Rule::unique('users')->ignore($user->id)],
-            'username' => ['nullable', 'string', 'min:3', 'max:50', 'regex:/^[a-zA-Z0-9_\-]+$/', Rule::unique('users')->ignore($user->id)],
+            'username' => ['nullable', 'string', 'min:3', 'max:50', 'regex:/^[a-zA-Z0-9_\-\.]+$/', Rule::unique('users')->ignore($user->id)],
             'title' => ['nullable', 'string', 'max:255'],
             'bio' => ['nullable', 'string', 'max:1000'],
             'location' => ['nullable', 'string', 'max:255'],

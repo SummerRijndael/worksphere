@@ -1,0 +1,20 @@
+resources/js/components/ui/RichTextEditor.vue(14,9): error TS1109: Expression expected.
+resources/js/components/ui/RichTextEditor.vue(14,16): error TS1128: Declaration or statement expected.
+resources/js/components/ui/RichTextEditor.vue(15,5): error TS1109: Expression expected.
+resources/js/components/ui/RichTextEditor.vue(15,6): error TS1128: Declaration or statement expected.
+resources/js/components/ui/RichTextEditor.vue(18,9): error TS1109: Expression expected.
+resources/js/components/ui/RichTextEditor.vue(18,16): error TS1128: Declaration or statement expected.
+resources/js/components/ui/RichTextEditor.vue(19,5): error TS1109: Expression expected.
+resources/js/components/ui/RichTextEditor.vue(19,6): error TS1128: Declaration or statement expected.
+resources/js/components/ui/RichTextEditor.vue(21,9): error TS1005: ';' expected.
+resources/js/components/ui/RichTextEditor.vue(22,10): error TS1005: ';' expected.
+resources/js/components/ui/RichTextEditor.vue(23,13): error TS1005: ';' expected.
+resources/js/components/ui/RichTextEditor.vue(24,14): error TS1005: ';' expected.
+resources/js/components/ui/RichTextEditor.vue(26,9): error TS1109: Expression expected.
+resources/js/components/ui/RichTextEditor.vue(26,16): error TS1128: Declaration or statement expected.
+resources/js/components/ui/RichTextEditor.vue(27,5): error TS1109: Expression expected.
+resources/js/components/ui/RichTextEditor.vue(27,6): error TS1128: Declaration or statement expected.
+resources/js/components/ui/RichTextEditor.vue(28,1): error TS1128: Declaration or statement expected.
+resources/js/components/ui/RichTextEditor.vue(28,2): error TS1128: Declaration or statement expected.
+resources/js/components/ui/RichTextEditor.vue(167,14): error TS1005: ')' expected.
+resources/js/components/ui/RichTextEditor.vue(167,24): error TS1128: Declaration or statement expected.

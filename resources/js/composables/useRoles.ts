@@ -1,9 +1,9 @@
 import { ref, computed } from 'vue';
 import api from '@/lib/api';
 
-const roles = ref([]);
+const roles = ref<any[]>([]);
 const isLoading = ref(false);
-const error = ref(null);
+const error = ref<any>(null);
 
 export function useRoles() {
     const fetchRoles = async (force = false) => {

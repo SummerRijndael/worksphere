@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from "vue";
+import { ref, onMounted, computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useToast } from "@/composables/useToast";
 import api from "@/lib/api";
 import { useDate } from "@/composables/useDate";
 const { formatDate, formatDateTime } = useDate();
 import NoteEditor from "@/components/notes/NoteEditor.vue";
-import { Button, Card, Badge, Input } from "@/components/ui";
+import { Button, Badge } from "@/components/ui";
 import {
     ArrowLeft,
     Calendar,
@@ -14,7 +14,7 @@ import {
     Pin,
     Trash2,
     Save,
-    Palette,
+    
 } from "lucide-vue-next";
 
 // Types

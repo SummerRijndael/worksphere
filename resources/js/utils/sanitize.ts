@@ -8,8 +8,8 @@ import DOMPurify from 'dompurify';
  * @returns Sanitized HTML safe for rendering
  */
 export function sanitizeHtml(dirty: string, options?: DOMPurify.Config, hooks?: { 
-    beforeSanitizeElements?: (currentNode: Element, data: DOMPurify.HookEvent, config: DOMPurify.Config) => Element | void;
-    afterSanitizeElements?: (currentNode: Element, data: DOMPurify.HookEvent, config: DOMPurify.Config) => Element | void;
+    beforeSanitizeElements?: (currentNode: Element, data: DOMPurify.HookEvent, config: DOMPurify.Config) => void;
+    afterSanitizeElements?: (currentNode: Element, data: DOMPurify.HookEvent, config: DOMPurify.Config) => void;
     // Add other hooks as needed
 }): string {
   if (!dirty) return '';

@@ -258,9 +258,6 @@ onMounted(async () => {
                         <span class="text-xs text-[var(--text-muted)]">
                             {{ role.permissions_count || role.permissions?.length || 0 }} permissions
                         </span>
-                        <span class="text-xs text-[var(--text-muted)]">
-                            {{ role.permissions_count || role.permissions?.length || 0 }} permissions
-                        </span>
                         <div class="flex items-center gap-2">
                              <Button variant="ghost" size="sm" class="h-8 w-8 p-0" title="Duplicate Role" @click="openDuplicateModal(role)">
                                 <Copy class="h-4 w-4" />
@@ -415,77 +412,77 @@ onMounted(async () => {
         <div v-if="activeTab === '2fa'">
             <Role2FAEnforcementTab />
         </div>
-    <!-- Approve Modal -->
-    <ConfirmPasswordModal
-        v-model:open="showApproveModal"
-        title="Approve Request"
-        description="Enter your password to approve this role change request."
-        submit-text="Approve"
-        submit-variant="primary"
-        :loading="actionLoading"
-        @confirm="handleApprove"
-    >
-        <div class="space-y-2">
-            <label class="block text-sm font-medium text-[var(--text-primary)]">
-                Comment (optional)
-            </label>
-            <textarea
-                v-model="approvalComment"
-                rows="2"
-                placeholder="Add a comment..."
-                class="w-full px-3 py-2 rounded-lg border border-[var(--border-default)] bg-[var(--surface-primary)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-500)] resize-none"
-            />
-        </div>
-    </ConfirmPasswordModal>
 
-    <!-- Reject Modal -->
-    <Modal
-        v-model:open="showRejectModal"
-        title="Reject Request"
-        description="Provide a reason for rejecting this request."
-        size="md"
-    >
-        <div class="space-y-4">
+        <!-- Approve Modal -->
+        <ConfirmPasswordModal
+            v-model:open="showApproveModal"
+            title="Approve Request"
+            description="Enter your password to approve this role change request."
+            submit-text="Approve"
+            submit-variant="primary"
+            :loading="actionLoading"
+            @confirm="handleApprove"
+        >
             <div class="space-y-2">
                 <label class="block text-sm font-medium text-[var(--text-primary)]">
-                    Reason for Rejection <span class="text-[var(--color-error-fg)]">*</span>
+                    Comment (optional)
                 </label>
                 <textarea
-                    v-model="rejectReason"
-                    rows="3"
-                    placeholder="Explain why this request is being rejected (min 10 characters)..."
+                    v-model="approvalComment"
+                    rows="2"
+                    placeholder="Add a comment..."
                     class="w-full px-3 py-2 rounded-lg border border-[var(--border-default)] bg-[var(--surface-primary)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-500)] resize-none"
                 />
-                <p class="text-xs text-[var(--text-muted)]">
-                    {{ rejectReason.length }} / 10 characters minimum
-                </p>
             </div>
-        </div>
+        </ConfirmPasswordModal>
 
-        <template #footer>
-            <Button variant="ghost" @click="showRejectModal = false">
-                Cancel
-            </Button>
-            <Button
-                variant="danger"
-                :disabled="rejectReason.length < 10"
-                @click="() => {
-                    showRejectModal = false;
-                    // Open password modal for rejection
-                    showApproveModal = true;
-                }"
-            >
-                Continue
-            </Button>
-        </template>
-    </Modal>
+        <!-- Reject Modal -->
+        <Modal
+            v-model:open="showRejectModal"
+            title="Reject Request"
+            description="Provide a reason for rejecting this request."
+            size="md"
+        >
+            <div class="space-y-4">
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-[var(--text-primary)]">
+                        Reason for Rejection <span class="text-[var(--color-error-fg)]">*</span>
+                    </label>
+                    <textarea
+                        v-model="rejectReason"
+                        rows="3"
+                        placeholder="Explain why this request is being rejected (min 10 characters)..."
+                        class="w-full px-3 py-2 rounded-lg border border-[var(--border-default)] bg-[var(--surface-primary)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-500)] resize-none"
+                    />
+                    <p class="text-xs text-[var(--text-muted)]">
+                        {{ rejectReason.length }} / 10 characters minimum
+                    </p>
+                </div>
+            </div>
 
-    <!-- Duplicate Modal -->
-    <DuplicateRoleModal
-        v-model:open="showDuplicateModal"
-        :source-role="selectedRole"
-        @saved="handleRoleSaved"
-    />
+            <template #footer>
+                <Button variant="ghost" @click="showRejectModal = false">
+                    Cancel
+                </Button>
+                <Button
+                    variant="danger"
+                    :disabled="rejectReason.length < 10"
+                    @click="() => {
+                        showRejectModal = false;
+                        // Open password modal for rejection
+                        showApproveModal = true;
+                    }"
+                >
+                    Continue
+                </Button>
+            </template>
+        </Modal>
 
+        <!-- Duplicate Modal -->
+        <DuplicateRoleModal
+            v-model:open="showDuplicateModal"
+            :source-role="selectedRole"
+            @saved="handleRoleSaved"
+        />
     </div>
 </template>

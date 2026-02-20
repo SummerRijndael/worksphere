@@ -30,7 +30,7 @@ interface Dataset {
   label: string;
   data: number[];
   borderColor?: string;
-  backgroundColor?: string;
+  backgroundColor?: string | string[];
 }
 
 interface Props {
@@ -58,7 +58,7 @@ const chartData = computed(() => ({
     label: dataset.label,
     data: dataset.data,
     borderColor: dataset.borderColor || getDefaultColor(index),
-    backgroundColor: dataset.backgroundColor || getDefaultBgColor(index),
+    backgroundColor: dataset.backgroundColor as any || getDefaultBgColor(index),
     borderWidth: 2,
     fill: true,
     tension: 0.4,

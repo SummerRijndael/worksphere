@@ -49,7 +49,7 @@ let echo: EchoInstance | null = null;
  * Check if Reverb configuration is available.
  */
 function isReverbConfigured(): boolean {
-    const runtimeKey = window.CoreSync?.reverb?.app_key;
+    const runtimeKey = (window as any).CoreSync?.reverb?.app_key;
     const buildKey = import.meta.env.VITE_REVERB_APP_KEY;
     const key = runtimeKey || buildKey;
     return Boolean(key && key !== 'undefined' && key !== '');
@@ -129,7 +129,7 @@ function initializeEcho(): EchoInstance | null {
             disableStats: true,
             // Custom authorizer to use our API instance (Axios)
             // This ensures we use the correct XSRF-TOKEN from the cookie and handle 419s via interceptors
-            authorizer: (channel: any, _options: any) => {
+            authorizer: ((channel: any, _options: any) => {
                 return {
                     authorize: (socketId: string, callback: (error: boolean, data?: any) => void) => {
                         api.post('/api/broadcasting/auth', {
@@ -144,8 +144,12 @@ function initializeEcho(): EchoInstance | null {
                         });
                     }
                 };
-            },
+            }) as any,
         }) as EchoInstance;
+
+        // CRITICAL: Set the module-level 'echo' variable IMMEDIATELY so listeners 
+        // triggered by connection events can access it via the Proxy.
+        echo = echoInstance;
 
         // Listen for connection events
         if (echoInstance.connector?.pusher) {
@@ -211,6 +215,7 @@ function initializeEcho(): EchoInstance | null {
     } catch (error) {
         console.warn('[Echo] Failed to initialize:', (error as Error).message);
         connectionError.value = error as Error;
+        echo = null;
         return null;
     }
 }
@@ -253,14 +258,15 @@ export function startEcho(): EchoInstance | null {
         return echo;
     }
 
-    echo = initializeEcho();
+    // initializeEcho now sets 'echo' internally as well
+    const instance = initializeEcho();
 
     // Expose globally for debugging and legacy support
-    if (echo) {
-        window.Echo = echo;
+    if (instance) {
+        window.Echo = instance;
     }
     
-    return echo;
+    return instance;
 }
 
 
@@ -345,12 +351,18 @@ export function disconnect(): void {
 
 // Export a Proxy that delegates to the lazy-loaded instance
 const echoProxy = new Proxy({} as EchoInstance, {
-    get(target, prop) {
-        if (!echo) return undefined;
-        const value = Reflect.get(echo, prop);
+    get(_target: EchoInstance, prop: PropertyKey, receiver: any) {
+        if (!echo) {
+            // Return undefined and let the caller handle it (e.g. via isEchoAvailable check)
+            return undefined;
+        }
+        
+        const value = Reflect.get(echo, prop, receiver);
         // Bind methods to the original instance to preserve 'this' context
         return typeof value === 'function' ? value.bind(echo) : value;
     }
 });
 
 export default echoProxy;
+
+

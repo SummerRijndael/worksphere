@@ -13,7 +13,7 @@ import util from 'util';
 window.Buffer = Buffer;
 window.process = process;
 window.global = window;
-window.EventEmitter = EventEmitter as any;
+(window as any).EventEmitter = EventEmitter as any;
 (window as any).util = util;
 
 import { createApp } from 'vue';

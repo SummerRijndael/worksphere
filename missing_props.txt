@@ -1,0 +1,40 @@
+resources/js/call.ts(16,8): error TS2339: Property 'EventEmitter' does not exist on type 'Window & typeof globalThis'.
+resources/js/components/invoices/RecordPaymentModal.vue(119,40): error TS2339: Property 'prefix' does not exist on type '{}'.
+resources/js/components/minichat/MiniChatMessageBubble.vue(164,64): error TS2339: Property 'chat_id' does not exist on type 'Message'.
+resources/js/components/minichat/MiniChatMessageBubble.vue(169,45): error TS2339: Property 'chat_id' does not exist on type 'Message'.
+resources/js/components/settings/BlockedUrlManager.vue(31,39): error TS2339: Property 'data' does not exist on type 'BlockedUrl[]'.
+resources/js/components/settings/BlockedUrlManager.vue(35,40): error TS2339: Property 'current_page' does not exist on type 'BlockedUrl[]'.
+resources/js/components/settings/BlockedUrlManager.vue(36,39): error TS2339: Property 'last_page' does not exist on type 'BlockedUrl[]'.
+resources/js/composables/useRoles.ts(30,25): error TS2339: Property 'name' does not exist on type 'never'.
+resources/js/composables/useRoles.ts(31,25): error TS2339: Property 'label' does not exist on type 'never'.
+resources/js/composables/useRoles.ts(32,31): error TS2339: Property 'description' does not exist on type 'never'.
+resources/js/composables/useRoles.ts(33,25): error TS2339: Property 'color' does not exist on type 'never'.
+resources/js/echo.ts(52,41): error TS2339: Property 'reverb' does not exist on type '{ name: string; url: string; }'.
+resources/js/stores/emailStore.ts(302,39): error TS2339: Property 'meta' does not exist on type 'PaginatedResponse<Email>'.
+resources/js/views/Email/EmailSettings.vue(797,60): error TS2339: Property 'toolbar-after' does not exist on type '{}'.
+resources/js/views/Email/EmailSettings.vue(835,60): error TS2339: Property 'toolbar-after' does not exist on type '{}'.
+resources/js/views/Email/components/EmailInlineComposer.vue(1056,23): error TS2339: Property 'dataTransfer' does not exist on type 'EditorView'.
+resources/js/views/Email/components/EmailInlineComposer.vue(1057,23): error TS2339: Property 'dataTransfer' does not exist on type 'EditorView'.
+resources/js/views/Email/components/EmailInlineComposer.vue(1058,23): error TS2339: Property 'dataTransfer' does not exist on type 'EditorView'.
+resources/js/views/Email/components/EmailPreviewPane.vue(847,33): error TS2339: Property 'data' does not exist on type 'never'.
+resources/js/views/TasksView.vue(447,32): error TS2339: Property 'trigger' does not exist on type '{}'.
+resources/js/views/TasksView.vue(605,28): error TS2339: Property 'trigger' does not exist on type '{}'.
+resources/js/views/TicketDetailView.vue(1987,62): error TS2339: Property 'action' does not exist on type '{ id: number; user: { name: string; } | null; description: string; created_at: string; changes?: { new?: Record<string, any> | undefined; old?: Record<string, any> | undefined; } | undefined; metadata?: Record<...> | undefined; }'.
+resources/js/views/TicketDetailView.vue(1994,66): error TS2339: Property 'action_icon' does not exist on type '{ id: number; user: { name: string; } | null; description: string; created_at: string; changes?: { new?: Record<string, any> | undefined; old?: Record<string, any> | undefined; } | undefined; metadata?: Record<...> | undefined; }'.
+resources/js/views/TicketDetailView.vue(1995,70): error TS2339: Property 'action' does not exist on type '{ id: number; user: { name: string; } | null; description: string; created_at: string; changes?: { new?: Record<string, any> | undefined; old?: Record<string, any> | undefined; } | undefined; metadata?: Record<...> | undefined; }'.
+resources/js/views/TicketDetailView.vue(2017,66): error TS2339: Property 'avatar_url' does not exist on type '{ name: string; }'.
+resources/js/views/TicketDetailView.vue(2032,70): error TS2339: Property 'user_name' does not exist on type '{ id: number; user: { name: string; } | null; description: string; created_at: string; changes?: { new?: Record<string, any> | undefined; old?: Record<string, any> | undefined; } | undefined; metadata?: Record<...> | undefined; }'.
+resources/js/views/TicketDetailView.vue(2654,84): error TS2339: Property 'public_id' does not exist on type '{ id: number; name: string; initials: string; avatarUrl?: string | null | undefined; avatar_url?: string | null | undefined; }'.
+resources/js/views/UserProfileView.vue(87,47): error TS2339: Property 'status' does not exist on type '{ public_id: string; name: string; username: string; avatar_url: string; bio: string | null; job_title: string | null; location: string | null; website: string | null; skills: string[]; joined_at: string; ... 4 more ...; teams?: { ...; }[] | undefined; }'.
+resources/js/views/UserProfileView.vue(88,46): error TS2339: Property 'status' does not exist on type '{ public_id: string; name: string; username: string; avatar_url: string; bio: string | null; job_title: string | null; location: string | null; website: string | null; skills: string[]; joined_at: string; ... 4 more ...; teams?: { ...; }[] | undefined; }'.
+resources/js/views/UserProfileView.vue(89,59): error TS2339: Property 'status' does not exist on type '{ public_id: string; name: string; username: string; avatar_url: string; bio: string | null; job_title: string | null; location: string | null; website: string | null; skills: string[]; joined_at: string; ... 4 more ...; teams?: { ...; }[] | undefined; }'.
+resources/js/views/UserProfileView.vue(90,56): error TS2339: Property 'status' does not exist on type '{ public_id: string; name: string; username: string; avatar_url: string; bio: string | null; job_title: string | null; location: string | null; website: string | null; skills: string[]; joined_at: string; ... 4 more ...; teams?: { ...; }[] | undefined; }'.
+resources/js/views/admin/InvoicesView.vue(571,36): error TS2339: Property 'prefix' does not exist on type '{}'.
+resources/js/views/admin/ProjectDetailView.vue(1773,48): error TS2339: Property 'prefix' does not exist on type '{}'.
+resources/js/views/admin/ProjectsManageView.vue(425,36): error TS2339: Property 'prefix' does not exist on type '{}'.
+resources/js/views/auth/LoginView.vue(691,12): error TS2339: Property 'finished' does not exist on type 'JSAnimation'.
+resources/js/views/call/components/CallSettingsModal.vue(296,57): error TS2339: Property 'startBlur' does not exist on type '{ loadModel: () => Promise<void>; startVideoEffect: (rawTrack: MediaStreamTrack, effect?: "image" | "blur", imageUrl?: string | undefined, autoFraming?: boolean) => Promise<...>; ... 4 more ...; error: Ref<...>; }'.
+resources/js/views/chat/components/chat/MessageBubble.vue(174,64): error TS2339: Property 'chat_id' does not exist on type 'Message'.
+resources/js/views/chat/components/chat/MessageBubble.vue(179,45): error TS2339: Property 'chat_id' does not exist on type 'Message'.
+resources/js/views/client/ClientInvoicesView.vue(178,32): error TS2339: Property 'prefix' does not exist on type '{}'.
+resources/js/views/client/ClientProjectsView.vue(169,32): error TS2339: Property 'prefix' does not exist on type '{}'.

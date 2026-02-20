@@ -8,7 +8,7 @@ import {
     ArrowRight,
     Play,
     Pause,
-    Archive,
+    
     RefreshCw,
 } from "lucide-vue-next";
 import axios from "axios";
@@ -19,30 +19,30 @@ const props = defineProps<{
 
 const emit = defineEmits(["task-updated", "error"]);
 
-const authStore = useAuthStore();
+// const authStore = useAuthStore();
 const noteModalOpen = ref(false);
 const submitting = ref(false);
 const actionNote = ref("");
 const currentAction = ref<string | null>(null);
 
 // Permission/State helpers
-const canSubmitForQa = computed(() => {
-    return (
-        props.task.status === "in_progress" || props.task.status === "on_hold"
-    );
-});
+// const canSubmitForQa = computed(() => {
+//     return (
+//         props.task.status === "in_progress" || props.task.status === "on_hold"
+//     );
+// });
 
-const canQaReview = computed(() => {
-    return props.task.status === "submitted" || props.task.status === "in_qa";
-});
+// const canQaReview = computed(() => {
+//     return props.task.status === "submitted" || props.task.status === "in_qa";
+// });
 
-const canPmReview = computed(() => {
-    return props.task.status === "pm_review";
-});
+// const canPmReview = computed(() => {
+//     return props.task.status === "pm_review";
+// });
 
-const canClientReview = computed(() => {
-    return props.task.status === "sent_to_client";
-});
+// const canClientReview = computed(() => {
+//     return props.task.status === "sent_to_client";
+// });
 
 // Computed list of actions based on permissions from backend
 const availableActions = computed(() => {

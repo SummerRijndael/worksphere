@@ -27,7 +27,7 @@ const fetchBlockedUrls = async (page = 1) => {
         const response = await BlockedUrlService.getBlockedUrls(page, searchQuery.value);
         // Controller returns { data: Paginator }, Paginator is { data: [], meta... }
         // So structure is response.data (Paginator) .data (Records)
-        const paginator = response.data;
+        const paginator = (response.data as any);
         blockedUrls.value = paginator.data;
         
         if (paginator) {

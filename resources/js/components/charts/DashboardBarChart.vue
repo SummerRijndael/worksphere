@@ -25,7 +25,7 @@ ChartJS.register(
 interface Dataset {
   label: string;
   data: number[];
-  backgroundColor?: string;
+  backgroundColor?: string | string[];
 }
 
 interface Props {
@@ -61,7 +61,7 @@ const chartData = computed(() => ({
   datasets: props.datasets.map((dataset, index) => ({
     label: dataset.label,
     data: dataset.data,
-    backgroundColor: dataset.backgroundColor || defaultColors[index % defaultColors.length],
+    backgroundColor: dataset.backgroundColor as any || defaultColors[index % defaultColors.length],
     borderRadius: 6,
     borderSkipped: false,
     barThickness: props.datasets.length > 1 ? 20 : 32,

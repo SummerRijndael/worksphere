@@ -132,7 +132,7 @@ const messageContent = ref('Test message ' + Date.now());
 const isLoading = ref(false);
 const logs = ref<any[]>([]);
 const channels = ref<any[]>([]);
-const logContainer = ref<HTMLElement | null>(null);
+// const logContainer = ref<HTMLElement | null>(null);
 
 // Computed
 const canAct = computed(() => selectedSender.value && selectedChat.value);

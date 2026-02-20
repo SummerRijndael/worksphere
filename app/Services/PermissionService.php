@@ -42,26 +42,34 @@ class PermissionService
         // 1. Global Permissions (Spatie)
         $globalPermissions = $user->getAllPermissions()->pluck('name');
 
-        // 2. Team Permissions
-        $teamPermissions = [];
-        if ($user->relationLoaded('teams') || method_exists($user, 'teams')) {
-            foreach ($user->teams as $team) {
-                $teamPermissions[$team->id] = $this->getTeamPermissions($user, $team);
-            }
-        }
-
+        // 2. Team Permissions are lazily evaluated in the Persona class
+        
         // 3. Overrides
         $overrides = $this->getEffectivePermissions($user);
 
         $persona = new \App\Classes\AuthorizationPersona(
             $isSuperAdmin,
             $globalPermissions,
-            $teamPermissions,
+            [],
             [
                 'granted' => $overrides['granted'],
                 'blocked' => $overrides['blocked'],
             ]
         );
+
+        $persona->setTeamPermissionResolver(function (int $teamId) use ($user): \Illuminate\Support\Collection {
+            $team = null;
+            if ($user->relationLoaded('teams')) {
+                $team = $user->teams->firstWhere('id', $teamId);
+            }
+            if (!$team) {
+                $team = \App\Models\Team::find($teamId);
+            }
+            if (!$team) {
+                return collect();
+            }
+            return $this->getTeamPermissions($user, $team);
+        });
 
         return $this->personaCache[$user->id] = $persona;
     }
@@ -453,6 +461,10 @@ class PermissionService
      */
     public function hasActiveBlock(User $user, string $permission, ?Team $team = null): bool
     {
+        if ($team === null) {
+            return in_array($permission, $this->getPersona($user)->overrides['blocked']);
+        }
+
         $query = PermissionOverride::active()
             ->forUser($user)
             ->forPermission($permission)
@@ -478,6 +490,10 @@ class PermissionService
      */
     public function hasActiveGrant(User $user, string $permission, ?Team $team = null): bool
     {
+        if ($team === null) {
+            return in_array($permission, $this->getPersona($user)->overrides['granted']);
+        }
+
         $query = PermissionOverride::active()
             ->forUser($user)
             ->forPermission($permission)

@@ -176,7 +176,7 @@
                     <div class="text-(--text-primary)">
                         <div
                             v-for="recipient in email.to"
-                            :key="recipient.email || recipient"
+                            :key="recipient.email"
                             class="flex items-center gap-1"
                         >
                             <span v-if="recipient.name" class="font-medium">{{
@@ -713,19 +713,19 @@ import axios from "axios";
 import {
     PrinterIcon,
     Maximize2Icon,
-    FileIcon,
+    
     AlertTriangleIcon,
     ReplyIcon,
     ForwardIcon,
     PencilIcon,
-    TrashIcon,
-    MoreHorizontalIcon,
+    
+    
     ReplyAllIcon,
     ImageIcon,
-    ChevronRightIcon,
+    
     ChevronDownIcon,
     InfoIcon,
-    PaperclipIcon,
+    
     DownloadIcon,
     ExternalLinkIcon,
     ShieldAlertIcon,
@@ -737,10 +737,11 @@ import {
 import { useDate } from "@/composables/useDate";
 
 const { formatDate, formatDateTime, formatRelativeTime } = useDate();
-import type { Email } from "@/types/models/email";
 import { animate, stagger } from "animejs";
 import { sanitizeHtml } from "@/utils/sanitize";
 import { useEmailStore } from "@/stores/emailStore";
+import type { Email, EmailAttachment } from "@/stores/emailStore";
+import { storeToRefs } from "pinia";
 import Modal from "@/components/ui/Modal.vue";
 import Button from "@/components/ui/Button.vue";
 
@@ -807,7 +808,7 @@ const showImages = ref(false);
 const hasBlockedImages = ref(false);
 const isBlockedImagesDismissed = ref(false);
 const selectedAttachments = ref<Set<string>>(new Set());
-const isAttachmentsExpanded = ref(false);
+// const isAttachmentsExpanded = ref(false);
 const isToExpanded = ref(false);
 const isCcExpanded = ref(false);
 const isHeaderExpanded = ref(
@@ -949,7 +950,7 @@ const pendingLink = ref("");
 // On-Demand Downloading State
 const isDownloading = ref<Record<string, boolean>>({});
 
-async function downloadOnDemand(att: any, index: number) {
+async function downloadOnDemand(att: EmailAttachment) {
     if (isDownloading.value[att.id]) return;
 
     isDownloading.value[att.id] = true;
@@ -1034,21 +1035,21 @@ const visibleAttachments = computed(() => {
 });
 
 // Check if any attachments are still in cloud (placeholders)
-const hasPlaceholderAttachments = computed(() => {
-    if (!visibleAttachments.value.length) return false;
-    return visibleAttachments.value.some(
-        (att: any) => att.is_downloaded === false,
-    );
-});
+// const hasPlaceholderAttachments = computed(() => {
+//     if (!visibleAttachments.value.length) return false;
+//     return visibleAttachments.value.some(
+//         (att: any) => att.is_downloaded === false,
+//     );
+// });
 
 // Check if all selected attachments are downloaded
-const allSelectedDownloaded = computed(() => {
-    if (selectedAttachments.value.size === 0) return true;
-    return Array.from(selectedAttachments.value).every((id) => {
-        const att = visibleAttachments.value.find((a: any) => a.id === id);
-        return (att as any)?.is_downloaded !== false;
-    });
-});
+// const allSelectedDownloaded = computed(() => {
+//     if (selectedAttachments.value.size === 0) return true;
+//     return Array.from(selectedAttachments.value).every((id) => {
+//         const att = visibleAttachments.value.find((a: any) => a.id === id);
+//         return (att as any)?.is_downloaded !== false;
+//     });
+// });
 
 const sanitizedBody = computed(() => {
     if (!props.email?.body_html) return "";
@@ -1384,10 +1385,10 @@ watch(
             });
 
             // Add click listener for external link warning
-            shadowRoot.value?.addEventListener("click", handleLinkClick);
+            (shadowRoot.value as any)?.addEventListener("click", handleLinkClick);
 
             // Add click listener for Image Preview (MediaViewer)
-            shadowRoot.value?.addEventListener("click", handleImageClick);
+            (shadowRoot.value as any)?.addEventListener("click", handleImageClick);
 
             // Add error listener for Images (Retry Loop)
             shadowRoot.value?.querySelectorAll("img").forEach(async (img) => {
@@ -1452,7 +1453,7 @@ function setupImageSyncRetry(img: HTMLImageElement) {
         };
         testImg.onerror = () => {
             retries++;
-            setTimeout(attemptReload, interval);
+            window.setTimeout(attemptReload, interval);
         };
 
         // Append unique param to bypass cache
@@ -1467,14 +1468,14 @@ function setupImageSyncRetry(img: HTMLImageElement) {
         img.src === SYNCING_PLACEHOLDER ||
         img.getAttribute("data-is-syncing") === "true"
     ) {
-        setTimeout(attemptReload, interval);
+        window.setTimeout(attemptReload, interval);
     } else {
         img.onerror = () => {
             if (img.src !== SYNCING_PLACEHOLDER) {
                 img.setAttribute("data-original-src", img.src);
                 img.src = SYNCING_PLACEHOLDER;
                 img.setAttribute("data-is-syncing", "true");
-                setTimeout(attemptReload, interval);
+                window.setTimeout(attemptReload, interval);
             }
         };
     }
@@ -1548,102 +1549,8 @@ function proceedToLink() {
 
 // Local formatting functions removed in favor of useDate composable
 
-// --- Attachments ---
 
-function toggleAttachment(id: string) {
-    if (selectedAttachments.value.has(id)) {
-        selectedAttachments.value.delete(id);
-    } else {
-        selectedAttachments.value.add(id);
-    }
-}
 
-function downloadSelected() {
-    const selected = props.email.attachments.filter((a) =>
-        selectedAttachments.value.has(a.id),
-    );
-    if (selected.length === 0) return;
-
-    if (selected.length === 1) {
-        // Single file - direct download
-        window.open(
-            `/api/emails/attachments/${selected[0].id}/download`,
-            "_blank",
-        );
-    } else {
-        // Multiple files - batch download as ZIP
-        const ids = selected.map((a) => a.id);
-        const form = document.createElement("form");
-        form.method = "POST";
-        form.action = "/api/emails/attachments/download-batch";
-        form.target = "_blank";
-
-        // Add CSRF token
-        const csrfToken = document
-            .querySelector('meta[name="csrf-token"]')
-            ?.getAttribute("content");
-        if (csrfToken) {
-            const csrfInput = document.createElement("input");
-            csrfInput.type = "hidden";
-            csrfInput.name = "_token";
-            csrfInput.value = csrfToken;
-            form.appendChild(csrfInput);
-        }
-
-        // Add IDs
-        ids.forEach((id) => {
-            const input = document.createElement("input");
-            input.type = "hidden";
-            input.name = "ids[]";
-            input.value = id;
-            form.appendChild(input);
-        });
-
-        document.body.appendChild(form);
-        form.submit();
-        document.body.removeChild(form);
-    }
-}
-
-function downloadAll() {
-    if (!props.email.attachments?.length) return;
-
-    if (props.email.attachments.length === 1) {
-        window.open(
-            `/api/emails/attachments/${props.email.attachments[0].id}/download`,
-            "_blank",
-        );
-    } else {
-        const ids = props.email.attachments.map((a) => a.id);
-        const form = document.createElement("form");
-        form.method = "POST";
-        form.action = "/api/emails/attachments/download-batch";
-        form.target = "_blank";
-
-        const csrfToken = document
-            .querySelector('meta[name="csrf-token"]')
-            ?.getAttribute("content");
-        if (csrfToken) {
-            const csrfInput = document.createElement("input");
-            csrfInput.type = "hidden";
-            csrfInput.name = "_token";
-            csrfInput.value = csrfToken;
-            form.appendChild(csrfInput);
-        }
-
-        ids.forEach((id) => {
-            const input = document.createElement("input");
-            input.type = "hidden";
-            input.name = "ids[]";
-            input.value = id;
-            form.appendChild(input);
-        });
-
-        document.body.appendChild(form);
-        form.submit();
-        document.body.removeChild(form);
-    }
-}
 
 // --- Print ---
 // --- Print ---

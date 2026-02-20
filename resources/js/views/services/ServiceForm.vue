@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { ArrowLeft, Plus, X, GripVertical } from 'lucide-vue-next';
+import { ArrowLeft, X, GripVertical } from 'lucide-vue-next';
 import { useServices } from '@/composables/useServices';
 import { ServiceSchema, defaultServiceValues, type Service } from '@/schemas/ServiceSchema';
 import ServicePricingCard from '@/components/services/ServicePricingCard.vue';
-import { Button, Input, Checkbox } from '@/components/ui'; // Assuming these exist
+import { Button, Input } from '@/components/ui'; // Assuming these exist
 import draggable from 'vuedraggable';
 
 const route = useRoute();

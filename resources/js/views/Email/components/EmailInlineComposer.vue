@@ -753,7 +753,7 @@ import Modal from "@/components/ui/Modal.vue";
 import Button from "@/components/ui/Button.vue";
 import { useEmailSignatures } from "../composables/useEmailSignatures";
 import { useEmailTemplates } from "../composables/useEmailTemplates";
-import { emailAccountService } from "@/services/email-account.service";
+// import {} from "@/services/email-account.service";
 import axios from "axios";
 
 // Tiptap Extensions
@@ -792,8 +792,8 @@ const scheduledAt = ref<string | null>(null);
 const draftId = ref<string | null>(null);
 const savingDraft = ref(false);
 const lastSavedAt = ref<Date | null>(null);
-const autoSaveInterval = ref<any>(null);
-const lastSavedHash = ref<string>("");
+// const autoSaveInterval = ref<any>(null);
+// const lastSavedHash = ref<string>("");
 const showDiscardModal = ref(false);
 const authStore = useAuthStore();
 const userTimezone = computed(() => {
@@ -1041,16 +1041,14 @@ const editor = useEditor({
         // Trigger auto-save on content change
         autoSave();
     },
-
+    onBlur: () => {
+        saveDraft(true);
+    },
     editorProps: {
         attributes: {
             class: "prose dark:prose-invert max-w-none focus:outline-none min-h-[100px] text-(--text-primary)",
         },
-        handleBlur: () => {
-            saveDraft(true);
-            return false;
-        },
-        handleDrop: (view, event, slice, moved) => {
+        handleDrop: (view: any, event: any, slice: any, moved: boolean) => {
             if (
                 !moved &&
                 event.dataTransfer &&

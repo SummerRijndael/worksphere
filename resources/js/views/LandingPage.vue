@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
 import { RouterLink } from "vue-router";
-import { Button, Card, PageLoader } from "@/components/ui";
+import { Card, PageLoader } from "@/components/ui";
 import PublicLayout from "@/layouts/PublicLayout.vue";
 import { animate, stagger } from "animejs";
 import {
@@ -9,12 +9,12 @@ import {
     Users,
     BarChart3,
     ShieldCheck,
-    Repeat,
+    
     ArrowRight,
     Play,
     CheckCircle2,
     Globe,
-    Zap,
+    
     Star,
 } from "lucide-vue-next";
 import { appConfig } from "@/config/app";
@@ -147,7 +147,7 @@ function createScrollAnimation(
         (entries) => {
             entries.forEach((entry) => {
                 if (entry.isIntersecting) {
-                    animate(entry.target, options);
+                    animate(entry.target, options as any);
                     observer.unobserve(entry.target);
                 }
             });
@@ -174,15 +174,13 @@ onMounted(() => {
             });
         }
 
-        // Logo Scroll Animation
         if (logoRef.value) {
             animate(logoRef.value.children, {
-                // Animate logos
+                translateY: [30, 0],
                 opacity: [0, 1],
-                translateY: [20, 0],
+                duration: 600,
                 delay: stagger(100),
-                duration: 1000,
-                easing: "easeOutExpo",
+                easing: "easeOutQuad",
             });
         }
 
@@ -192,12 +190,14 @@ onMounted(() => {
             const sectionTitle =
                 solutionsRef.value.querySelector(".section-title");
 
-            createScrollAnimation(sectionTitle as HTMLElement, {
-                opacity: [0, 1],
-                translateY: [30, 0],
-                duration: 800,
-                easing: "easeOutExpo",
-            });
+            if (sectionTitle) {
+                createScrollAnimation(sectionTitle as HTMLElement, {
+                    opacity: [0, 1],
+                    translateY: [30, 0],
+                    duration: 800,
+                    easing: "easeOutExpo",
+                });
+            }
 
             // Stagger animation needs special handling in scroll observer usually,
             // but we can just use the createScrollAnimation independently or batch them.
@@ -226,20 +226,24 @@ onMounted(() => {
             const title = pricingRef.value.querySelector(".pricing-title");
             const cards = pricingRef.value.querySelectorAll(".pricing-card");
 
-            createScrollAnimation(title as HTMLElement, {
-                opacity: [0, 1],
-                translateY: [30, 0],
-                duration: 800,
-                easing: "easeOutExpo",
-            });
+            if (title) {
+                createScrollAnimation(title as HTMLElement, {
+                    opacity: [0, 1],
+                    translateY: [30, 0],
+                    duration: 800,
+                    easing: "easeOutExpo",
+                });
+            }
 
-            createScrollAnimation(cards, {
-                opacity: [0, 1],
-                translateY: [50, 0],
-                delay: stagger(100),
-                duration: 800,
-                easing: "easeOutExpo",
-            });
+            if (cards.length > 0) {
+                createScrollAnimation(cards, {
+                    opacity: [0, 1],
+                    translateY: [50, 0],
+                    delay: stagger(100),
+                    duration: 800,
+                    easing: "easeOutExpo",
+                });
+            }
         }
 
         // Reviews Animation
@@ -247,20 +251,24 @@ onMounted(() => {
             const title = reviewsRef.value.querySelector(".reviews-title");
             const cards = reviewsRef.value.querySelectorAll(".review-card");
 
-            createScrollAnimation(title as HTMLElement, {
-                opacity: [0, 1],
-                translateY: [30, 0],
-                duration: 800,
-                easing: "easeOutExpo",
-            });
+            if (title) {
+                createScrollAnimation(title as HTMLElement, {
+                    opacity: [0, 1],
+                    translateY: [30, 0],
+                    duration: 800,
+                    easing: "easeOutExpo",
+                });
+            }
 
-            createScrollAnimation(cards, {
-                opacity: [0, 1],
-                translateY: [50, 0],
-                delay: stagger(100),
-                duration: 800,
-                easing: "easeOutExpo",
-            });
+            if (cards.length > 0) {
+                createScrollAnimation(cards, {
+                    opacity: [0, 1],
+                    translateY: [50, 0],
+                    delay: stagger(100),
+                    duration: 800,
+                    easing: "easeOutExpo",
+                });
+            }
         }
 
         // Global Scale Animation
@@ -268,19 +276,23 @@ onMounted(() => {
             const content = scaleRef.value.querySelector(".scale-content");
             const image = scaleRef.value.querySelector(".scale-image");
 
-            createScrollAnimation(content as HTMLElement, {
-                opacity: [0, 1],
-                translateX: [-50, 0],
-                duration: 1000,
-                easing: "easeOutExpo",
-            });
-            createScrollAnimation(image as HTMLElement, {
-                opacity: [0, 1],
-                translateX: [50, 0],
-                duration: 1000,
-                delay: 200,
-                easing: "easeOutExpo",
-            });
+            if (content) {
+                createScrollAnimation(content as HTMLElement, {
+                    opacity: [0, 1],
+                    translateX: [-50, 0],
+                    duration: 1000,
+                    easing: "easeOutExpo",
+                });
+            }
+            if (image) {
+                createScrollAnimation(image as HTMLElement, {
+                    opacity: [0, 1],
+                    translateX: [50, 0],
+                    duration: 1000,
+                    delay: 200,
+                    easing: "easeOutExpo",
+                });
+            }
         }
 
         // CTA Animation
@@ -295,6 +307,7 @@ onMounted(() => {
         }
     }, 800);
 });
+
 </script>
 
 <template>

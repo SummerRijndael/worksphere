@@ -49,7 +49,7 @@ function joinActiveCall() {
         videoCall.joinActiveCall(
             props.chat.public_id,
             activeCall.value.callId,
-            activeCall.value.callType
+            activeCall.value.callType,
         );
     }
 }
@@ -61,36 +61,36 @@ const chatAvatarData = computed(() => {
 const showThemeMenu = ref(false);
 
 const themes = [
-    { id: 'modern', label: 'Modern', color: '#6366f1' }, // Indigo/Default
-    { id: 'ocean', label: 'Ocean', color: '#0ea5e9' },  // Sky/Blue
-    { id: 'nature', label: 'Nature', color: '#10b981' }, // Emerald/Green
+    { id: "modern", label: "Modern", color: "#6366f1" }, // Indigo/Default
+    { id: "ocean", label: "Ocean", color: "#0ea5e9" }, // Sky/Blue
+    { id: "nature", label: "Nature", color: "#10b981" }, // Emerald/Green
 ] as const;
 
-function setTheme(theme: 'modern' | 'ocean' | 'nature') {
+function setTheme(theme: "modern" | "ocean" | "nature") {
     themeStore.setChatTheme(theme);
     showThemeMenu.value = false;
 }
 
 // Close menu on click outside
 function handleClickOutside(e: MouseEvent) {
-    if (showThemeMenu.value && !(e.target as Element).closest('.relative')) {
+    if (showThemeMenu.value && !(e.target as Element).closest(".relative")) {
         showThemeMenu.value = false;
     }
 }
 
 onMounted(() => {
-    document.addEventListener('click', handleClickOutside);
+    document.addEventListener("click", handleClickOutside);
 });
 
 onUnmounted(() => {
-    document.removeEventListener('click', handleClickOutside);
+    document.removeEventListener("click", handleClickOutside);
 });
 
 const otherParticipant = computed(() => {
     if (props.chat.type !== "dm") return null;
     return (
         props.chat.participants?.find(
-            (p) => p.public_id !== authStore.user?.public_id
+            (p) => p.public_id !== authStore.user?.public_id,
         ) || null
     );
 });
@@ -133,9 +133,8 @@ watch(
     async (newVal) => {
         if (newVal) {
             await nextTick();
-            if (typingDotsRef.value) {
-                animate({
-                    targets: typingDotsRef.value.children,
+            if (typingDotsRef.value && typingDotsRef.value.children) {
+                animate(typingDotsRef.value.children, {
                     translateY: [0, -3, 0],
                     opacity: [0.5, 1, 0.5],
                     easing: "easeInOutSine",
@@ -145,7 +144,7 @@ watch(
                 });
             }
         }
-    }
+    },
 );
 </script>
 
@@ -178,7 +177,9 @@ watch(
             <!-- Name & Status -->
             <div class="min-w-0">
                 <div class="flex items-center gap-2">
-                    <h1 class="text-sm text-(--text-primary) font-medium truncate">
+                    <h1
+                        class="text-sm text-(--text-primary) font-medium truncate"
+                    >
                         {{ headerTitle }}
                     </h1>
                     <span
@@ -194,9 +195,15 @@ watch(
                             typingIndicator
                         }}</span>
                         <div class="flex space-x-0.5" ref="typingDotsRef">
-                            <div class="w-1 h-1 bg-(--interactive-primary) rounded-full"></div>
-                            <div class="w-1 h-1 bg-(--interactive-primary) rounded-full"></div>
-                            <div class="w-1 h-1 bg-(--interactive-primary) rounded-full"></div>
+                            <div
+                                class="w-1 h-1 bg-(--interactive-primary) rounded-full"
+                            ></div>
+                            <div
+                                class="w-1 h-1 bg-(--interactive-primary) rounded-full"
+                            ></div>
+                            <div
+                                class="w-1 h-1 bg-(--interactive-primary) rounded-full"
+                            ></div>
                         </div>
                     </div>
                     <template v-else>
@@ -207,7 +214,9 @@ watch(
                         >
                             <span
                                 class="w-1.5 h-1.5 lg:w-2 lg:h-2 rounded-full"
-                                :class="getStatusColor(userPresence.status as any)"
+                                :class="
+                                    getStatusColor(userPresence.status as any)
+                                "
                             />
                             <span>{{
                                 getStatusLabel(userPresence.status as any)
@@ -253,17 +262,19 @@ watch(
                 </button>
             </template>
             <template v-else-if="chat.type === 'group'">
-                 <!-- Join Button if call active -->
-                 <button
+                <!-- Join Button if call active -->
+                <button
                     v-if="activeCall"
                     class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-all shadow-sm transform hover:scale-105"
                     title="Join Call"
                     @click="joinActiveCall"
                 >
                     <Icon name="PhoneForwarded" size="16" />
-                    <span class="text-xs font-semibold uppercase tracking-wide">Join</span>
+                    <span class="text-xs font-semibold uppercase tracking-wide"
+                        >Join</span
+                    >
                 </button>
-                 <button
+                <button
                     v-else
                     class="p-2 rounded-lg hover:bg-(--surface-tertiary) text-(--text-primary) transition-colors"
                     title="Start Video Call"
@@ -281,7 +292,9 @@ watch(
                 @click="joinActiveCall"
             >
                 <Icon name="PhoneForwarded" size="16" />
-                <span class="text-xs font-semibold uppercase tracking-wide">Join</span>
+                <span class="text-xs font-semibold uppercase tracking-wide"
+                    >Join</span
+                >
             </button>
 
             <!-- Theme Switcher -->
@@ -293,20 +306,26 @@ watch(
                 >
                     <Icon name="Palette" size="18" />
                 </button>
-                
+
                 <!-- Theme Menu -->
-                <div 
+                <div
                     v-if="showThemeMenu"
                     class="absolute right-0 top-full mt-2 w-48 bg-(--surface-elevated) border border-(--border-default) rounded-xl shadow-lg z-50 overflow-hidden py-1"
                 >
-                    <button 
-                        v-for="theme in themes" 
+                    <button
+                        v-for="theme in themes"
                         :key="theme.id"
                         class="w-full px-4 py-2 text-left text-sm hover:bg-(--surface-tertiary) flex items-center gap-2"
-                        :class="{'text-(--interactive-primary) font-medium': themeStore.chatTheme === theme.id}"
+                        :class="{
+                            'text-(--interactive-primary) font-medium':
+                                themeStore.chatTheme === theme.id,
+                        }"
                         @click="setTheme(theme.id)"
                     >
-                        <div class="w-3 h-3 rounded-full" :style="{ backgroundColor: theme.color }"></div>
+                        <div
+                            class="w-3 h-3 rounded-full"
+                            :style="{ backgroundColor: theme.color }"
+                        ></div>
                         {{ theme.label }}
                     </button>
                 </div>
@@ -340,8 +359,8 @@ watch(
                         connectionState === "connected"
                             ? "Live"
                             : connectionState === "connecting"
-                            ? "Connecting..."
-                            : "Offline"
+                              ? "Connecting..."
+                              : "Offline"
                     }}
                 </span>
             </div>

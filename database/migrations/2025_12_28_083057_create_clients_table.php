@@ -13,6 +13,7 @@ return new class extends Migration
     {
         Schema::create('clients', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('team_id')->nullable()->constrained()->cascadeOnDelete();
             $table->uuid('public_id')->unique()->index();
             $table->string('slug')->unique();
             $table->string('name');

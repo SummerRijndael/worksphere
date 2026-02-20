@@ -5,9 +5,9 @@ import { Card, Button, Badge, PageLoader } from "@/components/ui";
 import {
     ArrowLeft,
     Download,
-    FileText,
-    Calendar,
-    DollarSign,
+    
+    
+    
     AlertCircle,
     Printer,
 } from "lucide-vue-next";
@@ -33,10 +33,10 @@ const formatCurrency = (amount: number, currency: string = "USD") => {
     }).format(amount);
 };
 
-const formatFullDate = (dateString: string) => {
-    if (!dateString) return "-";
-    return formatDate(dateString, 'EEEE, MMMM d, yyyy');
-};
+// const formatFullDate = (dateString: string) => {
+//     if (!dateString) return "-";
+//     return formatDate(dateString, 'EEEE, MMMM d, yyyy');
+// };
 
 const formatShortDate = (dateString: string) => {
     if (!dateString) return "-";

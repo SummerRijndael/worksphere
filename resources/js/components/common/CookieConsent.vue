@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { X, Cookie, Shield } from 'lucide-vue-next';
+import { Cookie, Shield } from 'lucide-vue-next';
 
 const CONSENT_KEY = 'cookie_consent';
 const showBanner = ref(false);

@@ -1,6 +1,7 @@
 import api from "@/lib/api";
 
 export interface TaskTemplate {
+    id?: number | string;
     public_id: string;
     team_id: number;
     name: string;

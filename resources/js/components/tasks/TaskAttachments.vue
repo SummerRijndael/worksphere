@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
 import { useAuthStore } from "@/stores/auth";
-import { Button, Card } from "@/components/ui";
+import { Button } from "@/components/ui";
 import { FileIcon, Trash2, UploadCloud, Download, Loader2 } from "lucide-vue-next";
 import axios from "axios";
 import { toast } from "vue-sonner";
@@ -12,7 +12,7 @@ const props = defineProps<{
 
 const emit = defineEmits(["task-updated"]);
 
-const authStore = useAuthStore();
+// const authStore = useAuthStore();
 const isUploading = ref(false);
 const fileInput = ref<HTMLInputElement | null>(null);
 const deletingId = ref<number | null>(null);

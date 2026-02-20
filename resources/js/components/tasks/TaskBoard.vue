@@ -9,6 +9,7 @@ interface Task {
     public_id: string;
     title: string;
     description: string;
+    can?: Record<string, boolean>;
     status:
         | {
               value: string;

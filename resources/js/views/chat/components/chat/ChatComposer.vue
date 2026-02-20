@@ -23,10 +23,8 @@ const props = withDefaults(defineProps<Props>(), {
     pendingFiles: () => [],
     isMobile: false,
     chatId: undefined,
-    compact: false
+    compact: false,
 });
-
-
 
 const emit = defineEmits<{
     "update:modelValue": [value: string];
@@ -156,12 +154,16 @@ function insertEmoji(emoji: string) {
 
 function handleClickOutside(e: MouseEvent) {
     const target = e.target as HTMLElement;
-    
+
     // Check emoji
     const emojiButton = document.querySelector('button[title="Emoji"]');
     if (emojiButton && emojiButton.contains(target)) return;
 
-    if (showEmoji.value && emojiMountRef.value && !emojiMountRef.value.contains(target)) {
+    if (
+        showEmoji.value &&
+        emojiMountRef.value &&
+        !emojiMountRef.value.contains(target)
+    ) {
         showEmoji.value = false;
     }
 
@@ -169,7 +171,11 @@ function handleClickOutside(e: MouseEvent) {
     const giphyButton = document.querySelector('button[title="GIF"]');
     if (giphyButton && giphyButton.contains(target)) return;
 
-    if (showGiphy.value && giphyMountRef.value && !giphyMountRef.value.contains(target)) {
+    if (
+        showGiphy.value &&
+        giphyMountRef.value &&
+        !giphyMountRef.value.contains(target)
+    ) {
         showGiphy.value = false;
     }
 }
@@ -189,29 +195,31 @@ function toggleGiphy() {
 }
 
 function handleGifSelect(gif: any) {
-    emit('sendGif', gif);
+    emit("sendGif", gif);
     showGiphy.value = false;
 }
 
 // ... (imports)
 import { useMention } from "@/composables/useMention";
 
-// ...
-
-const { attach: attachMention } = useMention(textareaRef, {
-    onSelect: (item) => {
-        // Tribute modifies the DOM directly, so we need to sync the modelValue
-        // However, since handleInput is triggered by 'input' event which Tribute dispatches
-        // we might just rely on that, but let's ensure focus is kept
-        nextTick(() => {
-             if (textareaRef.value) {
-                emit("update:modelValue", textareaRef.value.value);
-                textareaRef.value.focus();
-                autoResize();
-             }
-        });
-    }
-});
+const { attach: attachMention } = useMention(
+    textareaRef,
+    computed(() => props.chatId),
+    {
+        onSelect: (_item?: any) => {
+            // Tribute modifies the DOM directly, so we need to sync the modelValue
+            // However, since handleInput is triggered by 'input' event which Tribute dispatches
+            // we might just rely on that, but let's ensure focus is kept
+            nextTick(() => {
+                if (textareaRef.value) {
+                    emit("update:modelValue", textareaRef.value.value);
+                    textareaRef.value.focus();
+                    autoResize();
+                }
+            });
+        },
+    },
+);
 
 onMounted(() => {
     document.addEventListener("click", handleClickOutside);
@@ -231,7 +239,7 @@ watch(
         if (val) {
             nextTick(() => textareaRef.value?.focus());
         }
-    }
+    },
 );
 </script>
 
@@ -253,11 +261,19 @@ watch(
                 v-if="replyTo"
                 class="flex items-center gap-3 mb-4 p-3 rounded-xl bg-(--surface-secondary) border border-(--border-subtle) shadow-sm relative overflow-hidden group"
             >
-                <div class="absolute left-0 top-0 bottom-0 w-1 bg-(--interactive-primary)"></div>
+                <div
+                    class="absolute left-0 top-0 bottom-0 w-1 bg-(--interactive-primary)"
+                ></div>
                 <div class="flex-1 min-w-0 pl-2">
                     <div class="flex items-center gap-2 mb-0.5">
-                        <Icon name="CornerUpLeft" size="14" class="text-(--interactive-primary)" />
-                        <span class="text-xs font-semibold text-(--text-primary)">
+                        <Icon
+                            name="CornerUpLeft"
+                            size="14"
+                            class="text-(--interactive-primary)"
+                        />
+                        <span
+                            class="text-xs font-semibold text-(--text-primary)"
+                        >
                             Replying to {{ replyTo.user_name }}
                         </span>
                     </div>
@@ -305,7 +321,10 @@ watch(
                             class="flex flex-col items-center justify-center h-full text-(--text-tertiary) p-2 text-center"
                         >
                             <Icon name="FileText" size="28" class="mb-1" />
-                            <span class="text-[10px] uppercase font-bold tracking-wider opacity-70">{{ file.name.split('.').pop() }}</span>
+                            <span
+                                class="text-[10px] uppercase font-bold tracking-wider opacity-70"
+                                >{{ file.name.split(".").pop() }}</span
+                            >
                         </div>
                     </div>
                     <button
@@ -326,7 +345,10 @@ watch(
         <!-- Input Row -->
         <div class="flex gap-3" :class="compact ? 'items-center' : 'items-end'">
             <!-- Left Actions Group -->
-            <div class="flex items-center gap-1" :class="{ 'mb-1.5': !compact }">
+            <div
+                class="flex items-center gap-1"
+                :class="{ 'mb-1.5': !compact }"
+            >
                 <!-- Attach Button -->
                 <label
                     class="p-2.5 rounded-full cursor-pointer text-(--text-secondary) hover:text-(--interactive-primary) hover:bg-(--surface-secondary) transition-all duration-200 group relative"
@@ -339,14 +361,23 @@ watch(
                         class="hidden"
                         @change="handleFileSelect"
                     />
-                    <Icon name="Paperclip" size="22" :stroke-width="2" class="group-hover:rotate-45 transition-transform" />
+                    <Icon
+                        name="Paperclip"
+                        size="22"
+                        :stroke-width="2"
+                        class="group-hover:rotate-45 transition-transform"
+                    />
                 </label>
-
 
                 <div class="relative">
                     <button
                         class="text-(--text-tertiary) hover:text-(--text-primary) transition-colors rounded-full hover:bg-(--surface-tertiary)"
-                        :class="[compact ? 'p-1.5' : 'p-2', showEmoji ? 'text-yellow-500 bg-(--surface-secondary)' : '']"
+                        :class="[
+                            compact ? 'p-1.5' : 'p-2',
+                            showEmoji
+                                ? 'text-yellow-500 bg-(--surface-secondary)'
+                                : '',
+                        ]"
                         title="Insert emoji"
                         @click.stop="toggleEmoji"
                     >
@@ -354,16 +385,20 @@ watch(
                     </button>
                 </div>
 
-                 <!-- GIF Button (Hidden in compact mode) -->
-            <div v-if="!compact" class="relative group">
-                <button
-                    class="p-2 text-(--text-tertiary) hover:text-(--text-primary) transition-colors rounded-full hover:bg-(--surface-tertiary)"
-                    title="GIF"
-                    @click.stop="toggleGiphy"
-                >
-                     <div class="font-bold text-[10px] leading-none border-2 border-current rounded px-1 py-0.5">GIF</div>
-                </button>
-            </div>
+                <!-- GIF Button (Hidden in compact mode) -->
+                <div v-if="!compact" class="relative group">
+                    <button
+                        class="p-2 text-(--text-tertiary) hover:text-(--text-primary) transition-colors rounded-full hover:bg-(--surface-tertiary)"
+                        title="GIF"
+                        @click.stop="toggleGiphy"
+                    >
+                        <div
+                            class="font-bold text-[10px] leading-none border-2 border-current rounded px-1 py-0.5"
+                        >
+                            GIF
+                        </div>
+                    </button>
+                </div>
             </div>
 
             <!-- Main Input Area -->
@@ -389,7 +424,7 @@ watch(
                 />
 
                 <!-- Character Count -->
-                 <div
+                <div
                     v-if="modelValue.length > 3000"
                     class="absolute bottom-2 right-4 text-[10px] font-medium transition-colors pointer-events-none"
                     :class="
@@ -412,7 +447,7 @@ watch(
                         ? 'bg-(--interactive-primary) text-white shadow-md hover:bg-(--interactive-primary-hover)'
                         : 'bg-(--surface-tertiary) text-(--text-tertiary)',
                     compact ? 'w-9 h-9' : 'w-10 h-10',
-                    !compact ? 'mb-1.5 pr-0.5' : ''
+                    !compact ? 'mb-1.5 pr-0.5' : '',
                 ]"
             >
                 <Icon name="Send" :size="compact ? 16 : 18" />
@@ -425,11 +460,18 @@ watch(
             v-show="showEmoji"
             ref="emojiMountRef"
             :class="[
-                isMobile 
-                    ? 'fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4' 
-                    : 'absolute bottom-full left-4 mb-3 z-50 shadow-xl rounded-2xl overflow-hidden'
+                isMobile
+                    ? 'fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4'
+                    : 'absolute bottom-full left-4 mb-3 z-50 shadow-xl rounded-2xl overflow-hidden',
             ]"
-            :style="compact ? { transform: 'scale(0.85)', 'transform-origin': 'bottom left' } : {}"
+            :style="
+                compact
+                    ? {
+                          transform: 'scale(0.85)',
+                          'transform-origin': 'bottom left',
+                      }
+                    : {}
+            "
             @click.self="isMobile ? (showEmoji = false) : null"
         />
 
@@ -438,13 +480,15 @@ watch(
             v-if="showGiphy"
             ref="giphyMountRef"
             :class="[
-                isMobile 
-                    ? 'fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4' 
-                    : 'absolute bottom-full left-16 mb-3 z-50 shadow-xl rounded-2xl overflow-hidden'
+                isMobile
+                    ? 'fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4'
+                    : 'absolute bottom-full left-16 mb-3 z-50 shadow-xl rounded-2xl overflow-hidden',
             ]"
             @click.self="isMobile ? (showGiphy = false) : null"
         >
-            <div class="bg-(--surface-elevated) rounded-2xl border border-(--border-default) overflow-hidden">
+            <div
+                class="bg-(--surface-elevated) rounded-2xl border border-(--border-default) overflow-hidden"
+            >
                 <GiphyPicker @select="handleGifSelect" />
             </div>
         </div>

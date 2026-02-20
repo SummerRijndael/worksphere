@@ -1,7 +1,9 @@
-<script setup>
-import { computed, ref } from 'vue';
+<script setup lang="ts">
+import { computed, ref, useSlots } from 'vue';
 import { cn } from '@/lib/utils';
 import { Eye, EyeOff } from 'lucide-vue-next';
+
+defineSlots<{ prefix?: any; default?: any; }>();
 
 const props = defineProps({
     modelValue: [String, Number],
@@ -26,6 +28,7 @@ const emit = defineEmits(['update:modelValue', 'focus', 'blur']);
 
 const showPassword = ref(false);
 const isFocused = ref(false);
+const slots = useSlots();
 
 const inputType = computed(() => {
     if (props.type === 'password') {
@@ -53,7 +56,7 @@ const inputClasses = computed(() =>
         },
 
         // Icon padding
-        props.icon && {
+        (props.icon || slots.prefix) && {
             'pl-10': props.size === 'md',
             'pl-9': props.size === 'sm',
             'pl-11': props.size === 'lg',
@@ -100,10 +103,11 @@ function handleBlur(e) {
         <div :class="wrapperClasses">
             <!-- Leading icon -->
             <div
-                v-if="icon"
-                class="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"
+                v-if="icon || $slots.prefix"
+                class="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] flex items-center"
             >
-                <component :is="icon" class="h-4 w-4" />
+                <component v-if="icon" :is="icon" class="h-4 w-4" />
+                <slot v-else name="prefix"></slot>
             </div>
 
             <input

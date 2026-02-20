@@ -359,7 +359,7 @@ import { useEmailStore } from "@/stores/emailStore";
 import { storeToRefs } from "pinia";
 import {
     emailAccountService,
-    type EmailAccount,
+    type 
 } from "@/services/email-account.service";
 
 import { useRouter } from "vue-router";
@@ -377,7 +377,7 @@ const {
     accounts,
     selectedAccount,
     accountStatus,
-    isSidebarCollapsed,
+    
 } = storeToRefs(store);
 
 const isBackgroundSyncing = computed(() => {

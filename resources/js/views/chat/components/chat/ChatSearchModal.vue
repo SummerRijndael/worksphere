@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
-import { Modal, SearchInput, Icon } from '@/components/ui';
+import { Modal, SearchInput } from '@/components/ui';
 import { chatService } from '@/services/chat.service';
 import debounce from 'lodash/debounce';
 

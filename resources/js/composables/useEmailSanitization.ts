@@ -41,7 +41,7 @@ export function useEmailSanitization(email: () => Email | null) {
             if (att.content_id && att.url) {
                 // Match src="cid:content_id" patterns
                 // Using split/join or replaceAll is safer/faster than dynamic RegExp
-                const search = `cid:${att.content_id}`;
+//                 const search = `cid:${att.content_id}`;
                 
                 // Replace in src="cid:..." and src='cid:...'
                 const doubleQuoteSearch = `src="cid:${att.content_id}"`;

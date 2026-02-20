@@ -9,7 +9,7 @@ import {
     ref,
     computed,
     onMounted,
-    onUnmounted,
+    
     onBeforeUnmount,
     watch,
     reactive,
@@ -18,6 +18,7 @@ import Peer from "simple-peer";
 import { startEcho, stopEcho } from "@/echo";
 import { videoCallService } from "@/services/videocall.service";
 import { useVideoCallStore } from "@/stores/videocall";
+import { toast } from "vue-sonner";
 import { useChatStore } from "@/stores/chat";
 import { useAuthStore } from "@/stores/auth";
 import { Icon } from "@/components/ui";
@@ -26,10 +27,7 @@ import { useChat } from "@/composables/useChat";
 import CallChatList from "./components/CallChatList.vue";
 import ChatComposer from "../chat/components/chat/ChatComposer.vue";
 import NetworkHealthIndicator from "./components/NetworkHealthIndicator.vue";
-import {
-    Tooltip,
-} from "@/components/ui";
-
+import { Tooltip } from "@/components/ui";
 
 import { useBackgroundBlur } from "@/composables/useBackgroundBlur";
 import MediaViewer from "@/components/tools/MediaViewer.vue";
@@ -100,37 +98,35 @@ const {
     sendMessage,
     loadMoreMessages,
     setReplyTo,
-    cancelReply,
     addFiles,
     removeFile,
     handleInputChange,
     sendGif,
-    scrollToBottom,
 } = useChat({ autoFetch: true });
 
 // Auto-Close Logic
-watch(
-    callState,
-    (newState) => {
-        if (newState === 'ended') {
-            console.log("[CallApp] Call ended. Closing window in 2s...");
-            setTimeout(() => {
-                window.close();
-            }, 2000);
-        }
+watch(callState, (newState) => {
+    if (newState === "ended") {
+        console.log("[CallApp] Call ended. Closing window in 2s...");
+        setTimeout(() => {
+            window.close();
+        }, 2000);
     }
-);
+});
 
 watch(
     () => store.error,
     (newError) => {
         if (newError) {
-            console.warn("[CallApp] Critical error detected. Closing window in 5s...", newError);
+            console.warn(
+                "[CallApp] Critical error detected. Closing window in 5s...",
+                newError,
+            );
             setTimeout(() => {
                 window.close();
             }, 5000);
         }
-    }
+    },
 );
 
 const handleMessageReply = (message: any) => {
@@ -218,7 +214,7 @@ async function runHeartbeat() {
         // This prevents "Self-DDOS" / Thundering Herd if many clients are in a group call
         const jitter = Math.floor(Math.random() * 10000);
         const nextInterval = 60000 + jitter;
-        
+
         heartbeatTimeout = setTimeout(runHeartbeat, nextInterval);
     }
 }
@@ -260,7 +256,7 @@ watch(
         () => showSidebar.value,
         () => sidebarTab.value,
     ],
-    ([newLen, visible, tab]) => {
+    ([_, visible, tab]) => {
         if (visible && tab === "chat" && activeChat.value?.public_id) {
             chatStore.markAsRead(activeChat.value.public_id);
         }
@@ -772,93 +768,152 @@ const previewRemoteName = computed(() => {
 });
 
 // Watch Video Effect Changes
-watch([() => store.videoEffect, () => store.backgroundImage, () => store.autoFraming], async ([effect, bgImage, framing]) => {
-    console.log("[Call] Video effect or framing changed:", { effect, framing, hasImage: !!bgImage });
-    if (!localStream.value) return;
+watch(
+    [
+        () => store.videoEffect,
+        () => store.backgroundImage,
+        () => store.autoFraming,
+    ],
+    async ([effect, bgImage, framing]) => {
+        console.log("[Call] Video effect or framing changed:", {
+            effect,
+            framing,
+            hasImage: !!bgImage,
+        });
+        if (!localStream.value) return;
 
-    const currentVideoTrack = localStream.value.getVideoTracks()[0];
-    
-    // If we don't have the original track yet, try to get it
-    if (!originalVideoTrack.value && currentVideoTrack && (effect === 'blur' || effect === 'image')) {
-         originalVideoTrack.value = currentVideoTrack;
-    }
+        const currentVideoTrack = localStream.value.getVideoTracks()[0];
 
-    if (!originalVideoTrack.value) return;
-
-    try {
-        let newTrack: MediaStreamTrack;
-
-        if (effect === 'blur' || effect === 'image') {
-             newTrack = await backgroundBlur.startVideoEffect(
-                 originalVideoTrack.value, 
-                 effect, 
-                 bgImage || undefined,
-                 framing
-             );
-             console.log(`[Call] ${effect} track received:`, newTrack?.id, 'enabled:', newTrack?.enabled);
-        } else {
-             backgroundBlur.stopProcessing();
-             newTrack = originalVideoTrack.value;
+        // If we don't have the original track yet, try to get it
+        if (
+            !originalVideoTrack.value &&
+            currentVideoTrack &&
+            (effect === "blur" || effect === "image")
+        ) {
+            originalVideoTrack.value = currentVideoTrack;
         }
 
-        // Replace in Local Stream
-        const oldTrack = localStream.value.getVideoTracks()[0];
-        console.log('[Call] Track swap:', { oldId: oldTrack?.id, newId: newTrack?.id, same: oldTrack?.id === newTrack?.id });
-        if (oldTrack && oldTrack.id !== newTrack.id) {
-             localStream.value.removeTrack(oldTrack);
-             localStream.value.addTrack(newTrack);
-             
-             // Restore enabled state
-             newTrack.enabled = !isCameraOff.value;
+        if (!originalVideoTrack.value) return;
 
-             // Replace in Peer Connections (Mesh)
-             let meshReplaceCount = 0;
-             peers.forEach((peer) => {
-                 // @ts-ignore
-                 const pc = peer._pc as RTCPeerConnection;
-                 if (!pc) return;
-                 const sender = pc.getSenders().find((s: any) => s.track?.kind === 'video');
-                 if (sender) {
-                     sender.replaceTrack(newTrack);
-                     meshReplaceCount++;
-                 }
-             });
-             console.log(`[Call] Replaced video track in ${meshReplaceCount} mesh peer(s)`);
+        try {
+            let newTrack: MediaStreamTrack;
 
-             // Replace in SFU
-             if (sfuPc) {
-                  const senders = sfuPc.getSenders();
-                  const videoSender = senders.find(s => s.track?.kind === 'video' || (s.track === null && s.dtmf === null)); // Fallback to find the video sender/transceiver
-                  
-                  // More robust check: check transceiver mid or direction if track is missing
-                  // cloudflare calls usually sets up 1 audio 1 video.
-                  
-                  if (videoSender) {
-                      console.log('[Call] Found SFU Video Sender:', videoSender.track?.id);
-                      videoSender.replaceTrack(newTrack)
-                        .then(() => console.log('[Call] Successfully replaced video track in SFU'))
-                        .catch(err => console.error('[Call] Failed to replace SFU track:', err));
-                  } else {
-                      console.warn('[Call] Could not find SFU Video Sender to replace track');
-                      // Try finding via transceivers
-                      const transceivers = sfuPc.getTransceivers();
-                      const videoTransceiver = transceivers.find(t => t.sender.track?.kind === 'video' || t.receiver.track?.kind === 'video');
-                      if (videoTransceiver) {
-                          console.log('[Call] Found SFU Video Transceiver, replacing sender track...');
-                          videoTransceiver.sender.replaceTrack(newTrack).catch(e => console.error('[Call] Transceiver replace failed:', e));
-                      }
-                  }
-             }
+            if (effect === "blur" || effect === "image") {
+                newTrack = await backgroundBlur.startVideoEffect(
+                    originalVideoTrack.value,
+                    effect,
+                    bgImage || undefined,
+                    framing,
+                );
+                console.log(
+                    `[Call] ${effect} track received:`,
+                    newTrack?.id,
+                    "enabled:",
+                    newTrack?.enabled,
+                );
+            } else {
+                backgroundBlur.stopProcessing();
+                newTrack = originalVideoTrack.value;
+            }
+
+            // Replace in Local Stream
+            const oldTrack = localStream.value.getVideoTracks()[0];
+            console.log("[Call] Track swap:", {
+                oldId: oldTrack?.id,
+                newId: newTrack?.id,
+                same: oldTrack?.id === newTrack?.id,
+            });
+            if (oldTrack && oldTrack.id !== newTrack.id) {
+                localStream.value.removeTrack(oldTrack);
+                localStream.value.addTrack(newTrack);
+
+                // Restore enabled state
+                newTrack.enabled = !isCameraOff.value;
+
+                // Replace in Peer Connections (Mesh)
+                let meshReplaceCount = 0;
+                peers.forEach((peer) => {
+                    // @ts-ignore
+                    const pc = peer._pc as RTCPeerConnection;
+                    if (!pc) return;
+                    const sender = pc
+                        .getSenders()
+                        .find((s: any) => s.track?.kind === "video");
+                    if (sender) {
+                        sender.replaceTrack(newTrack);
+                        meshReplaceCount++;
+                    }
+                });
+                console.log(
+                    `[Call] Replaced video track in ${meshReplaceCount} mesh peer(s)`,
+                );
+
+                // Replace in SFU
+                if (sfuPc) {
+                    const senders = sfuPc.getSenders();
+                    const videoSender = senders.find(
+                        (s) =>
+                            s.track?.kind === "video" ||
+                            (s.track === null && s.dtmf === null),
+                    ); // Fallback to find the video sender/transceiver
+
+                    // More robust check: check transceiver mid or direction if track is missing
+                    // cloudflare calls usually sets up 1 audio 1 video.
+
+                    if (videoSender) {
+                        console.log(
+                            "[Call] Found SFU Video Sender:",
+                            videoSender.track?.id,
+                        );
+                        videoSender
+                            .replaceTrack(newTrack)
+                            .then(() =>
+                                console.log(
+                                    "[Call] Successfully replaced video track in SFU",
+                                ),
+                            )
+                            .catch((err) =>
+                                console.error(
+                                    "[Call] Failed to replace SFU track:",
+                                    err,
+                                ),
+                            );
+                    } else {
+                        console.warn(
+                            "[Call] Could not find SFU Video Sender to replace track",
+                        );
+                        // Try finding via transceivers
+                        const transceivers = sfuPc.getTransceivers();
+                        const videoTransceiver = transceivers.find(
+                            (t) =>
+                                t.sender.track?.kind === "video" ||
+                                t.receiver.track?.kind === "video",
+                        );
+                        if (videoTransceiver) {
+                            console.log(
+                                "[Call] Found SFU Video Transceiver, replacing sender track...",
+                            );
+                            videoTransceiver.sender
+                                .replaceTrack(newTrack)
+                                .catch((e) =>
+                                    console.error(
+                                        "[Call] Transceiver replace failed:",
+                                        e,
+                                    ),
+                                );
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.error("Failed to apply video effect", e);
+            // Reset effect so the user gets their regular video feed
+            if (effect === "blur") {
+                store.setVideoEffect("none");
+            }
         }
-
-    } catch (e) {
-        console.error("Failed to apply video effect", e);
-        // Reset effect so the user gets their regular video feed
-        if (effect === 'blur') {
-            store.setVideoEffect('none');
-        }
-    }
-});
+    },
+);
 
 // ============================================================================
 // Watchers
@@ -895,16 +950,21 @@ async function acquireMedia(): Promise<MediaStream | null> {
 
                     // Store original track
                     originalVideoTrack.value = stream.getVideoTracks()[0];
-                    
+
                     // Apply effects if needed
-                    if ((store.videoEffect === 'blur' || store.videoEffect === 'image') && originalVideoTrack.value) {
-                         const processedTrack = await backgroundBlur.startVideoEffect(
-                             originalVideoTrack.value,
-                             store.videoEffect,
-                             store.backgroundImage || undefined
-                         );
-                         stream.removeTrack(originalVideoTrack.value);
-                         stream.addTrack(processedTrack);
+                    if (
+                        (store.videoEffect === "blur" ||
+                            store.videoEffect === "image") &&
+                        originalVideoTrack.value
+                    ) {
+                        const processedTrack =
+                            await backgroundBlur.startVideoEffect(
+                                originalVideoTrack.value,
+                                store.videoEffect,
+                                store.backgroundImage || undefined,
+                            );
+                        stream.removeTrack(originalVideoTrack.value);
+                        stream.addTrack(processedTrack);
                     }
 
                     localStream.value = stream;
@@ -995,7 +1055,6 @@ async function joinCall() {
     if (isJoining.value || hasJoined.value) return;
     isJoining.value = true;
     console.log("[Call] User clicked JOIN");
-
 
     try {
         const stream = await acquireMedia();
@@ -1145,8 +1204,6 @@ async function joinCall() {
     }
 }
 
-
-
 function createPeer(
     targetPublicId: string,
     initiator: boolean,
@@ -1272,14 +1329,13 @@ async function handleSignal(event: any) {
     const eventCallId = event.call_id || event.callId;
     const currentCallId = callData.value?.callId;
 
-
-
     // Verification: ensure this signal belongs to the current call session
     if (eventCallId && currentCallId && eventCallId !== currentCallId) {
-        console.log(`[Call] Ignoring signal for different call ID: ${eventCallId} (current: ${currentCallId})`);
+        console.log(
+            `[Call] Ignoring signal for different call ID: ${eventCallId} (current: ${currentCallId})`,
+        );
         return;
     }
-
 
     if (senderId === selfId) {
         console.log(
@@ -1757,6 +1813,7 @@ function handleParticipantJoined(event: any) {
                         audioMid,
                         videoMid,
                     } as any,
+                        participant.publicId,
                     publicId,
                 )
                 .catch(() => {});
@@ -1790,7 +1847,7 @@ function handleParticipantLeft(event: any) {
         event.participant_publicId ||
         ""
     ).toLowerCase();
-    const reason = event.reason || 'hangup';
+    const reason = event.reason || "hangup";
     console.log(`[Call] Participant left: ${publicId}, reason: ${reason}`);
 
     // Remove from list
@@ -1817,20 +1874,26 @@ function handleParticipantLeft(event: any) {
 
     // Auto-end logic
     const nonSelfParticipants = participants.value.filter((p) => !p.isSelf);
-    
-    // In a 1:1 call (DM), if the other side leaves/declines/is busy, we end the call
-    const isDM = callData.value?.chatType === 'dm';
-    const isTarget = isDM && (
-        publicId === callData.value?.remoteUser?.publicId?.toLowerCase() ||
-        nonSelfParticipants.length === 0
-    );
 
-    if (isTarget && (callState.value === "connected" || callState.value === "ringing" || callState.value === "connecting")) {
+    // In a 1:1 call (DM), if the other side leaves/declines/is busy, we end the call
+    const isDM = callData.value?.chatType === "dm";
+    const isTarget =
+        isDM &&
+        (publicId === callData.value?.remoteUser?.publicId?.toLowerCase() ||
+            nonSelfParticipants.length === 0);
+
+    if (
+        isTarget &&
+        (callState.value === "connected" ||
+            callState.value === "ringing" ||
+            callState.value === "connecting")
+    ) {
         console.log(`[Call] Remote participant left (${reason}). Auto-ending.`);
-        
-        if (reason === 'busy') toast.error("User is busy");
-        else if (reason === 'declined') toast.info("Call declined");
-        else if (reason === 'no_answer' || reason === 'timeout') toast.info("Call was not answered");
+
+        if (reason === "busy") toast.error("User is busy");
+        else if (reason === "declined") toast.info("Call declined");
+        else if (reason === "no_answer" || reason === "timeout")
+            toast.info("Call was not answered");
 
         // Notify backend and parent before closing
         endCall(reason as any);
@@ -1849,7 +1912,9 @@ function handleCallEndedEvent(event: any) {
     const currentCallId = callData.value?.callId;
 
     if (eventCallId && currentCallId && eventCallId !== currentCallId) {
-        console.log(`[Call] Ignoring CallEnded for different call ID: ${eventCallId}`);
+        console.log(
+            `[Call] Ignoring CallEnded for different call ID: ${eventCallId}`,
+        );
         return;
     }
 
@@ -1865,7 +1930,6 @@ function handleCallEndedEvent(event: any) {
     postToParent({ type: "state", state: "ended", reason: event.reason });
     cleanup();
 }
-
 
 function setupEcho() {
     const echo = startEcho();
@@ -2160,9 +2224,24 @@ async function joinSFU(stream: MediaStream) {
             if (track.kind === "video") {
                 console.log("[SFU] Configuring Simulcast Encodings (h, m, l)");
                 init.sendEncodings = [
-                    { rid: "l", active: true, maxBitrate: 150000, scaleResolutionDownBy: 4 },
-                    { rid: "m", active: true, maxBitrate: 500000, scaleResolutionDownBy: 2 },
-                    { rid: "h", active: true, maxBitrate: 1500000, scaleResolutionDownBy: 1 },
+                    {
+                        rid: "l",
+                        active: true,
+                        maxBitrate: 150000,
+                        scaleResolutionDownBy: 4,
+                    },
+                    {
+                        rid: "m",
+                        active: true,
+                        maxBitrate: 500000,
+                        scaleResolutionDownBy: 2,
+                    },
+                    {
+                        rid: "h",
+                        active: true,
+                        maxBitrate: 1500000,
+                        scaleResolutionDownBy: 1,
+                    },
                 ];
             }
 
@@ -2389,7 +2468,6 @@ async function joinSFU(stream: MediaStream) {
 /* SFU Reset: Force a new session on unrecoverable errors */
 /* SFU Reset: Force a new session on unrecoverable errors */
 /* SFU Reset: Force a new session on unrecoverable errors */
-let isNegotiatingSFU = false;
 let sfuGeneration = 0; // Generation counter to invalidate old tasks on reset
 
 async function resetSFUSession() {
@@ -2454,72 +2532,8 @@ async function handleSFU406Rescue() {
     return true;
 }
 
-async function triggerSFURenegotiation() {
-    if (!sfuPc || !sfuSessionId.value || isSFUResetting.value) return;
-
-    // Guard: Don't start a new offer if we are already negotiating
-    if ((sfuPc.signalingState as string) !== "stable") {
-        console.log(
-            `[SFU] Signaling state is ${sfuPc.signalingState}, waiting for stability before renegotiating...`,
-        );
-        return;
-    }
-
-    return runInSFUQueue(async () => {
-        if (isSFUResetting.value || sfuPc?.signalingState !== "stable") return;
-        console.log("[SFU] Triggering session renegotiation...");
-        try {
-            const offer = await sfuPc!.createOffer();
-            await sfuPc!.setLocalDescription(offer);
-
-            const res = await videoCallService.sfuSessionRenegotiate(
-                callData.value!.chatId,
-                sfuSessionId.value!,
-                mungeSdp(sfuPc!.localDescription!.sdp!),
-                "offer",
-                "PUT",
-            );
-
-            if (res.sessionDescription) {
-                await sfuPc!.setRemoteDescription(
-                    new RTCSessionDescription(res.sessionDescription),
-                );
-                console.log(
-                    "[SFU] Renegotiation successful (Client-Initiated)",
-                );
-            }
-        } catch (e: any) {
-            console.warn("[SFU] Client-initiated renegotiation failed", e);
-
-            if (e.response?.status === 406) {
-                if (await handleSFU406Rescue()) {
-                    triggerSFURenegotiation();
-                    return;
-                }
-            }
-
-            // Generic rollback for other errors or failed rescue
-            if (
-                sfuPc &&
-                (sfuPc.signalingState as string) === "have-local-offer"
-            ) {
-                try {
-                    await sfuPc.setLocalDescription({
-                        type: "rollback",
-                    } as any);
-                    console.log("[SFU] Rolled back local offer after failure");
-                } catch (rollbackErr) {
-                    console.warn(
-                        "[SFU] Rollback failed after renegotiate error",
-                        rollbackErr,
-                    );
-                }
-            }
-        }
-    });
-}
-
 let sfuNegotiationQueue = Promise.resolve();
+let isNegotiatingSFU = false;
 // SFU Reliability Metrics
 const participantPullAttempts = new Map<string, number>();
 const screenPullAttempts = new Map<string, number>();
@@ -2661,11 +2675,6 @@ async function negotiateSession(
     }
 }
 
-async function performSFUNegotiation(
-    localDescription: RTCSessionDescriptionInit | null,
-) {
-    return runInSFUQueue(() => negotiateSession(localDescription));
-}
 
 async function runInSFUQueue(fn: () => Promise<void>) {
     const currentGen = sfuGeneration;
@@ -3011,9 +3020,24 @@ async function publishSFUScreenTrack(stream: MediaStream) {
             }
             if (params.encodings.length === 0) {
                 params.encodings = [
-                    { rid: "l", active: true, maxBitrate: 150000, scaleResolutionDownBy: 4 },
-                    { rid: "m", active: true, maxBitrate: 500000, scaleResolutionDownBy: 2 },
-                    { rid: "h", active: true, maxBitrate: 1500000, scaleResolutionDownBy: 1 },
+                    {
+                        rid: "l",
+                        active: true,
+                        maxBitrate: 150000,
+                        scaleResolutionDownBy: 4,
+                    },
+                    {
+                        rid: "m",
+                        active: true,
+                        maxBitrate: 500000,
+                        scaleResolutionDownBy: 2,
+                    },
+                    {
+                        rid: "h",
+                        active: true,
+                        maxBitrate: 1500000,
+                        scaleResolutionDownBy: 1,
+                    },
                 ];
                 await transceiver.sender.setParameters(params);
             }
@@ -3023,9 +3047,24 @@ async function publishSFUScreenTrack(stream: MediaStream) {
                 direction: "sendonly",
                 streams: [stream],
                 sendEncodings: [
-                    { rid: "l", active: true, maxBitrate: 150000, scaleResolutionDownBy: 4 },
-                    { rid: "m", active: true, maxBitrate: 500000, scaleResolutionDownBy: 2 },
-                    { rid: "h", active: true, maxBitrate: 1500000, scaleResolutionDownBy: 1 },
+                    {
+                        rid: "l",
+                        active: true,
+                        maxBitrate: 150000,
+                        scaleResolutionDownBy: 4,
+                    },
+                    {
+                        rid: "m",
+                        active: true,
+                        maxBitrate: 500000,
+                        scaleResolutionDownBy: 2,
+                    },
+                    {
+                        rid: "h",
+                        active: true,
+                        maxBitrate: 1500000,
+                        scaleResolutionDownBy: 1,
+                    },
                 ],
             });
         }
@@ -3144,7 +3183,14 @@ function playRingtone(type: "incoming" | "outgoing") {
         );
         ringtoneAudio.loop = true;
         ringtoneAudio.volume = 0.5;
-        ringtoneAudio.play().catch((e) => console.warn("[Call] Ringtone play failed (autoplay policy?):", e));
+        ringtoneAudio
+            .play()
+            .catch((e) =>
+                console.warn(
+                    "[Call] Ringtone play failed (autoplay policy?):",
+                    e,
+                ),
+            );
     } catch {}
 }
 
@@ -3261,7 +3307,6 @@ async function initializeCall() {
             callId: callData.value.callId,
             chatId: callData.value.chatId,
             chatType: (callData.value as any).chatType || "dm",
-            callType: callData.value.callType,
             direction: callData.value.direction,
             selfId: callData.value.selfPublicId,
         });
@@ -3463,7 +3508,7 @@ onBeforeUnmount(() => cleanup());
             >
                 <Icon name="ZapOff" size="18" />
                 <span>{{ backgroundBlur.error.value }}</span>
-                <button 
+                <button
                     @click="backgroundBlur.error.value = null"
                     class="ml-2 hover:bg-white/20 p-1 rounded-full transition-colors"
                 >
@@ -3499,30 +3544,61 @@ onBeforeUnmount(() => cleanup());
             <div class="lobby-content">
                 <div class="avatar-preview">
                     <!-- Avatar Preview -->
-                    <div class="preview-circle" :class="{ 'animate-pulse': callData?.direction === 'incoming' }">
+                    <div
+                        class="preview-circle"
+                        :class="{
+                            'animate-pulse': callData?.direction === 'incoming',
+                        }"
+                    >
                         <span class="initials">{{ previewRemoteName[0] }}</span>
                     </div>
                 </div>
 
                 <div class="join-info">
                     <h1 class="join-title">
-                        {{ callData?.direction === 'incoming' ? 'Incoming Call' : 'Join Call' }}
+                        {{
+                            callData?.direction === "incoming"
+                                ? "Incoming Call"
+                                : "Join Call"
+                        }}
                     </h1>
                     <p class="join-subtitle">
-                        {{ callData?.direction === 'incoming' ? 'From' : 'With' }} {{ previewRemoteName }}
+                        {{
+                            callData?.direction === "incoming" ? "From" : "With"
+                        }}
+                        {{ previewRemoteName }}
                     </p>
                 </div>
 
                 <div class="lobby-actions-grid">
-                    <button 
-                        class="btn-lobby-action join" 
+                    <button
+                        class="btn-lobby-action join"
                         @click="joinCall"
                         :disabled="isJoining"
                     >
-                        <Icon v-if="!isJoining" :name="callData?.direction === 'incoming' ? 'PhoneCall' : 'Phone'" size="20" />
-                        <Icon v-else name="Loader" size="20" class="animate-spin" />
+                        <Icon
+                            v-if="!isJoining"
+                            :name="
+                                callData?.direction === 'incoming'
+                                    ? 'PhoneCall'
+                                    : 'Phone'
+                            "
+                            size="20"
+                        />
+                        <Icon
+                            v-else
+                            name="Loader"
+                            size="20"
+                            class="animate-spin"
+                        />
                         <span>
-                            {{ isJoining ? 'Joining...' : (callData?.direction === 'incoming' ? 'Accept' : 'Join') }}
+                            {{
+                                isJoining
+                                    ? "Joining..."
+                                    : callData?.direction === "incoming"
+                                      ? "Accept"
+                                      : "Join"
+                            }}
                         </span>
                     </button>
 
@@ -3762,8 +3838,6 @@ onBeforeUnmount(() => cleanup());
                             </div>
                         </div>
                     </div>
-
-
 
                     <!-- STANDARD GRID LAYOUT -->
                     <div v-else class="grid-wrapper">
@@ -4122,7 +4196,11 @@ onBeforeUnmount(() => cleanup());
                             </button>
                             <Tooltip
                                 v-if="!isMobile"
-                                :content="isScreenSharing ? 'Stop Sharing' : 'Share Screen'"
+                                :content="
+                                    isScreenSharing
+                                        ? 'Stop Sharing'
+                                        : 'Share Screen'
+                                "
                             >
                                 <button
                                     class="control-btn"
@@ -4132,8 +4210,6 @@ onBeforeUnmount(() => cleanup());
                                     <Icon name="Monitor" size="24" />
                                 </button>
                             </Tooltip>
-
-
 
                             <button
                                 class="control-btn"

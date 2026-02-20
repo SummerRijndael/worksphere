@@ -6,7 +6,7 @@ import {
     HardDriveIcon,
     PlusIcon,
     Trash2Icon,
-    MailIcon,
+    
     FileTextIcon,
     ImageIcon,
     SearchIcon,
@@ -20,7 +20,7 @@ import {
 import { Button, Card, Input } from "@/components/ui";
 import { useEmailSignatures } from "./composables/useEmailSignatures";
 import { useEmailTemplates } from "./composables/useEmailTemplates";
-import { useEditor, EditorContent } from "@tiptap/vue-3";
+// import { useEditor, EditorContent } from "@tiptap/vue-3";
 import EmailAccountsSection from "@/components/settings/EmailAccountsSection.vue";
 import EmailStorageStats from "@/components/settings/EmailStorageStats.vue";
 import { emailAccountService } from "@/services/email-account.service";
@@ -85,7 +85,7 @@ const activeSignature = computed(() =>
 const filteredSignatures = computed(() => {
     if (!searchQuery.value) return signatures.value;
     return signatures.value.filter((s) =>
-        s.name.toLowerCase().includes(searchQuery.value.toLowerCase()),
+        (s.name || '').toLowerCase().includes((searchQuery.value || '').toLowerCase()),
     );
 });
 
@@ -276,9 +276,9 @@ const handleMediaUpload = (files) => {
     processUploadQueue();
 };
 
-const removeUpload = (index) => {
-    mediaUploadQueue.value.splice(index, 1);
-};
+// const removeUpload = (index) => {
+//     mediaUploadQueue.value.splice(index, 1);
+// };
 
 const processUploadQueue = async () => {
     if (isUploading.value) return;
@@ -311,9 +311,9 @@ const processUploadQueue = async () => {
             await api.post(endpoint, formData, {
                 headers: { "Content-Type": "multipart/form-data" },
                 onUploadProgress: (progressEvent) => {
-                    const percentCompleted = Math.round(
+                    const percentCompleted = progressEvent.total ? Math.round(
                         (progressEvent.loaded * 100) / progressEvent.total,
-                    );
+                    ) : 0;
                     item.progress = percentCompleted;
                 },
             });
@@ -781,7 +781,7 @@ function getUsageDetails(account: any) {
                                         >
                                             <RichTextEditor
                                                 v-if="
-                                                    activeTab === 'signatures'
+                                                    activeTab === 'signatures' && activeSignature
                                                 "
                                                 ref="signatureEditorRef"
                                                 v-model="
@@ -822,7 +822,7 @@ function getUsageDetails(account: any) {
                                                 </template>
                                             </RichTextEditor>
                                             <RichTextEditor
-                                                v-else
+                                                v-else-if="activeTab === 'templates' && activeTemplate"
                                                 ref="templateEditorRef"
                                                 v-model="activeTemplate.body"
                                                 :content="templateContent"
@@ -919,11 +919,10 @@ function getUsageDetails(account: any) {
                                                         multiple
                                                         accept="image/*"
                                                         @change="
-                                                            (e) =>
+                                                            (e: any) =>
                                                                 handleMediaUpload(
                                                                     Array.from(
-                                                                        e.target
-                                                                            .files,
+                                                                        e.target?.files || [],
                                                                     ),
                                                                 )
                                                         "
@@ -1007,14 +1006,16 @@ function getUsageDetails(account: any) {
                                                         draggable="true"
                                                         @dragstart="
                                                             (e) => {
-                                                                e.dataTransfer.setData(
-                                                                    'text/plain',
-                                                                    media.url,
-                                                                );
-                                                                e.dataTransfer.setData(
-                                                                    'text/html',
-                                                                    `<img src='${media.url}' />`,
-                                                                );
+                                                                if(e.dataTransfer) {
+                                                                    e.dataTransfer.setData(
+                                                                        'text/plain',
+                                                                        media.url,
+                                                                    );
+                                                                    e.dataTransfer.setData(
+                                                                        'text/html',
+                                                                        `<img src='${media.url}' />`,
+                                                                    );
+                                                                }
                                                             }
                                                         "
                                                         @click="

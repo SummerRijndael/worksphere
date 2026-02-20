@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, computed } from "vue";
+import { ref, reactive } from "vue";
 import { Modal, Button, Input, Checkbox } from "@/components/ui";
 import { DollarSign } from "lucide-vue-next";
 import axios from "axios";

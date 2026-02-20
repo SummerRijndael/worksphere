@@ -1,14 +1,14 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, shallowRef, watch } from "vue";
+import { ref, onMounted, onUnmounted } from "vue";
 import { useBackgroundBlur } from "@/composables/useBackgroundBlur";
 
 const videoRef = ref<HTMLVideoElement | null>(null);
-const canvasRef = ref<HTMLCanvasElement | null>(null);
+// const canvasRef = ref<HTMLCanvasElement | null>(null);
 const blur = useBackgroundBlur();
 
 const isRunning = ref(false);
-const showMask = ref(false);
-const processingTime = ref(0);
+// const showMask = ref(false);
+// const processingTime = ref(0);
 const frameCount = ref(0);
 const fps = ref(0);
 const currentEffect = ref<"blur" | "image">("blur");

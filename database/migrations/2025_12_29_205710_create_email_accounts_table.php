@@ -20,6 +20,7 @@ return new class extends Migration
             $table->string('email');
             $table->string('provider')->default('custom'); // custom, gmail, outlook
             $table->string('auth_type')->default('password'); // password, oauth
+            $table->string('account_type')->default('full');
 
             // IMAP Settings
             $table->string('imap_host')->nullable();
@@ -45,6 +46,7 @@ return new class extends Migration
             $table->boolean('is_verified')->default(false);
             $table->boolean('is_default')->default(false);
             $table->boolean('is_system')->default(false);
+            $table->string('system_usage')->nullable()->index();
 
             // Sync status tracking
             $table->string('sync_status')->default('pending'); // pending, seeding, syncing, completed, failed
@@ -52,6 +54,16 @@ return new class extends Migration
             $table->timestamp('last_sync_at')->nullable();
             $table->unsignedBigInteger('last_synced_uid')->nullable();
             $table->json('sync_cursor')->nullable();
+            $table->json('disabled_folders')->nullable();
+            
+            // Dual sync cursors
+            $table->unsignedBigInteger('forward_uid_cursor')->nullable();
+            $table->timestamp('last_forward_sync_at')->nullable();
+            $table->unsignedBigInteger('backfill_uid_cursor')->nullable();
+            $table->boolean('backfill_complete')->default(false);
+            $table->timestamp('last_backfill_at')->nullable();
+            $table->timestamp('sync_started_at')->nullable();
+
             $table->text('sync_error')->nullable();
 
             // Re-Auth

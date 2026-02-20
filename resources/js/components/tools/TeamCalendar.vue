@@ -125,7 +125,7 @@ function selectCountry(code) {
 }
 
 const filteredEvents = computed(() => {
-    const teamEvents = props.events.filter((event) => {
+    const teamEvents = props.events.filter((event: any) => {
         const type = event.extendedProps?.type;
         if (!showProjects.value && type === "project") return false;
         if (!showTasks.value && type === "task") return false;

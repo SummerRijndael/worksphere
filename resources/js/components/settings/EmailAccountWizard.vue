@@ -1,19 +1,19 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from "vue";
+import { ref, onUnmounted, watch } from "vue";
 import {
     StepperRoot,
     StepperItem,
     StepperIndicator,
     StepperTrigger,
-    StepperSeparator,
+    
     StepperTitle,
-    StepperDescription,
+    
 } from "reka-ui";
-import { Checkbox, Modal, Button, Input } from "@/components/ui";
+import { Modal, Button, Input } from "@/components/ui";
 import {
     Mail,
     ArrowRight,
-    CheckCircle,
+    
     CheckCircle2,
     AlertTriangle,
     AlertCircle,
@@ -257,7 +257,7 @@ const steps = [
     { number: 7, title: "Finish" },
 ];
 
-const totalSteps = 7;
+// const totalSteps = 7;
 
 const reset = () => {
     step.value = 1;

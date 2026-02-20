@@ -1,4 +1,4 @@
-import { ref, onMounted, getCurrentInstance, onUnmounted } from 'vue';
+import { ref } from 'vue';
 import FingerprintJS from '@fingerprintjs/fingerprintjs';
 
 const CONSENT_KEY = 'cookie_consent';

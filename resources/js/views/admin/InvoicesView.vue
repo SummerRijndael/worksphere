@@ -10,7 +10,7 @@ import {
     SelectFilter,
     Avatar,
     Dropdown,
-    Modal,
+    
 } from "@/components/ui";
 import RecordPaymentModal from "@/components/invoices/RecordPaymentModal.vue";
 import {
@@ -80,7 +80,7 @@ const selectedInvoice = ref<any>(null);
 
 // Initialize with store's current team, but allow local override via filter if needed
 // For now, we sync with the store's current team as the "Team Context"
-const currentTeamId = computed(() => authStore.currentTeam?.public_id);
+// const currentTeamId = computed(() => authStore.currentTeam?.public_id);
 // We can use a local ref if we want to allow switching distinct from the global context
 // But per requirement "Team selector > client > project" implies we might want to switch context here.
 // However, the `InvoicesView` is usually scoped to the current team in the dashboard.
@@ -144,7 +144,7 @@ const fetchClients = async () => {
 const fetchProjects = async () => {
     if (!activeTeamId.value) return;
     try {
-        const params: any = {};
+//         const params: any = {};
         if (filters.value.client_id) {
             // If backend supports filtering projects by client, helpful.
             // If not, we might filter client-side or assume all team projects are ok.
@@ -446,7 +446,8 @@ onMounted(() => {
 </script>
 
 <template>
-    <div class="p-6 space-y-6">
+    <div>
+        <div class="p-6 space-y-6">
         <!-- Header -->
         <div
             class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4"
@@ -928,12 +929,13 @@ onMounted(() => {
         </template>
     </div>
 
-    <!-- Record Payment Modal -->
-    <RecordPaymentModal
-        v-if="selectedInvoice"
-        v-model:open="isPaymentModalOpen"
-        :invoice="selectedInvoice"
-        :team-id="activeTeamId"
-        @success="onPaymentSuccess"
-    />
+        <!-- Record Payment Modal -->
+        <RecordPaymentModal
+            v-if="selectedInvoice"
+            v-model:open="isPaymentModalOpen"
+            :invoice="selectedInvoice"
+            :team-id="activeTeamId"
+            @success="onPaymentSuccess"
+        />
+    </div>
 </template>

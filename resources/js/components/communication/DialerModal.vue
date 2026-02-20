@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
-import { Phone, PhoneOff, Delete, History, ShieldCheck, Info } from "lucide-vue-next";
+import { Phone, PhoneOff, Delete, History } from "lucide-vue-next";
 import Modal from "@/components/ui/Modal.vue";
 import Button from "@/components/ui/Button.vue";
 import { toast } from "vue-sonner";
@@ -44,14 +44,14 @@ import {
 } from "lucide-vue-next";
 
 const activeTab = ref("actions");
-const isMuted = ref(false);
-const isSpeakerOn = ref(false);
+// const isMuted = ref(false);
+// const isSpeakerOn = ref(false);
 const callDuration = ref("04:10");
 
-const formattedNumber = computed(() => {
-    if (!phoneNumber.value) return "";
-    return phoneNumber.value;
-});
+// const formattedNumber = computed(() => {
+//     if (!phoneNumber.value) return "";
+//     return phoneNumber.value;
+// });
 
 function addDigit(digit: string) {
     if (phoneNumber.value.length < 15) {

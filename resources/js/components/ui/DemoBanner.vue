@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useAuthStore } from "@/stores/auth";
-import { ShieldAlert, Info } from "lucide-vue-next";
+import { ShieldAlert } from "lucide-vue-next";
 
 const authStore = useAuthStore();
 const isDemoMode = computed(() => authStore.user?.is_demo_mode || false);

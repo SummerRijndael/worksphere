@@ -12,7 +12,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
             $table->string('name');
-            $table->longText('content'); // HTML signature
+            $table->longText('content')->nullable(); // HTML signature
             $table->boolean('is_default')->default(false);
             $table->timestamps();
 

@@ -45,7 +45,7 @@ const { getFingerprint } = useFingerprint();
 import { useWebAuthn } from "@/composables/useWebAuthn";
 const {
     isSupported: isWebAuthnSupported,
-    isPlatformAuthenticatorAvailable,
+    
     authenticateWithPasskey,
 } = useWebAuthn();
 const passkeySupported = ref(false);
@@ -682,13 +682,13 @@ async function animateExit(path: string) {
     const container = document.querySelector(".auth-container");
 
     if (container) {
-        await animate(container as HTMLElement, {
+        await (animate(container as HTMLElement, {
             opacity: [1, 0],
             translateY: [0, -20],
             scale: [1, 0.95],
             duration: 400,
             easing: "easeInExpo",
-        }).finished;
+        }) as any).finished;
     }
 
     router.push(path);
