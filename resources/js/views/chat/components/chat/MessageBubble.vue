@@ -19,8 +19,8 @@ const emit = defineEmits<{
     reply: [];
     jumpToReply: [messageId: string];
     retry: [message: Message];
-    'join-call': [payload: { chatId: string; callId: string; callType: string }];
-    callback: [payload: { chatId: string; callType: string }];
+    'join-call': [payload: { chatId: string; callId: string; callType: 'video' | 'audio' }];
+    callback: [payload: { chatId: string; callType: 'video' | 'audio' }];
 }>();
 
 const videoCallStore = useVideoCallStore();
@@ -172,12 +172,13 @@ const firstUrl = computed(() => {
                 <button
                     v-if="
                         message.metadata.event === 'started' &&
+                        message.chat_id &&
                         videoCallStore.activeCalls.has(message.chat_id)
                     "
                     class="ml-2 px-2 py-0.5 rounded-full bg-green-500 hover:bg-green-600 text-white text-[10px] font-medium transition-colors flex items-center gap-1 cursor-pointer"
                     @click="
                         emit('join-call', {
-                            chatId: message.chat_id,
+                            chatId: message.chat_id!,
                             callId: message.metadata.call_id,
                             callType: message.metadata.type,
                         })

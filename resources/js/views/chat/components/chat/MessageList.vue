@@ -242,7 +242,11 @@ const activeCallInvite = computed(() => {
     };
 });
 
-function joinCall(invite: any) {
+function joinCall(invite: {
+    chatId: string;
+    callId: string;
+    callType: "video" | "audio";
+}) {
     joinActiveCall(invite.chatId, invite.callId, invite.callType);
 }
 </script>

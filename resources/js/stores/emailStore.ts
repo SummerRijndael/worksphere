@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { ref, computed, watch } from "vue";
+import { ref, onMounted, watch, computed } from "vue";
 import {
     InboxIcon,
     SendIcon,
@@ -16,6 +16,7 @@ import { startEcho } from "@/echo";
 import axios from "axios";
 import { useAuthStore } from "@/stores/auth";
 import type { Email, EmailFolder, EmailLabel } from "@/types/models/email";
+export type { Email, EmailFolder, EmailLabel };
 
 // --- Constants ---
 const PRESET_COLORS = [

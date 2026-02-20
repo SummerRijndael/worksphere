@@ -809,7 +809,7 @@ import {
     PinIcon,
     PinOffIcon,
 } from "lucide-vue-next";
-import { useEmailStore } from "@/stores/emailStore";
+import { useEmailStore, type Email } from "@/stores/emailStore";
 import { storeToRefs } from "pinia";
 import { useDate } from "@/composables/useDate";
 
@@ -866,13 +866,13 @@ const listRef = ref<HTMLElement | null>(null);
 let animation: any = null;
 
 // Context Menu Logic via Reka UI
-function handleMarkRead(email: any, isRead: boolean) {
+function handleMarkRead(email: Email, isRead: boolean) {
     store.markEmailsAsRead([email.id], isRead);
     // Optimistic update
     email.is_read = isRead;
 }
 
-function handleDelete(email: any) {
+function handleDelete(email: Email) {
     if (confirm("Delete this email?")) {
         store.deleteEmails([email.id]);
     }
@@ -984,7 +984,7 @@ function markSelectedRead(isRead: boolean = true) {
     store.markEmailsAsRead(Array.from(selectedEmailIds.value), isRead);
 }
 
-function handleSelect(email: any) {
+function handleSelect(email: Email) {
     store.selectedEmailId = email.id;
     // Mark as read immediately for UI feedback AND persist
     if (!email.is_read) {

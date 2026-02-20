@@ -98,12 +98,10 @@ const {
     sendMessage,
     loadMoreMessages,
     setReplyTo,
-    cancelReply,
     addFiles,
     removeFile,
     handleInputChange,
     sendGif,
-    scrollToBottom,
 } = useChat({ autoFetch: true });
 
 // Auto-Close Logic
@@ -258,7 +256,7 @@ watch(
         () => showSidebar.value,
         () => sidebarTab.value,
     ],
-    ([newLen, visible, tab]) => {
+    ([_, visible, tab]) => {
         if (visible && tab === "chat" && activeChat.value?.public_id) {
             chatStore.markAsRead(activeChat.value.public_id);
         }
@@ -1815,6 +1813,7 @@ function handleParticipantJoined(event: any) {
                         audioMid,
                         videoMid,
                     } as any,
+                        participant.publicId,
                     publicId,
                 )
                 .catch(() => {});
@@ -2469,7 +2468,6 @@ async function joinSFU(stream: MediaStream) {
 /* SFU Reset: Force a new session on unrecoverable errors */
 /* SFU Reset: Force a new session on unrecoverable errors */
 /* SFU Reset: Force a new session on unrecoverable errors */
-let isNegotiatingSFU = false;
 let sfuGeneration = 0; // Generation counter to invalidate old tasks on reset
 
 async function resetSFUSession() {
@@ -2534,72 +2532,8 @@ async function handleSFU406Rescue() {
     return true;
 }
 
-async function triggerSFURenegotiation() {
-    if (!sfuPc || !sfuSessionId.value || isSFUResetting.value) return;
-
-    // Guard: Don't start a new offer if we are already negotiating
-    if ((sfuPc.signalingState as string) !== "stable") {
-        console.log(
-            `[SFU] Signaling state is ${sfuPc.signalingState}, waiting for stability before renegotiating...`,
-        );
-        return;
-    }
-
-    return runInSFUQueue(async () => {
-        if (isSFUResetting.value || sfuPc?.signalingState !== "stable") return;
-        console.log("[SFU] Triggering session renegotiation...");
-        try {
-            const offer = await sfuPc!.createOffer();
-            await sfuPc!.setLocalDescription(offer);
-
-            const res = await videoCallService.sfuSessionRenegotiate(
-                callData.value!.chatId,
-                sfuSessionId.value!,
-                mungeSdp(sfuPc!.localDescription!.sdp!),
-                "offer",
-                "PUT",
-            );
-
-            if (res.sessionDescription) {
-                await sfuPc!.setRemoteDescription(
-                    new RTCSessionDescription(res.sessionDescription),
-                );
-                console.log(
-                    "[SFU] Renegotiation successful (Client-Initiated)",
-                );
-            }
-        } catch (e: any) {
-            console.warn("[SFU] Client-initiated renegotiation failed", e);
-
-            if (e.response?.status === 406) {
-                if (await handleSFU406Rescue()) {
-                    triggerSFURenegotiation();
-                    return;
-                }
-            }
-
-            // Generic rollback for other errors or failed rescue
-            if (
-                sfuPc &&
-                (sfuPc.signalingState as string) === "have-local-offer"
-            ) {
-                try {
-                    await sfuPc.setLocalDescription({
-                        type: "rollback",
-                    } as any);
-                    console.log("[SFU] Rolled back local offer after failure");
-                } catch (rollbackErr) {
-                    console.warn(
-                        "[SFU] Rollback failed after renegotiate error",
-                        rollbackErr,
-                    );
-                }
-            }
-        }
-    });
-}
-
 let sfuNegotiationQueue = Promise.resolve();
+let isNegotiatingSFU = false;
 // SFU Reliability Metrics
 const participantPullAttempts = new Map<string, number>();
 const screenPullAttempts = new Map<string, number>();
@@ -2741,11 +2675,6 @@ async function negotiateSession(
     }
 }
 
-async function performSFUNegotiation(
-    localDescription: RTCSessionDescriptionInit | null,
-) {
-    return runInSFUQueue(() => negotiateSession(localDescription));
-}
 
 async function runInSFUQueue(fn: () => Promise<void>) {
     const currentGen = sfuGeneration;

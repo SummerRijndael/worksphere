@@ -176,7 +176,7 @@
                     <div class="text-(--text-primary)">
                         <div
                             v-for="recipient in email.to"
-                            :key="recipient.email || recipient"
+                            :key="recipient.email"
                             class="flex items-center gap-1"
                         >
                             <span v-if="recipient.name" class="font-medium">{{
@@ -737,10 +737,11 @@ import {
 import { useDate } from "@/composables/useDate";
 
 const { formatDate, formatDateTime, formatRelativeTime } = useDate();
-import type { Email } from "@/types/models/email";
 import { animate, stagger } from "animejs";
 import { sanitizeHtml } from "@/utils/sanitize";
 import { useEmailStore } from "@/stores/emailStore";
+import type { Email, EmailAttachment } from "@/stores/emailStore";
+import { storeToRefs } from "pinia";
 import Modal from "@/components/ui/Modal.vue";
 import Button from "@/components/ui/Button.vue";
 
@@ -949,7 +950,7 @@ const pendingLink = ref("");
 // On-Demand Downloading State
 const isDownloading = ref<Record<string, boolean>>({});
 
-async function downloadOnDemand(att: any) {
+async function downloadOnDemand(att: EmailAttachment) {
     if (isDownloading.value[att.id]) return;
 
     isDownloading.value[att.id] = true;
@@ -1384,10 +1385,10 @@ watch(
             });
 
             // Add click listener for external link warning
-            shadowRoot.value?.addEventListener("click", handleLinkClick);
+            (shadowRoot.value as any)?.addEventListener("click", handleLinkClick);
 
             // Add click listener for Image Preview (MediaViewer)
-            shadowRoot.value?.addEventListener("click", handleImageClick);
+            (shadowRoot.value as any)?.addEventListener("click", handleImageClick);
 
             // Add error listener for Images (Retry Loop)
             shadowRoot.value?.querySelectorAll("img").forEach(async (img) => {
@@ -1548,102 +1549,8 @@ function proceedToLink() {
 
 // Local formatting functions removed in favor of useDate composable
 
-// --- Attachments ---
 
-function toggleAttachment(id: string) {
-    if (selectedAttachments.value.has(id)) {
-        selectedAttachments.value.delete(id);
-    } else {
-        selectedAttachments.value.add(id);
-    }
-}
 
-function downloadSelected() {
-    const selected = props.email.attachments.filter((a) =>
-        selectedAttachments.value.has(a.id),
-    );
-    if (selected.length === 0) return;
-
-    if (selected.length === 1) {
-        // Single file - direct download
-        window.open(
-            `/api/emails/attachments/${selected[0].id}/download`,
-            "_blank",
-        );
-    } else {
-        // Multiple files - batch download as ZIP
-        const ids = selected.map((a) => a.id);
-        const form = document.createElement("form");
-        form.method = "POST";
-        form.action = "/api/emails/attachments/download-batch";
-        form.target = "_blank";
-
-        // Add CSRF token
-        const csrfToken = document
-            .querySelector('meta[name="csrf-token"]')
-            ?.getAttribute("content");
-        if (csrfToken) {
-            const csrfInput = document.createElement("input");
-            csrfInput.type = "hidden";
-            csrfInput.name = "_token";
-            csrfInput.value = csrfToken;
-            form.appendChild(csrfInput);
-        }
-
-        // Add IDs
-        ids.forEach((id) => {
-            const input = document.createElement("input");
-            input.type = "hidden";
-            input.name = "ids[]";
-            input.value = id;
-            form.appendChild(input);
-        });
-
-        document.body.appendChild(form);
-        form.submit();
-        document.body.removeChild(form);
-    }
-}
-
-function downloadAll() {
-    if (!props.email.attachments?.length) return;
-
-    if (props.email.attachments.length === 1) {
-        window.open(
-            `/api/emails/attachments/${props.email.attachments[0].id}/download`,
-            "_blank",
-        );
-    } else {
-        const ids = props.email.attachments.map((a) => a.id);
-        const form = document.createElement("form");
-        form.method = "POST";
-        form.action = "/api/emails/attachments/download-batch";
-        form.target = "_blank";
-
-        const csrfToken = document
-            .querySelector('meta[name="csrf-token"]')
-            ?.getAttribute("content");
-        if (csrfToken) {
-            const csrfInput = document.createElement("input");
-            csrfInput.type = "hidden";
-            csrfInput.name = "_token";
-            csrfInput.value = csrfToken;
-            form.appendChild(csrfInput);
-        }
-
-        ids.forEach((id) => {
-            const input = document.createElement("input");
-            input.type = "hidden";
-            input.name = "ids[]";
-            input.value = id;
-            form.appendChild(input);
-        });
-
-        document.body.appendChild(form);
-        form.submit();
-        document.body.removeChild(form);
-    }
-}
 
 // --- Print ---
 // --- Print ---
