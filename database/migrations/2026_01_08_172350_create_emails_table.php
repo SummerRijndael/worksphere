@@ -29,10 +29,16 @@ return new class extends Migration
             $table->json('headers')->nullable();
             $table->boolean('is_read')->default(false);
             $table->boolean('is_starred')->default(false);
+            $table->boolean('is_important')->default(false);
+            $table->boolean('is_pinned')->default(false)->index();
             $table->boolean('is_draft')->default(false);
             $table->boolean('has_attachments')->default(false);
+            $table->json('attachment_placeholders')->nullable();
+            $table->unsignedBigInteger('size_bytes')->nullable()->index();
             $table->unsignedBigInteger('imap_uid')->nullable()->index(); // IMAP UID for sync
+            $table->string('provider_id')->nullable()->index()->comment('Provider-specific ID (e.g. Gmail API ID)');
             $table->timestamp('sent_at')->nullable();
+            $table->timestamp('scheduled_at')->nullable();
             $table->timestamp('received_at')->nullable();
             $table->timestamp('sanitized_at')->nullable()->comment('Timestamp when email was sanitized');
             $table->timestamps();
@@ -41,6 +47,12 @@ return new class extends Migration
             $table->index(['user_id', 'folder']);
             $table->index(['user_id', 'is_read']);
             $table->index(['email_account_id', 'imap_uid']);
+            $table->index(['email_account_id', 'provider_id']);
+
+            $table->unique(
+                ['email_account_id', 'imap_uid', 'folder'],
+                'emails_unique_account_uid_folder'
+            );
         });
     }
 

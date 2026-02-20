@@ -20,6 +20,7 @@ const emit = defineEmits<{
     jumpToReply: [messageId: string];
     retry: [message: Message];
     'join-call': [payload: { chatId: string; callId: string; callType: string }];
+    callback: [payload: { chatId: string; callType: string }];
 }>();
 
 const videoCallStore = useVideoCallStore();

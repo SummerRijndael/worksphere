@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import PublicLayout from '@/layouts/PublicLayout.vue';
-import { Card, Button, PageLoader } from '@/components/ui';
+import { Card, Button } from '@/components/ui';
 import { Send, CheckCircle2, AlertCircle } from 'lucide-vue-next';
 import axios from 'axios';
 import useRecaptcha from '@/composables/useRecaptcha';

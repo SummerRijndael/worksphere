@@ -460,13 +460,13 @@ import {
     Users,
 } from "lucide-vue-next";
 import { useDate } from "@/composables/useDate";
-const { formatDate, formatDateTime } = useDate();
+const { formatDate } = useDate();
 import api from "@/lib/api";
 import { useAuthStore } from "@/stores/auth";
 import { useChatStore } from "@/stores/chat";
 import { useMiniChatStore } from "@/stores/minichat";
 import { useToast } from "@/composables/useToast";
-import PersonalTaskWidget from "@/components/tasks/PersonalTaskWidget.vue";
+// import PersonalTaskWidget from "@/components/tasks/PersonalTaskWidget.vue";
 import TaskList from "@/components/tasks/TaskList.vue";
 
 const route = useRoute();
@@ -492,6 +492,7 @@ interface UserProfile {
     email?: string;
     cover_photo_url?: string | null;
     cover_photo_offset?: number;
+    status?: string | null;
     teams?: Array<{ public_id: string; name: string; role: string }>;
 }
 

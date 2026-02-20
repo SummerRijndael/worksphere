@@ -520,7 +520,7 @@ export function usePresence(options: UsePresenceOptions = {}) {
             // Usually, we want the local session to drive "online" status.
             if (currentStatus.value !== 'offline') {
                 console.log('[Presence] Syncing status to new user object:', currentStatus.value);
-                user.presence = currentStatus.value;
+                user.presence = currentStatus.value === 'invisible' ? 'offline' : currentStatus.value;
             } else if (user.presence) {
                 // If local is offline (default?) but user has status, probably adopt it
                 console.log('[Presence] Adopting status from user object:', user.presence);

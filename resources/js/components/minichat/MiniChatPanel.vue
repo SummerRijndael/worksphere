@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useDate } from '@/composables/useDate';
-const { formatDate, formatRelativeTime: formatTime } = useDate();
+const { formatRelativeTime: formatTime } = useDate();
 import { useRouter } from 'vue-router';
 import { useMiniChatStore } from '@/stores/minichat';
 import { useChatStore } from '@/stores/chat';

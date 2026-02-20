@@ -15,6 +15,7 @@ return new class extends Migration
             $table->string('slug')->index();
             $table->string('color')->nullable();
             $table->integer('sort_order')->default(0);
+            $table->boolean('sync_enabled')->default(true);
             $table->timestamps();
 
             $table->unique(['user_id', 'slug']);

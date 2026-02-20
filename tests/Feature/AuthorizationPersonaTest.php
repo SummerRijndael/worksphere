@@ -101,7 +101,8 @@ class AuthorizationPersonaTest extends TestCase
         $user = User::factory()->create();
         $user->assignRole('user');
 
-        $team = Team::factory()->create(['owner_id' => $user->id]);
+        $otherUser = User::factory()->create();
+        $team = Team::factory()->create(['owner_id' => $otherUser->id]);
         $team->members()->attach($user->id, ['role' => 'lead', 'joined_at' => now()]);
 
         $this->permissionService->grantTeamPermission($user, $team, 'projects.view');

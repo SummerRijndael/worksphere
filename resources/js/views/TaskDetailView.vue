@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from "vue";
+import { ref, computed, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
     Button,
@@ -14,10 +14,10 @@ import {
 import {
     Calendar,
     Clock,
-    User,
+    
     MessageSquare,
     History,
-    MoreHorizontal,
+    
     ChevronLeft,
     Circle,
     CheckCircle2,
@@ -33,7 +33,7 @@ import {
     Square,
     CheckSquare,
     Loader2,
-    X,
+    
     Trash2,
     GripVertical,
     Paperclip,
@@ -282,15 +282,15 @@ const getStatusValue = (t: any) => {
     }
     return val;
 };
-const getPriority = (p: number) => priorityConfig[p] || priorityConfig[2];
+// const getPriority = (p: number) => priorityConfig[p] || priorityConfig[2];
 
 // Computed
-const isAssignee = computed(() => {
-    return (
-        task.value?.assignee?.public_id === authStore.user?.public_id ||
-        task.value?.assignee?.id === authStore.user?.id
-    );
-});
+// const isAssignee = computed(() => {
+//     return (
+//         task.value?.assignee?.public_id === authStore.user?.public_id ||
+//         task.value?.assignee?.id === authStore.user?.id
+//     );
+// });
 
 // Permission-based computed properties
 const canEditMetadata = computed(() => task.value?.can?.edit_metadata);
@@ -628,9 +628,9 @@ const updateStatus = async (status: string) => {
     }
 };
 
-const submitForReview = async () => {
-    await updateStatus("in_qa");
-};
+// const submitForReview = async () => {
+//     await updateStatus("in_qa");
+// };
 
 const showArchiveConfirmModal = ref(false);
 const showTaskDeleteConfirmModal = ref(false);

@@ -44,7 +44,7 @@ const commentForm = ref({
     content: "",
 });
 const commentErrors = ref<any>({});
-const isContentExpanded = ref(false);
+// const isContentExpanded = ref(false);
 
 // Pagination State
 const currentPage = ref(1);

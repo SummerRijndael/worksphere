@@ -54,6 +54,8 @@ export interface ProjectReportFilters {
   search?: string;
   per_page?: number;
   page?: number;
+  team_id?: number | string;
+  project_id?: number | string;
 }
 
 export const reportService = {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { useAuthStore } from "@/stores/auth";
+// import {} from "@/stores/auth";
 import { Button, Input } from "@/components/ui";
 import { Lock, ArrowLeft } from "lucide-vue-next";
 import { toast } from "vue-sonner";
@@ -27,12 +27,14 @@ const isValid = computed(() => {
 });
 
 onMounted(() => {
-    animate(container.value, {
-        opacity: [0, 1],
-        translateY: [20, 0],
-        duration: 800,
-        easing: 'easeOutExpo',
-    });
+    if (container.value) {
+        animate(container.value, {
+            opacity: [0, 1],
+            translateY: [20, 0],
+            duration: 800,
+            easing: "easeOutExpo",
+        });
+    }
 });
 
 const submit = async () => {
@@ -52,7 +54,7 @@ const submit = async () => {
         router.push("/auth/login");
     } catch (error: any) {
         toast.error(
-            error.response?.data?.message || "Failed to reset password."
+            error.response?.data?.message || "Failed to reset password.",
         );
     } finally {
         isLoading.value = false;
@@ -110,7 +112,9 @@ const submit = async () => {
                 <div class="w-full border-t border-[var(--border-default)]" />
             </div>
             <div class="relative flex justify-center text-xs uppercase">
-                <span class="bg-[var(--surface-elevated)] px-2 text-[var(--text-muted)]">
+                <span
+                    class="bg-[var(--surface-elevated)] px-2 text-[var(--text-muted)]"
+                >
                     Or
                 </span>
             </div>

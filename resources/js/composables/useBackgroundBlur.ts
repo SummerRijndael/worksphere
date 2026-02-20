@@ -116,6 +116,7 @@ export function useBackgroundBlur() {
             if (effect === 'image' && imageUrl && sourceVideo) {
                 await updateBackgroundImage(imageUrl, sourceVideo.videoWidth, sourceVideo.videoHeight);
             }
+            if (!canvas) return rawTrack;
             const processedStream = canvas.captureStream(30);
             return processedStream.getVideoTracks()[0];
         }
@@ -269,7 +270,7 @@ export function useBackgroundBlur() {
 
                 if (isAutoDowngraded) {
                     // Just draw raw video
-                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    if (ctx) ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                     animationFrameId = requestAnimationFrame(draw);
                     return;
                 }
@@ -494,7 +495,7 @@ export function useBackgroundBlur() {
 
             if (found) {
                 // Calculate target center and zoom
-                const personWidth = (maxX - minX) / width;
+//                 const personWidth = (maxX - minX) / width;
                 const personHeight = (maxY - minY) / height;
                 
                 framing.targetCenterX = (minX + maxX) / (2 * width);

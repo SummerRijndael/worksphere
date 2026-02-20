@@ -713,19 +713,19 @@ import axios from "axios";
 import {
     PrinterIcon,
     Maximize2Icon,
-    FileIcon,
+    
     AlertTriangleIcon,
     ReplyIcon,
     ForwardIcon,
     PencilIcon,
-    TrashIcon,
-    MoreHorizontalIcon,
+    
+    
     ReplyAllIcon,
     ImageIcon,
-    ChevronRightIcon,
+    
     ChevronDownIcon,
     InfoIcon,
-    PaperclipIcon,
+    
     DownloadIcon,
     ExternalLinkIcon,
     ShieldAlertIcon,
@@ -807,7 +807,7 @@ const showImages = ref(false);
 const hasBlockedImages = ref(false);
 const isBlockedImagesDismissed = ref(false);
 const selectedAttachments = ref<Set<string>>(new Set());
-const isAttachmentsExpanded = ref(false);
+// const isAttachmentsExpanded = ref(false);
 const isToExpanded = ref(false);
 const isCcExpanded = ref(false);
 const isHeaderExpanded = ref(
@@ -949,7 +949,7 @@ const pendingLink = ref("");
 // On-Demand Downloading State
 const isDownloading = ref<Record<string, boolean>>({});
 
-async function downloadOnDemand(att: any, index: number) {
+async function downloadOnDemand(att: any) {
     if (isDownloading.value[att.id]) return;
 
     isDownloading.value[att.id] = true;
@@ -1034,21 +1034,21 @@ const visibleAttachments = computed(() => {
 });
 
 // Check if any attachments are still in cloud (placeholders)
-const hasPlaceholderAttachments = computed(() => {
-    if (!visibleAttachments.value.length) return false;
-    return visibleAttachments.value.some(
-        (att: any) => att.is_downloaded === false,
-    );
-});
+// const hasPlaceholderAttachments = computed(() => {
+//     if (!visibleAttachments.value.length) return false;
+//     return visibleAttachments.value.some(
+//         (att: any) => att.is_downloaded === false,
+//     );
+// });
 
 // Check if all selected attachments are downloaded
-const allSelectedDownloaded = computed(() => {
-    if (selectedAttachments.value.size === 0) return true;
-    return Array.from(selectedAttachments.value).every((id) => {
-        const att = visibleAttachments.value.find((a: any) => a.id === id);
-        return (att as any)?.is_downloaded !== false;
-    });
-});
+// const allSelectedDownloaded = computed(() => {
+//     if (selectedAttachments.value.size === 0) return true;
+//     return Array.from(selectedAttachments.value).every((id) => {
+//         const att = visibleAttachments.value.find((a: any) => a.id === id);
+//         return (att as any)?.is_downloaded !== false;
+//     });
+// });
 
 const sanitizedBody = computed(() => {
     if (!props.email?.body_html) return "";
@@ -1452,7 +1452,7 @@ function setupImageSyncRetry(img: HTMLImageElement) {
         };
         testImg.onerror = () => {
             retries++;
-            setTimeout(attemptReload, interval);
+            window.setTimeout(attemptReload, interval);
         };
 
         // Append unique param to bypass cache
@@ -1467,14 +1467,14 @@ function setupImageSyncRetry(img: HTMLImageElement) {
         img.src === SYNCING_PLACEHOLDER ||
         img.getAttribute("data-is-syncing") === "true"
     ) {
-        setTimeout(attemptReload, interval);
+        window.setTimeout(attemptReload, interval);
     } else {
         img.onerror = () => {
             if (img.src !== SYNCING_PLACEHOLDER) {
                 img.setAttribute("data-original-src", img.src);
                 img.src = SYNCING_PLACEHOLDER;
                 img.setAttribute("data-is-syncing", "true");
-                setTimeout(attemptReload, interval);
+                window.setTimeout(attemptReload, interval);
             }
         };
     }

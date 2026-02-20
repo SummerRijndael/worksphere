@@ -4,7 +4,7 @@ import { Modal, Input, Button, Switch, StatusBadge, Avatar, TimezoneSelect } fro
 import ParticipantSelector from '@/components/ui/ParticipantSelector.vue';
 import { useDate } from '@/composables/useDate';
 const { toZonedTime, fromZonedTime, format } = useDate();
-import { Mail, Download, Calendar, Send } from 'lucide-vue-next';
+import { Mail, Download, Send } from 'lucide-vue-next';
 import api from '@/lib/api';
 import { useToast } from '@/composables/useToast';
 

@@ -646,7 +646,8 @@ onMounted(async () => {
 </script>
 
 <template>
-    <div class="p-6 space-y-6">
+    <div>
+        <div class="p-6 space-y-6">
         <!-- Header -->
         <div
             class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4"
@@ -2362,4 +2363,5 @@ onMounted(async () => {
             </div>
         </div>
     </Modal>
+    </div>
 </template>

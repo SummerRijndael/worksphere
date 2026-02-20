@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue";
-import { Card, Button, Badge, PageLoader, Avatar } from "@/components/ui";
+import { ref, onMounted } from "vue";
+import { Card, Button, Badge, PageLoader } from "@/components/ui";
 import {
     Plus,
     Ticket,

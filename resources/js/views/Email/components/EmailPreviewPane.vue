@@ -296,7 +296,7 @@
                 class="px-4 py-3 grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[180px] overflow-y-auto scrollbar-thin"
             >
                 <div
-                    v-for="(att, idx) in visibleAttachments"
+                    v-for="(att) in visibleAttachments"
                     :key="att.id"
                     class="group relative flex items-center p-2 border border-(--border-default) rounded-lg bg-(--surface-primary) hover:bg-(--surface-tertiary) transition-all cursor-pointer select-none"
                     :class="{
@@ -546,7 +546,7 @@ import {
     InboxIcon,
     LoaderIcon,
     TrashIcon,
-    MoreHorizontalIcon,
+    
     DownloadIcon,
     FileIcon,
     ImageIcon,
@@ -554,14 +554,14 @@ import {
     ChevronDownIcon,
     ChevronsUpDownIcon,
     StarIcon,
-    MailIcon as MailUnreadIcon,
-    InfoIcon,
+    MailIcon as 
+    
     ArrowLeftIcon,
 } from "lucide-vue-next";
 import axios from "axios";
 import EmailPreviewContent from "./EmailPreviewContent.vue";
 import EmailInlineComposer from "./EmailInlineComposer.vue";
-import Dropdown from "@/components/ui/Dropdown.vue";
+// import Dropdown from "@/components/ui/Dropdown.vue";
 import type { Email } from "@/types/models/email";
 import { useEmailStore } from "@/stores/emailStore";
 import { useDate } from "@/composables/useDate";
@@ -786,7 +786,7 @@ async function downloadSelected() {
     if (localItems.length === 1) {
         // Single file - direct download
         const att = localItems[0];
-        if (att.url) {
+        if (att && att.url) {
             // Use API download endpoint to ensure headers force download/save dialog
             window.open(`/api/emails/attachments/${att.id}/download`, "_blank");
         }
@@ -840,7 +840,7 @@ watch(
             const threadId = newEmail.thread_id || newEmail.id;
 
             try {
-                const messages = await store.fetchThread(threadId);
+                const messages: any = await store.fetchThread(threadId);
 
                 const messageList = Array.isArray(messages)
                     ? messages

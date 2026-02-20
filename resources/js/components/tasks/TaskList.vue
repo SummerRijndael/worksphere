@@ -1,5 +1,6 @@
+```
 <script setup lang="ts">
-import { defineProps, defineEmits } from "vue";
+import { ref, computed } from "vue";
 import { Badge, Avatar, Button, Dropdown } from "@/components/ui";
 import {
     Calendar,
@@ -34,6 +35,7 @@ interface Task {
     public_id: string;
     title: string;
     description: string;
+    can?: Record<string, boolean>;
     status: {
         value: string;
         label: string;

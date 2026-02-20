@@ -36,7 +36,7 @@ import {
     ArrowUpRight,
     ArrowDownRight,
     Minus,
-    Plus,
+    
     UserPlus,
     X,
     Lock,
@@ -78,6 +78,7 @@ interface UserLite {
     initials: string;
     avatarUrl?: string | null;
     avatar_url?: string | null; // For followers
+    public_id?: string;
 }
 
 interface TicketChild {
@@ -100,6 +101,8 @@ interface Attachment {
     thumb_url?: string;
     mime_type: string;
     size: number;
+    type?: string;
+    created_at?: string;
 }
 
 interface Comment {
@@ -113,11 +116,14 @@ interface Comment {
 
 interface Activity {
     id: number;
-    user: { name: string } | null;
+    user: { name: string; avatar_url?: string } | null;
     description: string;
     created_at: string;
     changes?: { new?: Record<string, any>; old?: Record<string, any> };
     metadata?: Record<string, any>;
+    action: string;
+    action_icon?: string;
+    user_name?: string;
 }
 
 interface TicketDetail {
@@ -799,6 +805,9 @@ function goBack() {
     }
 }
 
+// Added refs for template
+const fileInput = ref<HTMLInputElement | null>(null);
+
 async function submitComment() {
     if (!newComment.value.trim()) return;
 
@@ -1250,9 +1259,9 @@ const processUploadQueue = async () => {
                 {
                     headers: { "Content-Type": "multipart/form-data" },
                     onUploadProgress: (progressEvent) => {
-                        const percentCompleted = Math.round(
+                        const percentCompleted = progressEvent.total ? Math.round(
                             (progressEvent.loaded * 100) / progressEvent.total,
-                        );
+                        ) : 0;
                         item.progress = percentCompleted;
                     },
                 },
@@ -1867,7 +1876,7 @@ function isVisualMedia(att: Attachment) {
                                                     class="px-2 h-7"
                                                     title="Attach files"
                                                     @click="
-                                                        $refs.fileInput.click()
+                                                        fileInput?.click()
                                                     "
                                                     :disabled="ticket.isLocked"
                                                 >
@@ -2325,7 +2334,7 @@ function isVisualMedia(att: Attachment) {
                                             'text-orange-500':
                                                 (ticket.slaResponseProgress ||
                                                     0) >=
-                                                ticket.slaResponseWarningAt
+                                                (ticket.slaResponseWarningAt || 80)
                                                     ? 80
                                                     : 101,
                                         }"
@@ -2559,7 +2568,7 @@ function isVisualMedia(att: Attachment) {
                                 >
                                 <div class="flex items-center gap-2">
                                     <Avatar
-                                        :fallback="ticket.reporter.initials"
+                                        :fallback="ticket.reporter?.initials"
                                         :src="ticket.reporter?.avatarUrl"
                                         size="xs"
                                     />

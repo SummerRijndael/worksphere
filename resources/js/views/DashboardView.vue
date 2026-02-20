@@ -4,7 +4,7 @@ import { useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { dashboardService } from "@/services";
 import type {
-    DashboardData,
+    
     DashboardStat,
     DashboardFeatures,
     ActivityItem,
@@ -55,6 +55,7 @@ const features = ref<DashboardFeatures>({
     tickets_enabled: false,
     tasks_enabled: false,
     invoices_enabled: false,
+    is_demo_mode: false,
 });
 const activity = ref<ActivityItem[]>([]);
 const projects = ref<ProjectSummary[]>([]);

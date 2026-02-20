@@ -800,7 +800,7 @@ import {
     ArrowDownIcon,
     ArrowUpDownIcon,
     ChevronDownIcon,
-    FlagIcon,
+    
     FolderIcon,
     TagIcon,
     ReplyIcon,

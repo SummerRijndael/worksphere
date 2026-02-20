@@ -1,0 +1,72 @@
+resources/js/components/minichat/MiniChatMessageBubble.vue(164,56): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+resources/js/components/minichat/MiniChatMessageBubble.vue(168,30): error TS2769: No overload matches this call.
+resources/js/components/modals/TeamEventModal.vue(417,25): error TS2322: Type 'number | null' is not assignable to type 'string | number | undefined'.
+resources/js/components/tasks/TaskBoard.vue(232,46): error TS2345: Argument of type '"quick-assign"' is not assignable to parameter of type '"task-click"'.
+resources/js/components/tasks/TaskFormModal.vue(451,13): error TS2322: Type '{ title: string; description: string; status: string; priority: number; due_date: string; assigned_to: string; estimated_hours: number; checklist: never[]; save_as_template: false; }' is not assignable to type '{ title: string; description: string; status: string; priority: number; due_date: string; assigned_to: string; qa_user_id: string; estimated_hours: number; checklist: any[]; save_as_template: boolean; } | { ...; }'.
+resources/js/components/templates/InvoiceTemplateBuilder.vue(61,63): error TS2345: Argument of type 'string | number | undefined' is not assignable to parameter of type 'string'.
+resources/js/components/templates/TaskTemplateBuilder.vue(57,60): error TS2345: Argument of type 'string | number | undefined' is not assignable to parameter of type 'string'.
+resources/js/components/tools/TeamCalendar.vue(436,46): error TS2322: Type '{ plugins: PluginDef[]; initialView: string; headerToolbar: boolean; events: any[]; editable: boolean; selectable: boolean; dayMaxEvents: boolean; height: string; datesSet: (arg: any) => void; eventClick: (info: any) => void; dateClick: (info: any) => void; eventClassNames: (arg: any) => string[]; }' is not assignable to type 'CalendarOptions'.
+resources/js/components/ui/Input.vue(23,55): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'string'.
+resources/js/components/ui/PinInput.vue(41,13): error TS2322: Type 'string[]' is not assignable to type 'number[]'.
+resources/js/components/ui/PinInput.vue(47,14): error TS2322: Type '(value: string[]) => void' is not assignable to type '(value: number[]) => any'.
+resources/js/components/ui/RichTextEditor.vue(472,51): error TS2769: No overload matches this call.
+resources/js/components/ui/RichTextEditor.vue(681,28): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+resources/js/components/ui/RichTextEditor.vue(687,28): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+resources/js/components/ui/RichTextEditor.vue(710,24): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+resources/js/components/ui/Tooltip.vue(19,71): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'string'.
+resources/js/components/ui/Tooltip.vue(24,63): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'string'.
+resources/js/components/ui/Tooltip.vue(57,22): error TS2322: Type 'string' is not assignable to type '"top" | "right" | "bottom" | "left" | undefined'.
+resources/js/components/ui/Tooltip.vue(58,22): error TS2322: Type 'string' is not assignable to type '"center" | "start" | "end" | undefined'.
+resources/js/composables/useDate.ts(39,82): error TS2345: Argument of type 'number | Date' is not assignable to parameter of type 'Date'.
+resources/js/composables/useDate.ts(59,82): error TS2345: Argument of type 'number | Date' is not assignable to parameter of type 'Date'.
+resources/js/composables/usePresence.ts(511,13): error TS2322: Type 'PresenceStatus' is not assignable to type '"online" | "offline" | "away" | "busy" | undefined'.
+resources/js/composables/usePresence.ts(523,17): error TS2322: Type '"online" | "away" | "busy" | "invisible"' is not assignable to type '"online" | "offline" | "away" | "busy" | undefined'.
+resources/js/composables/useServices.ts(31,9): error TS2322: Type '"per user/month"' is not assignable to type '"month" | "year" | "forever"'.
+resources/js/composables/useServices.ts(52,9): error TS2322: Type '"contact us"' is not assignable to type '"month" | "year" | "forever"'.
+resources/js/composables/useToast.ts(53,5): error TS2322: Type '(string & { unwrap: () => Promise<T>; }) | (number & { unwrap: () => Promise<T>; }) | { unwrap: () => Promise<T>; } | undefined' is not assignable to type 'ToastId'.
+resources/js/echo.ts(132,13): error TS2322: Type '(channel: any, _options: any) => { authorize: (socketId: string, callback: (error: boolean, data?: any) => void) => void; }' is not assignable to type 'ChannelAuthorizerGenerator'.
+resources/js/echo.ts(350,41): error TS2345: Argument of type 'EchoInstance' is not assignable to parameter of type 'PropertyKey'.
+resources/js/router/index.ts(72,29): error TS2349: This expression is not callable.
+resources/js/router/index.ts(73,18): error TS2349: This expression is not callable.
+resources/js/router/index.ts(82,29): error TS2349: This expression is not callable.
+resources/js/router/index.ts(83,18): error TS2349: This expression is not callable.
+resources/js/router/index.ts(187,25): error TS2349: This expression is not callable.
+resources/js/router/index.ts(189,25): error TS2349: This expression is not callable.
+resources/js/router/index.ts(226,17): error TS2349: This expression is not callable.
+resources/js/router/index.ts(231,17): error TS2349: This expression is not callable.
+resources/js/router/index.ts(236,21): error TS2349: This expression is not callable.
+resources/js/router/index.ts(238,21): error TS2349: This expression is not callable.
+resources/js/utils/sanitize.ts(45,59): error TS2769: No overload matches this call.
+resources/js/utils/sanitize.ts(46,58): error TS2769: No overload matches this call.
+resources/js/views/DashboardView.vue(53,41): error TS2345: Argument of type '{ projects_enabled: false; tickets_enabled: false; tasks_enabled: false; invoices_enabled: false; }' is not assignable to parameter of type 'DashboardFeatures'.
+resources/js/views/DashboardView.vue(589,30): error TS2322: Type '{ label: string; data: number[]; borderColor?: string | undefined; backgroundColor?: string | string[] | undefined; }[]' is not assignable to type 'Dataset[]'.
+resources/js/views/DashboardView.vue(638,26): error TS2322: Type '{ label: string; data: number[]; borderColor?: string | undefined; backgroundColor?: string | string[] | undefined; }[]' is not assignable to type 'Dataset[]'.
+resources/js/views/Email/EmailSettings.vue(400,21): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'titleT'.
+resources/js/views/Email/components/EmailInlineComposer.vue(1049,9): error TS2353: Object literal may only specify known properties, and 'handleBlur' does not exist in type 'EditorProps<any>'.
+resources/js/views/Email/components/EmailPreviewContent.vue(179,30): error TS2322: Type 'string | EmailRecipients' is not assignable to type 'PropertyKey | undefined'.
+resources/js/views/Email/components/EmailPreviewContent.vue(1387,31): error TS2769: No overload matches this call.
+resources/js/views/Email/components/EmailPreviewContent.vue(1390,31): error TS2769: No overload matches this call.
+resources/js/views/LandingPage.vue(150,43): error TS2345: Argument of type 'Record<string, unknown>' is not assignable to parameter of type 'AnimationParams'.
+resources/js/views/TaskDetailView.vue(973,42): error TS2322: Type '({ label: string; icon: FunctionalComponent<LucideProps, {}, any, {}>; action: () => void; disabled?: undefined; variant?: undefined; } | { label: string; icon: FunctionalComponent<...>; action: () => void; disabled: boolean; variant?: undefined; } | { ...; })[]' is not assignable to type 'DropdownItem[]'.
+resources/js/views/admin/InvoiceDetailView.vue(334,32): error TS2322: Type '({ label: string; icon: FunctionalComponent<LucideProps, {}, any, {}>; action: () => void; variant?: undefined; } | { label: string; icon: FunctionalComponent<LucideProps, {}, any, {}>; action: () => Promise<...>; variant: string; })[]' is not assignable to type 'DropdownItem[]'.
+resources/js/views/admin/InvoiceDetailView.vue(748,14): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+resources/js/views/admin/InvoicesView.vue(372,13): error TS2353: Object literal may only specify known properties, and 'variant' does not exist in type '{ label: string; icon: FunctionalComponent<LucideProps, {}, any, {}>; action: () => void; }'.
+resources/js/views/admin/InvoicesView.vue(387,13): error TS2353: Object literal may only specify known properties, and 'variant' does not exist in type '{ label: string; icon: FunctionalComponent<LucideProps, {}, any, {}>; action: () => void; }'.
+resources/js/views/admin/ProjectDetailView.vue(887,37): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+resources/js/views/admin/ProjectDetailView.vue(906,35): error TS2353: Object literal may only specify known properties, and 'separator' does not exist in type 'DropdownItem'.
+resources/js/views/admin/ProjectsManageView.vue(294,89): error TS2353: Object literal may only specify known properties, and 'variant' does not exist in type '{ label: string; icon: FunctionalComponent<LucideProps, {}, any, {}>; action: () => void; }'.
+resources/js/views/admin/templates/InvoiceTemplatesView.vue(134,148): error TS2345: Argument of type 'string | number | undefined' is not assignable to parameter of type 'string'.
+resources/js/views/admin/templates/TaskTemplatesView.vue(134,148): error TS2345: Argument of type 'string | number | undefined' is not assignable to parameter of type 'string'.
+resources/js/views/auth/LoginView.vue(336,13): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+resources/js/views/auth/LoginView.vue(466,13): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+resources/js/views/auth/LoginView.vue(488,45): error TS2345: Argument of type '{ name: string; email: string; password: string; password_confirmation: string; recaptcha_token: string | undefined; timezone: string; fingerprint: string | null; }' is not assignable to parameter of type 'RegisterRequest & { confirmPassword?: string | undefined; }'.
+resources/js/views/auth/ResetPasswordView.vue(30,13): error TS2345: Argument of type 'null' is not assignable to parameter of type 'TargetsParam'.
+resources/js/views/chat/components/chat/ChatComposer.vue(202,5): error TS2353: Object literal may only specify known properties, and 'onSelect' does not exist in type 'Ref<string | undefined, string | undefined>'.
+resources/js/views/chat/components/chat/MessageBubble.vue(174,56): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+resources/js/views/chat/components/chat/MessageBubble.vue(178,25): error TS2769: No overload matches this call.
+resources/js/views/chat/components/chat/MessageBubble.vue(200,30): error TS2769: No overload matches this call.
+resources/js/views/chat/components/chat/MessageList.vue(51,43): error TS2345: Argument of type '{ publicId: string; name: string | null; avatar: string | null; }' is not assignable to parameter of type '{ publicId: string; name: string; avatar: string | null; }'.
+resources/js/views/chat/components/sidebar/ChatSidebar.vue(194,39): error TS2769: No overload matches this call.
+resources/js/views/public/FaqView.vue(93,9): error TS2769: No overload matches this call.
+resources/js/views/reports/ProjectReportView.vue(49,85): error TS2353: Object literal may only specify known properties, and 'team_id' does not exist in type 'ProjectReportFilters'.
+resources/js/views/reports/ProjectReportView.vue(54,77): error TS2353: Object literal may only specify known properties, and 'team_id' does not exist in type 'ProjectReportFilters'.

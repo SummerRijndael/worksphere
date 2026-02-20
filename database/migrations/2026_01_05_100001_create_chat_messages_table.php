@@ -17,6 +17,7 @@ return new class extends Migration
             $table->foreignId('chat_id')->constrained()->cascadeOnDelete();
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
             $table->text('content')->nullable(); // Nullable to support attachment-only messages
+            $table->json('metadata')->nullable();
             $table->string('type')->default('user'); // user, system, etc.
             $table->foreignId('reply_to_message_id')->nullable()->constrained('chat_messages')->nullOnDelete();
             $table->timestamps();

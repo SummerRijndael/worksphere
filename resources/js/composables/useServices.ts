@@ -28,7 +28,7 @@ const mockServices: Service[] = [
         description: 'For growing teams that need more power and flexibility.',
         price: 29,
         currency: '$',
-        interval: 'per user/month',
+        interval: 'per user/month' as any,
         features: [
             'Unlimited team members',
             'Unlimited projects',
@@ -49,7 +49,7 @@ const mockServices: Service[] = [
         description: 'For large organizations with custom requirements.',
         price: 0, // Represents "Custom"
         currency: '', // No currency for custom
-        interval: 'contact us', // displayed as text
+        interval: 'contact us' as any, // displayed as text
         features: [
             'Everything in Professional',
             'Dedicated account manager',

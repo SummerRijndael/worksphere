@@ -7,6 +7,8 @@ export interface EmailAttachment {
     type: string; // MIME type
     url?: string; // For download
     content_id?: string; // For inline image matching
+    is_downloaded?: boolean;
+    is_ready?: boolean;
 }
 
 export interface EmailLabel {
@@ -30,6 +32,7 @@ export interface Email {
     id: string;
     public_id?: string;
     message_id?: string;
+    email_account_id?: string | number;
     // Legacy flattened structure
     from_name: string;
     from_email: string;

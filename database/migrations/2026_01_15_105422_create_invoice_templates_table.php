@@ -18,6 +18,7 @@ return new class extends Migration
             $table->string('name');
             $table->text('description')->nullable();
             $table->string('currency')->default('USD');
+            $table->json('line_items')->nullable();
             $table->text('default_terms')->nullable();
             $table->text('default_notes')->nullable();
             $table->string('logo_url')->nullable();

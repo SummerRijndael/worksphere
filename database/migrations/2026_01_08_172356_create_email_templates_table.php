@@ -12,8 +12,8 @@ return new class extends Migration
             $table->id();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
             $table->string('name');
-            $table->string('subject')->nullable();
-            $table->longText('body'); // HTML template body
+            $table->string('subject', 998)->nullable();
+            $table->longText('body')->nullable(); // HTML template body
             $table->timestamps();
 
             $table->index('user_id');

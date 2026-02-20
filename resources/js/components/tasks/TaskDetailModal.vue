@@ -29,12 +29,12 @@ import {
     Archive,
     UserPlus,
     Edit3,
-    ListChecks,
-    GripVertical,
-    Plus,
-    Square,
-    CheckSquare,
-    Loader2,
+    
+    
+    
+    
+    
+    
     AlertTriangle,
 } from "lucide-vue-next";
 import axios from "axios";
@@ -305,75 +305,75 @@ const fetchChecklistItems = async () => {
     }
 };
 
-const addChecklistItem = async () => {
-    if (!newChecklistText.value.trim() || !localTask.value) return;
-    try {
-        isAddingItem.value = true;
-        const taskId = localTask.value.public_id || localTask.value.id;
-        await axios.post(
-            `/api/teams/${props.teamId}/projects/${props.projectId}/tasks/${taskId}/checklist`,
-            {
-                text: newChecklistText.value,
-            },
-        );
-        newChecklistText.value = "";
-        await fetchChecklistItems();
-        toast.success("Item added");
-    } catch (err: any) {
-        toast.error(err.response?.data?.message || "Failed to add item");
-    } finally {
-        isAddingItem.value = false;
-    }
-};
+// const addChecklistItem = async () => {
+//     if (!newChecklistText.value.trim() || !localTask.value) return;
+//     try {
+//         isAddingItem.value = true;
+//         const taskId = localTask.value.public_id || localTask.value.id;
+//         await axios.post(
+//             `/api/teams/${props.teamId}/projects/${props.projectId}/tasks/${taskId}/checklist`,
+//             {
+//                 text: newChecklistText.value,
+//             },
+//         );
+//         newChecklistText.value = "";
+//         await fetchChecklistItems();
+//         toast.success("Item added");
+//     } catch (err: any) {
+//         toast.error(err.response?.data?.message || "Failed to add item");
+//     } finally {
+//         isAddingItem.value = false;
+//     }
+// };
 
-const updateChecklistItemStatus = async (item: any, newStatus: string) => {
-    if (!localTask.value) return;
-    // Check if current user is assignee
-    const isAssignee =
-        localTask.value.assignee?.public_id === authStore.user?.public_id ||
-        localTask.value.assignee?.id === authStore.user?.id;
-    if (!isAssignee) {
-        toast.error("Only the assignee can change item status");
-        return;
-    }
-    try {
-        const taskId = localTask.value.public_id || localTask.value.id;
-        await axios.put(
-            `/api/teams/${props.teamId}/projects/${props.projectId}/tasks/${taskId}/checklist/${item.public_id}`,
-            {
-                status: newStatus,
-            },
-        );
-        await fetchChecklistItems();
-    } catch (err: any) {
-        toast.error(err.response?.data?.message || "Failed to update item");
-    }
-};
+// const updateChecklistItemStatus = async (item: any, newStatus: string) => {
+//     if (!localTask.value) return;
+//     // Check if current user is assignee
+//     const isAssignee =
+//         localTask.value.assignee?.public_id === authStore.user?.public_id ||
+//         localTask.value.assignee?.id === authStore.user?.id;
+//     if (!isAssignee) {
+//         toast.error("Only the assignee can change item status");
+//         return;
+//     }
+//     try {
+//         const taskId = localTask.value.public_id || localTask.value.id;
+//         await axios.put(
+//             `/api/teams/${props.teamId}/projects/${props.projectId}/tasks/${taskId}/checklist/${item.public_id}`,
+//             {
+//                 status: newStatus,
+//             },
+//         );
+//         await fetchChecklistItems();
+//     } catch (err: any) {
+//         toast.error(err.response?.data?.message || "Failed to update item");
+//     }
+// };
 
-const deleteChecklistItem = async (item: any) => {
-    if (!localTask.value) return;
-    try {
-        const taskId = localTask.value.public_id || localTask.value.id;
-        await axios.delete(
-            `/api/teams/${props.teamId}/projects/${props.projectId}/tasks/${taskId}/checklist/${item.public_id}`,
-        );
-        await fetchChecklistItems();
-        toast.success("Item removed");
-    } catch (err: any) {
-        toast.error(err.response?.data?.message || "Failed to remove item");
-    }
-};
+// const deleteChecklistItem = async (item: any) => {
+//     if (!localTask.value) return;
+//     try {
+//         const taskId = localTask.value.public_id || localTask.value.id;
+//         await axios.delete(
+//             `/api/teams/${props.teamId}/projects/${props.projectId}/tasks/${taskId}/checklist/${item.public_id}`,
+//         );
+//         await fetchChecklistItems();
+//         toast.success("Item removed");
+//     } catch (err: any) {
+//         toast.error(err.response?.data?.message || "Failed to remove item");
+//     }
+// };
 
-const isAssignee = computed(() => {
-    return (
-        localTask.value?.assignee?.public_id === authStore.user?.public_id ||
-        localTask.value?.assignee?.id === authStore.user?.id
-    );
-});
+// const isAssignee = computed(() => {
+//     return (
+//         localTask.value?.assignee?.public_id === authStore.user?.public_id ||
+//         localTask.value?.assignee?.id === authStore.user?.id
+//     );
+// });
 
-const completedItemsCount = computed(() => {
-    return checklistItems.value.filter((i: any) => i.status === "done").length;
-});
+// const completedItemsCount = computed(() => {
+//     return checklistItems.value.filter((i: any) => i.status === "done").length;
+// });
 
 const submitComment = async () => {
     if (!newComment.value.trim() || !localTask.value) return;

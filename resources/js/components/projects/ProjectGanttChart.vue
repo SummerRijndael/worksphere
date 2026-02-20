@@ -3,7 +3,7 @@ import { ref, onMounted, watch } from "vue";
 import Gantt from "frappe-gantt";
 import "@/../css/frappe-gantt.css"; // Relative from components/projects to resources/css? No, alias @ is resources/js usually.
 import { Button } from "@/components/ui";
-import { Calendar, ChevronLeft, ChevronRight } from "lucide-vue-next";
+import { Calendar } from "lucide-vue-next";
 
 const props = defineProps<{
     tasks: any[];

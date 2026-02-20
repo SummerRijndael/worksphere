@@ -50,7 +50,7 @@ export function useToast(): ToastReturn {
       error: string | ((error: Error) => string);
     }
   ): ToastId {
-    return toast.promise(promiseFn, options);
+    return toast.promise(promiseFn, options) as unknown as ToastId;
   }
 
   function dismiss(id?: ToastId): void {

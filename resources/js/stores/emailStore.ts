@@ -78,9 +78,9 @@ export const useEmailStore = defineStore("email", () => {
     const remoteFolders = ref<any[]>([]); // This will be replaced by accountFolders for specific account
     const accountFolders = ref<Record<string, any[]>>({}); // Stores remote folders per account
     const accounts = ref<any[]>([]);
-    const accountsLoading = ref(false);
+//     const accountsLoading = ref(false);
     const foldersLoading = ref<Record<string, boolean>>({});
-    const initialLoadDone = ref(false);
+//     const initialLoadDone = ref(false);
     const loading = ref(false);
 
     // Pagination
@@ -299,7 +299,7 @@ export const useEmailStore = defineStore("email", () => {
                 }
 
                 // Handle both Laravel ResourceCollection (meta object) and standard pagination formats
-                const meta = response.meta || response;
+                const meta = (response as any).meta || response;
                 currentPage.value = meta.current_page || 1;
                 lastPage.value = meta.last_page || 1;
                 totalEmails.value = meta.total || 0;

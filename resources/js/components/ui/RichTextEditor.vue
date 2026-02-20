@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import { computed, watch, onBeforeUnmount, ref } from "vue";
 import {
     useEditor,
@@ -67,6 +67,8 @@ import {
     Scissors,
     Copy,
 } from "lucide-vue-next";
+
+defineSlots<{ 'toolbar-after'?: any; default?: any; }>();
 
 const props = defineProps({
     modelValue: {
@@ -308,7 +310,7 @@ function setLink() {
 const showVideoModal = ref(false);
 const videoUrl = ref("");
 const showColorModal = ref(false);
-const colorValue = ref("#958DF1");
+const colorValue = ref<any>("#958DF1");
 
 function addVideo() {
     videoUrl.value = "";
@@ -382,7 +384,7 @@ function confirmInsertTable() {
 
 // Border color state
 const showBorderColorModal = ref(false);
-const borderColorValue = ref("#000000");
+const borderColorValue = ref<any>("#000000");
 const borderColorTarget = ref("cell"); // 'cell' or 'table'
 
 function openBorderColorModal(target) {
@@ -455,7 +457,19 @@ function confirmBorderColor() {
     showBorderColorModal.value = false;
 }
 
-const toolbarGroups = computed(() => [
+interface ToolbarButton {
+    icon?: any;
+    action?: () => void;
+    isActive?: () => boolean;
+    disabled?: () => boolean;
+    title?: string;
+    type?: string;
+    items?: Array<{ label: string; action: () => void; isActive: () => boolean }>;
+    divider?: boolean;
+    className?: string;
+}
+
+const toolbarGroups = computed<ToolbarButton[][]>(() => [
     [
         {
             icon: Code,
@@ -648,7 +662,7 @@ const toolbarGroups = computed(() => [
     ],
 ]);
 
-const bubbleMenuButtons = computed(() => {
+const bubbleMenuButtons = computed<ToolbarButton[]>(() => {
     // Flatten toolbarGroups for specific titles
     const textButtons = toolbarGroups.value
         .flat()
@@ -681,7 +695,7 @@ const bubbleMenuButtons = computed(() => {
     return textButtons;
 });
 
-const floatingMenuButtons = computed(() =>
+const floatingMenuButtons = computed<ToolbarButton[]>(() =>
     toolbarGroups.value
         .flat()
         .filter((btn) =>
@@ -768,6 +782,7 @@ const tableOperations = computed(() => [
         icon: Copy,
         action: () => {
             // Select table first
+            if (!editor.value) return;
             const { state, view } = editor.value;
             const { selection } = state;
             const { $from } = selection;
@@ -789,6 +804,7 @@ const tableOperations = computed(() => [
         icon: Scissors,
         action: () => {
             // Select table first
+            if (!editor.value) return;
             const { state, view } = editor.value;
             const { selection } = state;
             const { $from } = selection;
@@ -822,6 +838,7 @@ const tableOperations = computed(() => [
     {
         icon: BoxSelect,
         action: () => {
+            if (!editor.value) return;
             const { state, view } = editor.value;
             const { selection } = state;
             const { $from } = selection;
@@ -1055,7 +1072,7 @@ const containerClasses = computed(() =>
             <div v-else class="flex-1 w-full min-h-0">
                 <textarea
                     :value="modelValue"
-                    @input="emit('update:modelValue', $event.target.value)"
+                    @input="emit('update:modelValue', ($event.target as HTMLTextAreaElement).value)"
                     class="w-full h-full p-4 font-mono text-sm bg-(--surface-primary) text-(--text-primary) resize-none focus:outline-none custom-scrollbar"
                     spellcheck="false"
                 ></textarea>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from "vue";
 import PublicLayout from "@/layouts/PublicLayout.vue";
-import { PageLoader, Card, Button } from "@/components/ui";
+import { PageLoader, Button } from "@/components/ui";
 import {
     Search,
     ChevronRight,
@@ -90,7 +90,7 @@ const getPlainExcerpt = (html: string | undefined) => {
     // We explicitly forbid style/script tags to ensure their content is gone
     const cleanHtml = DOMPurify.sanitize(html, {
         FORBID_TAGS: ["style", "script", "svg", "iframe", "object", "embed"],
-        keepContent: false, // This isn't a standard option but FORBID_TAGS usually removes content for script/style
+        KEEP_CONTENT: false, // This isn't a standard option but FORBID_TAGS usually removes content for script/style
     });
 
     // Use a temporary element to strip remaining tags and decode entities

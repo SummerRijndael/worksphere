@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, watchEffect } from 'vue';
+import { ref, watch } from 'vue';
 import Modal from '@/components/ui/Modal.vue';
 import Button from '@/components/ui/Button.vue';
 import SelectFilter from '@/components/ui/SelectFilter.vue';

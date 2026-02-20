@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import {
     TooltipRoot,
     TooltipTrigger,
@@ -8,6 +8,8 @@ import {
     TooltipProvider,
 } from "reka-ui";
 import { cn } from "@/lib/utils";
+
+defineSlots<{ trigger?: any; content?: any; default?: any; }>();
 
 defineProps({
     content: String,
@@ -44,7 +46,9 @@ defineProps({
     <TooltipProvider :delay-duration="delayDuration">
         <TooltipRoot>
             <TooltipTrigger as-child>
-                <slot />
+                <slot name="trigger">
+                    <slot />
+                </slot>
             </TooltipTrigger>
 
             <TooltipPortal>

@@ -2,7 +2,7 @@
 import { ref, onMounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { Card, Button, Badge, PageLoader } from '@/components/ui';
-import { ArrowLeft, Folder, Calendar, CheckCircle2, Clock, AlertCircle, ListTodo } from 'lucide-vue-next';
+import { ArrowLeft, Calendar, CheckCircle2, Clock, AlertCircle, ListTodo } from 'lucide-vue-next';
 import axios from 'axios';
 import { useDate } from "@/composables/useDate";
 const { formatDate: formatDateComposible } = useDate();

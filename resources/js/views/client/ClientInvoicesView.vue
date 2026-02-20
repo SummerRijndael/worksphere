@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, computed } from "vue";
+import { ref, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
     Card,
@@ -12,11 +12,11 @@ import {
 import {
     FileText,
     Search,
-    Download,
+    
     ChevronLeft,
     ChevronRight,
-    Clock,
-    DollarSign,
+    
+    
     AlertCircle,
 } from "lucide-vue-next";
 import axios from "axios";

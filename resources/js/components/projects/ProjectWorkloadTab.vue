@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import Avatar from "@/components/ui/Avatar.vue";
-import Badge from "@/components/ui/Badge.vue";
+// import Badge from "@/components/ui/Badge.vue";
 import Card from "@/components/ui/Card.vue";
 import Button from "@/components/ui/Button.vue";
 import { useDate } from "@/composables/useDate";
@@ -25,7 +25,7 @@ console.log('WorkloadTab Init:', { tasks: props.tasks, members: props.members })
 // Date Navigation
 const today = new Date();
 const currentWeekStart = ref(startOfWeek(today, { weekStartsOn: 1 })); // Monday
-const viewMode = ref("Week"); // Day, Week, Month
+// const viewMode = ref("Week"); // Day, Week, Month
 
 const weekDays = computed(() => {
     return Array.from({ length: 5 }, (_, i) => addDays(currentWeekStart.value, i));

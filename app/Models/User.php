@@ -248,8 +248,9 @@ class User extends Authenticatable implements HasMedia, MustVerifyEmail, WebAuth
 
         if (strlen($baseUsername) < 3) {
             // Fall back to email prefix
+            // Allow dots from email by replacing invalid chars manually
             $baseUsername = Str::before($email, '@');
-            $baseUsername = Str::slug(Str::lower($baseUsername), '_');
+            $baseUsername = preg_replace('/[^a-z0-9\.]/', '_', strtolower($baseUsername));
         }
 
         // Ensure minimum length
@@ -257,16 +258,24 @@ class User extends Authenticatable implements HasMedia, MustVerifyEmail, WebAuth
             $baseUsername = 'user';
         }
 
-        // Truncate if too long
+        // Truncate if too long (leaving room for suffixes)
         $baseUsername = Str::limit($baseUsername, 40, '');
 
-        // Make unique
-        $username = $baseUsername;
-        $counter = 1;
+        // Find conflicts efficiently
+        $conflicts = self::where('username', 'like', $baseUsername . '%')
+            ->pluck('username')
+            ->toArray();
 
-        while (self::where('username', $username)->exists()) {
-            $username = $baseUsername.'_'.$counter;
+        if (empty($conflicts) || !in_array($baseUsername, $conflicts)) {
+            return $baseUsername;
+        }
+
+        $counter = 1;
+        $username = $baseUsername . '_' . $counter;
+        
+        while (in_array($username, $conflicts)) {
             $counter++;
+            $username = $baseUsername . '_' . $counter;
         }
 
         return $username;
@@ -560,7 +569,9 @@ class User extends Authenticatable implements HasMedia, MustVerifyEmail, WebAuth
         $hasTOTP = $this->two_factor_secret && $this->two_factor_confirmed_at;
         $hasSMS = $this->two_factor_sms_enabled && $this->phone;
         $hasEmail = $this->two_factor_email_enabled;
-        $hasPasskey = $this->webauthnCredentials()->exists();
+        $hasPasskey = $this->relationLoaded('webauthnCredentials') 
+            ? $this->webauthnCredentials->isNotEmpty() 
+            : $this->webauthnCredentials()->exists();
 
         if ($methods === null) {
             return $hasTOTP || $hasSMS || $hasEmail || $hasPasskey;
@@ -604,22 +615,26 @@ class User extends Authenticatable implements HasMedia, MustVerifyEmail, WebAuth
             }
         }
 
-        // Check role-level enforcement
-        foreach ($this->roles as $role) {
-            $enforcement = RoleTwoFactorEnforcement::where('role_id', $role->id)
-                ->where('is_active', true)
-                ->first();
+        if ($this->roles->isEmpty()) {
+            return false;
+        }
 
-            if ($enforcement) {
-                $methods = $enforcement->allowed_methods;
-                if (! $this->has2FAConfigured($methods)) {
-                    return [
-                        'required' => true,
-                        'methods' => $methods,
-                        'source' => 'role',
-                        'role' => $role->name,
-                    ];
-                }
+        // Check role-level enforcement
+        $enforcements = \App\Models\RoleTwoFactorEnforcement::whereIn('role_id', $this->roles->pluck('id'))
+            ->where('is_active', true)
+            ->get();
+
+        foreach ($enforcements as $enforcement) {
+            $methods = $enforcement->allowed_methods;
+            if (! $this->has2FAConfigured($methods)) {
+                $roleName = $this->roles->firstWhere('id', $enforcement->role_id)?->name ?? 'unknown';
+
+                return [
+                    'required' => true,
+                    'methods' => $methods,
+                    'source' => 'role',
+                    'role' => $roleName,
+                ];
             }
         }
 
@@ -774,9 +789,14 @@ class User extends Authenticatable implements HasMedia, MustVerifyEmail, WebAuth
     /**
      * Get the linked client for this user (by email match).
      */
+    public function linkedClient(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(Client::class, 'email', 'email');
+    }
+
     public function getLinkedClientAttribute(): ?Client
     {
-        return Client::where('email', $this->email)->first();
+        return $this->linkedClient;
     }
 
     /**

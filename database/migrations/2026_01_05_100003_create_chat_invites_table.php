@@ -13,6 +13,7 @@ return new class extends Migration
     {
         Schema::create('chat_invites', function (Blueprint $table) {
             $table->id();
+            $table->ulid('public_id')->unique();
             $table->foreignId('inviter_id')->constrained('users')->cascadeOnDelete();
             $table->foreignId('invitee_id')->constrained('users')->cascadeOnDelete();
             $table->foreignId('chat_id')->nullable()->constrained()->cascadeOnDelete();

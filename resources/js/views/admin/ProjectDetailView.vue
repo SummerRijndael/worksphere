@@ -39,7 +39,7 @@ import {
     BarChart, // for Workload
     Banknote,
     TrendingUp,
-    Receipt,
+    
 } from "lucide-vue-next";
 import axios from "axios";
 import { useAuthStore } from "@/stores/auth";
@@ -409,22 +409,22 @@ const onTaskSaved = (savedTask: any) => {
     fetchProject(); // Refresh stats/progress
 };
 
-const onTaskDeleted = (deletedTask: any) => {
-    tasks.value = tasks.value.filter((t) => t.id !== deletedTask.id);
-};
+// const onTaskDeleted = (deletedTask: any) => {
+//     tasks.value = tasks.value.filter((t) => t.id !== deletedTask.id);
+// };
 
-const onTaskUpdatedFromDetail = (updatedTask: any) => {
-    const index = tasks.value.findIndex((t) => t.id === updatedTask.id);
-    if (index !== -1) {
-        tasks.value[index] = updatedTask;
-    }
-};
+// const onTaskUpdatedFromDetail = (updatedTask: any) => {
+//     const index = tasks.value.findIndex((t) => t.id === updatedTask.id);
+//     if (index !== -1) {
+//         tasks.value[index] = updatedTask;
+//     }
+// };
 
-const onEditTaskFromDetail = (task: any) => {
-    // Navigate back and open edit form
-    selectedTask.value = task;
-    showTaskForm.value = true;
-};
+// const onEditTaskFromDetail = (task: any) => {
+//     // Navigate back and open edit form
+//     selectedTask.value = task;
+//     showTaskForm.value = true;
+// };
 
 // Filters
 let searchTimeout: ReturnType<typeof setTimeout>;
@@ -726,7 +726,7 @@ const handleBulkDelete = async (mediaIds: string[]) => {
     }
 };
 
-const handleBulkDownload = async (mediaIds: string[]) => {
+const handleBulkDownload = async () => {
     // Project bulk download endpoint?
     // Not listed explicitly. Team has it.
     toast.error("Bulk download not yet supported for projects");

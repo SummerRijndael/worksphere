@@ -30,8 +30,8 @@ import {
     Settings,
     Pin,
     PinOff,
-    ChevronLeft,
-    ChevronRight,
+    
+    
     ChevronDown,
     LogOut,
     User,

@@ -70,6 +70,7 @@ export interface MessageReply {
 
 export interface Message {
     id: string;
+    chat_id?: string;
     public_id?: string;
     type: "user" | "system";
     user_public_id: string | null;
