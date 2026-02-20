@@ -13,6 +13,8 @@ class LinkUnfurlTest extends TestCase
 
     public function test_api_unfurls_link()
     {
+        // Bypass middleware (Auth, 2FA, Firewall) to isolate controller logic testing
+        $this->withoutMiddleware();
         $user = User::factory()->create();
 
         $this->mock(LinkUnfurlService::class, function ($mock) {
@@ -38,6 +40,7 @@ class LinkUnfurlTest extends TestCase
 
     public function test_api_handles_blocked_link()
     {
+        $this->withoutMiddleware();
         $user = User::factory()->create();
 
         $this->mock(LinkUnfurlService::class, function ($mock) {
@@ -56,6 +59,7 @@ class LinkUnfurlTest extends TestCase
 
     public function test_api_requires_valid_url()
     {
+        $this->withoutMiddleware();
         $user = User::factory()->create();
 
         $response = $this->actingAs($user)

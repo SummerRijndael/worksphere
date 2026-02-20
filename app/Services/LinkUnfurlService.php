@@ -12,7 +12,7 @@ class LinkUnfurlService
 {
     public function __construct(
         protected AuditService $auditService,
-        protected SecureOpenGraph $openGraph
+        protected SecureOpenGraph $openGraph // Injected for SSRF protection
     ) {}
 
     /**
