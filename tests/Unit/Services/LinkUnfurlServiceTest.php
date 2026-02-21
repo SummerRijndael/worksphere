@@ -6,6 +6,7 @@ use App\Enums\AuditAction;
 use App\Models\BlockedUrl;
 use App\Services\AuditService;
 use App\Services\LinkUnfurlService;
+use App\Services\SecureOpenGraph;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Mockery;
@@ -16,6 +17,7 @@ class LinkUnfurlServiceTest extends TestCase
     use RefreshDatabase;
 
     protected $auditService;
+    protected $secureOpenGraph;
 
     protected $service;
 
@@ -24,26 +26,18 @@ class LinkUnfurlServiceTest extends TestCase
         parent::setUp();
 
         $this->auditService = Mockery::mock(AuditService::class);
-        $this->service = new LinkUnfurlService($this->auditService);
+        $this->secureOpenGraph = Mockery::mock(SecureOpenGraph::class);
+        $this->service = new LinkUnfurlService($this->auditService, $this->secureOpenGraph);
     }
 
     public function test_it_unfurls_valid_url()
     {
-        // Mock OpenGraph fetch logic by partially mocking the service
-        // OR we can trust the library works and just test our logic around it.
-        // For unit test, we should mock the behavior of OpenGraph library,
-        // but since it's instantiated inside the service constructor (tight coupling),
-        // we might modify the service to accept dependency injection or use a partial mock.
-        // For now, let's assume network calls might fail in pure unit tests, so we skip the actual fetch
-        // or refactor service to allow injection.
-
-        // Refactoring Service to allow setter or injection is best practice,
-        // but for speed, let's test the Blocking and Caching logic which are our wrappers.
-
         $url = 'https://example.com';
 
-        Cache::shouldReceive('remember')
+        // Mock Cache::get to avoid network call
+        Cache::shouldReceive('get')
             ->once()
+            ->with('link_unfurl:'.md5($url))
             ->andReturn([
                 'title' => 'Example',
                 'url' => $url,
@@ -59,14 +53,23 @@ class LinkUnfurlServiceTest extends TestCase
         BlockedUrl::create(['pattern' => 'malicious.com']);
         $url = 'https://malicious.com/foo';
 
+        // Should bypass cache check or mock it to return null
+        Cache::shouldReceive('get')->andReturn(null);
+
         $this->auditService->shouldReceive('log')
             ->once()
             ->withArgs(function ($action) {
                 return $action === AuditAction::LinkBlocked;
             });
 
+        // Also mock audit service for the logBlock call which might happen before exception if structured that way
+        // Actually logBlock calls auditService->log
+
         $this->expectException(\Exception::class);
         $this->expectExceptionMessage('unsafe_content_blocked');
+
+        // Also need to mock Cache::put for the blocked cache
+        Cache::shouldReceive('put');
 
         $this->service->fetch($url);
     }
@@ -76,6 +79,8 @@ class LinkUnfurlServiceTest extends TestCase
         BlockedUrl::create(['pattern' => '*.unsafe.org']);
         $url = 'https://sub.unsafe.org/page';
 
+        Cache::shouldReceive('get')->andReturn(null);
+
         $this->auditService->shouldReceive('log')
             ->once()
             ->withArgs(function ($action) {
@@ -85,11 +90,15 @@ class LinkUnfurlServiceTest extends TestCase
         $this->expectException(\Exception::class);
         $this->expectExceptionMessage('unsafe_content_blocked');
 
+        Cache::shouldReceive('put');
+
         $this->service->fetch($url);
     }
 
     public function test_it_throws_exception_for_regex_blocked_url()
     {
+        Cache::shouldReceive('get')->andReturn(null);
+
         $this->auditService->shouldReceive('log')
             ->once()
             ->withArgs(function ($action, $category, $auditable, $user, $oldValues, $newValues, $context) {
@@ -100,6 +109,8 @@ class LinkUnfurlServiceTest extends TestCase
 
         $this->expectException(\Exception::class);
         $this->expectExceptionMessage('unsafe_content_blocked');
+
+        Cache::shouldReceive('put');
 
         $this->service->fetch('javascript:alert(1)');
     }
