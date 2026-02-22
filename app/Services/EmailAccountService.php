@@ -135,7 +135,7 @@ class EmailAccountService
 
         // 1. Check if it's an IP address
         if (filter_var($host, FILTER_VALIDATE_IP)) {
-            if (! filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+            if ($this->isBlockedIp($host)) {
                 throw new \Exception('Access to private IP addresses is not allowed.');
             }
 
@@ -155,10 +155,53 @@ class EmailAccountService
 
         // 3. Check all resolved IPs
         foreach ($ips as $ip) {
-            if (! filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+            if ($this->isBlockedIp($ip)) {
                 throw new \Exception('Host resolves to a private IP address. Access denied.');
             }
         }
+    }
+
+    /**
+     * Check if an IP address should be blocked.
+     */
+    protected function isBlockedIp(string $ip): bool
+    {
+        // 1. Basic format validation
+        if (! filter_var($ip, FILTER_VALIDATE_IP)) {
+            return true;
+        }
+
+        // 2. Check for IPv4-mapped IPv6 address (e.g. ::ffff:127.0.0.1)
+        // This is crucial because FILTER_FLAG_NO_PRIV_RANGE on IPv6 does NOT catch these mapping to private IPv4 space
+        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
+            $packed = @inet_pton($ip);
+            if ($packed === false) {
+                return true;
+            }
+
+            // Check for ::ffff:0:0/96 prefix (IPv4-mapped)
+            // 80 bits of zeros (10 bytes) followed by 16 bits of ones (2 bytes) = 12 bytes
+            $mappedPrefix = str_repeat("\x00", 10)."\xff\xff";
+
+            if (str_starts_with($packed, $mappedPrefix)) {
+                // It is an IPv4-mapped address. Extract the IPv4 part (last 4 bytes)
+                $ipv4 = inet_ntop(substr($packed, -4));
+
+                // Validate the extracted IPv4 address against private/reserved ranges
+                if (! filter_var($ipv4, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 | FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+                    return true;
+                }
+
+                return false;
+            }
+        }
+
+        // 3. Standard check for private/reserved ranges (IPv4 or IPv6)
+        if (! filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+            return true;
+        }
+
+        return false;
     }
 
     /**

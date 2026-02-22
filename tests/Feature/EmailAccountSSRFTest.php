@@ -10,11 +10,30 @@ class EmailAccountSSRFTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function getIgnoredMiddleware(): array
+    {
+        return [
+            \App\Http\Middleware\EnforceTwoFactor::class,
+            \App\Http\Middleware\CheckDemoMode::class,
+            \Akaunting\Firewall\Middleware\Ip::class,
+            \Akaunting\Firewall\Middleware\Agent::class,
+            \Akaunting\Firewall\Middleware\Bot::class,
+            \Akaunting\Firewall\Middleware\Lfi::class,
+            \Akaunting\Firewall\Middleware\Php::class,
+            \Akaunting\Firewall\Middleware\Referrer::class,
+            \Akaunting\Firewall\Middleware\Rfi::class,
+            \Akaunting\Firewall\Middleware\Sqli::class,
+            \Akaunting\Firewall\Middleware\Xss::class,
+        ];
+    }
+
     public function test_blocks_private_ip_addresses_in_configuration_test()
     {
         $user = User::factory()->create();
 
-        $response = $this->actingAs($user)->postJson('/api/email-accounts/test-configuration', [
+        $response = $this->actingAs($user)
+            ->withoutMiddleware($this->getIgnoredMiddleware())
+            ->postJson('/api/email-accounts/test-configuration', [
             'provider' => 'custom',
             'auth_type' => 'password',
             'email' => 'test@example.com',
@@ -47,7 +66,9 @@ class EmailAccountSSRFTest extends TestCase
     {
         $user = User::factory()->create();
 
-        $response = $this->actingAs($user)->postJson('/api/email-accounts/test-configuration', [
+        $response = $this->actingAs($user)
+            ->withoutMiddleware($this->getIgnoredMiddleware())
+            ->postJson('/api/email-accounts/test-configuration', [
             'provider' => 'custom',
             'auth_type' => 'password',
             'email' => 'test@example.com',
@@ -76,7 +97,9 @@ class EmailAccountSSRFTest extends TestCase
     {
         $user = User::factory()->create();
 
-        $response = $this->actingAs($user)->postJson('/api/email-accounts/test-configuration', [
+        $response = $this->actingAs($user)
+            ->withoutMiddleware($this->getIgnoredMiddleware())
+            ->postJson('/api/email-accounts/test-configuration', [
             'provider' => 'custom',
             'auth_type' => 'password',
             'email' => 'test@example.com',
