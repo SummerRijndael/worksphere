@@ -6,3 +6,8 @@
 **Vulnerability:** User-controlled input in `EmailAccount` configuration was used directly in `EsmtpTransport` and IMAP client, allowing connection to internal/private IPs (SSRF).
 **Learning:** `empty($host)` allows "0" (string) to pass, which resolves to `0.0.0.0` (localhost), bypassing simplistic checks.
 **Prevention:** Use strict checks (`$host === null || $host === ''`) and validate resolved IPs against private ranges using `filter_var`.
+
+## 2026-02-12 - SSRF Bypass via IPv4-mapped IPv6
+**Vulnerability:** `filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE)` allows IPv4-mapped IPv6 addresses (e.g., `::ffff:127.0.0.1`), treating them as valid public IPs.
+**Learning:** PHP's `filter_var` does not consider IPv4-mapped addresses as private even if the embedded IPv4 part is private. This allows attackers to bypass standard SSRF filters.
+**Prevention:** Explicitly block the `::ffff:0:0/96` range using `IpUtils::checkIp` or similar logic alongside standard filters.

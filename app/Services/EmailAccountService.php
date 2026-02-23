@@ -6,6 +6,7 @@ use App\Models\EmailAccount;
 use App\Models\User;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Symfony\Component\HttpFoundation\IpUtils;
 use Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport;
 
 class EmailAccountService
@@ -135,6 +136,11 @@ class EmailAccountService
 
         // 1. Check if it's an IP address
         if (filter_var($host, FILTER_VALIDATE_IP)) {
+            // Block IPv4-mapped IPv6 addresses explicitly as filter_var allows them
+            if (IpUtils::checkIp($host, ['::ffff:0:0/96'])) {
+                throw new \Exception('Access to IPv4-mapped IPv6 addresses is not allowed.');
+            }
+
             if (! filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
                 throw new \Exception('Access to private IP addresses is not allowed.');
             }
@@ -155,6 +161,11 @@ class EmailAccountService
 
         // 3. Check all resolved IPs
         foreach ($ips as $ip) {
+            // Block IPv4-mapped IPv6 addresses explicitly
+            if (IpUtils::checkIp($ip, ['::ffff:0:0/96'])) {
+                throw new \Exception('Host resolves to a private IP address. Access denied.');
+            }
+
             if (! filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
                 throw new \Exception('Host resolves to a private IP address. Access denied.');
             }
