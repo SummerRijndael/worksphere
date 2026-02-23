@@ -161,15 +161,17 @@ const firstUrl = computed(() => {
                     v-if="
                         showJoinButton &&
                         message.metadata.event === 'started' &&
+                        message.chat_id &&
                         videoCallStore.activeCalls.has(message.chat_id)
                     "
                     class="ml-2 px-1.5 py-0.5 rounded-full bg-green-500 hover:bg-green-600 text-white text-[9px] font-medium transition-colors flex items-center gap-0.5 cursor-pointer not-italic"
                     @click="
-                        emit('join-call', {
-                            chatId: message.chat_id,
-                            callId: message.metadata.call_id,
-                            callType: message.metadata.type as any,
-                        })
+                        message.chat_id &&
+                            emit('join-call', {
+                                chatId: message.chat_id,
+                                callId: message.metadata.call_id || '',
+                                callType: message.metadata.type,
+                            })
                     "
                 >
                     <Icon name="PhoneIncoming" :size="8" />
@@ -188,8 +190,8 @@ const firstUrl = computed(() => {
                     class="ml-2 px-1.5 py-0.5 rounded-full bg-green-500 hover:bg-green-600 text-white text-[9px] font-medium transition-colors flex items-center gap-0.5 cursor-pointer not-italic"
                     @click="
                         emit('callback', {
-                            chatId: message.metadata.chat_id,
-                            callType: message.metadata.type as any,
+                            chatId: message.metadata.chat_id || message.chat_id || '',
+                            callType: message.metadata.type,
                         })
                     "
                 >

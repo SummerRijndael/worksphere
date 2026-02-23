@@ -92,14 +92,17 @@ class Task extends Model implements HasMedia
             }
 
             if (empty($task->readable_id) && $task->project_id) {
-                // Determine prefix and number
-                $project = $task->project;
-                if ($project) {
-                    // We use fresh instance/query to get latest number to minimize race conditions,
-                    // though atomic lock would be ideal for high scale.
-                    // Using increment() return value would be best if available, but here we can just do:
-                    $project->increment('last_task_number');
-                    $task->readable_id = $project->prefix.'-'.$project->last_task_number;
+                // Use raw DB to avoid Eloquent relationship caching issues during rapid creation
+                \Illuminate\Support\Facades\DB::table('projects')
+                    ->where('id', $task->project_id)
+                    ->increment('last_task_number');
+
+                $projectData = \Illuminate\Support\Facades\DB::table('projects')
+                    ->where('id', $task->project_id)
+                    ->first(['prefix', 'last_task_number']);
+
+                if ($projectData) {
+                    $task->readable_id = $projectData->prefix.'-'.$projectData->last_task_number;
                 }
             }
         });

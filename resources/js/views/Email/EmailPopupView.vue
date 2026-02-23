@@ -24,7 +24,7 @@ import { ref, onMounted } from "vue";
 import { useRoute } from "vue-router";
 import { emailService } from "@/services/email.service";
 import EmailPreviewContent from "@/views/Email/components/EmailPreviewContent.vue";
-import type { Email } from "@/types/email";
+import type { Email } from "@/types/models/email";
 
 const route = useRoute();
 const email = ref<Email | null>(null);

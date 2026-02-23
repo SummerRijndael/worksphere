@@ -98,6 +98,23 @@ class CalendarController extends Controller
                 'external_attendees' => $validated['external_emails'] ?? [],
             ]);
 
+            // Handle Meeting Creation
+            if ($request->boolean('is_meeting')) {
+                $meeting = \App\Models\Meeting::create([
+                    'title' => $event->title,
+                    'description' => $event->description,
+                    'start_time' => $event->start_time,
+                    'end_time' => $event->end_time,
+                    'user_id' => auth()->id(),
+                    'status' => 'scheduled',
+                    'settings' => [
+                        'lobby_enabled' => true,
+                        'guest_access' => true,
+                    ]
+                ]);
+                $event->update(['meeting_id' => $meeting->id]);
+            }
+
             $attendeeUsers = collect();
             if (! empty($validated['attendees'])) {
                 $attendeeUsers = \App\Models\User::whereIn('public_id', $validated['attendees'])->get();
@@ -164,6 +181,39 @@ class CalendarController extends Controller
                 ...$validated,
                 'external_attendees' => $validated['external_emails'] ?? $event->external_attendees,
             ]);
+
+            // Sync Meeting
+            if ($request->has('is_meeting')) {
+                if ($request->boolean('is_meeting')) {
+                    if (!$event->meeting_id) {
+                        $meeting = \App\Models\Meeting::create([
+                            'title' => $event->title,
+                            'description' => $event->description,
+                            'start_time' => $event->start_time,
+                            'end_time' => $event->end_time,
+                            'user_id' => auth()->id(),
+                            'status' => 'scheduled',
+                            'settings' => [
+                                'lobby_enabled' => true,
+                                'guest_access' => true,
+                            ]
+                        ]);
+                        $event->update(['meeting_id' => $meeting->id]);
+                    } else {
+                        $event->meeting->update([
+                            'title' => $event->title,
+                            'description' => $event->description,
+                            'start_time' => $event->start_time,
+                            'end_time' => $event->end_time,
+                        ]);
+                    }
+                } elseif ($event->meeting_id) {
+                    // Remove meeting if untoggled? 
+                    // Usually safer to keep it but unlink, or delete if it has no participants.
+                    // For now, let's keep it but unlink to avoid data loss.
+                    $event->update(['meeting_id' => null]);
+                }
+            }
 
             if (isset($validated['attendees'])) {
                 $userIds = \App\Models\User::whereIn('public_id', $validated['attendees'])->pluck('id');

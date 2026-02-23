@@ -9,7 +9,7 @@ import Button from '@/components/ui/Button.vue';
 import ParticipantSelector from '@/components/ui/ParticipantSelector.vue';
 import TimezoneSelect from '@/components/ui/TimezoneSelect.vue';
 import { toast } from 'vue-sonner';
-import { MapPin, Bell, AlignLeft, Calendar, Mail } from 'lucide-vue-next';
+import { MapPin, Bell, AlignLeft, Calendar, Mail, Video } from 'lucide-vue-next';
 
 const props = defineProps({
     open: Boolean,
@@ -32,6 +32,7 @@ const form = ref({
     reminder_minutes_before: 15,
     participants: [], // Array of { type: 'user'|'email', id?, email?, name? }
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    is_meeting: false,
 });
 
 // Helper: Convert UTC Date (ISO) -> "YYYY-MM-DDTHH:mm" in Specific Timezone
@@ -101,7 +102,8 @@ watch(() => props.open, (isOpen) => {
                 is_all_day: props.event.is_all_day,
                 reminder_minutes_before: props.event.extendedProps?.reminder_minutes_before || 15,
                 participants: existingParticipants,
-                timezone: currentTimezone
+                timezone: currentTimezone,
+                is_meeting: !!(props.event.meeting_id || props.event.extendedProps?.meeting_id)
             };
             sendInvite.value = false;
         } else {
@@ -124,7 +126,8 @@ watch(() => props.open, (isOpen) => {
                 is_all_day: false,
                 reminder_minutes_before: 15,
                 participants: [],
-                timezone: currentTimezone
+                timezone: currentTimezone,
+                is_meeting: false
             };
             sendInvite.value = true; // Default to send invites for new events
         }
@@ -211,6 +214,7 @@ async function save() {
             attendees: attendees,
             external_emails: externalEmails,
             send_invite: sendInvite.value,
+            is_meeting: form.value.is_meeting,
         };
 
         if (props.event && props.event.id) {
@@ -313,6 +317,23 @@ async function deleteEvent() {
                     <label class="text-sm font-medium text-(--text-primary)">Location</label>
                 </div>
                 <Input v-model="form.location" placeholder="Add a location or meeting link" />
+                
+                <!-- Video Meeting Toggle -->
+                <div class="mt-4 p-4 rounded-xl border border-(--interactive-primary)/20 bg-(--interactive-primary)/5 flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-full bg-(--interactive-primary)/10 flex items-center justify-center">
+                            <Video class="w-5 h-5 text-(--interactive-primary)" />
+                        </div>
+                        <div>
+                            <p class="text-sm font-semibold text-(--text-primary)">WorkSphere Meeting</p>
+                            <p class="text-xs text-(--text-muted)">Generate a dedicated video meeting room</p>
+                        </div>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" v-model="form.is_meeting" class="sr-only peer">
+                        <div class="w-11 h-6 bg-(--surface-tertiary) peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-(--interactive-primary)"></div>
+                    </label>
+                </div>
             </div>
 
              <!-- Participants -->

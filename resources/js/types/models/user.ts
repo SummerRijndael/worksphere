@@ -9,7 +9,7 @@ export interface User {
   updated_at: string;
   is_password_set?: boolean;
   password_last_updated_at?: string | null;
-  presence?: 'online' | 'offline' | 'away' | 'busy';
+  presence?: 'online' | 'offline' | 'away' | 'busy' | 'invisible';
   roles?: Role[];
   permissions?: Permission[];
   teams?: Team[];

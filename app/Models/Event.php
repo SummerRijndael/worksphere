@@ -21,6 +21,7 @@ class Event extends Model
         'external_attendees',
         'google_event_id',
         'last_synced_at',
+        'meeting_id',
     ];
 
     protected static function boot()
@@ -58,6 +59,11 @@ class Event extends Model
             ->using(EventAttendee::class)
             ->withPivot('status')
             ->withTimestamps();
+    }
+
+    public function meeting(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Meeting::class);
     }
 
     public function scopeBetween($query, $start, $end)

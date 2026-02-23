@@ -755,6 +755,39 @@ onBeforeUnmount(() => {
                                         Requires Blur or Virtual Background to be active.
                                     </div>
                                 </div>
+
+                                <!-- Video Scaling Toggle -->
+                                <div class="pt-4 border-t border-(--border-subtle)">
+                                    <div class="flex items-center justify-between p-3 rounded-lg border border-(--border-subtle) bg-(--surface-secondary)/50">
+                                        <div class="flex items-center gap-3">
+                                            <div class="p-2 rounded-md bg-(--surface-tertiary)">
+                                                <Icon :name="store.videoFitMode === 'contain' ? 'Maximize' : 'Crop'" size="18" class="text-(--text-secondary)" />
+                                            </div>
+                                            <div>
+                                                <div class="text-sm font-medium text-(--text-primary)">Video Scaling</div>
+                                                <div class="text-xs text-(--text-secondary)">
+                                                    {{ store.videoFitMode === 'contain' ? 'Fit to window' : 'Fill container (zoomed)' }}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="flex bg-(--surface-tertiary) p-1 rounded-lg">
+                                            <button 
+                                                class="px-3 py-1 text-[10px] font-bold uppercase tracking-tight rounded-md transition-all"
+                                                :class="store.videoFitMode === 'contain' ? 'bg-blue-600 text-white shadow-sm' : 'text-(--text-secondary) hover:text-(--text-primary)'"
+                                                @click="store.setVideoFitMode('contain')"
+                                            >
+                                                Fit
+                                            </button>
+                                            <button 
+                                                class="px-3 py-1 text-[10px] font-bold uppercase tracking-tight rounded-md transition-all"
+                                                :class="store.videoFitMode === 'cover' ? 'bg-blue-600 text-white shadow-sm' : 'text-(--text-secondary) hover:text-(--text-primary)'"
+                                                @click="store.setVideoFitMode('cover')"
+                                            >
+                                                Fill
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>

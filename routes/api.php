@@ -964,6 +964,44 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
 
     // Blocked URLs
     Route::apiResource('blocked-urls', \App\Http\Controllers\Api\BlockedUrlController::class);
+
+    // Meetings (authenticated-only: list, create, update, delete)
+    Route::middleware('throttle:meetings')->prefix('meetings')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\MeetingController::class, 'index']);
+        Route::post('/', [\App\Http\Controllers\Api\MeetingController::class, 'store'])
+            ->middleware('throttle:meeting-creation');
+        Route::patch('/{meeting}', [\App\Http\Controllers\Api\MeetingController::class, 'update']);
+        Route::post('/{meeting}/participants/{participant}/admit', [\App\Http\Controllers\Api\MeetingController::class, 'admit']);
+        Route::post('/{meeting}/participants/{participant}/reject', [\App\Http\Controllers\Api\MeetingController::class, 'reject']);
+        Route::delete('/{meeting}', [\App\Http\Controllers\Api\MeetingController::class, 'destroy']);
+    });
+});
+
+// ──── Guest-Accessible Meeting Routes ────────────────────────────────────────
+// These routes use optional Sanctum auth: if a bearer token is present, the user
+// is resolved; if not, Auth::user() returns null and the controller treats them
+// as a guest. This enables external/guest join flows without requiring login.
+Route::middleware(['throttle:meetings'])->prefix('meetings')->group(function () {
+    Route::get('/{meeting}', [\App\Http\Controllers\Api\MeetingController::class, 'show']);
+    Route::get('/{meeting}/turn-credentials', [\App\Http\Controllers\Api\MeetingController::class, 'turnCredentials']);
+    Route::post('/{meeting}/join', [\App\Http\Controllers\Api\MeetingController::class, 'join']);
+    Route::post('/{meeting}/signal', [\App\Http\Controllers\Api\MeetingController::class, 'signal'])
+        ->withoutMiddleware('throttle:api')
+        ->middleware('throttle:signaling');
+
+    // SFU Proxy Routes — exclude content-scanning firewall middleware
+    // SDP and WebRTC data triggers false positives in XSS/SQLi/LFI detectors
+    Route::withoutMiddleware([
+        \Akaunting\Firewall\Middleware\Xss::class,
+        \Akaunting\Firewall\Middleware\Sqli::class,
+        \Akaunting\Firewall\Middleware\Lfi::class,
+        \Akaunting\Firewall\Middleware\Rfi::class,
+        \Akaunting\Firewall\Middleware\Php::class,
+    ])->group(function () {
+        Route::post('/{meeting}/sfu/sessions/new', [\App\Http\Controllers\Api\MeetingController::class, 'sfuSessionNew']);
+        Route::post('/{meeting}/sfu/sessions/{sessionId}/tracks/new', [\App\Http\Controllers\Api\MeetingController::class, 'sfuSessionTracks']);
+        Route::put('/{meeting}/sfu/sessions/{sessionId}/renegotiate', [\App\Http\Controllers\Api\MeetingController::class, 'sfuSessionRenegotiate']);
+    });
 });
 
 // Two-Factor Challenge routes (no auth required, but rate limited)

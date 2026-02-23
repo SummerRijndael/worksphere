@@ -49,6 +49,7 @@ import {
     BookOpen,
     Calendar,
     Phone,
+    Video,
 } from "lucide-vue-next";
 // DialerModal removed in favor of popup window
 
@@ -77,6 +78,7 @@ const iconMap = {
     plus: Plus,
     "book-open": BookOpen,
     calendar: Calendar,
+    video: Video,
 };
 
 const isHovered = ref(false);

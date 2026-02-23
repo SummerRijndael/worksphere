@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref } from "vue";
 import { Phone, PhoneOff, Delete, History } from "lucide-vue-next";
 import Modal from "@/components/ui/Modal.vue";
 import Button from "@/components/ui/Button.vue";

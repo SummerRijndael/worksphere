@@ -341,14 +341,14 @@
                                     >{{
                                         user.joined_at
                                             ? Math.floor(
-                                                  (new Date() -
+                                                  (new Date().getTime() -
                                                       new Date(
                                                           user.joined_at,
-                                                      )) /
+                                                      ).getTime()) /
                                                       (1000 * 60 * 60 * 24),
                                               )
                                             : 0
-                                    }}</span
+                                    }}</span>
                                 >
                                 <span
                                     class="text-xs text-[var(--text-secondary)] uppercase tracking-wider mt-1"

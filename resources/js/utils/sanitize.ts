@@ -33,9 +33,6 @@ export function sanitizeHtml(dirty: string, options?: DOMPurify.Config, hooks?: 
     ADD_URI_SAFE_ATTR: ['src', 'href'],
     // Allow cid: for inline images and data: for base64
     ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|data|xmpp):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
-    // Add hooks to ensure links open safely
-    RETURN_DOM_FRAGMENT: false,
-    RETURN_DOM: false,
   };
 
   const config = { ...defaultConfig, ...options };

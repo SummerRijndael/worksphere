@@ -58,6 +58,7 @@ export const useVideoCallStore = defineStore('videoCall', () => {
   const videoEffect = ref<'none' | 'blur' | 'image'>('none');
   const backgroundImage = ref<string | null>(null);
   const autoFraming = ref(false);
+  const videoFitMode = ref<'cover' | 'contain'>('contain');
 
   // ============================================================================
   // Getters
@@ -316,6 +317,10 @@ export const useVideoCallStore = defineStore('videoCall', () => {
     },
     setBackgroundImage: (image: string | null) => {
         backgroundImage.value = image;
+    },
+    videoFitMode,
+    setVideoFitMode: (mode: 'cover' | 'contain') => {
+        videoFitMode.value = mode;
     },
     autoFraming,
     setAutoFraming: (enabled: boolean) => {
