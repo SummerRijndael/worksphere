@@ -127,10 +127,13 @@ Broadcast::channel('meeting.{meetingId}', ChannelAuthLogger::wrap('meeting.{meet
     $meeting = \App\Models\Meeting::where('public_id', $meetingId)->first();
     if (!$meeting) return false;
 
-    // 1. If host: Always allow
+    // 1. If host: Always allow — but return their PARTICIPANT public_id, not user public_id
     if ($user && $meeting->user_id === $user->id) {
+        $hostParticipant = \App\Models\MeetingParticipant::where('meeting_id', $meeting->id)
+            ->where('user_id', $user->id)
+            ->first();
         return [
-            'public_id' => $user->public_id,
+            'public_id' => $hostParticipant ? $hostParticipant->public_id : $user->public_id,
             'name' => $user->name,
             'avatar' => $user->avatar_url,
             'role' => 'host',

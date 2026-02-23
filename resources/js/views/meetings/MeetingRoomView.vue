@@ -39,13 +39,13 @@
 
             <!-- Spotlight Stage -->
             <div
-                v-if="isSpotlightMode && spotlightParticipant"
+                v-if="isSpotlightMode && spotlightTile"
                 class="w-full max-w-5xl aspect-video shrink-0 bg-black rounded-2xl overflow-hidden shadow-2xl border border-slate-700 relative"
             >
                 <ParticipantTile
-                    :participant="spotlightParticipant"
+                    :participant="spotlightTile.participant"
                     :is-spotlight="true"
-                    :is-screen-share="meetingStore.screenShares.has(spotlightParticipant.public_id)"
+                    :is-screen-share="spotlightTile.isScreen"
                     :local-camera-on="isCameraOn"
                     :local-mic-on="isMicOn"
                     :local-stream-override="screenStream"
@@ -81,19 +81,33 @@
 
                 <!-- Tiles -->
                 <div
-                    v-for="p in paginatedParticipants"
-                    :key="p.public_id"
+                    v-for="tile in paginatedTiles"
+                    :key="tile.id"
                     class="relative rounded-2xl overflow-hidden shadow-xl aspect-video border border-slate-700 transition-all duration-300 transform"
                     :style="gridItemStyle"
                 >
                     <ParticipantTile
-                        :participant="p"
-                        :is-screen-share="meetingStore.screenShares.has(p.public_id)"
+                        :participant="tile.participant"
+                        :is-screen-share="tile.isScreen"
                         :local-camera-on="isCameraOn"
                         :local-mic-on="isMicOn"
                         :local-stream-override="screenStream"
                     />
                 </div>
+            </div>
+
+            <!-- Floating Local Self-View (PiP) -->
+            <div
+                v-if="localCameraTile"
+                class="absolute bottom-6 right-6 w-48 sm:w-56 aspect-[16/9] rounded-xl overflow-hidden shadow-black/40 shadow-2xl border-2 border-slate-700 hover:border-indigo-500 transition-all duration-300 z-40 bg-slate-900 group hover:scale-105"
+            >
+                <ParticipantTile
+                    :participant="localCameraTile.participant"
+                    :is-screen-share="false"
+                    :local-camera-on="isCameraOn"
+                    :local-mic-on="isMicOn"
+                    :is-local="true"
+                />
             </div>
         </main>
 
@@ -441,46 +455,70 @@ const FILMSTRIP_PAGE_SIZE = 6;
 const gridPage = ref(0);
 const filmstripPage = ref(0);
 
-const spotlightParticipant = computed(() => {
-    // 1. Pinned participant always wins
+const localCameraTile = computed(() => {
+    if (!meetingStore.localParticipant) return null;
+    return {
+        id: meetingStore.localParticipant.public_id,
+        participant: meetingStore.localParticipant,
+        isScreen: false
+    };
+});
+
+// Map distinct tiles so a single participant can have both Camera and Screen shown at once
+const renderedTiles = computed(() => {
+    const tiles: { id: string, participant: any, isScreen: boolean }[] = [];
+    
+    // 1. Add all standard camera tiles EXCEPT local participant
+    meetingStore.allParticipants.forEach(p => {
+        if (p.public_id !== meetingStore.localParticipant?.public_id) {
+            tiles.push({ id: p.public_id, participant: p, isScreen: false });
+        }
+    });
+
+    // 2. Add distinct screenshare tiles
+    meetingStore.screenShares.forEach(publicId => {
+        const p = meetingStore.allParticipants.find(x => x.public_id === publicId);
+        if (p) {
+            tiles.push({ id: `${publicId}:screen`, participant: p, isScreen: true });
+        }
+    });
+
+    return tiles;
+});
+
+const spotlightTile = computed(() => {
+    // 1. Pinned participant
     if (meetingStore.pinnedParticipantId) {
-        return meetingStore.allParticipants.find(
-            (p) => p.public_id === meetingStore.pinnedParticipantId,
-        );
+        // If they are screen sharing, pin their screen. Otherwise pin their camera.
+        const pinScreen = renderedTiles.value.find(t => t.id === `${meetingStore.pinnedParticipantId}:screen`);
+        if (pinScreen) return pinScreen;
+        return renderedTiles.value.find(t => t.id === meetingStore.pinnedParticipantId);
     }
-    // 2. Priority: Anyone sharing their screen
-    const screenSharer = meetingStore.allParticipants.find(
-        (p) => meetingStore.screenShares.has(p.public_id)
-    );
+    
+    // 2. Priority: Any active screenshare
+    const screenSharer = renderedTiles.value.find(t => t.isScreen);
     if (screenSharer) return screenSharer;
 
-    // 3. Fallback: Active speaker
+    // 3. Fallback: Active speaker (camera tile)
     if (meetingStore.activeSpeakerId) {
-        return meetingStore.allParticipants.find(
-            (p) => p.public_id === meetingStore.activeSpeakerId,
-        );
+        return renderedTiles.value.find(t => t.id === meetingStore.activeSpeakerId && !t.isScreen);
     }
+    
     return null;
 });
 
-const isSpotlightMode = computed(() => !!spotlightParticipant.value);
+const isSpotlightMode = computed(() => !!spotlightTile.value);
 
-const unspotlightedParticipants = computed(() => {
-    if (!spotlightParticipant.value) return meetingStore.allParticipants;
-    return meetingStore.allParticipants.filter(
-        (p) => p.public_id !== spotlightParticipant.value?.public_id,
-    );
+const unspotlightedTiles = computed(() => {
+    if (!spotlightTile.value) return renderedTiles.value;
+    return renderedTiles.value.filter(t => t.id !== spotlightTile.value?.id);
 });
 
 const totalGridPages = computed(
-    () =>
-        Math.ceil(unspotlightedParticipants.value.length / GRID_PAGE_SIZE) || 1,
+    () => Math.ceil(unspotlightedTiles.value.length / GRID_PAGE_SIZE) || 1,
 );
 const totalFilmstripPages = computed(
-    () =>
-        Math.ceil(
-            unspotlightedParticipants.value.length / FILMSTRIP_PAGE_SIZE,
-        ) || 1,
+    () => Math.ceil(unspotlightedTiles.value.length / FILMSTRIP_PAGE_SIZE) || 1,
 );
 
 watch(totalGridPages, (pages) => {
@@ -491,28 +529,22 @@ watch(totalFilmstripPages, (pages) => {
         filmstripPage.value = Math.max(0, pages - 1);
 });
 
-const paginatedParticipants = computed(() => {
+const paginatedTiles = computed(() => {
     if (isSpotlightMode.value) {
         const start = filmstripPage.value * FILMSTRIP_PAGE_SIZE;
-        return unspotlightedParticipants.value.slice(
-            start,
-            start + FILMSTRIP_PAGE_SIZE,
-        );
+        return unspotlightedTiles.value.slice(start, start + FILMSTRIP_PAGE_SIZE);
     } else {
         const start = gridPage.value * GRID_PAGE_SIZE;
-        return unspotlightedParticipants.value.slice(
-            start,
-            start + GRID_PAGE_SIZE,
-        );
+        return unspotlightedTiles.value.slice(start, start + GRID_PAGE_SIZE);
     }
 });
 
 const gridItemStyle = computed(() => {
     if (isSpotlightMode.value) {
-        const count = Math.min(paginatedParticipants.value.length, FILMSTRIP_PAGE_SIZE);
+        const count = Math.min(paginatedTiles.value.length, FILMSTRIP_PAGE_SIZE);
         return { width: `calc(${100 / (count || 1)}% - 8px)`, maxWidth: '240px' };
     }
-    const total = paginatedParticipants.value.length;
+    const total = paginatedTiles.value.length;
     if (total === 1) return { width: '100%', maxWidth: '1000px' };
     if (total <= 2) return { width: 'calc(50% - 8px)', maxWidth: '640px' };
     if (total <= 4) return { width: 'calc(50% - 8px)', maxWidth: '480px' };
@@ -630,11 +662,6 @@ async function toggleScreenShare() {
 }
 
 const toggleCamera = async () => {
-    if (isScreenSharing.value) {
-        toast.info("Stop screen sharing to toggle camera.");
-        return;
-    }
-
     let stream = meetingStore.localStream;
     if (!stream) {
         stream = new MediaStream();
