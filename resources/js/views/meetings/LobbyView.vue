@@ -100,7 +100,8 @@
                 class="join-section w-full md:w-96 flex flex-col items-center text-center"
             >
                 <h1
-                    class="text-3xl font-semibold text-white mb-2 tracking-tight"
+                    class="text-3xl font-semibold mb-2 tracking-tight"
+                    style="color: #ffffff !important"
                 >
                     Ready to join?
                 </h1>
@@ -160,7 +161,7 @@
                         @click="joinMeeting"
                         :disabled="
                             joining ||
-                            (!authStore.isAuthenticated && (!guestName.trim() || !guestEmail.trim())) ||
+                            (!authStore.isAuthenticated && (!guestName.trim() || !guestEmail.trim() || !!guestEmailError)) ||
                             (meeting?.has_password &&
                                 !isHost &&
                                 !password.trim())
@@ -180,7 +181,7 @@
                         @click="joinAndPresent"
                         :disabled="
                             joining ||
-                            (!authStore.isAuthenticated && (!guestName.trim() || !guestEmail.trim())) ||
+                            (!authStore.isAuthenticated && (!guestName.trim() || !guestEmail.trim() || !!guestEmailError)) ||
                             (meeting?.has_password &&
                                 !isHost &&
                                 !password.trim())
@@ -495,7 +496,8 @@ const joinMeeting = async () => {
     } catch (e: any) {
         console.error("Failed to join meeting", e);
         if (e?.response?.status === 403) {
-            toast.error("Incorrect meeting password.");
+            const msg = e?.response?.data?.message || 'Incorrect meeting password.';
+            toast.error(msg);
         } else if (e?.response?.status === 401) {
             toast.error("You are not authorized to join this meeting.");
         } else {
@@ -508,6 +510,17 @@ const joinMeeting = async () => {
 const joinAndPresent = async () => {
     try {
         joining.value = true;
+        guestEmailError.value = "";
+
+        // Validate email for guests
+        if (!authStore.isAuthenticated) {
+            const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailPattern.test(guestEmail.value.trim())) {
+                guestEmailError.value = "Please enter a valid email address";
+                joining.value = false;
+                return;
+            }
+        }
 
         if (localStream.value) {
             meetingStore.setStream(localStream.value);
@@ -517,6 +530,7 @@ const joinAndPresent = async () => {
             meetingId,
             guestName.value,
             password.value || undefined,
+            guestEmail.value.trim() || undefined,
         );
 
         router.push({
@@ -527,7 +541,8 @@ const joinAndPresent = async () => {
     } catch (e: any) {
         console.error("Failed to join meeting", e);
         if (e?.response?.status === 403) {
-            toast.error("Incorrect meeting password.");
+            const msg = e?.response?.data?.message || 'Access denied.';
+            toast.error(msg);
         } else if (e?.response?.status === 401) {
             toast.error("You are not authorized to join this meeting.");
         } else {

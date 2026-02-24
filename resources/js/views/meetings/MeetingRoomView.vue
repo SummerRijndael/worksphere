@@ -217,49 +217,57 @@
                                 <Icon v-if="meetingStore.raisedHands.has(p.public_id)" name="hand" size="14" class="text-amber-400" />
                                 <Icon v-if="p.is_muted_by_host" name="mic-off" size="14" class="text-red-500 ml-1" />
                                 <Icon v-if="p.is_camera_disabled_by_host" name="video-off" size="14" class="text-red-500 ml-1" />
-                                <!-- Co-Hosts can moderate participants, but only the true Host can promote/demote/kick Co-Hosts. -->
+                                <!-- Moderators can moderate participants, but only the true Host can promote/demote/kick other moderators/co-hosts. -->
                                 <Menu as="div" class="relative inline-block text-left ml-2" 
-                                      v-if="(meetingStore.isHost || meetingStore.localParticipant?.role === 'co-host') && p.public_id !== meetingStore.localParticipant?.public_id && p.role !== 'host'">
+                                      v-if="meetingStore.isModerator && p.public_id !== meetingStore.localParticipant?.public_id && p.role !== 'host'">
                                     <MenuButton class="p-1 hover:bg-[#3c4043] rounded-full text-[#9aa0a6]">
                                         <Icon name="more-vertical" size="16" />
                                     </MenuButton>
                                     <transition enter-active-class="transition ease-out duration-100" enter-from-class="transform opacity-0 scale-95" enter-to-class="transform opacity-100 scale-100" leave-active-class="transition ease-in duration-75" leave-from-class="transform opacity-100 scale-100" leave-to-class="transform opacity-0 scale-95">
                                         <MenuItems class="absolute right-0 mt-1 w-48 origin-top-right bg-[#28292c] rounded-md shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-50 py-1 border border-[#3c4043]">
                                             <MenuItem v-slot="{ active }">
-                                                <button @click="p.is_muted_by_host ? meetingStore.unmuteParticipant(p.public_id) : meetingStore.muteParticipant(p.public_id)" :class="[active ? 'bg-[#3c4043] text-white' : 'text-[#e8eaed]', 'group flex items-center w-full px-4 py-2 text-sm']">
-                                                    <Icon :name="p.is_muted_by_host ? 'mic' : 'mic-off'" size="16" class="mr-3 text-[#9aa0a6]" />
-                                                    {{ p.is_muted_by_host ? 'Allow Unmute' : 'Mute Microphone' }}
-                                                </button>
+                                                <div>
+                                                    <button @click="p.is_muted_by_host ? meetingStore.unmuteParticipant(p.public_id) : meetingStore.muteParticipant(p.public_id)" :class="[active ? 'bg-[#3c4043] text-white' : 'text-[#e8eaed]', 'group flex items-center w-full px-4 py-2 text-sm']">
+                                                        <Icon :name="p.is_muted_by_host ? 'mic' : 'mic-off'" size="16" class="mr-3 text-[#9aa0a6]" />
+                                                        {{ p.is_muted_by_host ? 'Allow Unmute' : 'Mute Microphone' }}
+                                                    </button>
+                                                </div>
                                             </MenuItem>
                                             <MenuItem v-slot="{ active }">
-                                                <button @click="p.is_camera_disabled_by_host ? meetingStore.allowCamera(p.public_id) : meetingStore.disableCamera(p.public_id)" :class="[active ? 'bg-[#3c4043] text-white' : 'text-[#e8eaed]', 'group flex items-center w-full px-4 py-2 text-sm']">
-                                                    <Icon :name="p.is_camera_disabled_by_host ? 'video' : 'video-off'" size="16" class="mr-3 text-[#9aa0a6]" />
-                                                    {{ p.is_camera_disabled_by_host ? 'Allow Camera' : 'Turn Off Camera' }}
-                                                </button>
+                                                <div>
+                                                    <button @click="p.is_camera_disabled_by_host ? meetingStore.allowCamera(p.public_id) : meetingStore.disableCamera(p.public_id)" :class="[active ? 'bg-[#3c4043] text-white' : 'text-[#e8eaed]', 'group flex items-center w-full px-4 py-2 text-sm']">
+                                                        <Icon :name="p.is_camera_disabled_by_host ? 'video' : 'video-off'" size="16" class="mr-3 text-[#9aa0a6]" />
+                                                        {{ p.is_camera_disabled_by_host ? 'Allow Camera' : 'Turn Off Camera' }}
+                                                    </button>
+                                                </div>
                                             </MenuItem>
                                             
                                             <!-- Only True Host can promote/demote -->
                                             <template v-if="meetingStore.isHost">
                                                 <div class="my-1 border-t border-[#3c4043]"></div>
                                                 <MenuItem v-slot="{ active }">
-                                                    <button v-if="p.role === 'participant'" @click="meetingStore.promoteParticipant(p.public_id)" :class="[active ? 'bg-[#3c4043] text-white' : 'text-[#e8eaed]', 'group flex items-center w-full px-4 py-2 text-sm']">
-                                                        <Icon name="shield" size="16" class="mr-3 text-[#9aa0a6]" />
-                                                        Make Co-host
-                                                    </button>
-                                                    <button v-else-if="p.role === 'co-host'" @click="meetingStore.demoteParticipant(p.public_id)" :class="[active ? 'bg-[#3c4043] text-white' : 'text-[#e8eaed]', 'group flex items-center w-full px-4 py-2 text-sm']">
-                                                        <Icon name="shield-off" size="16" class="mr-3 text-[#9aa0a6]" />
-                                                        Remove Co-host
-                                                    </button>
+                                                    <div>
+                                                        <button v-if="p.role === 'participant'" @click="meetingStore.promoteParticipant(p.public_id)" :class="[active ? 'bg-[#3c4043] text-white' : 'text-[#e8eaed]', 'group flex items-center w-full px-4 py-2 text-sm']">
+                                                            <Icon name="shield" size="16" class="mr-3 text-[#9aa0a6]" />
+                                                            Make Co-host
+                                                        </button>
+                                                        <button v-else-if="p.role === 'co-host'" @click="meetingStore.demoteParticipant(p.public_id)" :class="[active ? 'bg-[#3c4043] text-white' : 'text-[#e8eaed]', 'group flex items-center w-full px-4 py-2 text-sm']">
+                                                            <Icon name="shield-off" size="16" class="mr-3 text-[#9aa0a6]" />
+                                                            Remove Co-host
+                                                        </button>
+                                                    </div>
                                                 </MenuItem>
                                             </template>
 
                                             <div class="my-1 border-t border-[#3c4043]"></div>
                                             <MenuItem v-slot="{ active }">
-                                                <!-- Co-hosts cannot kick other Co-hosts -->
-                                                <button v-if="meetingStore.isHost || p.role === 'participant'" @click="meetingStore.kickParticipant(p.public_id)" :class="[active ? 'bg-[#3c4043] text-red-500' : 'text-red-400', 'group flex items-center w-full px-4 py-2 text-sm']">
-                                                    <Icon name="minus-circle" size="16" class="mr-3 border-red-500" />
-                                                    Remove from call
-                                                </button>
+                                                <div>
+                                                    <!-- Co-hosts cannot kick other Co-hosts (enforced by backend, but hidden here for UX) -->
+                                                    <button v-if="meetingStore.isHost || p.role === 'participant'" @click="meetingStore.kickParticipant(p.public_id)" :class="[active ? 'bg-[#3c4043] text-red-500' : 'text-red-400', 'group flex items-center w-full px-4 py-2 text-sm']">
+                                                        <Icon name="minus-circle" size="16" class="mr-3 border-red-500" />
+                                                        Remove from call
+                                                    </button>
+                                                </div>
                                             </MenuItem>
                                         </MenuItems>
                                     </transition>
@@ -282,7 +290,7 @@
                 <MeetingChatPanel v-if="showChatPanel" @close="showChatPanel = false" />
             </Transition>
 
-            <!-- Admission Side Panel (Host Only) -->
+            <!-- Admission Side Panel (Moderator Only) -->
             <Transition
                 enter-active-class="transition duration-250 ease-out"
                 enter-from-class="translate-x-full opacity-0"
@@ -291,7 +299,7 @@
                 leave-from-class="translate-x-0 opacity-100"
                 leave-to-class="translate-x-full opacity-0"
             >
-                <aside v-if="showAdmissionPanel && meetingStore.isHost" class="side-panel">
+                <aside v-if="showAdmissionPanel && meetingStore.isModerator" class="side-panel">
                     <div class="side-panel-header">
                         <h3>Waiting Room</h3>
                         <button @click="showAdmissionPanel = false" class="side-panel-close">
@@ -1517,35 +1525,55 @@ const endMeetingForAll = async () => {
     height: 100%;
     width: 100%;
     gap: 8px;
+    animation: soloFadeIn 1s ease-out;
+}
+@keyframes soloFadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 .solo-avatar {
     width: 120px;
     height: 120px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #5f6368, #3c4043);
+    background: linear-gradient(135deg, #1a73e8, #8ab4f8);
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 48px;
     font-weight: 500;
-    color: #e8eaed;
-    margin-bottom: 16px;
+    color: #ffffff;
+    margin-bottom: 24px;
+    position: relative;
+    box-shadow: 0 8px 32px rgba(26, 115, 232, 0.3);
+}
+.solo-avatar::after {
+    content: '';
+    position: absolute;
+    inset: -8px;
+    border-radius: 50%;
+    border: 2px solid #8ab4f8;
+    opacity: 0.5;
+    animation: soloPulse 2s infinite ease-out;
+}
+@keyframes soloPulse {
+    0% { transform: scale(1); opacity: 0.5; }
+    100% { transform: scale(1.3); opacity: 0; }
 }
 .solo-name {
-    font-size: 20px;
-    font-weight: 500;
+    font-size: 24px;
+    font-weight: 600;
     color: #e8eaed;
     margin: 0;
 }
 .solo-hint {
-    font-size: 14px;
+    font-size: 16px;
     color: #9aa0a6;
-    margin: 4px 0 0 0;
+    margin: 8px 0 0 0;
 }
 .solo-hint-sub {
-    font-size: 12px;
+    font-size: 14px;
     color: #5f6368;
-    margin: 2px 0 0 0;
+    margin: 4px 0 0 0;
 }
 
 /* ─── Waiting Room Overlay ─────────────────────────────────────────────────── */

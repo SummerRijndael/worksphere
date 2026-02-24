@@ -109,6 +109,29 @@ export function createPresenceManager(
         raisedHands.value = newHands;
     }
 
+    function upsertParticipant(data: any) {
+        const pid = data.public_id.toLowerCase();
+        const existingIdx = participants.value.findIndex(p => p.public_id === pid);
+        
+        const participantData = {
+            public_id: pid,
+            role: data.role || 'participant',
+            status: data.status,
+            user: data.user,
+            metadata: data.metadata || {}
+        };
+
+        if (existingIdx !== -1) {
+            participants.value[existingIdx] = {
+                ...participants.value[existingIdx],
+                ...participantData
+            };
+            participants.value = [...participants.value]; // Trigger reactivity
+        } else {
+            participants.value = [...participants.value, participantData];
+        }
+    }
+
     function toggleHandState(publicId: string, isRaised: boolean) {
         if (isRaised) {
             raisedHands.value = new Set(raisedHands.value).add(publicId);
@@ -206,6 +229,10 @@ export function createPresenceManager(
         return isOwner || localParticipantRef.value?.role === 'host';
     });
 
+    const isModerator = computed(() => {
+        return isHost.value || localParticipantRef.value?.role === 'co-host';
+    });
+
     return {
         participants,
         activeParticipantIds,
@@ -219,6 +246,7 @@ export function createPresenceManager(
         setupEcho,
         leaveEcho,
         removeParticipant,
+        upsertParticipant,
         toggleHandState,
         toggleScreenShareState,
         setTalking,
@@ -230,6 +258,7 @@ export function createPresenceManager(
         
         allParticipants,
         waitingParticipants,
-        isHost
+        isHost,
+        isModerator
     };
 }

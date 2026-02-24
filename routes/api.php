@@ -978,6 +978,8 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
         Route::post('/{meeting}/participants/{participant}/camera-off', [\App\Http\Controllers\Api\MeetingController::class, 'cameraOff']);
         Route::post('/{meeting}/participants/{participant}/camera-allow', [\App\Http\Controllers\Api\MeetingController::class, 'cameraAllow']);
         Route::post('/{meeting}/participants/{participant}/kick', [\App\Http\Controllers\Api\MeetingController::class, 'kick']);
+        Route::post('/{meeting}/participants/{participant}/promote', [\App\Http\Controllers\Api\MeetingController::class, 'promote']);
+        Route::post('/{meeting}/participants/{participant}/demote', [\App\Http\Controllers\Api\MeetingController::class, 'demote']);
         Route::delete('/{meeting}', [\App\Http\Controllers\Api\MeetingController::class, 'destroy']);
     });
 });
@@ -988,6 +990,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
 // as a guest. This enables external/guest join flows without requiring login.
 Route::middleware(['throttle:meetings'])->prefix('meetings')->group(function () {
     Route::get('/{meeting}', [\App\Http\Controllers\Api\MeetingController::class, 'show']);
+    Route::post('/broadcasting/auth', [\App\Http\Controllers\Api\MeetingController::class, 'broadcastingAuth']);
     Route::get('/{meeting}/turn-credentials', [\App\Http\Controllers\Api\MeetingController::class, 'turnCredentials']);
     Route::post('/{meeting}/join', [\App\Http\Controllers\Api\MeetingController::class, 'join']);
     Route::post('/{meeting}/signal', [\App\Http\Controllers\Api\MeetingController::class, 'signal'])

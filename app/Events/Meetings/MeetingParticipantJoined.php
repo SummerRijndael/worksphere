@@ -44,9 +44,9 @@ class MeetingParticipantJoined implements ShouldBroadcastNow
     /**
      * Get the channels the event should broadcast on.
      */
-    public function broadcastOn(): PrivateChannel
+    public function broadcastOn(): \Illuminate\Broadcasting\PresenceChannel
     {
-        return new PrivateChannel("meeting.{$this->meetingPublicId}");
+        return new \Illuminate\Broadcasting\PresenceChannel("meeting.{$this->meetingPublicId}");
     }
 
     /**

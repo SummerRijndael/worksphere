@@ -137,6 +137,21 @@ class MeetingController extends Controller
             }
         }
 
+        // Meeting Lock check
+        if ($meeting->is_locked && ($meeting->user_id !== Auth::id())) {
+            // Check if they are already an admitted participant (rejoining)
+            $isAlreadyIn = MeetingParticipant::where('meeting_id', $meeting->id)
+                ->where('status', 'admitted')
+                ->where(function ($q) use ($user) {
+                    if ($user) $q->where('user_id', $user->id);
+                    else $q->where('public_id', session('meeting_participant_id'));
+                })->exists();
+
+            if (!$isAlreadyIn) {
+                return response()->json(['message' => 'This meeting is locked by the host.'], 403);
+            }
+        }
+
         if ($isGuest) {
             $request->validate([
                 'email' => 'nullable|email',
@@ -152,6 +167,9 @@ class MeetingController extends Controller
                     'guest_email' => $request->input('email'),
                 ],
             ]);
+
+            // Save participant ID to session so broadcast auth works for guests
+            session(['meeting_participant_id' => $participant->public_id]);
         } else {
             $participant = MeetingParticipant::firstOrCreate(
                 [
@@ -187,6 +205,108 @@ class MeetingController extends Controller
                 'participant' => $participant,
             ]
         ]);
+    }
+
+    /**
+     * Authenticate meeting channel subscriptions for guests and users.
+     */
+    public function broadcastingAuth(Request $request): JsonResponse|\Illuminate\Http\Response
+    {
+        $request->validate([
+            'socket_id' => 'required|string',
+            'channel_name' => 'required|string',
+        ]);
+
+        $channelName = $request->input('channel_name');
+        $socketId = $request->input('socket_id');
+
+        $isPresence = str_starts_with($channelName, 'presence-');
+        $actualChannel = $isPresence ? substr($channelName, 9) : $channelName;
+
+        if (!preg_match('/^meeting\.([a-zA-Z0-9_-]+)$/', $actualChannel, $matches)) {
+            return response()->json(['message' => 'Invalid meeting channel'], 403);
+        }
+
+        $meetingId = $matches[1];
+        $meeting = Meeting::where('public_id', $meetingId)->first();
+        if (!$meeting) return response()->json(['message' => 'Meeting not found'], 404);
+
+        $user = Auth::user();
+
+        // 1. If user is the host
+        if ($user && $meeting->user_id === $user->id) {
+            $hostParticipant = MeetingParticipant::where('meeting_id', $meeting->id)
+                ->where('user_id', $user->id)
+                ->first();
+
+            $participantId = $hostParticipant ? $hostParticipant->public_id : $user->public_id;
+            $userData = [
+                'public_id' => $participantId,
+                'name' => $user->name,
+                'avatar' => $user->avatar_url,
+                'role' => 'host',
+                'status' => 'admitted'
+            ];
+
+            return $this->generatePusherAuth($channelName, $socketId, $participantId, $userData, $isPresence);
+        }
+
+        // 2. Participant check (guests and registered users)
+        $participantId = $request->header('X-Participant-ID') ?: (session('meeting_participant_id') ?: session('participant_id'));
+
+        $participantQuery = MeetingParticipant::where('meeting_id', $meeting->id);
+
+        if ($user) {
+            $participantQuery->where(function($q) use ($user, $participantId) {
+                $q->where('user_id', $user->id);
+                if ($participantId) {
+                    $q->orWhere('public_id', $participantId);
+                }
+            });
+        } else {
+            if (!$participantId) {
+                return response()->json(['message' => 'Unauthorized. No participant ID.'], 403);
+            }
+            $participantQuery->where('public_id', $participantId);
+        }
+
+        $participant = $participantQuery->first();
+
+        if (!$participant) {
+            return response()->json(['message' => 'Unauthorized. Participant not found in this meeting.'], 403);
+        }
+
+        $pId = $participant->public_id;
+        $userData = [
+            'public_id' => $pId,
+            'name' => $participant->metadata['guest_name'] ?? ($participant->user?->name ?? 'Guest'),
+            'avatar' => $participant->user?->avatar_url ?? null,
+            'role' => $participant->role,
+            'status' => $participant->status,
+        ];
+
+        return $this->generatePusherAuth($channelName, $socketId, $pId, $userData, $isPresence);
+    }
+
+    private function generatePusherAuth($channelName, $socketId, $userId, $userData, $isPresence): \Illuminate\Http\Response
+    {
+        $connection = config('broadcasting.default');
+        $config = config("broadcasting.connections.{$connection}");
+
+        $pusher = new \Pusher\Pusher(
+            $config['key'],
+            $config['secret'],
+            $config['app_id'],
+            $config['options'] ?? []
+        );
+
+        if ($isPresence) {
+            $auth = $pusher->presence_auth($channelName, $socketId, $userId, $userData);
+            return response($auth)->header('Content-Type', 'application/json');
+        }
+
+        $auth = $pusher->socket_auth($channelName, $socketId);
+        return response($auth)->header('Content-Type', 'application/json');
     }
 
     /**
@@ -442,9 +562,14 @@ class MeetingController extends Controller
      */
     public function admit(Request $request, Meeting $meeting, MeetingParticipant $participant): JsonResponse
     {
-        // Only host can admit
-        if ($meeting->user_id !== Auth::id()) {
-            return response()->json(['message' => 'Only the host can admit participants.'], 403);
+        $isModerator = $meeting->user_id === Auth::id() || 
+                       MeetingParticipant::where('meeting_id', $meeting->id)
+                           ->where('user_id', Auth::id())
+                           ->where('role', 'co-host')
+                           ->exists();
+
+        if (!$isModerator) {
+            return response()->json(['message' => 'Only moderators can admit participants.'], 403);
         }
 
         if ($participant->meeting_id !== $meeting->id) {
@@ -453,8 +578,18 @@ class MeetingController extends Controller
 
         $participant->update(['status' => 'admitted']);
 
-        // Broadcast admission
-        broadcast(new MeetingParticipantAdmitted($meeting, $participant))->toOthers();
+        // 1. Broadcast admission event (Echo channel event)
+        broadcast(new MeetingParticipantAdmitted($meeting, $participant));
+
+        // 2. ALSO send an explicit signal to the participant as a fallback
+        // This ensures the guest's handleSignal logic also catches it.
+        broadcast(new \App\Events\Meetings\MeetingSignal(
+            $meeting,
+            'system',
+            'participant-admitted',
+            ['admitted_participant_id' => $participant->public_id],
+            $participant->public_id
+        ));
 
         return response()->json(['message' => 'Participant admitted.', 'participant' => $participant]);
     }
@@ -464,9 +599,14 @@ class MeetingController extends Controller
      */
     public function reject(Request $request, Meeting $meeting, MeetingParticipant $participant): JsonResponse
     {
-        // Only host can reject
-        if ($meeting->user_id !== Auth::id()) {
-            return response()->json(['message' => 'Only the host can reject participants.'], 403);
+        $isModerator = $meeting->user_id === Auth::id() || 
+                       MeetingParticipant::where('meeting_id', $meeting->id)
+                           ->where('user_id', Auth::id())
+                           ->where('role', 'co-host')
+                           ->exists();
+
+        if (!$isModerator) {
+            return response()->json(['message' => 'Only moderators can reject participants.'], 403);
         }
 
         if ($participant->meeting_id !== $meeting->id) {
@@ -474,6 +614,15 @@ class MeetingController extends Controller
         }
 
         $participant->update(['status' => 'rejected']);
+
+        // Send signal to the participant
+        broadcast(new \App\Events\Meetings\MeetingSignal(
+            $meeting,
+            'system',
+            'participant-rejected',
+            ['targetId' => $participant->public_id],
+            $participant->public_id
+        ));
 
         return response()->json(['message' => 'Participant rejected.']);
     }
@@ -483,8 +632,14 @@ class MeetingController extends Controller
      */
     public function mute(Request $request, Meeting $meeting, MeetingParticipant $participant): JsonResponse
     {
-        if ($meeting->user_id !== Auth::id()) {
-            return response()->json(['message' => 'Only the host can modify participants.'], 403);
+        $isModerator = $meeting->user_id === Auth::id() || 
+                       MeetingParticipant::where('meeting_id', $meeting->id)
+                           ->where('user_id', Auth::id())
+                           ->where('role', 'co-host')
+                           ->exists();
+
+        if (!$isModerator) {
+            return response()->json(['message' => 'Only moderators can mute participants.'], 403);
         }
         if ($participant->meeting_id !== $meeting->id) {
             return response()->json(['message' => 'Participant does not belong to this meeting.'], 404);
@@ -513,8 +668,14 @@ class MeetingController extends Controller
      */
     public function cameraOff(Request $request, Meeting $meeting, MeetingParticipant $participant): JsonResponse
     {
-        if ($meeting->user_id !== Auth::id()) {
-            return response()->json(['message' => 'Only the host can modify participants.'], 403);
+        $isModerator = $meeting->user_id === Auth::id() || 
+                       MeetingParticipant::where('meeting_id', $meeting->id)
+                           ->where('user_id', Auth::id())
+                           ->where('role', 'co-host')
+                           ->exists();
+
+        if (!$isModerator) {
+            return response()->json(['message' => 'Only moderators can modify participants.'], 403);
         }
         if ($participant->meeting_id !== $meeting->id) {
             return response()->json(['message' => 'Participant does not belong to this meeting.'], 404);
@@ -543,8 +704,14 @@ class MeetingController extends Controller
      */
     public function kick(Request $request, Meeting $meeting, MeetingParticipant $participant): JsonResponse
     {
-        if ($meeting->user_id !== Auth::id()) {
-            return response()->json(['message' => 'Only the host can modify participants.'], 403);
+        $isModerator = $meeting->user_id === Auth::id() || 
+                       MeetingParticipant::where('meeting_id', $meeting->id)
+                           ->where('user_id', Auth::id())
+                           ->where('role', 'co-host')
+                           ->exists();
+
+        if (!$isModerator) {
+            return response()->json(['message' => 'Only moderators can modify participants.'], 403);
         }
         if ($participant->meeting_id !== $meeting->id) {
             return response()->json(['message' => 'Participant does not belong to this meeting.'], 404);
@@ -636,6 +803,15 @@ class MeetingController extends Controller
             'participant_public_id' => 'required|string',
             'body' => 'required|string|max:2000',
         ]);
+
+        $key = "meeting_chat_rate_limit:{$request->participant_public_id}";
+        $count = (int) \Illuminate\Support\Facades\Cache::get($key, 0);
+
+        if ($count >= 20) {
+            return response()->json(['message' => 'Too many messages. Please wait before sending more.'], 429);
+        }
+
+        \Illuminate\Support\Facades\Cache::put($key, $count + 1, 60);
 
         $body = strip_tags($request->body);
 

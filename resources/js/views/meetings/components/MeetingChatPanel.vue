@@ -51,13 +51,10 @@
                     placeholder="Send a message to everyone"
                     :disabled="isSending"
                 />
-                <button type="submit" class="chat-send-btn" :disabled="!newMessage.trim() || isSending || rateLimited" title="Send message">
+                <button type="submit" class="chat-send-btn" :disabled="!newMessage.trim() || isSending" title="Send message">
                     <Icon name="send" size="18" />
                 </button>
             </form>
-            <div v-if="rateLimited" class="text-xs text-red-400 mt-2 text-center">
-                Please wait a moment before sending another message.
-            </div>
         </div>
     </aside>
 </template>
@@ -76,7 +73,6 @@ const meetingStore = useMeetingStore();
 const themeStore = useThemeStore();
 const newMessage = ref('');
 const isSending = ref(false);
-const rateLimited = ref(false);
 const messagesContainer = ref<HTMLElement | null>(null);
 const chatInputRef = ref<HTMLInputElement | null>(null);
 
@@ -119,14 +115,11 @@ function shouldShowHeader(msg: any, index: number) {
 }
 
 async function submitMessage() {
-    if (!newMessage.value.trim() || isSending.value || rateLimited.value) return;
+    if (!newMessage.value.trim() || isSending.value) return;
     
     const body = newMessage.value.trim();
     isSending.value = true;
-    
-    // Rate limiter cooldown (2.5 seconds)
-    rateLimited.value = true;
-    setTimeout(() => { rateLimited.value = false; }, 2500);
+
 
     // Optimistic UI Append
     const tempId = Date.now();
@@ -275,6 +268,27 @@ watch(() => meetingStore.chatMessages.length, async () => {
 .chat-header-close:hover {
     background: #3c4043;
     color: #e8eaed;
+}
+
+.emoji-picker-container {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    margin-bottom: 8px;
+    z-index: 50;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+    border-radius: 12px;
+    overflow: hidden;
+    background: #202124;
+    border: 1px solid #3c4043;
+}
+
+:deep(em-emoji-picker) {
+    --border-radius: 0;
+    --category-icon-size: 20px;
+    --font-size: 14px;
+    height: 320px !important;
+    width: 320px !important;
 }
 
 .chat-messages {

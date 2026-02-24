@@ -141,7 +141,10 @@ function initializeEcho(): EchoInstance | null {
                             headers['X-Participant-ID'] = participantId;
                         }
 
-                        api.post('/api/broadcasting/auth', {
+                        const isMeetingChannel = channel.name.startsWith('meeting.') || channel.name.startsWith('presence-meeting.');
+                        const authEndpoint = isMeetingChannel ? '/api/meetings/broadcasting/auth' : '/api/broadcasting/auth';
+
+                        api.post(authEndpoint, {
                             socket_id: socketId,
                             channel_name: channel.name
                         }, { headers })

@@ -316,7 +316,7 @@ export const useMeetingStore = defineStore('meeting', () => {
 
     function handleMeetingEnded() {
         // Stop all local tracks
-        stream.localStream?.getTracks().forEach(t => t.stop());
+        stream.localStream.value?.getTracks().forEach(t => t.stop());
         cleanup();
         // Route to home via window since we don't have router in store
         window.location.href = '/';
@@ -409,6 +409,7 @@ export const useMeetingStore = defineStore('meeting', () => {
         mockParticipants: presence.mockParticipants,
         simulatedRole: presence.simulatedRole,
         isHost: presence.isHost,
+        isModerator: presence.isModerator,
         
         // Stream Manager
         remoteStreams: stream.remoteStreams,

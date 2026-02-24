@@ -37,6 +37,31 @@ export function createSignalingManager(
             .listen('.MeetingSignal', async (e: any) => {
                 log('RECV', `Received ${e.signal_type} from ${e.sender_participant_public_id}`, e.signal_data);
                 handleSignal(e.sender_participant_public_id, e.signal_type, e.signal_data);
+            })
+            .listen('.MeetingParticipantJoined', (e: any) => {
+                log('RECV', `Participant joined event: ${e.participant?.public_id}`, e);
+                presenceManager.upsertParticipant(e.participant);
+            })
+            .listen('.MeetingParticipantAdmitted', (e: any) => {
+                const admitId = e.participant_public_id?.toLowerCase();
+                log('RECV', `Participant admitted event: ${admitId}`, e);
+                
+                // Handle local admission
+                if (localParticipantRef.value && admitId === localParticipantRef.value.public_id.toLowerCase()) {
+                    log('SIGNAL', 'You have been admitted to the meeting!');
+                    // Trigger reactivity by creating a new object
+                    localParticipantRef.value = {
+                        ...localParticipantRef.value,
+                        status: 'admitted'
+                    };
+                    onAdmittedCallback();
+                } else if (admitId) {
+                    // Update global presence state for others
+                    presenceManager.upsertParticipant({ 
+                        public_id: admitId, 
+                        status: 'admitted' 
+                    });
+                }
             });
     }
 
@@ -84,34 +109,46 @@ export function createSignalingManager(
         }
 
         if (type === 'participant-admitted') {
-            if (data.admitted_participant_id === localParticipantRef.value.public_id) {
-                log('SIGNAL', 'You have been admitted to the meeting!');
-                localParticipantRef.value.status = 'admitted';
+            const admitId = data.admitted_participant_id?.toLowerCase();
+            if (localParticipantRef.value && admitId === localParticipantRef.value.public_id.toLowerCase()) {
+                log('SIGNAL', 'You have been admitted to the meeting (via signal)!');
+                // Trigger reactivity by creating a new object
+                localParticipantRef.value = {
+                    ...localParticipantRef.value,
+                    status: 'admitted'
+                };
                 onAdmittedCallback();
-            } else {
+            } else if (admitId) {
                 // Another participant was admitted
-                const p = presenceManager.participants.value.find(x => x.public_id === data.admitted_participant_id);
-                if (p) p.status = 'admitted';
+                presenceManager.upsertParticipant({ 
+                    public_id: admitId, 
+                    status: 'admitted' 
+                });
             }
             return;
         }
         
         if (type === 'participant-rejected') {
-            if (data.rejected_participant_id === localParticipantRef.value.public_id) {
+            const targetId = data.rejected_participant_id || data.targetId;
+            const normalizedTargetId = targetId?.toLowerCase();
+            if (localParticipantRef.value && normalizedTargetId === localParticipantRef.value.public_id.toLowerCase()) {
                  log('SIGNAL', 'You have been rejected from the meeting!');
-                 window.location.href = '/dashboard';
-            } else {
-                 presenceManager.removeParticipant(data.rejected_participant_id);
+                 const meetingId = meetingRef.value?.public_id;
+                 window.location.href = meetingId ? `/m/${meetingId}` : '/dashboard';
+            } else if (normalizedTargetId) {
+                 presenceManager.removeParticipant(normalizedTargetId);
             }
             return;
         }
 
         if (type === 'participant-kicked') {
             log('SIGNAL', 'Participant kicked from the meeting');
-            if (data.targetId === localParticipantRef.value.public_id) {
-                 window.location.href = '/dashboard';
-            } else {
-                 presenceManager.removeParticipant(data.targetId);
+            const targetId = data.targetId?.toLowerCase();
+            if (localParticipantRef.value && targetId === localParticipantRef.value.public_id.toLowerCase()) {
+                 const meetingId = meetingRef.value?.public_id;
+                 window.location.href = meetingId ? `/m/${meetingId}` : '/dashboard';
+            } else if (targetId) {
+                 presenceManager.removeParticipant(targetId);
             }
             return;
         }
@@ -166,6 +203,23 @@ export function createSignalingManager(
             const { useMeetingStore } = await import('@/stores/meeting');
             const meetingStore = useMeetingStore();
             meetingStore.handleMeetingEnded();
+            return;
+        }
+
+        if (type === 'participant-waiting') {
+            log('SIGNAL', 'New participant in waiting room', data);
+            const { toast } = await import('vue-sonner');
+            toast.info(`🔔 ${data.display_name} is waiting to join`, {
+                action: {
+                    label: 'View',
+                    onClick: async () => {
+                        // Open participants panel if available
+                        const { useMeetingStore } = await import('@/stores/meeting');
+                        const meetingStore = useMeetingStore();
+                        meetingStore.showParticipantsPanel = true;
+                    }
+                }
+            });
             return;
         }
 
