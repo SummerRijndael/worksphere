@@ -206,11 +206,10 @@ watch(
                 : camStream;
         if (videoEl && stream) {
             const el = videoEl as HTMLVideoElement;
-            // Force re-assignment to ensure newly added tracks play
-            if (el.srcObject === stream) {
-                el.srcObject = null;
-            }
-            el.srcObject = stream as MediaStream;
+            // Force browser to fully re-evaluate the media pipeline
+            // by giving it a completely fresh MediaStream instance
+            // made up of the current tracks.
+            el.srcObject = new MediaStream(stream.getTracks());
         }
     },
     { immediate: true },
