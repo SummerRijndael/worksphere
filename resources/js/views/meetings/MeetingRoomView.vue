@@ -13,7 +13,11 @@
                 <div class="waiting-content">
                     <div class="waiting-icon-wrap">
                         <div class="waiting-icon-circle">
-                            <Icon name="lock" size="40" class="text-indigo-400" />
+                            <Icon
+                                name="lock"
+                                size="40"
+                                class="text-indigo-400"
+                            />
                         </div>
                         <div class="waiting-ping">
                             <div class="ping-dot"></div>
@@ -21,14 +25,22 @@
                     </div>
                     <h1 class="waiting-title">You're in the Waiting Room</h1>
                     <p class="waiting-desc">
-                        The meeting host has been notified. They'll let you in shortly.
+                        The meeting host has been notified. They'll let you in
+                        shortly.
                     </p>
                     <div class="waiting-meta">
                         <div class="waiting-host-badge">
-                            <img v-if="meetingStore.meeting?.host?.avatar_url" :src="meetingStore.meeting.host.avatar_url" class="waiting-host-avatar" />
+                            <img
+                                v-if="meetingStore.meeting?.host?.avatar_url"
+                                :src="meetingStore.meeting.host.avatar_url"
+                                class="waiting-host-avatar"
+                            />
                             <span>Host: {{ meetingHostName }}</span>
                         </div>
-                        <button @click="router.push({ name: 'home' })" class="waiting-cancel-btn">
+                        <button
+                            @click="router.push({ name: 'home' })"
+                            class="waiting-cancel-btn"
+                        >
                             Cancel and return home
                         </button>
                     </div>
@@ -40,10 +52,18 @@
         <header class="gmeet-topbar">
             <div class="topbar-left">
                 <span class="topbar-title">{{ meetingTitle }}</span>
-                <span v-if="meetingStore.isLocked" class="ml-3 text-[#f28b82] flex items-center" title="This meeting is locked">
+                <span
+                    v-if="meetingStore.isLocked"
+                    class="ml-3 text-[#f28b82] flex items-center"
+                    title="This meeting is locked"
+                >
                     <Icon name="lock" size="16" />
                 </span>
-                <span v-if="isRecording" class="recording-indicator ml-3" title="Recording in progress">
+                <span
+                    v-if="isRecording"
+                    class="recording-indicator ml-3"
+                    title="Recording in progress"
+                >
                     <span class="recording-dot"></span>
                     <span class="recording-label">REC</span>
                 </span>
@@ -53,26 +73,49 @@
             </div>
             <div class="topbar-right">
                 <button
-                    v-if="meetingStore.isHost && meetingStore.waitingParticipants.length > 0"
+                    v-if="
+                        meetingStore.isHost &&
+                        meetingStore.waitingParticipants.length > 0
+                    "
                     class="topbar-btn topbar-btn--alert"
                     @click="showAdmissionPanel = !showAdmissionPanel"
                     title="Waiting Room"
                 >
                     <Icon name="user-plus" size="18" />
-                    <span class="topbar-badge">{{ meetingStore.waitingParticipants.length }}</span>
+                    <span class="topbar-badge">{{
+                        meetingStore.waitingParticipants.length
+                    }}</span>
                 </button>
-                <button class="topbar-btn" :class="{ 'topbar-btn--active': showParticipantsPanel }" @click="toggleParticipantsPanel" title="Participants">
+                <button
+                    class="topbar-btn"
+                    :class="{ 'topbar-btn--active': showParticipantsPanel }"
+                    @click="toggleParticipantsPanel"
+                    title="Participants"
+                >
                     <Icon name="users" size="18" />
                     <span class="topbar-count">{{ participantCount }}</span>
                 </button>
-                <button class="topbar-btn" :class="{ 'topbar-btn--active': showChatPanel }" @click="toggleChatPanel" title="Chat">
+                <button
+                    class="topbar-btn"
+                    :class="{ 'topbar-btn--active': showChatPanel }"
+                    @click="toggleChatPanel"
+                    title="Chat"
+                >
                     <Icon name="message-square" size="18" />
                 </button>
             </div>
         </header>
 
         <!-- Main Content Area -->
-        <div class="gmeet-body" :class="{ 'has-panel': showParticipantsPanel || showChatPanel || showAdmissionPanel }">
+        <div
+            class="gmeet-body"
+            :class="{
+                'has-panel':
+                    showParticipantsPanel ||
+                    showChatPanel ||
+                    showAdmissionPanel,
+            }"
+        >
             <div class="gmeet-stage">
                 <!-- Spotlight Mode: Presentation + Filmstrip -->
                 <template v-if="isSpotlightMode && spotlightTile">
@@ -87,7 +130,11 @@
                         />
                     </div>
                     <div class="filmstrip" v-if="paginatedTiles.length > 0">
-                        <button v-if="filmstripPage > 0" @click="prevPage" class="filmstrip-nav filmstrip-nav--left">
+                        <button
+                            v-if="filmstripPage > 0"
+                            @click="prevPage"
+                            class="filmstrip-nav filmstrip-nav--left"
+                        >
                             <Icon name="chevron-left" size="16" />
                         </button>
                         <div class="filmstrip-tiles">
@@ -105,7 +152,11 @@
                                 />
                             </div>
                         </div>
-                        <button v-if="filmstripPage < totalFilmstripPages - 1" @click="nextPage" class="filmstrip-nav filmstrip-nav--right">
+                        <button
+                            v-if="filmstripPage < totalFilmstripPages - 1"
+                            @click="nextPage"
+                            class="filmstrip-nav filmstrip-nav--right"
+                        >
                             <Icon name="chevron-right" size="16" />
                         </button>
                     </div>
@@ -129,10 +180,18 @@
                         </div>
                     </div>
                     <!-- Grid Pagination Arrows -->
-                    <button v-if="gridPage > 0" @click="prevPage" class="grid-nav grid-nav--left">
+                    <button
+                        v-if="gridPage > 0"
+                        @click="prevPage"
+                        class="grid-nav grid-nav--left"
+                    >
                         <Icon name="chevron-left" size="20" />
                     </button>
-                    <button v-if="gridPage < totalGridPages - 1" @click="nextPage" class="grid-nav grid-nav--right">
+                    <button
+                        v-if="gridPage < totalGridPages - 1"
+                        @click="nextPage"
+                        class="grid-nav grid-nav--right"
+                    >
                         <Icon name="chevron-right" size="20" />
                     </button>
                 </template>
@@ -145,13 +204,41 @@
                             <div class="blob blob-2"></div>
                             <div class="blob blob-3"></div>
                         </div>
-                        <div class="solo-content glass-panel">
-                            <div class="solo-avatar">
-                                {{ meetingStore.localParticipant?.display_name?.[0]?.toUpperCase() || 'Y' }}
+                        <div
+                            v-if="isCameraOn"
+                            class="solo-camera-wrapper m-auto relative z-10 w-full max-w-[800px] aspect-video rounded-xl shadow-[0_12px_40px_rgba(0,0,0,0.5)] overflow-hidden"
+                        >
+                            <ParticipantTile
+                                class="solo-camera-tile border-accent w-full h-full"
+                                :participant="meetingStore.localParticipant"
+                                :is-local="true"
+                                :local-camera-on="isCameraOn"
+                                :local-mic-on="isMicOn"
+                            />
+                        </div>
+                        <div v-else class="solo-content glass-panel">
+                            <div class="solo-avatar-wrap">
+                                <div class="solo-avatar">
+                                    {{
+                                        getParticipantInitial(
+                                            meetingStore.localParticipant,
+                                        )
+                                    }}
+                                </div>
                             </div>
-                            <p class="solo-name">{{ meetingStore.localParticipant?.display_name || 'You' }}</p>
-                            <p class="solo-hint">No one else has joined yet</p>
-                            <p class="solo-hint-sub">Share the meeting link to invite others</p>
+                            <div class="solo-info">
+                                <h2 class="solo-name">
+                                    You're the only one here
+                                </h2>
+                                <p class="solo-hint">
+                                    Share the meeting link with others you want
+                                    in the meeting.
+                                </p>
+                                <p class="solo-hint-sub">
+                                    They will need the meeting password if one
+                                    is set.
+                                </p>
+                            </div>
                         </div>
                     </div>
                 </template>
@@ -191,14 +278,20 @@
                         <h3>People ({{ participantCount }})</h3>
                         <div class="flex items-center gap-2">
                             <button
-                                v-if="meetingStore.isHost && meetingStore.raisedHands.size > 0"
+                                v-if="
+                                    meetingStore.isHost &&
+                                    meetingStore.raisedHands.size > 0
+                                "
                                 @click="lowerAllHands"
                                 class="text-xs px-3 py-1.5 bg-[#3c4043] hover:bg-[#4c4d50] text-[#e8eaed] rounded-full transition-colors border-none cursor-pointer whitespace-nowrap"
                                 title="Lower all raised hands"
                             >
                                 ✋ Lower all
                             </button>
-                            <button @click="showParticipantsPanel = false" class="side-panel-close">
+                            <button
+                                @click="showParticipantsPanel = false"
+                                class="side-panel-close"
+                            >
                                 <Icon name="x" size="18" />
                             </button>
                         </div>
@@ -215,63 +308,243 @@
                             <div class="participant-info">
                                 <span class="participant-name">
                                     {{ getParticipantName(p) }}
-                                    <span v-if="p.public_id === meetingStore.localParticipant?.public_id" class="you-badge">You</span>
-                                    <span v-if="p.role === 'host'" class="ml-2 text-xs text-blue-400 bg-blue-400/10 px-1.5 py-0.5 rounded">Host</span>
-                                    <span v-if="p.role === 'co-host'" class="ml-2 text-xs text-purple-400 bg-purple-400/10 px-1.5 py-0.5 rounded">Co-host</span>
+                                    <span
+                                        v-if="
+                                            p.public_id ===
+                                            meetingStore.localParticipant
+                                                ?.public_id
+                                        "
+                                        class="you-badge"
+                                        >You</span
+                                    >
+                                    <span
+                                        v-if="p.role === 'host'"
+                                        class="ml-2 text-xs text-blue-400 bg-blue-400/10 px-1.5 py-0.5 rounded"
+                                        >Host</span
+                                    >
+                                    <span
+                                        v-if="p.role === 'co-host'"
+                                        class="ml-2 text-xs text-purple-400 bg-purple-400/10 px-1.5 py-0.5 rounded"
+                                        >Co-host</span
+                                    >
                                 </span>
                             </div>
-                            <div class="participant-status-icons flex items-center">
-                                <Icon v-if="meetingStore.raisedHands.has(p.public_id)" name="hand" size="14" class="text-amber-400" />
-                                <Icon v-if="p.is_muted_by_host" name="mic-off" size="14" class="text-red-500 ml-1" />
-                                <Icon v-if="p.is_camera_disabled_by_host" name="video-off" size="14" class="text-red-500 ml-1" />
+                            <div
+                                class="participant-status-icons flex items-center"
+                            >
+                                <Icon
+                                    v-if="
+                                        meetingStore.raisedHands.has(
+                                            p.public_id,
+                                        )
+                                    "
+                                    name="hand"
+                                    size="14"
+                                    class="text-amber-400"
+                                />
+                                <Icon
+                                    v-if="p.is_muted_by_host"
+                                    name="mic-off"
+                                    size="14"
+                                    class="text-red-500 ml-1"
+                                />
+                                <Icon
+                                    v-if="p.is_camera_disabled_by_host"
+                                    name="video-off"
+                                    size="14"
+                                    class="text-red-500 ml-1"
+                                />
                                 <!-- Moderators can moderate participants, but only the true Host can promote/demote/kick other moderators/co-hosts. -->
-                                <Menu as="div" class="relative inline-block text-left ml-2" 
-                                      v-if="meetingStore.isModerator && p.public_id !== meetingStore.localParticipant?.public_id && p.role !== 'host'">
-                                    <MenuButton class="p-1 hover:bg-[#3c4043] rounded-full text-[#9aa0a6]">
+                                <Menu
+                                    as="div"
+                                    class="relative inline-block text-left ml-2"
+                                    v-if="
+                                        meetingStore.isModerator &&
+                                        p.public_id !==
+                                            meetingStore.localParticipant
+                                                ?.public_id &&
+                                        p.role !== 'host'
+                                    "
+                                >
+                                    <MenuButton
+                                        class="p-1 hover:bg-[#3c4043] rounded-full text-[#9aa0a6]"
+                                    >
                                         <Icon name="more-vertical" size="16" />
                                     </MenuButton>
-                                    <transition enter-active-class="transition ease-out duration-100" enter-from-class="transform opacity-0 scale-95" enter-to-class="transform opacity-100 scale-100" leave-active-class="transition ease-in duration-75" leave-from-class="transform opacity-100 scale-100" leave-to-class="transform opacity-0 scale-95">
-                                        <MenuItems class="absolute right-0 mt-1 w-48 origin-top-right bg-[#28292c] rounded-md shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-50 py-1 border border-[#3c4043]">
+                                    <transition
+                                        enter-active-class="transition ease-out duration-100"
+                                        enter-from-class="transform opacity-0 scale-95"
+                                        enter-to-class="transform opacity-100 scale-100"
+                                        leave-active-class="transition ease-in duration-75"
+                                        leave-from-class="transform opacity-100 scale-100"
+                                        leave-to-class="transform opacity-0 scale-95"
+                                    >
+                                        <MenuItems
+                                            class="absolute right-0 mt-1 w-48 origin-top-right bg-[#28292c] rounded-md shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-50 py-1 border border-[#3c4043]"
+                                        >
                                             <MenuItem v-slot="{ active }">
                                                 <div>
-                                                    <button @click="p.is_muted_by_host ? meetingStore.unmuteParticipant(p.public_id) : meetingStore.muteParticipant(p.public_id)" :class="[active ? 'bg-[#3c4043] text-white' : 'text-[#e8eaed]', 'group flex items-center w-full px-4 py-2 text-sm']">
-                                                        <Icon :name="p.is_muted_by_host ? 'mic' : 'mic-off'" size="16" class="mr-3 text-[#9aa0a6]" />
-                                                        {{ p.is_muted_by_host ? 'Allow Unmute' : 'Mute Microphone' }}
+                                                    <button
+                                                        @click="
+                                                            p.is_muted_by_host
+                                                                ? meetingStore.unmuteParticipant(
+                                                                      p.public_id,
+                                                                  )
+                                                                : meetingStore.muteParticipant(
+                                                                      p.public_id,
+                                                                  )
+                                                        "
+                                                        :class="[
+                                                            active
+                                                                ? 'bg-[#3c4043] text-white'
+                                                                : 'text-[#e8eaed]',
+                                                            'group flex items-center w-full px-4 py-2 text-sm',
+                                                        ]"
+                                                    >
+                                                        <Icon
+                                                            :name="
+                                                                p.is_muted_by_host
+                                                                    ? 'mic'
+                                                                    : 'mic-off'
+                                                            "
+                                                            size="16"
+                                                            class="mr-3 text-[#9aa0a6]"
+                                                        />
+                                                        {{
+                                                            p.is_muted_by_host
+                                                                ? "Allow Unmute"
+                                                                : "Mute Microphone"
+                                                        }}
                                                     </button>
                                                 </div>
                                             </MenuItem>
                                             <MenuItem v-slot="{ active }">
                                                 <div>
-                                                    <button @click="p.is_camera_disabled_by_host ? meetingStore.allowCamera(p.public_id) : meetingStore.disableCamera(p.public_id)" :class="[active ? 'bg-[#3c4043] text-white' : 'text-[#e8eaed]', 'group flex items-center w-full px-4 py-2 text-sm']">
-                                                        <Icon :name="p.is_camera_disabled_by_host ? 'video' : 'video-off'" size="16" class="mr-3 text-[#9aa0a6]" />
-                                                        {{ p.is_camera_disabled_by_host ? 'Allow Camera' : 'Turn Off Camera' }}
+                                                    <button
+                                                        @click="
+                                                            p.is_camera_disabled_by_host
+                                                                ? meetingStore.allowCamera(
+                                                                      p.public_id,
+                                                                  )
+                                                                : meetingStore.disableCamera(
+                                                                      p.public_id,
+                                                                  )
+                                                        "
+                                                        :class="[
+                                                            active
+                                                                ? 'bg-[#3c4043] text-white'
+                                                                : 'text-[#e8eaed]',
+                                                            'group flex items-center w-full px-4 py-2 text-sm',
+                                                        ]"
+                                                    >
+                                                        <Icon
+                                                            :name="
+                                                                p.is_camera_disabled_by_host
+                                                                    ? 'video'
+                                                                    : 'video-off'
+                                                            "
+                                                            size="16"
+                                                            class="mr-3 text-[#9aa0a6]"
+                                                        />
+                                                        {{
+                                                            p.is_camera_disabled_by_host
+                                                                ? "Allow Camera"
+                                                                : "Turn Off Camera"
+                                                        }}
                                                     </button>
                                                 </div>
                                             </MenuItem>
-                                            
+
                                             <!-- Only True Host can promote/demote -->
-                                            <template v-if="meetingStore.isHost">
-                                                <div class="my-1 border-t border-[#3c4043]"></div>
+                                            <template
+                                                v-if="meetingStore.isHost"
+                                            >
+                                                <div
+                                                    class="my-1 border-t border-[#3c4043]"
+                                                ></div>
                                                 <MenuItem v-slot="{ active }">
                                                     <div>
-                                                        <button v-if="p.role === 'participant'" @click="meetingStore.promoteParticipant(p.public_id)" :class="[active ? 'bg-[#3c4043] text-white' : 'text-[#e8eaed]', 'group flex items-center w-full px-4 py-2 text-sm']">
-                                                            <Icon name="shield" size="16" class="mr-3 text-[#9aa0a6]" />
+                                                        <button
+                                                            v-if="
+                                                                p.role ===
+                                                                'participant'
+                                                            "
+                                                            @click="
+                                                                meetingStore.promoteParticipant(
+                                                                    p.public_id,
+                                                                )
+                                                            "
+                                                            :class="[
+                                                                active
+                                                                    ? 'bg-[#3c4043] text-white'
+                                                                    : 'text-[#e8eaed]',
+                                                                'group flex items-center w-full px-4 py-2 text-sm',
+                                                            ]"
+                                                        >
+                                                            <Icon
+                                                                name="shield"
+                                                                size="16"
+                                                                class="mr-3 text-[#9aa0a6]"
+                                                            />
                                                             Make Co-host
                                                         </button>
-                                                        <button v-else-if="p.role === 'co-host'" @click="meetingStore.demoteParticipant(p.public_id)" :class="[active ? 'bg-[#3c4043] text-white' : 'text-[#e8eaed]', 'group flex items-center w-full px-4 py-2 text-sm']">
-                                                            <Icon name="shield-off" size="16" class="mr-3 text-[#9aa0a6]" />
+                                                        <button
+                                                            v-else-if="
+                                                                p.role ===
+                                                                'co-host'
+                                                            "
+                                                            @click="
+                                                                meetingStore.demoteParticipant(
+                                                                    p.public_id,
+                                                                )
+                                                            "
+                                                            :class="[
+                                                                active
+                                                                    ? 'bg-[#3c4043] text-white'
+                                                                    : 'text-[#e8eaed]',
+                                                                'group flex items-center w-full px-4 py-2 text-sm',
+                                                            ]"
+                                                        >
+                                                            <Icon
+                                                                name="shield-off"
+                                                                size="16"
+                                                                class="mr-3 text-[#9aa0a6]"
+                                                            />
                                                             Remove Co-host
                                                         </button>
                                                     </div>
                                                 </MenuItem>
                                             </template>
 
-                                            <div class="my-1 border-t border-[#3c4043]"></div>
+                                            <div
+                                                class="my-1 border-t border-[#3c4043]"
+                                            ></div>
                                             <MenuItem v-slot="{ active }">
                                                 <div>
                                                     <!-- Co-hosts cannot kick other Co-hosts (enforced by backend, but hidden here for UX) -->
-                                                    <button v-if="meetingStore.isHost || p.role === 'participant'" @click="meetingStore.kickParticipant(p.public_id)" :class="[active ? 'bg-[#3c4043] text-red-500' : 'text-red-400', 'group flex items-center w-full px-4 py-2 text-sm']">
-                                                        <Icon name="minus-circle" size="16" class="mr-3 border-red-500" />
+                                                    <button
+                                                        v-if="
+                                                            meetingStore.isHost ||
+                                                            p.role ===
+                                                                'participant'
+                                                        "
+                                                        @click="
+                                                            meetingStore.kickParticipant(
+                                                                p.public_id,
+                                                            )
+                                                        "
+                                                        :class="[
+                                                            active
+                                                                ? 'bg-[#3c4043] text-red-500'
+                                                                : 'text-red-400',
+                                                            'group flex items-center w-full px-4 py-2 text-sm',
+                                                        ]"
+                                                    >
+                                                        <Icon
+                                                            name="minus-circle"
+                                                            size="16"
+                                                            class="mr-3 border-red-500"
+                                                        />
                                                         Remove from call
                                                     </button>
                                                 </div>
@@ -294,7 +567,10 @@
                 leave-from-class="translate-x-0 opacity-100"
                 leave-to-class="translate-x-full opacity-0"
             >
-                <MeetingChatPanel v-if="showChatPanel" @close="showChatPanel = false" />
+                <MeetingChatPanel
+                    v-if="showChatPanel"
+                    @close="showChatPanel = false"
+                />
             </Transition>
 
             <!-- Admission Side Panel (Moderator Only) -->
@@ -306,16 +582,29 @@
                 leave-from-class="translate-x-0 opacity-100"
                 leave-to-class="translate-x-full opacity-0"
             >
-                <aside v-if="showAdmissionPanel && meetingStore.isModerator" class="side-panel">
+                <aside
+                    v-if="showAdmissionPanel && meetingStore.isModerator"
+                    class="side-panel"
+                >
                     <div class="side-panel-header">
                         <h3>Waiting Room</h3>
-                        <button @click="showAdmissionPanel = false" class="side-panel-close">
+                        <button
+                            @click="showAdmissionPanel = false"
+                            class="side-panel-close"
+                        >
                             <Icon name="x" size="18" />
                         </button>
                     </div>
                     <div class="side-panel-body">
-                        <div v-if="meetingStore.waitingParticipants.length === 0" class="panel-empty">
-                            <Icon name="users" size="28" class="text-[#5f6368]" />
+                        <div
+                            v-if="meetingStore.waitingParticipants.length === 0"
+                            class="panel-empty"
+                        >
+                            <Icon
+                                name="users"
+                                size="28"
+                                class="text-[#5f6368]"
+                            />
                             <p>No one is waiting</p>
                         </div>
                         <div
@@ -324,15 +613,37 @@
                             class="admission-card"
                         >
                             <div class="admission-info">
-                                <div class="participant-avatar">{{ getParticipantInitial(p) }}</div>
+                                <div class="participant-avatar">
+                                    {{ getParticipantInitial(p) }}
+                                </div>
                                 <div>
-                                    <p class="admission-name">{{ getParticipantName(p) }}</p>
+                                    <p class="admission-name">
+                                        {{ getParticipantName(p) }}
+                                    </p>
                                     <p class="admission-sub">Wants to join</p>
                                 </div>
                             </div>
                             <div class="admission-actions">
-                                <button @click="meetingStore.rejectParticipant(p.public_id)" class="admission-btn admission-btn--reject">Deny</button>
-                                <button @click="meetingStore.admitParticipant(p.public_id)" class="admission-btn admission-btn--admit">Admit</button>
+                                <button
+                                    @click="
+                                        meetingStore.rejectParticipant(
+                                            p.public_id,
+                                        )
+                                    "
+                                    class="admission-btn admission-btn--reject"
+                                >
+                                    Deny
+                                </button>
+                                <button
+                                    @click="
+                                        meetingStore.admitParticipant(
+                                            p.public_id,
+                                        )
+                                    "
+                                    class="admission-btn admission-btn--admit"
+                                >
+                                    Admit
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -341,47 +652,107 @@
         </div>
 
         <!-- Floating Reactions Component -->
-        <ReactionOverlay :showPicker="showReactionPicker" @reaction-sent="showReactionPicker = false" />
+        <ReactionOverlay
+            :showPicker="showReactionPicker"
+            @reaction-sent="showReactionPicker = false"
+        />
 
         <!-- Bottom Control Bar -->
         <footer class="gmeet-controls">
             <div class="controls-center">
-                <button class="ctrl-btn" :class="{ 'ctrl-btn--off': !isMicOn }" @click="toggleMic" :title="micToggleTitle">
+                <button
+                    class="ctrl-btn"
+                    :class="{ 'ctrl-btn--off': !isMicOn }"
+                    @click="toggleMic"
+                    :title="micToggleTitle"
+                >
                     <Icon :name="isMicOn ? 'mic' : 'mic-off'" size="22" />
                 </button>
-                <button class="ctrl-btn" :class="{ 'ctrl-btn--off': !isCameraOn }" @click="toggleCamera" :title="cameraToggleTitle">
-                    <Icon :name="isCameraOn ? 'video' : 'video-off'" size="22" />
+                <button
+                    class="ctrl-btn"
+                    :class="{ 'ctrl-btn--off': !isCameraOn }"
+                    @click="toggleCamera"
+                    :title="cameraToggleTitle"
+                >
+                    <Icon
+                        :name="isCameraOn ? 'video' : 'video-off'"
+                        size="22"
+                    />
                 </button>
-                <button class="ctrl-btn" :class="{ 'ctrl-btn--active': isScreenSharing }" @click="toggleScreenShare" :title="screenShareToggleTitle">
+                <button
+                    class="ctrl-btn"
+                    :class="{ 'ctrl-btn--active': isScreenSharing }"
+                    @click="toggleScreenShare"
+                    :title="screenShareToggleTitle"
+                >
                     <Icon name="monitor" size="22" />
                 </button>
                 <div class="relative flex items-center">
-                    <button class="ctrl-btn reaction-quick-btn" @click="sendQuickReaction" :title="`Send ${lastReactionEmoji}`">
+                    <button
+                        class="ctrl-btn reaction-quick-btn"
+                        @click="sendQuickReaction"
+                        :title="`Send ${lastReactionEmoji}`"
+                    >
                         <span class="text-lg">{{ lastReactionEmoji }}</span>
                     </button>
-                    <button class="ctrl-btn reaction-chevron-btn" :class="{ 'ctrl-btn--active': showReactionPicker }" @click="showReactionPicker = !showReactionPicker" title="Change reaction">
+                    <button
+                        class="ctrl-btn reaction-chevron-btn"
+                        :class="{ 'ctrl-btn--active': showReactionPicker }"
+                        @click="showReactionPicker = !showReactionPicker"
+                        title="Change reaction"
+                    >
                         <Icon name="chevron-up" size="14" />
                     </button>
                 </div>
-                <button class="ctrl-btn" :class="{ 'ctrl-btn--active': isHandRaised }" @click="meetingStore.toggleHand()" title="Raise Hand">
+                <button
+                    class="ctrl-btn"
+                    :class="{ 'ctrl-btn--active': isHandRaised }"
+                    @click="meetingStore.toggleHand()"
+                    title="Raise Hand"
+                >
                     <Icon name="hand" size="22" />
                 </button>
-                <button v-if="meetingStore.isHost"
-                    class="ctrl-btn ctrl-btn--lock" 
-                    :class="{ 'ctrl-btn--lock-active': meetingStore.isLocked }" 
-                    @click="meetingStore.toggleLock()" 
-                    :title="meetingStore.isLocked ? 'Unlock Meeting' : 'Lock Meeting'"
+                <button
+                    v-if="meetingStore.isHost"
+                    class="ctrl-btn ctrl-btn--lock"
+                    :class="{ 'ctrl-btn--lock-active': meetingStore.isLocked }"
+                    @click="meetingStore.toggleLock()"
+                    :title="
+                        meetingStore.isLocked
+                            ? 'Unlock Meeting'
+                            : 'Lock Meeting'
+                    "
                 >
-                    <Icon :name="meetingStore.isLocked ? 'lock' : 'unlock'" size="22" />
+                    <Icon
+                        :name="meetingStore.isLocked ? 'lock' : 'unlock'"
+                        size="22"
+                    />
                 </button>
-                <button class="ctrl-btn" @click="showSettings = true" title="Settings">
+                <button
+                    class="ctrl-btn"
+                    @click="showSettings = true"
+                    title="Settings"
+                >
                     <Icon name="settings" size="22" />
                 </button>
-                <button v-if="meetingStore.isHost" class="ctrl-btn" :class="{ 'ctrl-btn--recording': isRecording }" @click="toggleRecording" :title="isRecording ? 'Stop Recording' : 'Start Recording'">
-                    <Icon :name="isRecording ? 'circle-stop' : 'circle-dot'" size="22" />
+                <button
+                    v-if="meetingStore.isHost"
+                    class="ctrl-btn"
+                    :class="{ 'ctrl-btn--recording': isRecording }"
+                    @click="toggleRecording"
+                    :title="isRecording ? 'Stop Recording' : 'Start Recording'"
+                >
+                    <Icon
+                        :name="isRecording ? 'circle-stop' : 'circle-dot'"
+                        size="22"
+                    />
                 </button>
                 <div class="relative">
-                    <button class="ctrl-btn ctrl-btn--hangup" @click="showHangupMenu = !showHangupMenu" title="Leave or End">
+                    <button
+                        class="ctrl-btn ctrl-btn--hangup"
+                        @click="showHangupMenu = !showHangupMenu"
+                        title="Leave or End"
+                    >
                         <Icon name="phone-off" size="22" />
                     </button>
                     <!-- Hangup Popup Menu -->
@@ -390,7 +761,11 @@
                             <Icon name="log-out" size="18" />
                             <span>Leave meeting</span>
                         </button>
-                        <button v-if="meetingStore.isHost" class="hangup-menu-item hangup-menu-item--end" @click="endMeetingForAll">
+                        <button
+                            v-if="meetingStore.isHost"
+                            class="hangup-menu-item hangup-menu-item--end"
+                            @click="endMeetingForAll"
+                        >
                             <Icon name="phone-off" size="18" />
                             <span>End meeting for all</span>
                         </button>
@@ -400,7 +775,10 @@
         </footer>
 
         <!-- Modals and Dev Tools -->
-        <DeviceSettingsModal v-model:open="showSettings" @close="showSettings = false" />
+        <DeviceSettingsModal
+            v-model:open="showSettings"
+            @close="showSettings = false"
+        />
         <DevSimulationTool v-if="isDevMode" v-model:show="showDevTool" />
     </div>
 </template>
@@ -418,7 +796,7 @@ import MeetingChatPanel from "./components/MeetingChatPanel.vue";
 import ReactionOverlay from "./components/ReactionOverlay.vue";
 import { Icon } from "@/components/ui";
 import { toast } from "vue-sonner";
-import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/vue';
+import { Menu, MenuButton, MenuItems, MenuItem } from "@headlessui/vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -452,31 +830,50 @@ function toggleChatPanel() {
 }
 
 // Live clock
-const currentTime = ref('');
+const currentTime = ref("");
 let clockInterval: number;
 
 function updateClock() {
-    currentTime.value = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    currentTime.value = new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+    });
 }
 
-const isWaiting = computed(() => meetingStore.localParticipant?.status === 'waiting');
+const isWaiting = computed(
+    () => meetingStore.localParticipant?.status === "waiting",
+);
 
-const meetingTitle = computed(() => meetingStore.meeting?.title || 'Meeting');
+const meetingTitle = computed(() => meetingStore.meeting?.title || "Meeting");
 const participantCount = computed(() => meetingStore.allParticipants.length);
-const micToggleTitle = computed(() => isMicOn.value ? 'Mute (Ctrl+D)' : 'Unmute (Ctrl+D)');
-const cameraToggleTitle = computed(() => isCameraOn.value ? 'Turn off camera (Ctrl+E)' : 'Turn on camera (Ctrl+E)');
-const screenShareToggleTitle = computed(() => isScreenSharing.value ? 'Stop sharing' : 'Share Screen');
-const isHandRaised = computed(() => meetingStore.raisedHands.has(meetingStore.localParticipant?.public_id || ''));
+const micToggleTitle = computed(() =>
+    isMicOn.value ? "Mute (Ctrl+D)" : "Unmute (Ctrl+D)",
+);
+const cameraToggleTitle = computed(() =>
+    isCameraOn.value ? "Turn off camera (Ctrl+E)" : "Turn on camera (Ctrl+E)",
+);
+const screenShareToggleTitle = computed(() =>
+    isScreenSharing.value ? "Stop sharing" : "Share Screen",
+);
+const isHandRaised = computed(() =>
+    meetingStore.raisedHands.has(
+        meetingStore.localParticipant?.public_id || "",
+    ),
+);
 const isDevMode = computed(() => !!import.meta.env.DEV);
-const meetingHostName = computed(() => meetingStore.meeting?.host?.name || 'Authorized Personnel');
+const meetingHostName = computed(
+    () => meetingStore.meeting?.host?.name || "Authorized Personnel",
+);
 
 function getParticipantInitial(p: any) {
-    const name = p.user?.name || p.metadata?.guest_name || 'G';
+    if (!p) return "Y";
+    const name = p.user?.name || p.metadata?.guest_name || "G";
     return name[0].toUpperCase();
 }
 
 function getParticipantName(p: any) {
-    return p.user?.name || p.metadata?.guest_name || 'Guest';
+    if (!p) return "You";
+    return p.user?.name || p.metadata?.guest_name || "Guest";
 }
 
 // ─── Computed / Layout ──────────────────────────────────────────────────────
@@ -492,26 +889,32 @@ const localCameraTile = computed(() => {
     return {
         id: meetingStore.localParticipant.public_id,
         participant: meetingStore.localParticipant,
-        isScreen: false
+        isScreen: false,
     };
 });
 
 // Map distinct tiles so a single participant can have both Camera and Screen shown at once
 const renderedTiles = computed(() => {
-    const tiles: { id: string, participant: any, isScreen: boolean }[] = [];
-    
+    const tiles: { id: string; participant: any; isScreen: boolean }[] = [];
+
     // 1. Add all standard camera tiles EXCEPT local participant
-    meetingStore.allParticipants.forEach(p => {
+    meetingStore.allParticipants.forEach((p) => {
         if (p.public_id !== meetingStore.localParticipant?.public_id) {
             tiles.push({ id: p.public_id, participant: p, isScreen: false });
         }
     });
 
     // 2. Add distinct screenshare tiles
-    meetingStore.screenShares.forEach(publicId => {
-        const p = meetingStore.allParticipants.find(x => x.public_id === publicId);
+    meetingStore.screenShares.forEach((publicId) => {
+        const p = meetingStore.allParticipants.find(
+            (x) => x.public_id === publicId,
+        );
         if (p) {
-            tiles.push({ id: `${publicId}:screen`, participant: p, isScreen: true });
+            tiles.push({
+                id: `${publicId}:screen`,
+                participant: p,
+                isScreen: true,
+            });
         }
     });
 
@@ -521,20 +924,26 @@ const renderedTiles = computed(() => {
 const spotlightTile = computed(() => {
     // 1. Pinned participant
     if (meetingStore.pinnedParticipantId) {
-        const pinScreen = renderedTiles.value.find(t => t.id === `${meetingStore.pinnedParticipantId}:screen`);
+        const pinScreen = renderedTiles.value.find(
+            (t) => t.id === `${meetingStore.pinnedParticipantId}:screen`,
+        );
         if (pinScreen) return pinScreen;
-        return renderedTiles.value.find(t => t.id === meetingStore.pinnedParticipantId);
+        return renderedTiles.value.find(
+            (t) => t.id === meetingStore.pinnedParticipantId,
+        );
     }
-    
+
     // 2. Priority: Any active screenshare
-    const screenSharer = renderedTiles.value.find(t => t.isScreen);
+    const screenSharer = renderedTiles.value.find((t) => t.isScreen);
     if (screenSharer) return screenSharer;
 
     // 3. Fallback: Active speaker (camera tile)
     if (meetingStore.activeSpeakerId) {
-        return renderedTiles.value.find(t => t.id === meetingStore.activeSpeakerId && !t.isScreen);
+        return renderedTiles.value.find(
+            (t) => t.id === meetingStore.activeSpeakerId && !t.isScreen,
+        );
     }
-    
+
     return null;
 });
 
@@ -542,7 +951,7 @@ const isSpotlightMode = computed(() => !!spotlightTile.value);
 
 const unspotlightedTiles = computed(() => {
     if (!spotlightTile.value) return renderedTiles.value;
-    return renderedTiles.value.filter(t => t.id !== spotlightTile.value?.id);
+    return renderedTiles.value.filter((t) => t.id !== spotlightTile.value?.id);
 });
 
 const totalGridPages = computed(
@@ -563,7 +972,10 @@ watch(totalFilmstripPages, (pages) => {
 const paginatedTiles = computed(() => {
     if (isSpotlightMode.value) {
         const start = filmstripPage.value * FILMSTRIP_PAGE_SIZE;
-        return unspotlightedTiles.value.slice(start, start + FILMSTRIP_PAGE_SIZE);
+        return unspotlightedTiles.value.slice(
+            start,
+            start + FILMSTRIP_PAGE_SIZE,
+        );
     } else {
         const start = gridPage.value * GRID_PAGE_SIZE;
         return unspotlightedTiles.value.slice(start, start + GRID_PAGE_SIZE);
@@ -573,16 +985,16 @@ const paginatedTiles = computed(() => {
 // Google Meet-style grid layout class based on tile count
 const gridLayoutClass = computed(() => {
     const count = paginatedTiles.value.length;
-    let baseClass = '';
-    if (count === 0) baseClass = 'grid-0';
-    else if (count === 1) baseClass = 'grid-1';
-    else if (count === 2) baseClass = 'grid-2';
-    else if (count <= 4) baseClass = 'grid-4';
-    else if (count <= 6) baseClass = 'grid-6';
-    else if (count <= 9) baseClass = 'grid-9';
-    else if (count <= 12) baseClass = 'grid-12';
-    else baseClass = 'grid-16';
-    
+    let baseClass = "";
+    if (count === 0) baseClass = "grid-0";
+    else if (count === 1) baseClass = "grid-1";
+    else if (count === 2) baseClass = "grid-2";
+    else if (count <= 4) baseClass = "grid-4";
+    else if (count <= 6) baseClass = "grid-6";
+    else if (count <= 9) baseClass = "grid-9";
+    else if (count <= 12) baseClass = "grid-12";
+    else baseClass = "grid-16";
+
     return `${baseClass} count-${count}`;
 });
 
@@ -636,10 +1048,10 @@ onMounted(async () => {
             sender_participant_public_id: participantId,
         });
 
-        window.addEventListener('keydown', handleGlobalKeydown);
+        window.addEventListener("keydown", handleGlobalKeydown);
 
         // Auto-start screen share if joined via "Present" button
-        if (route.query.present === '1') {
+        if (route.query.present === "1") {
             setTimeout(() => {
                 toggleScreenShare();
             }, 2000); // Wait for SFU connection to establish
@@ -651,7 +1063,7 @@ onMounted(async () => {
 });
 
 function handleGlobalKeydown(e: KeyboardEvent) {
-    if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'd') {
+    if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "d") {
         e.preventDefault();
         showDevTool.value = !showDevTool.value;
         if (showDevTool.value) {
@@ -661,7 +1073,7 @@ function handleGlobalKeydown(e: KeyboardEvent) {
 }
 
 onUnmounted(() => {
-    window.removeEventListener('keydown', handleGlobalKeydown);
+    window.removeEventListener("keydown", handleGlobalKeydown);
     window.clearInterval(clockInterval);
     meetingStore.cleanup();
 });
@@ -678,21 +1090,21 @@ async function toggleScreenShare() {
             screenStream.value = null;
         }
         isScreenSharing.value = false;
-        
+
         await meetingStore.unpublishScreenTrack();
-        meetingStore.clearSpotlight(); 
+        meetingStore.clearSpotlight();
     } else {
         try {
             const stream = await navigator.mediaDevices.getDisplayMedia({
                 video: true,
-                audio: false, 
+                audio: false,
             });
             screenStream.value = stream;
             isScreenSharing.value = true;
-            
+
             await meetingStore.publishScreenTrack(stream);
-            
-            meetingStore.setSpotlight(meetingStore.localParticipant!.public_id); 
+
+            meetingStore.setSpotlight(meetingStore.localParticipant!.public_id);
 
             const screenTrack = stream.getVideoTracks()[0];
             screenTrack.onended = () => {
@@ -706,8 +1118,11 @@ async function toggleScreenShare() {
 }
 
 const toggleCamera = async () => {
-    if (meetingStore.localParticipant?.is_camera_disabled_by_host && !isCameraOn.value) {
-        toast.error('The host has disabled your camera.');
+    if (
+        meetingStore.localParticipant?.is_camera_disabled_by_host &&
+        !isCameraOn.value
+    ) {
+        toast.error("The host has disabled your camera.");
         return;
     }
 
@@ -744,7 +1159,7 @@ const toggleCamera = async () => {
 
 const toggleMic = async () => {
     if (meetingStore.localParticipant?.is_muted_by_host && !isMicOn.value) {
-        toast.error('The host has muted your microphone.');
+        toast.error("The host has muted your microphone.");
         return;
     }
 
@@ -824,38 +1239,46 @@ watch(
     },
 );
 
-watch(() => meetingStore.localParticipant?.is_muted_by_host, (isMuted) => {
-    if (isMuted) {
-        toast.error('The host has muted your microphone.');
-        if (isMicOn.value) {
-            toggleMic();
+watch(
+    () => meetingStore.localParticipant?.is_muted_by_host,
+    (isMuted) => {
+        if (isMuted) {
+            toast.error("The host has muted your microphone.");
+            if (isMicOn.value) {
+                toggleMic();
+            }
+        } else if (isMuted === false) {
+            toast.success(
+                "The host has allowed you to unmute your microphone.",
+            );
         }
-    } else if (isMuted === false) {
-        toast.success('The host has allowed you to unmute your microphone.');
-    }
-});
+    },
+);
 
-watch(() => meetingStore.localParticipant?.is_camera_disabled_by_host, (isDisabled) => {
-    if (isDisabled) {
-        toast.error('The host has disabled your camera.');
-        if (isCameraOn.value) {
-            toggleCamera();
+watch(
+    () => meetingStore.localParticipant?.is_camera_disabled_by_host,
+    (isDisabled) => {
+        if (isDisabled) {
+            toast.error("The host has disabled your camera.");
+            if (isCameraOn.value) {
+                toggleCamera();
+            }
+        } else if (isDisabled === false) {
+            toast.success("The host has allowed you to turn on your camera.");
         }
-    } else if (isDisabled === false) {
-        toast.success('The host has allowed you to turn on your camera.');
-    }
-});
+    },
+);
 
 const showHangupMenu = ref(false);
-const lastReactionEmoji = ref('👍');
+const lastReactionEmoji = ref("👍");
 const isRecording = ref(false);
 
 function toggleRecording() {
     isRecording.value = !isRecording.value;
     if (isRecording.value) {
-        toast.success('Recording started (simulated)');
+        toast.success("Recording started (simulated)");
     } else {
-        toast.info('Recording stopped (simulated)');
+        toast.info("Recording stopped (simulated)");
     }
 }
 
@@ -864,21 +1287,28 @@ function sendQuickReaction() {
 }
 
 // Watch for reactions sent via the picker to update the quick-action emoji
-watch(() => meetingStore.activeReactions, (reactions) => {
-    // If the local participant just sent a reaction, update the quick-action button
-    if (reactions.length > 0) {
-        const localPid = meetingStore.localParticipant?.public_id;
-        const myReactions = reactions.filter(r => r.publicId === localPid);
-        if (myReactions.length > 0) {
-            lastReactionEmoji.value = myReactions[myReactions.length - 1].emoji;
+watch(
+    () => meetingStore.activeReactions,
+    (reactions) => {
+        // If the local participant just sent a reaction, update the quick-action button
+        if (reactions.length > 0) {
+            const localPid = meetingStore.localParticipant?.public_id;
+            const myReactions = reactions.filter(
+                (r) => r.publicId === localPid,
+            );
+            if (myReactions.length > 0) {
+                lastReactionEmoji.value =
+                    myReactions[myReactions.length - 1].emoji;
+            }
         }
-    }
-}, { deep: true });
+    },
+    { deep: true },
+);
 
 function lowerAllHands() {
     // Clear all raised hands locally and broadcast
     const hands = Array.from(meetingStore.raisedHands);
-    hands.forEach(pid => {
+    hands.forEach((pid) => {
         presence_lowerHand(pid);
     });
 }
@@ -916,7 +1346,13 @@ const endMeetingForAll = async () => {
     height: 100dvh;
     background: radial-gradient(circle at 50% 10%, #292a2d 0%, #111111 100%);
     color: #e8eaed;
-    font-family: 'Google Sans', 'Roboto', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    font-family:
+        "Google Sans",
+        "Roboto",
+        "Segoe UI",
+        system-ui,
+        -apple-system,
+        sans-serif;
     overflow: hidden;
     position: relative;
 }
@@ -990,16 +1426,18 @@ const endMeetingForAll = async () => {
     font-weight: 500;
     transition: all 0.2s ease;
 }
-.topbar-btn:hover { 
-    background: rgba(255, 255, 255, 0.08); 
+.topbar-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
     border-color: rgba(255, 255, 255, 0.05);
 }
-.topbar-btn--active { 
-    background: rgba(138, 180, 248, 0.15); 
-    color: #8ab4f8; 
+.topbar-btn--active {
+    background: rgba(138, 180, 248, 0.15);
+    color: #8ab4f8;
     border-color: rgba(138, 180, 248, 0.3);
 }
-.topbar-btn--alert { position: relative; }
+.topbar-btn--alert {
+    position: relative;
+}
 
 .topbar-badge {
     position: absolute;
@@ -1020,8 +1458,13 @@ const endMeetingForAll = async () => {
 }
 
 @keyframes pulse-badge {
-    0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.15); }
+    0%,
+    100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.15);
+    }
 }
 
 .topbar-count {
@@ -1061,7 +1504,9 @@ const endMeetingForAll = async () => {
     justify-content: center;
 }
 
-.grid-0 { place-items: center; }
+.grid-0 {
+    place-items: center;
+}
 
 .grid-1 {
     grid-template-columns: 1fr;
@@ -1081,48 +1526,92 @@ const endMeetingForAll = async () => {
     grid-template-columns: repeat(4, 1fr);
     grid-template-rows: repeat(2, 1fr);
 }
-.grid-4 .grid-tile { grid-column: span 2; }
-.grid-container.count-3 .grid-tile:nth-child(3) { grid-column: 2 / span 2; }
+.grid-4 .grid-tile {
+    grid-column: span 2;
+}
+.grid-container.count-3 .grid-tile:nth-child(3) {
+    grid-column: 2 / span 2;
+}
 
 .grid-6 {
     grid-template-columns: repeat(6, 1fr);
     grid-template-rows: repeat(2, 1fr);
 }
-.grid-6 .grid-tile { grid-column: span 2; }
-.grid-container.count-5 .grid-tile:nth-child(4) { grid-column: 2 / span 2; }
-.grid-container.count-5 .grid-tile:nth-child(5) { grid-column: 4 / span 2; }
+.grid-6 .grid-tile {
+    grid-column: span 2;
+}
+.grid-container.count-5 .grid-tile:nth-child(4) {
+    grid-column: 2 / span 2;
+}
+.grid-container.count-5 .grid-tile:nth-child(5) {
+    grid-column: 4 / span 2;
+}
 
 .grid-9 {
     grid-template-columns: repeat(6, 1fr);
     grid-template-rows: repeat(3, 1fr);
 }
-.grid-9 .grid-tile { grid-column: span 2; }
-.grid-container.count-7 .grid-tile:nth-child(7) { grid-column: 3 / span 2; }
-.grid-container.count-8 .grid-tile:nth-child(7) { grid-column: 2 / span 2; }
-.grid-container.count-8 .grid-tile:nth-child(8) { grid-column: 4 / span 2; }
+.grid-9 .grid-tile {
+    grid-column: span 2;
+}
+.grid-container.count-7 .grid-tile:nth-child(7) {
+    grid-column: 3 / span 2;
+}
+.grid-container.count-8 .grid-tile:nth-child(7) {
+    grid-column: 2 / span 2;
+}
+.grid-container.count-8 .grid-tile:nth-child(8) {
+    grid-column: 4 / span 2;
+}
 
 .grid-12 {
     grid-template-columns: repeat(8, 1fr);
     grid-template-rows: repeat(3, 1fr);
 }
-.grid-12 .grid-tile { grid-column: span 2; }
-.grid-container.count-10 .grid-tile:nth-child(9) { grid-column: 3 / span 2; }
-.grid-container.count-10 .grid-tile:nth-child(10) { grid-column: 5 / span 2; }
-.grid-container.count-11 .grid-tile:nth-child(9) { grid-column: 2 / span 2; }
-.grid-container.count-11 .grid-tile:nth-child(10) { grid-column: 4 / span 2; }
-.grid-container.count-11 .grid-tile:nth-child(11) { grid-column: 6 / span 2; }
+.grid-12 .grid-tile {
+    grid-column: span 2;
+}
+.grid-container.count-10 .grid-tile:nth-child(9) {
+    grid-column: 3 / span 2;
+}
+.grid-container.count-10 .grid-tile:nth-child(10) {
+    grid-column: 5 / span 2;
+}
+.grid-container.count-11 .grid-tile:nth-child(9) {
+    grid-column: 2 / span 2;
+}
+.grid-container.count-11 .grid-tile:nth-child(10) {
+    grid-column: 4 / span 2;
+}
+.grid-container.count-11 .grid-tile:nth-child(11) {
+    grid-column: 6 / span 2;
+}
 
 .grid-16 {
     grid-template-columns: repeat(8, 1fr);
     grid-template-rows: repeat(4, 1fr);
 }
-.grid-16 .grid-tile { grid-column: span 2; }
-.grid-container.count-13 .grid-tile:nth-child(13) { grid-column: 4 / span 2; }
-.grid-container.count-14 .grid-tile:nth-child(13) { grid-column: 3 / span 2; }
-.grid-container.count-14 .grid-tile:nth-child(14) { grid-column: 5 / span 2; }
-.grid-container.count-15 .grid-tile:nth-child(13) { grid-column: 2 / span 2; }
-.grid-container.count-15 .grid-tile:nth-child(14) { grid-column: 4 / span 2; }
-.grid-container.count-15 .grid-tile:nth-child(15) { grid-column: 6 / span 2; }
+.grid-16 .grid-tile {
+    grid-column: span 2;
+}
+.grid-container.count-13 .grid-tile:nth-child(13) {
+    grid-column: 4 / span 2;
+}
+.grid-container.count-14 .grid-tile:nth-child(13) {
+    grid-column: 3 / span 2;
+}
+.grid-container.count-14 .grid-tile:nth-child(14) {
+    grid-column: 5 / span 2;
+}
+.grid-container.count-15 .grid-tile:nth-child(13) {
+    grid-column: 2 / span 2;
+}
+.grid-container.count-15 .grid-tile:nth-child(14) {
+    grid-column: 4 / span 2;
+}
+.grid-container.count-15 .grid-tile:nth-child(15) {
+    grid-column: 6 / span 2;
+}
 
 .grid-tile {
     /* Critical formula for 16:9 boxes inside dynamic grid cells */
@@ -1131,7 +1620,7 @@ const endMeetingForAll = async () => {
     max-height: 100%;
     max-width: 100%;
     margin: auto;
-    
+
     background: #303134;
     border-radius: 12px;
     overflow: hidden;
@@ -1141,7 +1630,9 @@ const endMeetingForAll = async () => {
     align-items: center;
     border: 1px solid rgba(255, 255, 255, 0.08); /* Premium outline */
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25); /* Subtle lift */
-    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
+    transition:
+        transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+        box-shadow 0.2s ease;
 }
 
 .grid-nav {
@@ -1153,21 +1644,27 @@ const endMeetingForAll = async () => {
     height: 40px;
     border-radius: 50%;
     border: none;
-    background: rgba(32,33,36,0.85);
+    background: rgba(32, 33, 36, 0.85);
     color: #e8eaed;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background 0.15s, transform 0.15s;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    transition:
+        background 0.15s,
+        transform 0.15s;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 .grid-nav:hover {
-    background: rgba(60,64,67,0.95);
+    background: rgba(60, 64, 67, 0.95);
     transform: translateY(-50%) scale(1.08);
 }
-.grid-nav--left { left: 16px; }
-.grid-nav--right { right: 16px; }
+.grid-nav--left {
+    left: 16px;
+}
+.grid-nav--right {
+    right: 16px;
+}
 
 /* ─── Spotlight Layout ─────────────────────────────────────────────────────── */
 .spotlight-main {
@@ -1210,7 +1707,7 @@ const endMeetingForAll = async () => {
     height: 28px;
     border-radius: 50%;
     border: none;
-    background: rgba(32,33,36,0.9);
+    background: rgba(32, 33, 36, 0.9);
     color: #e8eaed;
     cursor: pointer;
     display: flex;
@@ -1219,7 +1716,9 @@ const endMeetingForAll = async () => {
     flex-shrink: 0;
     z-index: 5;
 }
-.filmstrip-nav:hover { background: #3c4043; }
+.filmstrip-nav:hover {
+    background: #3c4043;
+}
 
 /* ─── PiP Self-View ────────────────────────────────────────────────────────── */
 .pip-self-view {
@@ -1232,12 +1731,14 @@ const endMeetingForAll = async () => {
     overflow: hidden;
     z-index: 35;
     background: #3c4043;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    transition:
+        transform 0.2s ease,
+        box-shadow 0.2s ease;
 }
 .pip-self-view:hover {
     transform: scale(1.04);
-    box-shadow: 0 6px 24px rgba(0,0,0,0.6);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6);
 }
 
 /* ─── Side Panels ──────────────────────────────────────────────────────────── */
@@ -1279,7 +1780,10 @@ const endMeetingForAll = async () => {
     align-items: center;
     justify-content: center;
 }
-.side-panel-close:hover { background: rgba(255,255,255,0.08); color: #e8eaed; }
+.side-panel-close:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #e8eaed;
+}
 
 .side-panel-body {
     flex: 1;
@@ -1295,7 +1799,9 @@ const endMeetingForAll = async () => {
     border-radius: 8px;
     transition: background 0.12s;
 }
-.participant-row:hover { background: rgba(255,255,255,0.05); }
+.participant-row:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
 
 .participant-avatar {
     width: 32px;
@@ -1311,7 +1817,10 @@ const endMeetingForAll = async () => {
     flex-shrink: 0;
 }
 
-.participant-info { flex: 1; min-width: 0; }
+.participant-info {
+    flex: 1;
+    min-width: 0;
+}
 
 .participant-name {
     font-size: 13px;
@@ -1327,7 +1836,7 @@ const endMeetingForAll = async () => {
 .you-badge {
     font-size: 10px;
     color: #8ab4f8;
-    background: rgba(138,180,248,0.12);
+    background: rgba(138, 180, 248, 0.12);
     padding: 1px 6px;
     border-radius: 4px;
     font-weight: 500;
@@ -1395,21 +1904,31 @@ const endMeetingForAll = async () => {
     background: #8ab4f8;
     color: #202124;
 }
-.admission-btn--admit:hover { background: #aecbfa; }
+.admission-btn--admit:hover {
+    background: #aecbfa;
+}
 
 .admission-btn--reject {
     background: transparent;
     color: #e8eaed;
     border: 1px solid #5f6368;
 }
-.admission-btn--reject:hover { background: rgba(234,67,53,0.15); color: #f28b82; border-color: #f28b82; }
+.admission-btn--reject:hover {
+    background: rgba(234, 67, 53, 0.15);
+    color: #f28b82;
+    border-color: #f28b82;
+}
 
 /* ─── Bottom Control Bar ───────────────────────────────────────────────────── */
 .gmeet-controls {
     display: flex;
     justify-content: center;
     padding: 16px 0 max(24px, env(safe-area-inset-bottom));
-    background: linear-gradient(0deg, rgba(20, 20, 22, 0.95) 0%, rgba(20, 20, 22, 0) 100%);
+    background: linear-gradient(
+        0deg,
+        rgba(20, 20, 22, 0.95) 0%,
+        rgba(20, 20, 22, 0) 100%
+    );
     z-index: 40;
     flex-shrink: 0;
     position: absolute;
@@ -1429,7 +1948,9 @@ const endMeetingForAll = async () => {
     -webkit-backdrop-filter: blur(24px);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 36px;
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    box-shadow:
+        0 12px 32px rgba(0, 0, 0, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
     pointer-events: auto; /* Re-enable clicks for the actual pill menu */
 }
 
@@ -1444,7 +1965,10 @@ const endMeetingForAll = async () => {
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+    transition:
+        background 0.15s,
+        transform 0.1s,
+        box-shadow 0.15s;
     position: relative;
 }
 .ctrl-btn:hover {
@@ -1479,7 +2003,31 @@ const endMeetingForAll = async () => {
 }
 .ctrl-btn--hangup:hover {
     background: #d93025;
-    box-shadow: 0 0 16px rgba(234,67,53,0.4);
+    box-shadow: 0 0 16px rgba(234, 67, 53, 0.4);
+}
+
+@media (max-width: 600px) {
+    .controls-center {
+        gap: 8px;
+        padding: 6px 16px;
+        max-width: 90vw;
+        overflow-x: auto;
+        -ms-overflow-style: none; /* IE and Edge */
+        scrollbar-width: none; /* Firefox */
+    }
+    .controls-center::-webkit-scrollbar {
+        display: none;
+    }
+    .ctrl-btn {
+        width: 44px;
+        height: 44px;
+        flex-shrink: 0;
+    }
+    .ctrl-btn--hangup {
+        width: 52px;
+        height: 44px;
+        border-radius: 22px;
+    }
 }
 
 /* Hangup Popup Menu */
@@ -1492,7 +2040,7 @@ const endMeetingForAll = async () => {
     border-radius: 12px;
     padding: 8px 0;
     min-width: 220px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
     z-index: 50;
 }
 .hangup-menu-item {
@@ -1516,7 +2064,7 @@ const endMeetingForAll = async () => {
     color: #f28b82;
 }
 .hangup-menu-item--end:hover {
-    background: rgba(234,67,53,0.15);
+    background: rgba(234, 67, 53, 0.15);
 }
 
 /* Reaction Split Button */
@@ -1533,7 +2081,7 @@ const endMeetingForAll = async () => {
     padding-right: 6px !important;
     min-width: 24px;
     width: 24px;
-    border-left: 1px solid rgba(255,255,255,0.1);
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 /* Recording Indicator in Top Bar */
@@ -1556,23 +2104,28 @@ const endMeetingForAll = async () => {
     letter-spacing: 0.05em;
 }
 @keyframes pulse-dot {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.3; }
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.3;
+    }
 }
 
 /* Recording Button */
 .ctrl-btn--recording {
-    background: rgba(234,67,53,0.2) !important;
+    background: rgba(234, 67, 53, 0.2) !important;
     color: #ea4335 !important;
 }
 
 /* Lock Button */
 .ctrl-btn--lock-active {
-    background: rgba(242,139,130,0.2) !important;
+    background: rgba(242, 139, 130, 0.2) !important;
     color: #f28b82 !important;
 }
 .ctrl-btn--lock-active:hover {
-    background: rgba(242,139,130,0.3) !important;
+    background: rgba(242, 139, 130, 0.3) !important;
 }
 
 /* Solo / Empty Meeting State */
@@ -1634,10 +2187,18 @@ const endMeetingForAll = async () => {
 }
 
 @keyframes floatBlob {
-    0% { transform: translate(0, 0) scale(1); }
-    33% { transform: translate(50px, -50px) scale(1.1); }
-    66% { transform: translate(-30px, 40px) scale(0.9); }
-    100% { transform: translate(0, 0) scale(1); }
+    0% {
+        transform: translate(0, 0) scale(1);
+    }
+    33% {
+        transform: translate(50px, -50px) scale(1.1);
+    }
+    66% {
+        transform: translate(-30px, 40px) scale(0.9);
+    }
+    100% {
+        transform: translate(0, 0) scale(1);
+    }
 }
 
 .solo-content {
@@ -1653,14 +2214,22 @@ const endMeetingForAll = async () => {
     -webkit-backdrop-filter: blur(24px);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 32px;
-    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    box-shadow:
+        0 24px 48px rgba(0, 0, 0, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
     animation: soloFadeIn 1s cubic-bezier(0.16, 1, 0.3, 1);
     text-align: center;
 }
 
 @keyframes soloFadeIn {
-    from { opacity: 0; transform: translateY(20px) scale(0.95); }
-    to { opacity: 1; transform: translateY(0) scale(1); }
+    from {
+        opacity: 0;
+        transform: translateY(20px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
 }
 
 .solo-avatar {
@@ -1679,7 +2248,7 @@ const endMeetingForAll = async () => {
     box-shadow: 0 12px 36px rgba(26, 115, 232, 0.4);
 }
 .solo-avatar::after {
-    content: '';
+    content: "";
     position: absolute;
     inset: -12px;
     border-radius: 50%;
@@ -1688,8 +2257,14 @@ const endMeetingForAll = async () => {
     animation: soloPulse 2.5s infinite cubic-bezier(0.16, 1, 0.3, 1);
 }
 @keyframes soloPulse {
-    0% { transform: scale(1); opacity: 0.6; }
-    100% { transform: scale(1.4); opacity: 0; }
+    0% {
+        transform: scale(1);
+        opacity: 0.6;
+    }
+    100% {
+        transform: scale(1.4);
+        opacity: 0;
+    }
 }
 
 .solo-name {
@@ -1731,20 +2306,30 @@ const endMeetingForAll = async () => {
     max-width: 420px;
 }
 
-.waiting-icon-wrap { position: relative; margin-bottom: 32px; }
+.waiting-icon-wrap {
+    position: relative;
+    margin-bottom: 32px;
+}
 .waiting-icon-circle {
     width: 96px;
     height: 96px;
     border-radius: 50%;
-    background: rgba(138,180,248,0.1);
+    background: rgba(138, 180, 248, 0.1);
     display: flex;
     align-items: center;
     justify-content: center;
     animation: pulse 2s ease-in-out infinite;
 }
 @keyframes pulse {
-    0%, 100% { transform: scale(1); opacity: 1; }
-    50% { transform: scale(1.05); opacity: 0.8; }
+    0%,
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.05);
+        opacity: 0.8;
+    }
 }
 
 .waiting-ping {
@@ -1768,8 +2353,15 @@ const endMeetingForAll = async () => {
 }
 
 @keyframes ping {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.6; transform: scale(1.3); }
+    0%,
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.6;
+        transform: scale(1.3);
+    }
 }
 
 .waiting-title {
@@ -1803,7 +2395,11 @@ const endMeetingForAll = async () => {
     font-size: 13px;
     color: #9aa0a6;
 }
-.waiting-host-avatar { width: 24px; height: 24px; border-radius: 50%; }
+.waiting-host-avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+}
 
 .waiting-cancel-btn {
     background: none;
@@ -1814,18 +2410,47 @@ const endMeetingForAll = async () => {
     text-decoration: underline;
     text-underline-offset: 4px;
 }
-.waiting-cancel-btn:hover { color: #aecbfa; }
+.waiting-cancel-btn:hover {
+    color: #aecbfa;
+}
 
 /* ─── Responsive ───────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
-    .gmeet-topbar { padding: 0 12px; height: 48px; }
-    .topbar-center { display: none; }
-    .side-panel { width: 100%; position: absolute; right: 0; top: 0; bottom: 0; }
-    .pip-self-view { width: 140px; bottom: 12px; right: 12px; }
-    .ctrl-btn { width: 42px; height: 42px; }
-    .ctrl-btn--hangup { width: 50px; }
-    .controls-center { gap: 8px; padding: 6px 14px; }
-    .filmstrip { height: 90px; }
-    .filmstrip-tile { width: 140px; }
+    .gmeet-topbar {
+        padding: 0 12px;
+        height: 48px;
+    }
+    .topbar-center {
+        display: none;
+    }
+    .side-panel {
+        width: 100%;
+        position: absolute;
+        right: 0;
+        top: 0;
+        bottom: 0;
+    }
+    .pip-self-view {
+        width: 140px;
+        bottom: 12px;
+        right: 12px;
+    }
+    .ctrl-btn {
+        width: 42px;
+        height: 42px;
+    }
+    .ctrl-btn--hangup {
+        width: 50px;
+    }
+    .controls-center {
+        gap: 8px;
+        padding: 6px 14px;
+    }
+    .filmstrip {
+        height: 90px;
+    }
+    .filmstrip-tile {
+        width: 140px;
+    }
 }
 </style>

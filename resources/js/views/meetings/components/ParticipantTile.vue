@@ -3,31 +3,47 @@
         <!-- Local Video -->
         <video
             v-if="isLocal"
+            v-show="actualHasVideo"
             autoplay
             muted
             playsinline
             :ref="bindLocalVideo"
             class="tile-video"
-            :class="[
-                { 'tile-video--hidden': !localCameraOn && !isScreenShare },
-                isSpotlight || isScreenShare ? 'tile-video--contain' : 'tile-video--cover',
-            ]"
+            :class="
+                isSpotlight || isScreenShare
+                    ? 'tile-video--contain'
+                    : 'tile-video--cover'
+            "
         ></video>
+
+        <!-- Remote Audio -->
+        <audio
+            v-if="!isLocal"
+            autoplay
+            :ref="bindRemoteAudio"
+            class="hidden"
+        ></audio>
 
         <!-- Remote Video -->
         <video
-            v-else-if="hasActiveVideo"
+            v-if="!isLocal"
+            v-show="actualHasVideo"
             autoplay
+            muted
             playsinline
             :ref="bindRemoteVideo"
             class="tile-video"
-            :class="isSpotlight || isScreenShare ? 'tile-video--contain' : 'tile-video--cover'"
+            :class="
+                isSpotlight || isScreenShare
+                    ? 'tile-video--contain'
+                    : 'tile-video--cover'
+            "
             :data-participant="participant.public_id"
             :data-screen="isScreenShare ? 'true' : 'false'"
         ></video>
 
         <!-- Avatar Fallback (Initials) -->
-        <div v-if="!hasActiveVideo" class="tile-avatar-wrap">
+        <div v-if="!actualHasVideo" class="tile-avatar-wrap">
             <div class="tile-avatar">
                 {{ initials }}
             </div>
@@ -65,7 +81,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch, onMounted } from "vue";
+import { computed, ref, watch, onMounted, onUnmounted } from "vue";
 import { useMeetingStore } from "@/stores/meeting";
 import { Icon } from "@/components/ui";
 
@@ -94,13 +110,60 @@ const streamIdLookup = computed(() => {
         : props.participant.public_id;
 });
 
-const hasActiveVideo = computed(() => {
-    if (isLocal.value) return props.localCameraOn || props.isScreenShare;
-    return meetingStore.remoteStreams.has(streamIdLookup.value);
+const activeStream = computed(() => {
+    if (isLocal.value) {
+        return props.isScreenShare && props.localStreamOverride
+            ? props.localStreamOverride
+            : meetingStore.localStream;
+    }
+    return meetingStore.remoteStreams.get(streamIdLookup.value);
 });
 
+const actualHasVideo = ref(false);
+
+const checkVideoStatus = () => {
+    if (isLocal.value) {
+        actualHasVideo.value = !!(props.localCameraOn || props.isScreenShare);
+        return;
+    }
+    const s = activeStream.value;
+    if (!s) {
+        actualHasVideo.value = false;
+        return;
+    }
+    const vTracks = s.getVideoTracks();
+    actualHasVideo.value =
+        vTracks.length > 0 &&
+        vTracks[0].enabled &&
+        vTracks[0].readyState === "live" &&
+        !vTracks[0].muted;
+};
+
+let videoStatusInterval: ReturnType<typeof setInterval>;
+
+onMounted(() => {
+    videoStatusInterval = setInterval(checkVideoStatus, 500);
+});
+
+onUnmounted(() => {
+    if (videoStatusInterval) {
+        clearInterval(videoStatusInterval);
+    }
+});
+
+watch(
+    [activeStream, () => props.localCameraOn, () => props.isScreenShare],
+    () => {
+        checkVideoStatus();
+    },
+    { immediate: true },
+);
+
 const isSpeaking = computed(() => {
-    return meetingStore.activeSpeakerId === props.participant.public_id && !props.isScreenShare;
+    return (
+        meetingStore.activeSpeakerId === props.participant.public_id &&
+        !props.isScreenShare
+    );
 });
 
 const displayName = computed(() => {
@@ -134,18 +197,20 @@ watch(
         meetingStore.localStream,
         props.localStreamOverride,
         props.isScreenShare,
+        props.localCameraOn,
     ],
-    ([videoEl, camStream, overrideStream]) => {
+    ([videoEl, camStream, overrideStream, isScreen, isCamOn]) => {
         const stream =
             props.isScreenShare && props.localStreamOverride
                 ? props.localStreamOverride
                 : camStream;
-        if (
-            videoEl &&
-            stream &&
-            (videoEl as HTMLVideoElement).srcObject !== stream
-        ) {
-            (videoEl as HTMLVideoElement).srcObject = stream as MediaStream;
+        if (videoEl && stream) {
+            const el = videoEl as HTMLVideoElement;
+            // Force re-assignment to ensure newly added tracks play
+            if (el.srcObject === stream) {
+                el.srcObject = null;
+            }
+            el.srcObject = stream as MediaStream;
         }
     },
     { immediate: true },
@@ -153,27 +218,39 @@ watch(
 
 // -- Remote Video Binding --
 const remoteVideo = ref<HTMLVideoElement | null>(null);
+const remoteAudio = ref<HTMLAudioElement | null>(null);
 
 const bindRemoteVideo = (el: any) => {
     remoteVideo.value = el as HTMLVideoElement | null;
     updateRemoteStream();
 };
 
+const bindRemoteAudio = (el: any) => {
+    remoteAudio.value = el as HTMLAudioElement | null;
+    updateRemoteStream();
+};
+
 function updateRemoteStream() {
-    const stream = meetingStore.remoteStreams.get(streamIdLookup.value);
-    if (remoteVideo.value && stream) {
-        if (remoteVideo.value.srcObject !== stream) {
+    const stream = activeStream.value;
+    if (stream) {
+        if (remoteVideo.value && remoteVideo.value.srcObject !== stream) {
             remoteVideo.value.srcObject = stream;
+        }
+        if (remoteAudio.value && remoteAudio.value.srcObject !== stream) {
+            remoteAudio.value.srcObject = stream;
         }
     }
 }
 
 watch(
-    [() => meetingStore.remoteStreams.get(streamIdLookup.value), remoteVideo],
-    ([newStream, videoEl]) => {
-        if (newStream && videoEl) {
-            if (videoEl.srcObject !== newStream) {
+    [activeStream, remoteVideo, remoteAudio],
+    ([newStream, videoEl, audioEl]) => {
+        if (newStream) {
+            if (videoEl && videoEl.srcObject !== newStream) {
                 videoEl.srcObject = newStream;
+            }
+            if (audioEl && audioEl.srcObject !== newStream) {
+                audioEl.srcObject = newStream;
             }
         }
     },
@@ -209,9 +286,17 @@ onMounted(() => {
     height: 100%;
     transition: opacity 0.3s ease;
 }
-.tile-video--cover { object-fit: cover; }
-.tile-video--contain { object-fit: contain; background: #000; }
-.tile-video--hidden { opacity: 0; position: absolute; }
+.tile-video--cover {
+    object-fit: cover;
+}
+.tile-video--contain {
+    object-fit: contain;
+    background: #000;
+}
+.tile-video--hidden {
+    opacity: 0;
+    position: absolute;
+}
 
 /* Avatar */
 .tile-avatar-wrap {
@@ -234,7 +319,7 @@ onMounted(() => {
     justify-content: center;
     font-size: 28px;
     font-weight: 500;
-    font-family: 'Google Sans', 'Roboto', sans-serif;
+    font-family: "Google Sans", "Roboto", sans-serif;
     user-select: none;
 }
 
@@ -259,7 +344,7 @@ onMounted(() => {
     font-size: 12px;
     font-weight: 500;
     color: #e8eaed;
-    text-shadow: 0 1px 4px rgba(0,0,0,0.7);
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -275,14 +360,16 @@ onMounted(() => {
     height: 28px;
     border-radius: 50%;
     border: none;
-    background: rgba(0,0,0,0.5);
+    background: rgba(0, 0, 0, 0.5);
     color: #e8eaed;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     opacity: 0;
-    transition: opacity 0.15s, background 0.15s;
+    transition:
+        opacity 0.15s,
+        background 0.15s;
     z-index: 10;
 }
 
@@ -291,7 +378,7 @@ onMounted(() => {
 }
 
 .tile-pin-btn:hover {
-    background: rgba(0,0,0,0.7);
+    background: rgba(0, 0, 0, 0.7);
 }
 
 .tile-pin-btn--active {

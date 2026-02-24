@@ -127,7 +127,11 @@ class MeetingController extends Controller
         }
 
         // Password protection check
-        if ($meeting->password && ($meeting->user_id !== Auth::id())) {
+    if ($meeting->status === 'ended') {
+        return response()->json(['message' => 'This meeting has already ended.'], 403);
+    }
+
+    if ($meeting->password && ($meeting->user_id !== Auth::id())) {
             $providedPassword = $request->input('password');
             if ($providedPassword !== $meeting->password) {
                 return response()->json([

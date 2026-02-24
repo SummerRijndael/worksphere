@@ -317,9 +317,14 @@ export const useMeetingStore = defineStore('meeting', () => {
     function handleMeetingEnded() {
         // Stop all local tracks
         stream.localStream.value?.getTracks().forEach(t => t.stop());
+        const id = meeting.value?.public_id;
         cleanup();
-        // Route to home via window since we don't have router in store
-        window.location.href = '/';
+        if (id) {
+            window.location.href = `/m/${id}?ended=1`;
+        } else {
+            // Route to home via window since we don't have router in store
+            window.location.href = '/';
+        }
     }
 
     // --- Reactions ---
