@@ -31,7 +31,6 @@ interface Task {
         name: string;
     };
     created_at: string;
-    public_id: string; // Ensure this is consistently present
 }
 
 interface Props {

@@ -250,6 +250,24 @@ const routes: RouteRecordRaw[] = [
             requiresAuth: true,
         },
     },
+    {
+        path: "/m/:id",
+        name: "meeting-lobby",
+        component: () => import("@/views/meetings/LobbyView.vue"),
+        meta: {
+            title: "Meeting Lobby",
+            layout: "none",
+        },
+    },
+    {
+        path: "/m/:id/room",
+        name: "meeting-room",
+        component: () => import("@/views/meetings/MeetingRoomView.vue"),
+        meta: {
+            title: "Meeting Room",
+            layout: "none",
+        },
+    },
 
     {
         path: "/privacy",
@@ -543,6 +561,16 @@ const routes: RouteRecordRaw[] = [
                 meta: {
                     title: "Calendar",
                     breadcrumb: "Calendar",
+                    transition: "slide-fade",
+                },
+            },
+            {
+                path: "meetings",
+                name: "meetings",
+                component: () => import("@/views/meetings/MeetingsListView.vue"),
+                meta: {
+                    title: "Meetings",
+                    breadcrumb: "Meetings",
                     transition: "slide-fade",
                 },
             },

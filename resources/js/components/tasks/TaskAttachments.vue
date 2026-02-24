@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
-import { useAuthStore } from "@/stores/auth";
+
 import { Button } from "@/components/ui";
 import { FileIcon, Trash2, UploadCloud, Download, Loader2 } from "lucide-vue-next";
 import axios from "axios";

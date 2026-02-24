@@ -478,6 +478,8 @@ export function usePresence(options: UsePresenceOptions = {}) {
      * Refresh presence data after reconnection.
      */
     async function refreshData(): Promise<void> {
+        if (!isAuthenticated.value) return;
+        
         isSyncing.value = true;
         try {
             await api.get('/api/presence/me').then(response => {

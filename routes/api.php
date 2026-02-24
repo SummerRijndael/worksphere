@@ -964,6 +964,59 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
 
     // Blocked URLs
     Route::apiResource('blocked-urls', \App\Http\Controllers\Api\BlockedUrlController::class);
+
+    // Meetings (authenticated-only: list, create, update, delete)
+    Route::middleware('throttle:meetings')->prefix('meetings')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\MeetingController::class, 'index']);
+        Route::post('/', [\App\Http\Controllers\Api\MeetingController::class, 'store'])
+            ->middleware('throttle:meeting-creation');
+        Route::patch('/{meeting}', [\App\Http\Controllers\Api\MeetingController::class, 'update']);
+        Route::post('/{meeting}/participants/{participant}/admit', [\App\Http\Controllers\Api\MeetingController::class, 'admit']);
+        Route::post('/{meeting}/participants/{participant}/reject', [\App\Http\Controllers\Api\MeetingController::class, 'reject']);
+        Route::post('/{meeting}/participants/{participant}/mute', [\App\Http\Controllers\Api\MeetingController::class, 'mute']);
+        Route::post('/{meeting}/participants/{participant}/unmute', [\App\Http\Controllers\Api\MeetingController::class, 'unmute']);
+        Route::post('/{meeting}/participants/{participant}/camera-off', [\App\Http\Controllers\Api\MeetingController::class, 'cameraOff']);
+        Route::post('/{meeting}/participants/{participant}/camera-allow', [\App\Http\Controllers\Api\MeetingController::class, 'cameraAllow']);
+        Route::post('/{meeting}/participants/{participant}/kick', [\App\Http\Controllers\Api\MeetingController::class, 'kick']);
+        Route::post('/{meeting}/participants/{participant}/promote', [\App\Http\Controllers\Api\MeetingController::class, 'promote']);
+        Route::post('/{meeting}/participants/{participant}/demote', [\App\Http\Controllers\Api\MeetingController::class, 'demote']);
+        Route::delete('/{meeting}', [\App\Http\Controllers\Api\MeetingController::class, 'destroy']);
+    });
+});
+
+// ──── Guest-Accessible Meeting Routes ────────────────────────────────────────
+// These routes use optional Sanctum auth: if a bearer token is present, the user
+// is resolved; if not, Auth::user() returns null and the controller treats them
+// as a guest. This enables external/guest join flows without requiring login.
+Route::middleware(['throttle:meetings'])->prefix('meetings')->group(function () {
+    Route::get('/{meeting}', [\App\Http\Controllers\Api\MeetingController::class, 'show']);
+    Route::post('/broadcasting/auth', [\App\Http\Controllers\Api\MeetingController::class, 'broadcastingAuth']);
+    Route::get('/{meeting}/turn-credentials', [\App\Http\Controllers\Api\MeetingController::class, 'turnCredentials']);
+    Route::post('/{meeting}/join', [\App\Http\Controllers\Api\MeetingController::class, 'join']);
+    Route::post('/{meeting}/signal', [\App\Http\Controllers\Api\MeetingController::class, 'signal'])
+        ->withoutMiddleware('throttle:api')
+        ->middleware('throttle:signaling');
+    Route::post('/{meeting}/lock', [\App\Http\Controllers\Api\MeetingController::class, 'lock']);
+    Route::post('/{meeting}/unlock', [\App\Http\Controllers\Api\MeetingController::class, 'unlock']);
+    Route::post('/{meeting}/end', [\App\Http\Controllers\Api\MeetingController::class, 'end']);
+
+    // Meeting Chat
+    Route::get('/{meeting}/messages', [\App\Http\Controllers\Api\MeetingController::class, 'getMessages']);
+    Route::post('/{meeting}/messages', [\App\Http\Controllers\Api\MeetingController::class, 'sendMessage']);
+
+    // SFU Proxy Routes — exclude content-scanning firewall middleware
+    // SDP and WebRTC data triggers false positives in XSS/SQLi/LFI detectors
+    Route::withoutMiddleware([
+        \Akaunting\Firewall\Middleware\Xss::class,
+        \Akaunting\Firewall\Middleware\Sqli::class,
+        \Akaunting\Firewall\Middleware\Lfi::class,
+        \Akaunting\Firewall\Middleware\Rfi::class,
+        \Akaunting\Firewall\Middleware\Php::class,
+    ])->group(function () {
+        Route::post('/{meeting}/sfu/sessions/new', [\App\Http\Controllers\Api\MeetingController::class, 'sfuSessionNew']);
+        Route::post('/{meeting}/sfu/sessions/{sessionId}/tracks/new', [\App\Http\Controllers\Api\MeetingController::class, 'sfuSessionTracks']);
+        Route::put('/{meeting}/sfu/sessions/{sessionId}/renegotiate', [\App\Http\Controllers\Api\MeetingController::class, 'sfuSessionRenegotiate']);
+    });
 });
 
 // Two-Factor Challenge routes (no auth required, but rate limited)

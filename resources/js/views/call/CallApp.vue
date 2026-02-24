@@ -1785,11 +1785,11 @@ function handleParticipantJoined(event: any) {
         if (sfuSessionId.value) {
             const trackObjects = sfuPc
                 ?.getTransceivers()
-                .filter((t) => t.sender.track)
+                .filter((t) => t.mid !== null && (t.receiver.track.kind === "audio" || t.receiver.track.kind === "video"))
                 .map((t) => ({
                     location: "local",
                     mid: t.mid,
-                    trackName: t.sender.track!.kind,
+                    trackName: t.receiver.track.kind,
                 }));
 
             const audioMid = trackObjects?.find(
@@ -1813,8 +1813,7 @@ function handleParticipantJoined(event: any) {
                         audioMid,
                         videoMid,
                     } as any,
-                        participant.publicId,
-                    publicId,
+                        publicId,
                 )
                 .catch(() => {});
         }
@@ -2212,40 +2211,50 @@ async function joinSFU(stream: MediaStream) {
             checkState();
         });
 
-        // 1. Add local senders with Simulcast for Video
+        // 1. Placeholder transceivers for audio/video (SENDONLY but silent)
+        // We use 'sendonly' so they are ready to become our actual senders.
+        // This prevents the "Read-only field modified" error later when assigning encodings.
+        sfuPc.addTransceiver("audio", { direction: "sendonly" });
+        sfuPc.addTransceiver("video", {
+            direction: "sendonly",
+            sendEncodings: [
+                { rid: "l", active: true, maxBitrate: 150000, scaleResolutionDownBy: 4 },
+                { rid: "m", active: true, maxBitrate: 500000, scaleResolutionDownBy: 2 },
+                { rid: "h", active: true, maxBitrate: 1500000, scaleResolutionDownBy: 1 },
+            ],
+        });
+
+        // 2. Add local tracks by REUSING the placeholders above
         stream.getTracks().forEach((track) => {
             console.log(`[SFU] Adding local ${track.kind} track to session`);
 
-            const init: RTCRtpTransceiverInit = {
-                direction: "sendonly",
-                streams: [stream],
-            };
+            // Find the placeholder we just created
+            let tc = sfuPc!.getTransceivers().find(
+                (t) => t.receiver.track.kind === track.kind && t.direction === "sendonly" && !t.sender.track
+            );
 
-            if (track.kind === "video") {
-                console.log("[SFU] Configuring Simulcast Encodings (h, m, l)");
-                init.sendEncodings = [
-                    {
-                        rid: "l",
-                        active: true,
-                        maxBitrate: 150000,
-                        scaleResolutionDownBy: 4,
-                    },
-                    {
-                        rid: "m",
-                        active: true,
-                        maxBitrate: 500000,
-                        scaleResolutionDownBy: 2,
-                    },
-                    {
-                        rid: "h",
-                        active: true,
-                        maxBitrate: 1500000,
-                        scaleResolutionDownBy: 1,
-                    },
-                ];
+            if (tc) {
+                console.log(`[SFU] Reserving placeholder transceiver for local ${track.kind}`);
+                tc.sender.replaceTrack(track);
+                
+                // If we need to ADJUST existing encodings (e.g. if their 'active' state needs to change)
+                // we do it here, but we don't need to re-add the whole array if it's already there.
+                try {
+                    const params = tc.sender.getParameters();
+                    if (params.encodings && params.encodings.length > 0) {
+                        params.encodings.forEach(e => e.active = true);
+                        tc.sender.setParameters(params).catch(() => {});
+                    }
+                } catch (e) {
+                    // Ignore parameter adjustment errors on cold-start
+                }
+            } else {
+                // Fallback (unlikely)
+                sfuPc!.addTransceiver(track, {
+                    direction: "sendonly",
+                    streams: [stream]
+                });
             }
-
-            sfuPc!.addTransceiver(track, init);
         });
 
         // 2. Initial Offer to establish session and name tracks
@@ -2254,11 +2263,11 @@ async function joinSFU(stream: MediaStream) {
 
         const trackObjects = sfuPc
             .getTransceivers()
-            .filter((t) => t.sender.track)
+            .filter((t) => t.mid !== null && (t.receiver.track.kind === "audio" || t.receiver.track.kind === "video"))
             .map((t) => ({
                 location: "local",
                 mid: t.mid,
-                trackName: t.sender.track!.kind, // "audio" or "video"
+                trackName: t.receiver.track.kind,
             }));
 
         console.log(
@@ -2803,16 +2812,9 @@ async function pullParticipantTracks(
     }
 
     const trackReqs: any[] = [];
-    // Flexible Pull: Request audio/video by NAME.
-    // If the remote peer has them, Cloudflare will return them.
-    // If not, we catch the error gracefully vs failing on a specific MID mismatch.
-    if (actualAudioMid) {
-        trackReqs.push({
-            location: "remote",
-            sessionId: targetSessionId,
-            trackName: "audio",
-        });
-    } else {
+    // Flexible Pull: Request audio/video ONLY if we have intent/MIDs or it's the first pull.
+    // Cloudflare 500s often happen when we request everything blindly before they are ready.
+    if (actualAudioMid || currentAttempts === 1) {
         trackReqs.push({
             location: "remote",
             sessionId: targetSessionId,
@@ -2820,18 +2822,17 @@ async function pullParticipantTracks(
         });
     }
 
-    if (actualVideoMid) {
+    if (actualVideoMid || currentAttempts === 1) {
         trackReqs.push({
             location: "remote",
             sessionId: targetSessionId,
             trackName: "video",
         });
-    } else {
-        trackReqs.push({
-            location: "remote",
-            sessionId: targetSessionId,
-            trackName: "video",
-        });
+    }
+
+    if (trackReqs.length === 0) {
+        console.warn(`[SFU] No tracks to pull for ${participantPublicId}, skipping.`);
+        return;
     }
 
     // 1. QUEUE the handshake
@@ -3435,7 +3436,7 @@ onBeforeUnmount(() => cleanup());
 </script>
 
 <template>
-    <div class="call-container" :class="gridClass">
+    <div class="call-container" :class="gridClass" :style="{ '--video-fit': store.videoFitMode }">
         <div class="call-bg"></div>
         <div class="call-overlay"></div>
 
@@ -4441,7 +4442,7 @@ onBeforeUnmount(() => cleanup());
                                     :sending="isSending"
                                     :is-mobile="false"
                                     compact
-                                    class="flex-shrink-0 z-10"
+                                    class="shrink-0 z-10"
                                     @send="
                                         () => {
                                             console.log(
@@ -4842,9 +4843,10 @@ onBeforeUnmount(() => cleanup());
 }
 
 .screen-share-video {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain !important;
+    background: #000;
 }
 
 .filmstrip {
@@ -4895,7 +4897,7 @@ onBeforeUnmount(() => cleanup());
 .video-element {
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: var(--video-fit, cover);
     background: #000;
 }
 .mirror-off {

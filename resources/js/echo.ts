@@ -132,10 +132,22 @@ function initializeEcho(): EchoInstance | null {
             authorizer: ((channel: any, _options: any) => {
                 return {
                     authorize: (socketId: string, callback: (error: boolean, data?: any) => void) => {
-                        api.post('/api/broadcasting/auth', {
+                        // Extract participant ID from URL if present (for guest/external meetings)
+                        const urlParams = new URLSearchParams(window.location.search);
+                        const participantId = urlParams.get('participant');
+                        
+                        const headers: any = {};
+                        if (participantId) {
+                            headers['X-Participant-ID'] = participantId;
+                        }
+
+                        const isMeetingChannel = channel.name.startsWith('meeting.') || channel.name.startsWith('presence-meeting.');
+                        const authEndpoint = isMeetingChannel ? '/api/meetings/broadcasting/auth' : '/api/broadcasting/auth';
+
+                        api.post(authEndpoint, {
                             socket_id: socketId,
                             channel_name: channel.name
-                        })
+                        }, { headers })
                         .then(response => {
                             callback(false, response.data);
                         })

@@ -22,6 +22,7 @@ import {
     ChevronRight,
     Circle,
     CheckCircle2,
+    Pause,
     Play,
     Send,
     Eye,
@@ -74,8 +75,6 @@ const comments = ref<any[]>([]);
 const statusHistory = ref<any[]>([]);
 const localMembers = ref<any[]>([]);
 const checklistItems = ref<any[]>([]);
-const newChecklistText = ref("");
-const isAddingItem = ref(false);
 const canSubmitForReview = ref(false);
 
 // Modal states

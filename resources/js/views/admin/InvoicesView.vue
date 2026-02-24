@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, computed } from "vue";
+import { ref, onMounted, watch } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import {
     Card,

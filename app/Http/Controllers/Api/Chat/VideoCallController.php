@@ -406,6 +406,7 @@ class VideoCallController extends Controller
                 Log::channel('videocall')->error('[SFU] Cloudflare tracks/new error:', [
                     'status' => $response->status(),
                     'body' => $responseData ?: $response->body(),
+                    'request_payload' => $request->only(['sessionDescription', 'tracks']),
                 ]);
             } else {
                 Log::channel('videocall')->info('[SFU] Cloudflare tracks/new success', [
@@ -514,9 +515,9 @@ class VideoCallController extends Controller
         $request->validate([
             'call_id' => 'required|string|regex:/^[0-9A-Z]{26}$/|max:26',
             'signal_type' => 'required|in:offer,answer,ice-candidate,signal',
-            'signal_data' => 'required|array|max:50',
+            'signal_data' => 'required|array|max:100',
             'signal_data.type' => 'sometimes|string|max:64',
-            'signal_data.sdp' => 'sometimes|string|max:20000',
+            'signal_data.sdp' => 'sometimes|string|max:50000',
             'target_public_id' => 'nullable|string',
         ]);
 

@@ -245,6 +245,29 @@ WorkSphere uses a multi-layered authorization system:
 - **Permission-Scoped UI**: Components and actions are conditionally rendered based on the user's active permissions.
 - **Secure APIs**: All backend endpoints are protected by Laravel Sanctum and fine-grained Policies/Gates.
 
+## 🧪 User Acceptance Testing (UAT)
+
+To ensure the stability of the WorkSphere Beta, please use the following checklist for verification:
+
+### 1. Communication & Calling
+- [ ] **Video Call Scaling**: Verify that video feeds default to "Fit" mode (not zoomed in).
+- [ ] **Scaling Toggle**: In Call Settings > Video, verify that switching between "Fit" and "Fill" correctly scales the video.
+- [ ] **Screenshare**: Verify that shared screens are always "contained" regardless of camera settings.
+- [ ] **Signaling**: Verify that calls ring correctly and can be joined from different windows/popup.
+
+### 2. Core Modules
+- [ ] **Dashboard**: Verify real-time updates of personal stats.
+- [ ] **Chat**: Verify messaging, typing indicators, and file sharing.
+- [ ] **Project Management**: Verify task creation and Kanban board transitions.
+- [ ] **Email**: Verify IMAP synchronization and sending via SMTP.
+
+### 3. Security & Admin
+- [ ] **Firewall**: Verify that IP blocking works as intended and triggers audit logs.
+- [ ] **Audit Trails**: Verify that login failures show correct reasons (e.g., "MFA Failed").
+- [ ] **Role Transitions**: Verify that permission changes take effect immediately without a hard refresh.
+
+---
+
 ## 🏛️ Architecture
 
 *   **API-First**: Headless API (`routes/api.php`) protected by Sanctum.

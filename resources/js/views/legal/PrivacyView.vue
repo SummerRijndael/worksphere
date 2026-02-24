@@ -393,6 +393,71 @@ const supportEmail = computed(
                     <li>By visiting the contact page on our website</li>
                 </ul>
             </div>
+
+            <hr class="border-(--border-subtle) my-12" />
+
+            <!-- UAT Section -->
+            <div
+                class="p-6 bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/30 rounded-xl"
+            >
+                <h2
+                    class="text-xl font-bold text-emerald-900 dark:text-emerald-100 mb-4 flex items-center gap-2"
+                >
+                    🧪 User Acceptance Testing (UAT)
+                </h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="space-y-3">
+                        <h4
+                            class="font-semibold text-emerald-800 dark:text-emerald-200 text-sm"
+                        >
+                            Data Transparency
+                        </h4>
+                        <ul
+                            class="text-xs space-y-2 text-emerald-700 dark:text-emerald-300 list-inside"
+                        >
+                            <li class="flex items-start gap-2">
+                                <div
+                                    class="mt-1 h-3 w-3 rounded border border-emerald-300 dark:border-emerald-700 flex-shrink-0"
+                                ></div>
+                                <span
+                                    >Verify Google API Disclosure accuracy</span
+                                >
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <div
+                                    class="mt-1 h-3 w-3 rounded border border-emerald-300 dark:border-emerald-700 flex-shrink-0"
+                                ></div>
+                                <span>Verify support email placeholders</span>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="space-y-3">
+                        <h4
+                            class="font-semibold text-emerald-800 dark:text-emerald-200 text-sm"
+                        >
+                            Control Verification
+                        </h4>
+                        <ul
+                            class="text-xs space-y-2 text-emerald-700 dark:text-emerald-300 list-inside"
+                        >
+                            <li class="flex items-start gap-2">
+                                <div
+                                    class="mt-1 h-3 w-3 rounded border border-emerald-300 dark:border-emerald-700 flex-shrink-0"
+                                ></div>
+                                <span>Verify section 11 links work</span>
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <div
+                                    class="mt-1 h-3 w-3 rounded border border-emerald-300 dark:border-emerald-700 flex-shrink-0"
+                                ></div>
+                                <span
+                                    >Verify responsive layout on mobile</span
+                                >
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
         </section>
     </article>
 </template>

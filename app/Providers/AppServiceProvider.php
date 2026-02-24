@@ -148,6 +148,8 @@ class AppServiceProvider extends ServiceProvider
             RateLimiter::for('password-reset', $noLimit);
             RateLimiter::for('login', $noLimit);
             RateLimiter::for('signaling', $noLimit);
+            RateLimiter::for('meeting-creation', $noLimit);
+            RateLimiter::for('meetings', $noLimit);
 
             return;
         }
@@ -185,6 +187,16 @@ class AppServiceProvider extends ServiceProvider
         // Rate limiter for WebRTC signaling (high burst capacity)
         RateLimiter::for('signaling', function (Request $request) {
             return Limit::perMinute(1000)->by($request->user()?->id ?: $request->ip());
+        });
+
+        // Rate limiter for meeting creation (prevent spamming new rooms)
+        RateLimiter::for('meeting-creation', function (Request $request) {
+            return Limit::perMinute(5)->by($request->user()?->id ?: $request->ip());
+        });
+
+        // General rate limiter for meeting-related metadata/list requests
+        RateLimiter::for('meetings', function (Request $request) {
+            return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
         });
     }
 }

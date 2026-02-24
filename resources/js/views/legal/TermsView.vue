@@ -267,6 +267,43 @@ const supportEmail = computed(() => authStore.publicConfig?.contact?.legal || 'l
                     <li>By visiting the contact page on our website</li>
                 </ul>
             </div>
+
+            <hr class="border-(--border-subtle) my-12" />
+
+            <!-- UAT Section -->
+            <div class="p-6 bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-xl">
+                <h2 class="text-xl font-bold text-blue-900 dark:text-blue-100 mb-4 flex items-center gap-2">
+                    🧪 User Acceptance Testing (UAT)
+                </h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="space-y-3">
+                        <h4 class="font-semibold text-blue-800 dark:text-blue-200 text-sm">Legal & Compliance</h4>
+                        <ul class="text-xs space-y-2 text-blue-700 dark:text-blue-300 list-inside">
+                            <li class="flex items-start gap-2">
+                                <div class="mt-1 h-3 w-3 rounded border border-blue-300 dark:border-blue-700 flex-shrink-0"></div>
+                                <span>Verify Alpha Notice visibility in different themes</span>
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <div class="mt-1 h-3 w-3 rounded border border-blue-300 dark:border-blue-700 flex-shrink-0"></div>
+                                <span>Verify correct company name rendering</span>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="space-y-3">
+                        <h4 class="font-semibold text-blue-800 dark:text-blue-200 text-sm">Functional Links</h4>
+                        <ul class="text-xs space-y-2 text-blue-700 dark:text-blue-300 list-inside">
+                            <li class="flex items-start gap-2">
+                                <div class="mt-1 h-3 w-3 rounded border border-blue-300 dark:border-blue-700 flex-shrink-0"></div>
+                                <span>Verify support email mailto link</span>
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <div class="mt-1 h-3 w-3 rounded border border-blue-300 dark:border-blue-700 flex-shrink-0"></div>
+                                <span>Verify navigation to/from legal pages</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
         </section>
     </article>
 </template>

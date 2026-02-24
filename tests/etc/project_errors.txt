@@ -1,0 +1,243 @@
+resources/js/components/communication/DialerModal.vue(2,15): error TS6133: 'computed' is declared but its value is never read.
+resources/js/components/faq/FaqPreviewModal.vue(2,1): error TS6192: All imports in import declaration are unused.
+resources/js/components/minichat/MiniChatMessageBubble.vue(164,56): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+resources/js/components/minichat/MiniChatMessageBubble.vue(168,30): error TS2769: No overload matches this call.
+  The last overload gave the following error.
+    Argument of type '"join-call"' is not assignable to parameter of type '"jump"'.
+resources/js/components/minichat/MiniChatWindow.vue(148,20): error TS6133: 'item' is declared but its value is never read.
+resources/js/components/modals/TeamEventModal.vue(417,25): error TS2322: Type 'number | null' is not assignable to type 'string | number | undefined'.
+  Type 'null' is not assignable to type 'string | number | undefined'.
+resources/js/components/projects/ProjectGanttChart.vue(3,19): error TS7016: Could not find a declaration file for module 'frappe-gantt'. '/home/ryann/projects/WorkSphere/node_modules/frappe-gantt/dist/frappe-gantt.es.js' implicitly has an 'any' type.
+  Try `npm i --save-dev @types/frappe-gantt` if it exists or add a new declaration (.d.ts) file containing `declare module 'frappe-gantt';`
+resources/js/components/tasks/TaskAttachments.vue(3,1): error TS6133: 'useAuthStore' is declared but its value is never read.
+resources/js/components/tasks/TaskBoard.vue(9,5): error TS2300: Duplicate identifier 'public_id'.
+resources/js/components/tasks/TaskBoard.vue(34,5): error TS2300: Duplicate identifier 'public_id'.
+resources/js/components/tasks/TaskBoard.vue(232,46): error TS2345: Argument of type '"quick-assign"' is not assignable to parameter of type '"task-click"'.
+resources/js/components/tasks/TaskDetailModal.vue(77,7): error TS6133: 'newChecklistText' is declared but its value is never read.
+resources/js/components/tasks/TaskDetailModal.vue(78,7): error TS6133: 'isAddingItem' is declared but its value is never read.
+resources/js/components/tasks/TaskDetailModal.vue(149,15): error TS2304: Cannot find name 'Pause'.
+resources/js/components/tasks/TaskFormModal.vue(451,13): error TS2322: Type '{ title: string; description: string; status: string; priority: number; due_date: string; assigned_to: string; estimated_hours: number; checklist: never[]; save_as_template: false; }' is not assignable to type '{ title: string; description: string; status: string; priority: number; due_date: string; assigned_to: string; qa_user_id: string; estimated_hours: number; checklist: any[]; save_as_template: boolean; } | { ...; }'.
+  Property 'qa_user_id' is missing in type '{ title: string; description: string; status: string; priority: number; due_date: string; assigned_to: string; estimated_hours: number; checklist: never[]; save_as_template: false; }' but required in type '{ title: string; description: string; status: string; priority: number; due_date: string; assigned_to: string; qa_user_id: string; estimated_hours: number; checklist: any[]; save_as_template: boolean; }'.
+resources/js/components/tasks/TaskList.vue(3,1): error TS6192: All imports in import declaration are unused.
+resources/js/components/tasks/TaskList.vue(4,25): error TS6133: 'Button' is declared but its value is never read.
+resources/js/components/tasks/TaskList.vue(4,33): error TS6133: 'Dropdown' is declared but its value is never read.
+resources/js/components/tasks/TaskList.vue(7,5): error TS6133: 'MoreHorizontal' is declared but its value is never read.
+resources/js/components/tasks/TaskList.vue(21,5): error TS6133: 'AlertTriangle' is declared but its value is never read.
+resources/js/components/tasks/TaskWorkflowActions.vue(3,1): error TS6133: 'useAuthStore' is declared but its value is never read.
+resources/js/components/templates/InvoiceTemplateBuilder.vue(61,63): error TS2345: Argument of type 'string | number | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+resources/js/components/templates/TaskTemplateBuilder.vue(57,60): error TS2345: Argument of type 'string | number | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+resources/js/components/tools/TeamCalendar.vue(91,30): error TS7006: Parameter 'start' implicitly has an 'any' type.
+resources/js/components/tools/TeamCalendar.vue(91,37): error TS7006: Parameter 'end' implicitly has an 'any' type.
+resources/js/components/tools/TeamCalendar.vue(102,45): error TS7006: Parameter 'h' implicitly has an 'any' type.
+resources/js/components/tools/TeamCalendar.vue(119,24): error TS7006: Parameter 'code' implicitly has an 'any' type.
+resources/js/components/tools/TeamCalendar.vue(436,46): error TS2322: Type '{ plugins: PluginDef[]; initialView: string; headerToolbar: boolean; events: any[]; editable: boolean; selectable: boolean; dayMaxEvents: boolean; height: string; datesSet: (arg: any) => void; eventClick: (info: any) => void; dateClick: (info: any) => void; eventClassNames: (arg: any) => string[]; }' is not assignable to type 'CalendarOptions'.
+  Types of property 'headerToolbar' are incompatible.
+    Type 'boolean' is not assignable to type 'false | ToolbarInput | undefined'.
+resources/js/components/ui/Input.vue(23,55): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'string'.
+resources/js/components/ui/Input.vue(79,22): error TS7006: Parameter 'e' implicitly has an 'any' type.
+resources/js/components/ui/Input.vue(83,22): error TS7006: Parameter 'e' implicitly has an 'any' type.
+resources/js/components/ui/Input.vue(88,21): error TS7006: Parameter 'e' implicitly has an 'any' type.
+resources/js/components/ui/PinInput.vue(41,13): error TS2322: Type 'string[]' is not assignable to type 'number[]'.
+  Type 'string' is not assignable to type 'number'.
+resources/js/components/ui/PinInput.vue(47,14): error TS2322: Type '(value: string[]) => void' is not assignable to type '(value: number[]) => any'.
+  Types of parameters 'value' and 'value' are incompatible.
+    Type 'number[]' is not assignable to type 'string[]'.
+      Type 'number' is not assignable to type 'string'.
+resources/js/components/ui/RichTextEditor.vue(10,25): error TS6133: 'TextSelection' is declared but its value is never read.
+resources/js/components/ui/RichTextEditor.vue(46,14): error TS6133: 'ImageIcon' is declared but its value is never read.
+resources/js/components/ui/RichTextEditor.vue(60,5): error TS6133: 'Plus' is declared but its value is never read.
+resources/js/components/ui/RichTextEditor.vue(221,18): error TS7006: Parameter 'font' implicitly has an 'any' type.
+resources/js/components/ui/RichTextEditor.vue(222,5): error TS18048: 'editor.value' is possibly 'undefined'.
+resources/js/components/ui/RichTextEditor.vue(225,10): error TS6133: 'unsetFont' is declared but its value is never read.
+resources/js/components/ui/RichTextEditor.vue(226,5): error TS18048: 'editor.value' is possibly 'undefined'.
+resources/js/components/ui/RichTextEditor.vue(256,21): error TS7006: Parameter 'url' implicitly has an 'any' type.
+resources/js/components/ui/RichTextEditor.vue(283,25): error TS18048: 'editor.value' is possibly 'undefined'.
+resources/js/components/ui/RichTextEditor.vue(289,9): error TS18048: 'editor.value' is possibly 'undefined'.
+resources/js/components/ui/RichTextEditor.vue(301,5): error TS18048: 'editor.value' is possibly 'undefined'.
+resources/js/components/ui/RichTextEditor.vue(322,9): error TS18048: 'editor.value' is possibly 'undefined'.
+resources/js/components/ui/RichTextEditor.vue(333,21): error TS18048: 'editor.value' is possibly 'undefined'.
+resources/js/components/ui/RichTextEditor.vue(345,9): error TS18048: 'editor.value' is possibly 'undefined'.
+resources/js/components/ui/RichTextEditor.vue(390,31): error TS7006: Parameter 'target' implicitly has an 'any' type.
+resources/js/components/ui/RichTextEditor.vue(472,51): error TS2769: No overload matches this call.
+  Overload 2 of 2, '(options: WritableComputedOptions<ToolbarButton[][], ToolbarButton[][]>, debugOptions?: DebuggerOptions | undefined): WritableComputedRef<...>', gave the following error.
+    Argument of type '() => ({ icon: FunctionalComponent<LucideProps, {}, any, {}>; action: () => void; isActive: () => boolean; title: string; }[] | ({ icon: FunctionalComponent<LucideProps, {}, any, {}>; ... 5 more ...; items?: undefined; } | { ...; })[])[]' is not assignable to parameter of type 'WritableComputedOptions<ToolbarButton[][], ToolbarButton[][]>'.
+resources/js/components/ui/RichTextEditor.vue(484,27): error TS18048: 'editor.value' is possibly 'undefined'.
+resources/js/components/ui/RichTextEditor.vue(491,27): error TS18048: 'editor.value' is possibly 'undefined'.
+resources/js/components/ui/RichTextEditor.vue(501,17): error TS18048: 'editor.value' is possibly 'undefined'.
+resources/js/components/ui/RichTextEditor.vue(509,17): error TS18048: 'editor.value' is possibly 'undefined'.
+resources/js/components/ui/RichTextEditor.vue(519,17): error TS18048: 'editor.value' is possibly 'undefined'.
+resources/js/components/ui/RichTextEditor.vue(527,17): error TS18048: 'editor.value' is possibly 'undefined'.
+resources/js/components/ui/RichTextEditor.vue(535,17): error TS18048: 'editor.value' is possibly 'undefined'.
+resources/js/components/ui/RichTextEditor.vue(543,17): error TS18048: 'editor.value' is possibly 'undefined'.
+resources/js/components/ui/RichTextEditor.vue(552,27): error TS18048: 'editor.value' is possibly 'undefined'.
+resources/js/components/ui/RichTextEditor.vue(559,27): error TS18048: 'editor.value' is possibly 'undefined'.
+resources/js/components/ui/RichTextEditor.vue(566,27): error TS18048: 'editor.value' is possibly 'undefined'.
+resources/js/components/ui/RichTextEditor.vue(573,27): error TS18048: 'editor.value' is possibly 'undefined'.
+resources/js/components/ui/RichTextEditor.vue(603,27): error TS18048: 'editor.value' is possibly 'undefined'.
+resources/js/components/ui/RichTextEditor.vue(611,17): error TS18048: 'editor.value' is possibly 'undefined'.
+resources/js/components/ui/RichTextEditor.vue(620,27): error TS18048: 'editor.value' is possibly 'undefined'.
+resources/js/components/ui/RichTextEditor.vue(627,27): error TS18048: 'editor.value' is possibly 'undefined'.
+resources/js/components/ui/RichTextEditor.vue(643,27): error TS18048: 'editor.value' is possibly 'undefined'.
+resources/js/components/ui/RichTextEditor.vue(681,28): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+resources/js/components/ui/RichTextEditor.vue(687,28): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+resources/js/components/ui/RichTextEditor.vue(710,24): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+resources/js/components/ui/RichTextEditor.vue(718,23): error TS18048: 'editor.value' is possibly 'undefined'.
+resources/js/components/ui/RichTextEditor.vue(724,23): error TS18048: 'editor.value' is possibly 'undefined'.
+resources/js/components/ui/RichTextEditor.vue(731,23): error TS18048: 'editor.value' is possibly 'undefined'.
+resources/js/components/ui/RichTextEditor.vue(736,23): error TS18048: 'editor.value' is possibly 'undefined'.
+resources/js/components/ui/RichTextEditor.vue(741,23): error TS18048: 'editor.value' is possibly 'undefined'.
+resources/js/components/ui/RichTextEditor.vue(746,23): error TS18048: 'editor.value' is possibly 'undefined'.
+resources/js/components/ui/RichTextEditor.vue(764,23): error TS18048: 'editor.value' is possibly 'undefined'.
+resources/js/components/ui/RichTextEditor.vue(770,23): error TS18048: 'editor.value' is possibly 'undefined'.
+resources/js/components/ui/RichTextEditor.vue(776,23): error TS18048: 'editor.value' is possibly 'undefined'.
+resources/js/components/ui/Tooltip.vue(19,71): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'string'.
+resources/js/components/ui/Tooltip.vue(24,63): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'string'.
+resources/js/components/ui/Tooltip.vue(57,22): error TS2322: Type 'string' is not assignable to type '"top" | "right" | "bottom" | "left" | undefined'.
+resources/js/components/ui/Tooltip.vue(58,22): error TS2322: Type 'string' is not assignable to type '"center" | "start" | "end" | undefined'.
+resources/js/composables/useDate.ts(39,82): error TS2345: Argument of type 'number | Date' is not assignable to parameter of type 'Date'.
+  Type 'number' is not assignable to type 'Date'.
+resources/js/composables/useDate.ts(59,82): error TS2345: Argument of type 'number | Date' is not assignable to parameter of type 'Date'.
+  Type 'number' is not assignable to type 'Date'.
+resources/js/composables/useEmailSanitization.ts(52,37): error TS2550: Property 'replaceAll' does not exist on type 'string'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2021' or later.
+resources/js/composables/useEmailSanitization.ts(57,37): error TS2550: Property 'replaceAll' does not exist on type 'string'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2021' or later.
+resources/js/composables/usePresence.ts(511,13): error TS2322: Type 'PresenceStatus' is not assignable to type '"online" | "offline" | "away" | "busy" | undefined'.
+  Type '"invisible"' is not assignable to type '"online" | "offline" | "away" | "busy" | undefined'.
+resources/js/composables/useRecaptcha.ts(55,32): error TS2774: This condition will always return true since this function is always defined. Did you mean to call it instead?
+resources/js/composables/useRecaptcha.ts(65,36): error TS2774: This condition will always return true since this function is always defined. Did you mean to call it instead?
+resources/js/composables/useTicketReport.ts(61,45): error TS2559: Type '"You will be notified when the file is ready."' has no properties in common with type 'ExternalToast<Component>'.
+resources/js/router/index.ts(70,23): error TS6133: 'to' is declared but its value is never read.
+resources/js/router/index.ts(81,23): error TS6133: 'to' is declared but its value is never read.
+resources/js/router/index.ts(185,35): error TS6133: 'from' is declared but its value is never read.
+resources/js/router/index.ts(222,27): error TS6133: 'from' is declared but its value is never read.
+resources/js/router/index.ts(1263,9): error TS6133: 'from' is declared but its value is never read.
+resources/js/services/auth.service.ts(156,7): error TS2739: Type 'ApiResponse<{ message: string; redirect: string; user: User; }>' is missing the following properties from type '{ message: string; redirect: string; user: User; }': redirect, user
+resources/js/services/email.service.ts(44,11): error TS2740: Type '{ data: never[]; }' is missing the following properties from type 'PaginatedResponse<Email>': current_page, first_page_url, from, last_page, and 8 more.
+resources/js/stores/emailStore.ts(481,20): error TS2393: Duplicate function implementation.
+resources/js/stores/emailStore.ts(554,20): error TS2393: Duplicate function implementation.
+resources/js/stores/notifications.ts(91,56): error TS2445: Property 'api' is protected and only accessible within class 'BaseService' and its subclasses.
+resources/js/stores/notifications.ts(108,56): error TS2445: Property 'api' is protected and only accessible within class 'BaseService' and its subclasses.
+resources/js/utils/sanitize.ts(10,55): error TS2503: Cannot find namespace 'DOMPurify'.
+resources/js/utils/sanitize.ts(11,59): error TS2503: Cannot find namespace 'DOMPurify'.
+resources/js/utils/sanitize.ts(11,88): error TS2503: Cannot find namespace 'DOMPurify'.
+resources/js/utils/sanitize.ts(12,58): error TS2503: Cannot find namespace 'DOMPurify'.
+resources/js/utils/sanitize.ts(12,87): error TS2503: Cannot find namespace 'DOMPurify'.
+resources/js/utils/sanitize.ts(18,24): error TS2503: Cannot find namespace 'DOMPurify'.
+resources/js/utils/sanitize.ts(45,59): error TS2769: No overload matches this call.
+  The last overload gave the following error.
+    Argument of type '"beforeSanitizeElements"' is not assignable to parameter of type 'DocumentFragmentHookName'.
+resources/js/utils/sanitize.ts(46,58): error TS2769: No overload matches this call.
+  The last overload gave the following error.
+    Argument of type '"afterSanitizeElements"' is not assignable to parameter of type 'DocumentFragmentHookName'.
+resources/js/views/DashboardView.vue(15,5): error TS2305: Module '"@/services/dashboard.service"' has no exported member 'Project'.
+resources/js/views/DashboardView.vue(70,38): error TS7006: Parameter 'p' implicitly has an 'any' type.
+resources/js/views/Email/EmailIndex.vue(71,30): error TS2459: Module '"@/stores/emailStore"' declares 'Email' locally, but it is not exported.
+resources/js/views/Email/EmailIndex.vue(119,10): error TS6133: 'handleCloseCompose' is declared but its value is never read.
+resources/js/views/Email/EmailPopupView.vue(27,28): error TS2307: Cannot find module '@/types/email' or its corresponding type declarations.
+resources/js/views/Email/EmailSettings.vue(267,28): error TS7006: Parameter 'files' implicitly has an 'any' type.
+resources/js/views/Email/EmailSettings.vue(268,20): error TS7006: Parameter 'file' implicitly has an 'any' type.
+resources/js/views/Email/EmailSettings.vue(342,34): error TS7006: Parameter 'id' implicitly has an 'any' type.
+resources/js/views/Email/EmailSettings.vue(362,22): error TS7006: Parameter 'media' implicitly has an 'any' type.
+resources/js/views/Email/EmailSettings.vue(375,21): error TS7006: Parameter 'e' implicitly has an 'any' type.
+resources/js/views/Email/EmailSettings.vue(400,21): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'titleT'.
+  Type 'null' is not assignable to type 'titleT'.
+resources/js/views/Email/EmailSettings.vue(443,10): error TS6133: 'formatBytes' is declared but its value is never read.
+resources/js/views/Email/EmailSettings.vue(452,10): error TS6133: 'getUsageDetails' is declared but its value is never read.
+resources/js/views/Email/components/EmailInlineComposer.vue(1051,22): error TS6133: 'view' is declared but its value is never read.
+resources/js/views/Email/components/EmailInlineComposer.vue(1051,45): error TS6133: 'slice' is declared but its value is never read.
+resources/js/views/Email/components/EmailInlineComposer.vue(1534,26): error TS6133: 'silent' is declared but its value is never read.
+resources/js/views/Email/components/EmailList.vue(839,6): error TS6196: 'SortField' is declared but never used.
+resources/js/views/Email/components/EmailList.vue(840,6): error TS6196: 'SortOrder' is declared but never used.
+resources/js/views/Email/components/EmailPreviewContent.vue(179,30): error TS2322: Type 'string | EmailRecipients' is not assignable to type 'PropertyKey | undefined'.
+  Type 'EmailRecipients' is not assignable to type 'PropertyKey | undefined'.
+resources/js/views/Email/components/EmailPreviewContent.vue(952,16): error TS6133: 'downloadOnDemand' is declared but its value is never read.
+resources/js/views/Email/components/EmailPreviewContent.vue(1031,7): error TS6133: 'visibleAttachments' is declared but its value is never read.
+resources/js/views/Email/components/EmailPreviewContent.vue(1094,10): error TS6133: 'match' is declared but its value is never read.
+resources/js/views/Email/components/EmailPreviewContent.vue(1387,31): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(type: "slotchange", listener: (this: ShadowRoot, ev: Event) => any, options?: boolean | AddEventListenerOptions | undefined): void', gave the following error.
+    Argument of type '"click"' is not assignable to parameter of type '"slotchange"'.
+  Overload 2 of 2, '(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions | undefined): void', gave the following error.
+    Argument of type '(event: MouseEvent) => void' is not assignable to parameter of type 'EventListenerOrEventListenerObject'.
+      Type '(event: MouseEvent) => void' is not assignable to type 'EventListener'.
+        Types of parameters 'event' and 'evt' are incompatible.
+          Type 'Event' is missing the following properties from type 'MouseEvent': altKey, button, buttons, clientX, and 23 more.
+resources/js/views/Email/components/EmailPreviewContent.vue(1390,31): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(type: "slotchange", listener: (this: ShadowRoot, ev: Event) => any, options?: boolean | AddEventListenerOptions | undefined): void', gave the following error.
+    Argument of type '"click"' is not assignable to parameter of type '"slotchange"'.
+  Overload 2 of 2, '(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions | undefined): void', gave the following error.
+    Argument of type '(event: MouseEvent) => void' is not assignable to parameter of type 'EventListenerOrEventListenerObject'.
+      Type '(event: MouseEvent) => void' is not assignable to type 'EventListener'.
+        Types of parameters 'event' and 'evt' are incompatible.
+          Type 'Event' is missing the following properties from type 'MouseEvent': altKey, button, buttons, clientX, and 23 more.
+resources/js/views/Email/components/EmailPreviewContent.vue(1553,10): error TS6133: 'toggleAttachment' is declared but its value is never read.
+resources/js/views/Email/components/EmailPreviewContent.vue(1561,10): error TS6133: 'downloadSelected' is declared but its value is never read.
+resources/js/views/Email/components/EmailPreviewContent.vue(1608,10): error TS6133: 'downloadAll' is declared but its value is never read.
+resources/js/views/Email/components/EmailPreviewPane.vue(1003,10): error TS6133: 'closeActiveTab' is declared but its value is never read.
+resources/js/views/Email/components/EmailSidebar.vue(362,5): error TS2305: Module '"@/services/email-account.service"' has no exported member 'type'.
+resources/js/views/Email/components/EmailSidebar.vue(362,5): error TS6133: 'type' is declared but its value is never read.
+resources/js/views/TaskDetailView.vue(230,7): error TS6133: 'priorityConfig' is declared but its value is never read.
+resources/js/views/TaskDetailView.vue(616,7): error TS6133: 'updateStatus' is declared but its value is never read.
+resources/js/views/TaskDetailView.vue(973,42): error TS2322: Type '({ label: string; icon: FunctionalComponent<LucideProps, {}, any, {}>; action: () => void; disabled?: undefined; variant?: undefined; } | { label: string; icon: FunctionalComponent<...>; action: () => void; disabled: boolean; variant?: undefined; } | { ...; })[]' is not assignable to type 'DropdownItem[]'.
+  Type '{ label: string; icon: FunctionalComponent<LucideProps, {}, any, {}>; action: () => void; disabled?: undefined; variant?: undefined; } | { label: string; icon: FunctionalComponent<...>; action: () => void; disabled: boolean; variant?: undefined; } | { ...; }' is not assignable to type 'DropdownItem'.
+    Type '{ label: string; icon: FunctionalComponent<LucideProps, {}, any, {}>; variant: string; action: () => void; disabled: boolean; }' is not assignable to type 'DropdownItem'.
+      Types of property 'variant' are incompatible.
+        Type 'string' is not assignable to type '"default" | "danger" | undefined'.
+resources/js/views/TasksView.vue(3,10): error TS6133: 'useRoute' is declared but its value is never read.
+resources/js/views/TicketDetailView.vue(300,10): error TS6133: 'handleTagInput' is declared but its value is never read.
+resources/js/views/TicketDetailView.vue(345,10): error TS6133: 'handleTagBlur' is declared but its value is never read.
+resources/js/views/TicketDetailView.vue(351,16): error TS6133: 'removeTag' is declared but its value is never read.
+resources/js/views/TicketDetailView.vue(2335,49): error TS2365: Operator '>=' cannot be applied to types 'number' and 'string | number'.
+resources/js/views/UserProfileView.vue(344,52): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+resources/js/views/UserProfileView.vue(345,55): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+resources/js/views/admin/InvoiceDetailView.vue(334,32): error TS2322: Type '({ label: string; icon: FunctionalComponent<LucideProps, {}, any, {}>; action: () => void; variant?: undefined; } | { label: string; icon: FunctionalComponent<LucideProps, {}, any, {}>; action: () => Promise<...>; variant: string; })[]' is not assignable to type 'DropdownItem[]'.
+  Type '{ label: string; icon: FunctionalComponent<LucideProps, {}, any, {}>; action: () => void; variant?: undefined; } | { label: string; icon: FunctionalComponent<LucideProps, {}, any, {}>; action: () => Promise<...>; variant: string; }' is not assignable to type 'DropdownItem'.
+    Type '{ label: string; icon: FunctionalComponent<LucideProps, {}, any, {}>; action: () => Promise<void>; variant: string; }' is not assignable to type 'DropdownItem'.
+      Types of property 'variant' are incompatible.
+        Type 'string' is not assignable to type '"default" | "danger" | undefined'.
+resources/js/views/admin/InvoiceDetailView.vue(748,14): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+resources/js/views/admin/InvoicesView.vue(2,33): error TS6133: 'computed' is declared but its value is never read.
+resources/js/views/admin/InvoicesView.vue(372,13): error TS2353: Object literal may only specify known properties, and 'variant' does not exist in type '{ label: string; icon: FunctionalComponent<LucideProps, {}, any, {}>; action: () => void; }'.
+resources/js/views/admin/InvoicesView.vue(387,13): error TS2353: Object literal may only specify known properties, and 'variant' does not exist in type '{ label: string; icon: FunctionalComponent<LucideProps, {}, any, {}>; action: () => void; }'.
+resources/js/views/admin/ProjectDetailView.vue(887,37): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+resources/js/views/admin/ProjectDetailView.vue(906,35): error TS2353: Object literal may only specify known properties, and 'separator' does not exist in type 'DropdownItem'.
+resources/js/views/admin/ProjectDetailView.vue(1628,57): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+resources/js/views/admin/ProjectDetailView.vue(1629,57): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+resources/js/views/admin/ProjectsManageView.vue(294,89): error TS2353: Object literal may only specify known properties, and 'variant' does not exist in type '{ label: string; icon: FunctionalComponent<LucideProps, {}, any, {}>; action: () => void; }'.
+resources/js/views/admin/templates/InvoiceTemplatesView.vue(134,148): error TS2345: Argument of type 'string | number | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+resources/js/views/admin/templates/TaskTemplatesView.vue(134,148): error TS2345: Argument of type 'string | number | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+resources/js/views/auth/LoginView.vue(336,13): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+resources/js/views/auth/LoginView.vue(466,13): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+resources/js/views/auth/LoginView.vue(488,45): error TS2345: Argument of type '{ name: string; email: string; password: string; password_confirmation: string; recaptcha_token: string | undefined; timezone: string; fingerprint: string | null; }' is not assignable to parameter of type 'RegisterRequest & { confirmPassword?: string | undefined; }'.
+  Type '{ name: string; email: string; password: string; password_confirmation: string; recaptcha_token: string | undefined; timezone: string; fingerprint: string | null; }' is not assignable to type 'RegisterRequest'.
+    Types of property 'fingerprint' are incompatible.
+      Type 'string | null' is not assignable to type 'string | undefined'.
+        Type 'null' is not assignable to type 'string | undefined'.
+resources/js/views/call/CallApp.vue(101,5): error TS6133: 'cancelReply' is declared but its value is never read.
+resources/js/views/call/CallApp.vue(106,5): error TS6133: 'scrollToBottom' is declared but its value is never read.
+resources/js/views/call/CallApp.vue(261,7): error TS6133: 'newLen' is declared but its value is never read.
+resources/js/views/call/CallApp.vue(762,7): error TS6133: 'toggleChat' is declared but its value is never read.
+resources/js/views/call/CallApp.vue(2472,5): error TS6133: 'isNegotiatingSFU' is declared but its value is never read.
+resources/js/views/call/CallApp.vue(2537,16): error TS6133: 'triggerSFURenegotiation' is declared but its value is never read.
+resources/js/views/call/CallApp.vue(2744,16): error TS6133: 'performSFUNegotiation' is declared but its value is never read.
+resources/js/views/chat/components/chat/MessageBubble.vue(175,56): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+resources/js/views/chat/components/chat/MessageBubble.vue(180,29): error TS2769: No overload matches this call.
+  The last overload gave the following error.
+    Type 'string | undefined' is not assignable to type 'string'.
+      Type 'undefined' is not assignable to type 'string'.
+resources/js/views/chat/components/chat/MessageList.vue(302,26): error TS2322: Type '(data: { chatId: string; callType: "video" | "audio"; }) => void' is not assignable to type '(payload: { chatId: string; callType: string; }) => any'.
+  Types of parameters 'data' and 'payload' are incompatible.
+    Type '{ chatId: string; callType: string; }' is not assignable to type '{ chatId: string; callType: "audio" | "video"; }'.
+      Types of property 'callType' are incompatible.
+        Type 'string' is not assignable to type '"audio" | "video"'.

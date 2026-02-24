@@ -8,13 +8,12 @@ import type {
     DashboardStat,
     DashboardFeatures,
     ActivityItem,
-    ProjectSummary,
     DashboardCharts,
     FinancialData,
     TaskDetailData,
-    Project,
+    ProjectSummary, // Changed from Project to ProjectSummary
 } from "@/services/dashboard.service";
-import { projectService } from "@/services/project.service";
+import { projectService, type Project } from "@/services/project.service";
 import { Card, Button, Badge, Avatar, Dropdown } from "@/components/ui";
 import {
     DashboardLineChart,
@@ -766,12 +765,12 @@ function getTrendIcon(trend: string) {
                                             <Badge
                                                 :variant="
                                                     getStatusColor(
-                                                        project.status.value
+                                                        project.status?.value
                                                     )
                                                 "
                                                 size="sm"
                                             >
-                                                {{ project.status.label }}
+                                                {{ project.status?.label }}
                                             </Badge>
                                             <span
                                                 class="text-xs text-[var(--text-muted)]"

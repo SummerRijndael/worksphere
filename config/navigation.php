@@ -109,6 +109,14 @@ return [
             'pinned_default' => true,
         ],
         [
+            'id' => 'meetings',
+            'label' => 'Meetings',
+            'icon' => 'video',
+            'route' => '/meetings',
+            'pinnable' => true,
+            'pinned_default' => true,
+        ],
+        [
             'id' => 'notes',
             'label' => 'Notes',
             'icon' => 'sticky-note', // Check Lucide icon name. 'sticky-note' is valid.

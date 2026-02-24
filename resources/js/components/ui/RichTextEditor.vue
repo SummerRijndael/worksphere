@@ -404,13 +404,14 @@ function confirmBorderColor() {
     if (borderColorTarget.value === "cell") {
         // Apply to current cell only
         editor.value
-            .chain()
+            ?.chain()
             .focus()
             .setCellAttribute("borderColor", color)
             .run();
     } else {
         // Apply to entire table - find table boundaries and update all cells within
-        const { state } = editor.value;
+        const state = editor.value?.state;
+        if (!state) return;
         const { selection } = state;
         const { $from } = selection;
 
@@ -449,7 +450,7 @@ function confirmBorderColor() {
             });
 
             if (modified) {
-                editor.value.view.dispatch(tr);
+                editor.value?.view.dispatch(tr);
             }
         }
     }

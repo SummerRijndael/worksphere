@@ -3,7 +3,7 @@ import { computed } from 'vue';
 import { useDate } from "@/composables/useDate";
 
 const { formatDate: formatDateComposable, formatDateTime: formatDateTimeComposable } = useDate();
-import { MapPin, Clock, AlignLeft, Calendar as CalendarIcon, Users, Edit, X, Trash2, Mail } from 'lucide-vue-next';
+import { MapPin, Clock, AlignLeft, Calendar as CalendarIcon, Users, Edit, X, Trash2, Mail, Video } from 'lucide-vue-next';
 import Modal from '@/components/ui/Modal.vue';
 import Button from '@/components/ui/Button.vue';
 import Badge from '@/components/ui/Badge.vue'; // Assuming Badge component exists, or we replace
@@ -52,6 +52,18 @@ const getStatusLabel = (status) => {
     }
 }
 
+const meetingId = computed(() => {
+    return props.event?.meeting_id || props.event?.extendedProps?.meeting_id;
+});
+
+const hasMeeting = computed(() => !!meetingId.value);
+
+const joinMeeting = () => {
+    if (!meetingId.value) return;
+    const publicId = props.event?.meeting?.public_id || props.event?.extendedProps?.meeting?.public_id || meetingId.value;
+    window.open(`/m/${publicId}`, '_blank');
+};
+
 
 </script>
 
@@ -83,6 +95,23 @@ const getStatusLabel = (status) => {
                         </div>
                     </div>
                 </div>
+            </div>
+
+            <!-- Join Meeting Button -->
+            <div v-if="hasMeeting" class="p-4 rounded-xl border border-blue-200 dark:border-blue-500/30 bg-blue-50/50 dark:bg-blue-500/5 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-500/20 flex items-center justify-center">
+                        <Video class="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <div>
+                        <p class="text-sm font-semibold text-gray-900 dark:text-white">WorkSphere Meeting</p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400">Join the video call directly from here</p>
+                    </div>
+                </div>
+                <Button variant="primary" size="sm" @click="joinMeeting" class="w-full sm:w-auto">
+                    <Video class="w-4 h-4 mr-2" />
+                    Join Meeting
+                </Button>
             </div>
 
             <!-- Description -->

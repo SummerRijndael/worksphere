@@ -1,0 +1,36 @@
+node_modules/@internationalized/date/dist/types.d.ts(162,5): error TS18028: Private identifiers are only available when targeting ECMAScript 2015 and higher.
+node_modules/@internationalized/date/dist/types.d.ts(203,5): error TS18028: Private identifiers are only available when targeting ECMAScript 2015 and higher.
+node_modules/@internationalized/date/dist/types.d.ts(233,5): error TS18028: Private identifiers are only available when targeting ECMAScript 2015 and higher.
+node_modules/@internationalized/date/dist/types.d.ts(282,5): error TS18028: Private identifiers are only available when targeting ECMAScript 2015 and higher.
+node_modules/emoji-mart/dist/index.d.ts(1,46): error TS2307: Cannot find module 'components/HTMLElement' or its corresponding type declarations.
+node_modules/emoji-mart/dist/index.d.ts(176,41): error TS2307: Cannot find module 'bundle-text:./PickerStyles.scss' or its corresponding type declarations.
+node_modules/reka-ui/dist/index.d.ts(9,32): error TS2307: Cannot find module 'vue-component-type-helpers' or its corresponding type declarations.
+resources/js/views/call/CallApp.vue(17,8): error TS1259: Module '"/home/ryann/projects/WorkSphere/node_modules/@types/simple-peer/index"' can only be default-imported using the 'esModuleInterop' flag
+resources/js/views/call/CallApp.vue(18,37): error TS2307: Cannot find module '@/echo' or its corresponding type declarations.
+resources/js/views/call/CallApp.vue(19,34): error TS2307: Cannot find module '@/services/videocall.service' or its corresponding type declarations.
+resources/js/views/call/CallApp.vue(20,35): error TS2307: Cannot find module '@/stores/videocall' or its corresponding type declarations.
+resources/js/views/call/CallApp.vue(22,30): error TS2307: Cannot find module '@/stores/chat' or its corresponding type declarations.
+resources/js/views/call/CallApp.vue(23,30): error TS2307: Cannot find module '@/stores/auth' or its corresponding type declarations.
+resources/js/views/call/CallApp.vue(24,22): error TS2307: Cannot find module '@/components/ui' or its corresponding type declarations.
+resources/js/views/call/CallApp.vue(26,25): error TS2307: Cannot find module '@/composables/useChat' or its corresponding type declarations.
+resources/js/views/call/CallApp.vue(30,25): error TS2307: Cannot find module '@/components/ui' or its corresponding type declarations.
+resources/js/views/call/CallApp.vue(32,35): error TS2307: Cannot find module '@/composables/useBackgroundBlur' or its corresponding type declarations.
+resources/js/views/call/CallApp.vue(33,25): error TS2307: Cannot find module '@/components/tools/MediaViewer.vue' or its corresponding type declarations.
+resources/js/views/call/CallApp.vue(311,26): error TS2802: Type 'MapIterator<[string, { audioMid?: string; videoMid?: string; screenMid?: string; }]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+resources/js/views/call/CallApp.vue(351,35): error TS2802: Type 'MapIterator<[string, Peer.Instance]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+resources/js/views/call/components/CallChatList.vue(3,30): error TS2307: Cannot find module '@/stores/chat' or its corresponding type declarations.
+resources/js/views/call/components/CallChatList.vue(4,30): error TS2307: Cannot find module '@/stores/auth' or its corresponding type declarations.
+resources/js/views/call/components/CallChatList.vue(5,22): error TS2307: Cannot find module '@/components/ui' or its corresponding type declarations.
+resources/js/views/call/components/CallChatList.vue(6,35): error TS2307: Cannot find module '@/components/minichat/MiniChatMessageBubble.vue' or its corresponding type declarations.
+resources/js/views/call/components/CallChatList.vue(7,30): error TS2307: Cannot find module '@/composables/useVideoCall' or its corresponding type declarations.
+resources/js/views/call/components/CallChatList.vue(8,30): error TS2307: Cannot find module '@/types/models/chat' or its corresponding type declarations.
+resources/js/views/call/components/CallSettingsModal.vue(3,44): error TS2307: Cannot find module '@/components/ui' or its corresponding type declarations.
+resources/js/views/call/components/CallSettingsModal.vue(5,35): error TS2307: Cannot find module '@/stores/videocall' or its corresponding type declarations.
+resources/js/views/call/components/CallSettingsModal.vue(6,35): error TS2307: Cannot find module '@/composables/useBackgroundBlur' or its corresponding type declarations.
+resources/js/views/call/components/NetworkHealthIndicator.vue(3,22): error TS2307: Cannot find module '@/components/ui' or its corresponding type declarations.
+resources/js/views/chat/components/chat/ChatComposer.vue(3,43): error TS2307: Cannot find module '@/types/models/chat' or its corresponding type declarations.
+resources/js/views/chat/components/chat/ChatComposer.vue(4,31): error TS2307: Cannot find module '@/stores/theme' or its corresponding type declarations.
+resources/js/views/chat/components/chat/ChatComposer.vue(5,22): error TS2307: Cannot find module '@/components/ui' or its corresponding type declarations.
+resources/js/views/chat/components/chat/ChatComposer.vue(6,8): error TS1192: Module '"/home/ryann/projects/WorkSphere/node_modules/@emoji-mart/data/index"' has no default export.
+resources/js/views/chat/components/chat/ChatComposer.vue(203,28): error TS2307: Cannot find module '@/composables/useMention' or its corresponding type declarations.
+resources/js/views/chat/components/chat/GiphyPicker.vue(3,22): error TS2307: Cannot find module '@/components/ui' or its corresponding type declarations.
