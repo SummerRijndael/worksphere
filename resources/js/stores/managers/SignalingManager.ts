@@ -34,7 +34,7 @@ export function createSignalingManager(
 
         log('CHANNEL', `Joining presence signaling channel: meeting.${meetingId}`);
         privateChannel = echoInstance.join(`meeting.${meetingId}`)
-            .listen('.MeetingSignal', (e: any) => {
+            .listen('.MeetingSignal', async (e: any) => {
                 log('RECV', `Received ${e.signal_type} from ${e.sender_participant_public_id}`, e.signal_data);
                 handleSignal(e.sender_participant_public_id, e.signal_type, e.signal_data);
             });
@@ -48,7 +48,7 @@ export function createSignalingManager(
         }
     }
 
-    function handleSignal(senderId: string, type: string, data: any) {
+    async function handleSignal(senderId: string, type: string, data: any) {
         const normalizedSenderId = senderId.toLowerCase();
         if (!localParticipantRef.value || normalizedSenderId === localParticipantRef.value.public_id) {
             // Ignore own signals
@@ -102,6 +102,116 @@ export function createSignalingManager(
                  window.location.href = '/dashboard';
             } else {
                  presenceManager.removeParticipant(data.rejected_participant_id);
+            }
+            return;
+        }
+
+        if (type === 'participant-kicked') {
+            log('SIGNAL', 'Participant kicked from the meeting');
+            if (data.targetId === localParticipantRef.value.public_id) {
+                 window.location.href = '/dashboard';
+            } else {
+                 presenceManager.removeParticipant(data.targetId);
+            }
+            return;
+        }
+
+        if (type === 'force-mute') {
+            log('SIGNAL', 'Host forced mute');
+            if (data.targetId === localParticipantRef.value.public_id) {
+                localParticipantRef.value.is_muted_by_host = true;
+            } else {
+                const p = presenceManager.participants.value.find(x => x.public_id === data.targetId);
+                if (p) p.is_muted_by_host = true;
+            }
+            return;
+        }
+
+        if (type === 'allow-unmute') {
+            log('SIGNAL', 'Host allowed unmute');
+            if (data.targetId === localParticipantRef.value.public_id) {
+                localParticipantRef.value.is_muted_by_host = false;
+            } else {
+                const p = presenceManager.participants.value.find(x => x.public_id === data.targetId);
+                if (p) p.is_muted_by_host = false;
+            }
+            return;
+        }
+
+        if (type === 'chat-message') {
+            log('SIGNAL', 'Received chat message', data);
+            const { useMeetingStore } = await import('@/stores/meeting');
+            const meetingStore = useMeetingStore();
+            meetingStore.receiveChatMessage(data);
+            return;
+        }
+
+        if (type === 'meeting-locked') {
+            log('SIGNAL', `Meeting lock state changed: ${data.is_locked}`);
+            const { useMeetingStore } = await import('@/stores/meeting');
+            const meetingStore = useMeetingStore();
+            meetingStore.isLocked = data.is_locked;
+            // Show toast feedback for lock state change
+            const { toast } = await import('vue-sonner');
+            if (data.is_locked) {
+                toast.info('🔒 Meeting locked — no new participants can join');
+            } else {
+                toast.info('🔓 Meeting unlocked — new participants can join');
+            }
+            return;
+        }
+
+        if (type === 'meeting-ended') {
+            log('SIGNAL', 'Meeting ended by host');
+            const { useMeetingStore } = await import('@/stores/meeting');
+            const meetingStore = useMeetingStore();
+            meetingStore.handleMeetingEnded();
+            return;
+        }
+
+        if (type === 'reaction') {
+            log('SIGNAL', `Received reaction from ${data.sender_participant_public_id}: ${data.emoji}`);
+            const { useMeetingStore } = await import('@/stores/meeting');
+            const meetingStore = useMeetingStore();
+            // In the new MeetingSignal format, sender is in the outer event, or in data
+            // data.sender_participant_public_id should be available if we broadcasted it right, 
+            // but let's check the MeetingSignal structure: it sends $signalData.
+            meetingStore.receiveReaction({ 
+                publicId: data.sender_participant_public_id || data.publicId || 'unknown', 
+                emoji: data.emoji 
+            });
+            return;
+        }
+
+        if (type === 'role-changed') {
+            log('SIGNAL', `Role changed: ${data.targetId} is now ${data.role}`);
+            if (data.targetId === localParticipantRef.value.public_id) {
+                localParticipantRef.value.role = data.role;
+            } else {
+                const p = presenceManager.participants.value.find(x => x.public_id === data.targetId);
+                if (p) p.role = data.role;
+            }
+            return;
+        }
+
+        if (type === 'force-camera-off') {
+            log('SIGNAL', 'Host forced camera off');
+            if (data.targetId === localParticipantRef.value.public_id) {
+                localParticipantRef.value.is_camera_disabled_by_host = true;
+            } else {
+                const p = presenceManager.participants.value.find(x => x.public_id === data.targetId);
+                if (p) p.is_camera_disabled_by_host = true;
+            }
+            return;
+        }
+
+        if (type === 'allow-camera') {
+            log('SIGNAL', 'Host allowed camera');
+            if (data.targetId === localParticipantRef.value.public_id) {
+                localParticipantRef.value.is_camera_disabled_by_host = false;
+            } else {
+                const p = presenceManager.participants.value.find(x => x.public_id === data.targetId);
+                if (p) p.is_camera_disabled_by_host = false;
             }
             return;
         }
@@ -162,6 +272,7 @@ export function createSignalingManager(
     return {
         setupSignaling,
         leaveSignaling,
+        sendSignal,
         broadcastHandState,
         broadcastScreenShareState,
         broadcastSfuMediaReady

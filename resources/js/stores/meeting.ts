@@ -18,6 +18,16 @@ export const useMeetingStore = defineStore('meeting', () => {
     const localParticipant = ref<MeetingParticipant | null>(null);
     const iceServers = ref<any[]>([]);
     const isDevMode = ref(false);
+    const chatMessages = ref<any[]>([]);
+    const isLocked = ref(false);
+
+    interface ReactionEvent {
+        id: string;
+        publicId: string;
+        emoji: string;
+        timestamp: number;
+    }
+    const activeReactions = ref<ReactionEvent[]>([]);
 
     // 2. Initialize Sub-Managers
     const layout = createLayoutManager(meeting, localParticipant);
@@ -60,6 +70,7 @@ export const useMeetingStore = defineStore('meeting', () => {
              // with participants nested inside it.
              const participants = data.participants || [];
              meeting.value = data;
+             isLocked.value = !!data.is_locked;
              
              // Normalize all incoming participant IDs
              participants.forEach((p: any) => {
@@ -142,6 +153,240 @@ export const useMeetingStore = defineStore('meeting', () => {
         stream.replaceTrack(kind, track);
     }
 
+    async function muteParticipant(publicId: string) {
+        if (!meeting.value || !presence.isHost.value) return;
+
+        // Skip backend API call for mock dev participants
+        if (!publicId.startsWith('mock-')) {
+            try {
+                await meetingService.muteParticipant(meeting.value.public_id, publicId);
+            } catch (e) {
+                log('ERROR', 'Failed to mute participant', e);
+                return;
+            }
+        }
+
+        const p = presence.allParticipants.value.find(x => x.public_id === publicId);
+        if (p) p.is_muted_by_host = true;
+        signaling.sendSignal('force-mute', { targetId: publicId });
+    }
+
+    async function unmuteParticipant(publicId: string) {
+        if (!meeting.value || !presence.isHost.value) return;
+
+        if (!publicId.startsWith('mock-')) {
+            try {
+                await meetingService.unmuteParticipant(meeting.value.public_id, publicId);
+            } catch (e) {
+                log('ERROR', 'Failed to allow unmute', e);
+                return;
+            }
+        }
+
+        const p = presence.allParticipants.value.find(x => x.public_id === publicId);
+        if (p) p.is_muted_by_host = false;
+        signaling.sendSignal('allow-unmute', { targetId: publicId });
+    }
+
+    async function disableCamera(publicId: string) {
+        if (!meeting.value || !presence.isHost.value) return;
+
+        if (!publicId.startsWith('mock-')) {
+            try {
+                await meetingService.disableCamera(meeting.value.public_id, publicId);
+            } catch (e) {
+                log('ERROR', 'Failed to disable camera', e);
+                return;
+            }
+        }
+
+        const p = presence.allParticipants.value.find(x => x.public_id === publicId);
+        if (p) p.is_camera_disabled_by_host = true;
+        signaling.sendSignal('force-camera-off', { targetId: publicId });
+    }
+
+    async function allowCamera(publicId: string) {
+        if (!meeting.value || !presence.isHost.value) return;
+
+        if (!publicId.startsWith('mock-')) {
+            try {
+                await meetingService.allowCamera(meeting.value.public_id, publicId);
+            } catch (e) {
+                log('ERROR', 'Failed to allow camera', e);
+                return;
+            }
+        }
+
+        const p = presence.allParticipants.value.find(x => x.public_id === publicId);
+        if (p) p.is_camera_disabled_by_host = false;
+        signaling.sendSignal('allow-camera', { targetId: publicId });
+    }
+
+    async function kickParticipant(publicId: string) {
+        if (!meeting.value || !presence.isHost.value) return;
+
+        if (!publicId.startsWith('mock-')) {
+            try {
+                await meetingService.kickParticipant(meeting.value.public_id, publicId);
+            } catch (e) {
+                log('ERROR', 'Failed to kick participant', e);
+                return;
+            }
+        } else {
+            presence.removeMockParticipant(publicId);
+        }
+
+        presence.removeParticipant(publicId);
+        signaling.sendSignal('participant-kicked', { targetId: publicId });
+    }
+
+    async function promoteParticipant(publicId: string) {
+        if (!meeting.value || !presence.isHost.value) return;
+
+        if (!publicId.startsWith('mock-')) {
+            try {
+                await meetingService.promoteParticipant(meeting.value.public_id, publicId);
+            } catch (e) {
+                log('ERROR', 'Failed to promote participant', e);
+                return;
+            }
+        }
+
+        const p = presence.allParticipants.value.find(x => x.public_id === publicId);
+        if (p) p.role = 'co-host';
+        signaling.sendSignal('role-changed', { targetId: publicId, role: 'co-host' });
+    }
+
+    async function demoteParticipant(publicId: string) {
+        if (!meeting.value || !presence.isHost.value) return;
+
+        if (!publicId.startsWith('mock-')) {
+            try {
+                await meetingService.demoteParticipant(meeting.value.public_id, publicId);
+            } catch (e) {
+                log('ERROR', 'Failed to demote participant', e);
+                return;
+            }
+        }
+
+        const p = presence.allParticipants.value.find(x => x.public_id === publicId);
+        if (p) p.role = 'participant';
+        signaling.sendSignal('role-changed', { targetId: publicId, role: 'participant' });
+    }
+
+    async function toggleLock() {
+        if (!meeting.value || !localParticipant.value) return;
+        
+        // Use same host check as isHost computed
+        if (!presence.isHost.value) {
+            log('ERROR', 'Only the host can lock/unlock the meeting');
+            return;
+        }
+
+        try {
+            const { toast } = await import('vue-sonner');
+            if (isLocked.value) {
+                await meetingService.unlockMeeting(meeting.value.public_id);
+                isLocked.value = false;
+                toast.success('🔓 Meeting unlocked', { description: 'New participants can join.' });
+            } else {
+                await meetingService.lockMeeting(meeting.value.public_id);
+                isLocked.value = true;
+                toast.success('🔒 Meeting locked', { description: 'No new participants can join.' });
+            }
+        } catch (e) {
+            log('ERROR', 'Failed to toggle meeting lock', e);
+            const { toast } = await import('vue-sonner');
+            toast.error('Failed to toggle meeting lock');
+        }
+    }
+
+    async function endMeeting() {
+        if (!meeting.value) return;
+        try {
+            await meetingService.endMeeting(meeting.value.public_id);
+            // The signal handler will call handleMeetingEnded for all participants
+            // including the host, so we don't need to call it here.
+        } catch (e) {
+            log('ERROR', 'Failed to end meeting', e);
+            // If the API call failed, still handle locally as fallback
+            handleMeetingEnded();
+        }
+    }
+
+    function handleMeetingEnded() {
+        // Stop all local tracks
+        stream.localStream?.getTracks().forEach(t => t.stop());
+        cleanup();
+        // Route to home via window since we don't have router in store
+        window.location.href = '/';
+    }
+
+    // --- Reactions ---
+
+    function sendReaction(emoji: string) {
+        if (!localParticipant.value) return;
+        
+        signaling.sendSignal('reaction', { emoji });
+        
+        // Optimistically apply local reaction
+        receiveReaction({
+            publicId: localParticipant.value.public_id,
+            emoji
+        });
+    }
+
+    function receiveReaction(data: { publicId: string, emoji: string }) {
+        const reactionId = Math.random().toString(36).substring(2, 9);
+        const reaction = {
+            id: reactionId,
+            publicId: data.publicId,
+            emoji: data.emoji,
+            timestamp: Date.now()
+        };
+        
+        activeReactions.value.push(reaction);
+        
+        // Auto-remove after 4 seconds
+        setTimeout(() => {
+            const idx = activeReactions.value.findIndex(r => r.id === reactionId);
+            if (idx !== -1) {
+                activeReactions.value.splice(idx, 1);
+            }
+        }, 4000);
+    }
+
+    // --- Chat ---
+
+    async function fetchMessages() {
+        if (!meeting.value) return;
+        try {
+            const msgs = await meetingService.getMessages(meeting.value.public_id);
+            chatMessages.value = msgs;
+        } catch (e) {
+            log('ERROR', 'Failed to fetch messages', e);
+        }
+    }
+
+    async function sendMessage(body: string) {
+        if (!meeting.value || !localParticipant.value) return;
+        try {
+            // Note: Optimistic UI updates could be added here, 
+            // but we rely on the broadcast to ensure everyone including us gets it.
+            await meetingService.sendMessage(meeting.value.public_id, localParticipant.value.public_id, body);
+        } catch (e) {
+            log('ERROR', 'Failed to send message', e);
+            throw e;
+        }
+    }
+
+    function receiveChatMessage(msg: any) {
+        // Prevent strictly duplicate IDs, though usually broadcast logic only sends once
+        if (!chatMessages.value.find(m => m.id === msg.id)) {
+            chatMessages.value.push(msg);
+        }
+    }
+
     function toggleDevMode() { 
         isDevMode.value = !isDevMode.value; 
     }
@@ -189,6 +434,29 @@ export const useMeetingStore = defineStore('meeting', () => {
         admitParticipant: presence.admitParticipant,
         rejectParticipant: presence.rejectParticipant,
         removeParticipant: presence.removeParticipant,
+        muteParticipant,
+        unmuteParticipant,
+        disableCamera,
+        allowCamera,
+        kickParticipant,
+        promoteParticipant,
+        demoteParticipant,
+        
+        // Chat Actions
+        chatMessages,
+        fetchMessages,
+        sendMessage,
+        receiveChatMessage,
+
+        // Reactions
+        activeReactions,
+        sendReaction,
+        receiveReaction,
+
+        // Host Actions
+        toggleLock, // Exposed toggleLock
+        endMeeting,
+        handleMeetingEnded,
         
         // Layout Action proxies
         setSpotlight: layout.setSpotlight,

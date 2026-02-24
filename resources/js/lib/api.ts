@@ -110,7 +110,10 @@ api.interceptors.response.use(
 
             localStorage.removeItem("worksphere-auth");
 
-            if (!window.location.pathname.startsWith("/auth")) {
+            // Don't redirect to login if on meeting pages (guests access meetings without auth)
+            // or auth pages (prevent race conditions during login flows)
+            const isMeetingPage = window.location.pathname.startsWith("/m/");
+            if (!window.location.pathname.startsWith("/auth") && !isMeetingPage) {
                 window.location.href = "/auth/login";
             }
             return Promise.reject(error);

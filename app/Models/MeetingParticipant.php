@@ -13,10 +13,14 @@ class MeetingParticipant extends Model
         'role',
         'status',
         'metadata',
+        'is_muted_by_host',
+        'is_camera_disabled_by_host',
     ];
 
     protected $casts = [
         'metadata' => 'array',
+        'is_muted_by_host' => 'boolean',
+        'is_camera_disabled_by_host' => 'boolean',
     ];
 
     protected static function boot()

@@ -1,7 +1,5 @@
 <template>
-    <div
-        class="w-full h-full relative group bg-slate-800 flex items-center justify-center"
-    >
+    <div class="tile-root" :class="{ 'tile-speaking': isSpeaking }">
         <!-- Local Video -->
         <video
             v-if="isLocal"
@@ -9,12 +7,10 @@
             muted
             playsinline
             :ref="bindLocalVideo"
-            class="w-full h-full transition-opacity duration-300"
+            class="tile-video"
             :class="[
-                { 'opacity-0': !localCameraOn && !isScreenShare },
-                isSpotlight || isScreenShare
-                    ? 'object-contain bg-black'
-                    : 'object-cover',
+                { 'tile-video--hidden': !localCameraOn && !isScreenShare },
+                isSpotlight || isScreenShare ? 'tile-video--contain' : 'tile-video--cover',
             ]"
         ></video>
 
@@ -24,77 +20,47 @@
             autoplay
             playsinline
             :ref="bindRemoteVideo"
-            class="w-full h-full"
-            :class="
-                isSpotlight || isScreenShare
-                    ? 'object-contain bg-black'
-                    : 'object-cover'
-            "
+            class="tile-video"
+            :class="isSpotlight || isScreenShare ? 'tile-video--contain' : 'tile-video--cover'"
             :data-participant="participant.public_id"
             :data-screen="isScreenShare ? 'true' : 'false'"
         ></video>
 
         <!-- Avatar Fallback (Initials) -->
-        <div
-            v-if="!hasActiveVideo"
-            class="absolute inset-0 z-0 flex items-center justify-center bg-slate-800/50"
-        >
-            <div
-                class="flex h-32 w-32 items-center justify-center rounded-full bg-slate-700 text-6xl font-medium text-white shadow-xl ring-4 ring-slate-600/50 transition-transform hover:scale-105"
-            >
+        <div v-if="!hasActiveVideo" class="tile-avatar-wrap">
+            <div class="tile-avatar">
                 {{ initials }}
             </div>
         </div>
 
-        <!-- Participant Info Overlay -->
-        <div
-            class="absolute bottom-3 left-3 flex items-center gap-1.5 bg-black/60 backdrop-blur-sm px-2.5 py-1 rounded-lg text-xs font-medium text-white transition-opacity shadow-lg"
-            :class="{
-                'opacity-100': isSpotlight,
-                'opacity-0 group-hover:opacity-100': !isSpotlight,
-            }"
-        >
+        <!-- Participant Name Label (Bottom-Left) -->
+        <div class="tile-name-bar">
             <Icon
                 v-if="isLocal && !localMicOn"
                 name="mic-off"
-                size="12"
-                class="text-red-400"
+                size="14"
+                class="tile-mic-muted"
             />
-            <span>{{ displayName }}</span>
-            <span v-if="participant.role === 'host'" class="text-blue-400 ml-1"
-                >(Host)</span
-            >
-            <Icon
-                v-if="isSpotlight"
-                name="pin"
-                size="12"
-                class="text-indigo-400 ml-1"
-            />
+            <span class="tile-name-text">{{ displayName }}</span>
         </div>
 
-        <!-- Hover Pin Button -->
+        <!-- Hover Pin Button (Top-Right) -->
         <button
             v-if="!isSpotlight"
             @click.stop="meetingStore.setSpotlight(participant.public_id)"
-            class="absolute top-3 right-3 w-8 h-8 rounded-lg bg-black/60 backdrop-blur-sm flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all hover:bg-slate-700 hover:scale-110"
-            title="Spotlight for everyone"
+            class="tile-pin-btn"
+            title="Pin"
         >
             <Icon name="pin" size="14" />
         </button>
         <button
             v-else
             @click.stop="meetingStore.setSpotlight(null)"
-            class="absolute top-3 right-3 w-8 h-8 rounded-lg bg-indigo-600 backdrop-blur-sm flex items-center justify-center text-white hover:bg-indigo-500 shadow-lg transition-all hover:scale-110"
-            title="Remove spotlight"
+            class="tile-pin-btn tile-pin-btn--active"
+            title="Unpin"
         >
             <Icon name="pin-off" size="14" />
         </button>
-
-        <!-- Active Speaker Outline -->
-        <div
-            v-if="meetingStore.activeSpeakerId === participant.public_id && !isScreenShare"
-            class="absolute inset-0 border-4 border-indigo-500 rounded-2xl pointer-events-none transition-all"
-        ></div>
     </div>
 </template>
 
@@ -110,11 +76,13 @@ const props = defineProps<{
     localCameraOn?: boolean;
     localMicOn?: boolean;
     localStreamOverride?: MediaStream | null;
+    isLocal?: boolean;
 }>();
 
 const meetingStore = useMeetingStore();
 
 const isLocal = computed(() => {
+    if (props.isLocal) return true;
     return (
         props.participant.public_id === meetingStore.localParticipant?.public_id
     );
@@ -131,13 +99,17 @@ const hasActiveVideo = computed(() => {
     return meetingStore.remoteStreams.has(streamIdLookup.value);
 });
 
+const isSpeaking = computed(() => {
+    return meetingStore.activeSpeakerId === props.participant.public_id && !props.isScreenShare;
+});
+
 const displayName = computed(() => {
     let name = isLocal.value
         ? "You"
         : props.participant.user?.name ||
           props.participant.metadata?.guest_name ||
           "Participant";
-    if (props.isScreenShare) name += " (Screen)";
+    if (props.isScreenShare) name += " (presenting)";
     return name;
 });
 
@@ -196,7 +168,6 @@ function updateRemoteStream() {
     }
 }
 
-// Watch for stream changes with deep reactivity or regular trigger
 watch(
     [() => meetingStore.remoteStreams.get(streamIdLookup.value), remoteVideo],
     ([newStream, videoEl]) => {
@@ -215,3 +186,120 @@ onMounted(() => {
     }
 });
 </script>
+
+<style scoped>
+.tile-root {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    background: #3c4043;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border-radius: 8px;
+}
+
+.tile-speaking {
+    box-shadow: 0 0 0 3px #8ab4f8;
+}
+
+.tile-video {
+    width: 100%;
+    height: 100%;
+    transition: opacity 0.3s ease;
+}
+.tile-video--cover { object-fit: cover; }
+.tile-video--contain { object-fit: contain; background: #000; }
+.tile-video--hidden { opacity: 0; position: absolute; }
+
+/* Avatar */
+.tile-avatar-wrap {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+}
+
+.tile-avatar {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: #5f6368;
+    color: #e8eaed;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    font-weight: 500;
+    font-family: 'Google Sans', 'Roboto', sans-serif;
+    user-select: none;
+}
+
+/* Name Bar */
+.tile-name-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 10px;
+    z-index: 5;
+    pointer-events: none;
+}
+
+.tile-mic-muted {
+    color: #ea4335;
+}
+
+.tile-name-text {
+    font-size: 12px;
+    font-weight: 500;
+    color: #e8eaed;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.7);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 180px;
+}
+
+/* Pin Button */
+.tile-pin-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(0,0,0,0.5);
+    color: #e8eaed;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s, background 0.15s;
+    z-index: 10;
+}
+
+.tile-root:hover .tile-pin-btn {
+    opacity: 1;
+}
+
+.tile-pin-btn:hover {
+    background: rgba(0,0,0,0.7);
+}
+
+.tile-pin-btn--active {
+    opacity: 1;
+    background: #8ab4f8;
+    color: #202124;
+}
+.tile-pin-btn--active:hover {
+    background: #aecbfa;
+}
+</style>

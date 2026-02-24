@@ -31,6 +31,8 @@ export interface MeetingParticipant {
     status: 'waiting' | 'admitted' | 'rejected' | 'left';
     metadata: any;
     user?: any;
+    is_muted_by_host?: boolean;
+    is_camera_disabled_by_host?: boolean;
 }
 
 class MeetingService extends BaseService {
@@ -39,12 +41,17 @@ class MeetingService extends BaseService {
     }
 
     async createMeeting(data: Partial<Meeting>) {
-        return this.post<Meeting>("/api/meetings", data);
+        const response = await this.api.post<Meeting>("/api/meetings", data);
+        return response.data;
     }
 
     async getMeeting(id: string): Promise<{ meeting: Meeting; participants: MeetingParticipant[] }> {
         const response = await this.api.get(`/api/meetings/${id}`);
         return response.data;
+    }
+
+    async endMeeting(meetingId: string): Promise<any> {
+        return this.post(`/api/meetings/${meetingId}/end`, {});
     }
 
     async admitParticipant(meetingId: string, participantId: string): Promise<any> {
@@ -55,15 +62,56 @@ class MeetingService extends BaseService {
         return this.post(`/api/meetings/${meetingId}/participants/${participantId}/reject`, {});
     }
 
+    async muteParticipant(meetingId: string, participantId: string): Promise<any> {
+        return this.post(`/api/meetings/${meetingId}/participants/${participantId}/mute`, {});
+    }
+
+    async unmuteParticipant(meetingId: string, participantId: string): Promise<any> {
+        return this.post(`/api/meetings/${meetingId}/participants/${participantId}/unmute`, {});
+    }
+
+    async disableCamera(meetingId: string, participantId: string): Promise<any> {
+        return this.post(`/api/meetings/${meetingId}/participants/${participantId}/camera-off`, {});
+    }
+
+    async allowCamera(meetingId: string, participantId: string): Promise<any> {
+        return this.post(`/api/meetings/${meetingId}/participants/${participantId}/camera-allow`, {});
+    }
+
+    async kickParticipant(meetingId: string, participantId: string): Promise<any> {
+        return this.post(`/api/meetings/${meetingId}/participants/${participantId}/kick`, {});
+    }
+
+    async promoteParticipant(meetingId: string, participantId: string): Promise<any> {
+        return this.post(`/api/meetings/${meetingId}/participants/${participantId}/promote`, {});
+    }
+
+    async demoteParticipant(meetingId: string, participantId: string): Promise<any> {
+        return this.post(`/api/meetings/${meetingId}/participants/${participantId}/demote`, {});
+    }
+
+    async getMessages(meetingId: string): Promise<any[]> {
+        const response = await this.api.get(`/api/meetings/${meetingId}/messages`);
+        return response.data.data || response.data;
+    }
+
+    async sendMessage(meetingId: string, participantId: string, body: string): Promise<any> {
+        const response = await this.api.post(`/api/meetings/${meetingId}/messages`, {
+            participant_public_id: participantId,
+            body
+        });
+        return response.data.data || response.data;
+    }
+
     async getTurnCredentials(meetingId: string): Promise<{ ice_servers: RTCIceServer[] }> {
         const response = await this.api.get(`/api/meetings/${meetingId}/turn-credentials`);
         return response.data;
     }
 
-    async joinMeeting(id: string, name?: string, password?: string): Promise<{ meeting: Meeting; participant: MeetingParticipant }> {
+    async joinMeeting(id: string, name?: string, password?: string, email?: string): Promise<{ meeting: Meeting; participant: MeetingParticipant }> {
         return this.post<{ meeting: Meeting; participant: MeetingParticipant }>(
             `/api/meetings/${id}/join`,
-            { name, password }
+            { name, password, email }
         );
     }
 
@@ -82,6 +130,14 @@ class MeetingService extends BaseService {
 
     async deleteMeeting(id: string) {
         return this.delete(`/api/meetings/${id}`);
+    }
+
+    async lockMeeting(id: string) {
+        return this.post(`/api/meetings/${id}/lock`, {});
+    }
+
+    async unlockMeeting(id: string) {
+        return this.post(`/api/meetings/${id}/unlock`, {});
     }
 
     // --- SFU Protocol endpoints ---

@@ -973,6 +973,11 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
         Route::patch('/{meeting}', [\App\Http\Controllers\Api\MeetingController::class, 'update']);
         Route::post('/{meeting}/participants/{participant}/admit', [\App\Http\Controllers\Api\MeetingController::class, 'admit']);
         Route::post('/{meeting}/participants/{participant}/reject', [\App\Http\Controllers\Api\MeetingController::class, 'reject']);
+        Route::post('/{meeting}/participants/{participant}/mute', [\App\Http\Controllers\Api\MeetingController::class, 'mute']);
+        Route::post('/{meeting}/participants/{participant}/unmute', [\App\Http\Controllers\Api\MeetingController::class, 'unmute']);
+        Route::post('/{meeting}/participants/{participant}/camera-off', [\App\Http\Controllers\Api\MeetingController::class, 'cameraOff']);
+        Route::post('/{meeting}/participants/{participant}/camera-allow', [\App\Http\Controllers\Api\MeetingController::class, 'cameraAllow']);
+        Route::post('/{meeting}/participants/{participant}/kick', [\App\Http\Controllers\Api\MeetingController::class, 'kick']);
         Route::delete('/{meeting}', [\App\Http\Controllers\Api\MeetingController::class, 'destroy']);
     });
 });
@@ -988,6 +993,13 @@ Route::middleware(['throttle:meetings'])->prefix('meetings')->group(function () 
     Route::post('/{meeting}/signal', [\App\Http\Controllers\Api\MeetingController::class, 'signal'])
         ->withoutMiddleware('throttle:api')
         ->middleware('throttle:signaling');
+    Route::post('/{meeting}/lock', [\App\Http\Controllers\Api\MeetingController::class, 'lock']);
+    Route::post('/{meeting}/unlock', [\App\Http\Controllers\Api\MeetingController::class, 'unlock']);
+    Route::post('/{meeting}/end', [\App\Http\Controllers\Api\MeetingController::class, 'end']);
+
+    // Meeting Chat
+    Route::get('/{meeting}/messages', [\App\Http\Controllers\Api\MeetingController::class, 'getMessages']);
+    Route::post('/{meeting}/messages', [\App\Http\Controllers\Api\MeetingController::class, 'sendMessage']);
 
     // SFU Proxy Routes — exclude content-scanning firewall middleware
     // SDP and WebRTC data triggers false positives in XSS/SQLi/LFI detectors

@@ -121,13 +121,21 @@
                     </div>
                 </div>
 
-                <div v-if="!authStore.isAuthenticated" class="w-full mb-4">
+                <div v-if="!authStore.isAuthenticated" class="w-full space-y-3 mb-4">
                     <input
                         v-model="guestName"
-                        placeholder="Enter your name to join"
+                        placeholder="Enter your name"
                         class="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                         @keyup.enter="joinMeeting"
                     />
+                    <input
+                        v-model="guestEmail"
+                        type="email"
+                        placeholder="Enter your email address"
+                        class="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                        @keyup.enter="joinMeeting"
+                    />
+                    <p v-if="guestEmailError" class="text-xs text-red-400 text-left">{{ guestEmailError }}</p>
                 </div>
 
                 <!-- Password input: shown only for non-hosts when meeting is password protected -->
@@ -152,7 +160,7 @@
                         @click="joinMeeting"
                         :disabled="
                             joining ||
-                            (!authStore.isAuthenticated && !guestName.trim()) ||
+                            (!authStore.isAuthenticated && (!guestName.trim() || !guestEmail.trim())) ||
                             (meeting?.has_password &&
                                 !isHost &&
                                 !password.trim())
@@ -167,11 +175,18 @@
                         />
                         {{ joining ? "Joining..." : "Join now" }}
                     </button>
-                    <!-- Present Button (Optional Placeholder for Future) -->
+                    <!-- Present Button -->
                     <button
-                        class="flex-1 bg-transparent hover:bg-slate-800 text-blue-400 px-6 py-3 rounded-full font-medium transition-colors border border-slate-700 min-h-[48px]"
-                        disabled
-                        title="Presenting on join is currently disabled"
+                        @click="joinAndPresent"
+                        :disabled="
+                            joining ||
+                            (!authStore.isAuthenticated && (!guestName.trim() || !guestEmail.trim())) ||
+                            (meeting?.has_password &&
+                                !isHost &&
+                                !password.trim())
+                        "
+                        class="flex-1 bg-transparent hover:bg-slate-800 text-blue-400 px-6 py-3 rounded-full font-medium transition-colors border border-slate-700 min-h-[48px] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                        title="Join meeting and start presenting"
                     >
                         <Icon name="monitor-up" size="18" class="inline mr-2" />
                         Present
@@ -219,6 +234,8 @@ const localStream = ref<MediaStream | null>(null);
 const isCameraOn = ref(false); // Default OFF
 const isMicOn = ref(false); // Default OFF
 const guestName = ref("");
+const guestEmail = ref("");
+const guestEmailError = ref("");
 const password = ref("");
 const showSettings = ref(false);
 
@@ -445,9 +462,53 @@ watch(showSettings, (isOpen) => {
 const joinMeeting = async () => {
     try {
         joining.value = true;
+        guestEmailError.value = "";
+
+        // Validate email for guests
+        if (!authStore.isAuthenticated) {
+            const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailPattern.test(guestEmail.value.trim())) {
+                guestEmailError.value = "Please enter a valid email address";
+                joining.value = false;
+                return;
+            }
+        }
 
         // Only store the stream — do NOT call addLocalStream here.
         // addLocalStream triggers initSFU which needs localParticipant (only set after initializeMeeting in the Room).
+        if (localStream.value) {
+            meetingStore.setStream(localStream.value);
+        }
+
+        const res = await meetingService.joinMeeting(
+            meetingId,
+            guestName.value,
+            password.value || undefined,
+            guestEmail.value.trim() || undefined,
+        );
+
+        router.push({
+            name: "meeting-room",
+            params: { id: meetingId },
+            query: { participant: res.participant.public_id },
+        });
+    } catch (e: any) {
+        console.error("Failed to join meeting", e);
+        if (e?.response?.status === 403) {
+            toast.error("Incorrect meeting password.");
+        } else if (e?.response?.status === 401) {
+            toast.error("You are not authorized to join this meeting.");
+        } else {
+            toast.error("An error occurred while joining the meeting.");
+        }
+        joining.value = false;
+    }
+};
+
+const joinAndPresent = async () => {
+    try {
+        joining.value = true;
+
         if (localStream.value) {
             meetingStore.setStream(localStream.value);
         }
@@ -461,7 +522,7 @@ const joinMeeting = async () => {
         router.push({
             name: "meeting-room",
             params: { id: meetingId },
-            query: { participant: res.participant.public_id },
+            query: { participant: res.participant.public_id, present: '1' },
         });
     } catch (e: any) {
         console.error("Failed to join meeting", e);

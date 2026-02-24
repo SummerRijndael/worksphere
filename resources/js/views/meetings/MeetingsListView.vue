@@ -322,12 +322,18 @@ const startInstantMeeting = async () => {
             start_time: dayjs().toISOString(),
             settings: { instant: true },
         });
+
         toast.success("Instant meeting created");
         openMeetingPopup(meeting.public_id);
     } catch (error) {
+        console.error("Instant meeting creation failed:", error);
         toast.error("Failed to create meeting");
-    } finally {
         isCreatingInstant.value = false;
+    } finally {
+        // Enforce a strict 1-second debounce after successful API attempts to prevent rapid-fire clicking
+        setTimeout(() => {
+            isCreatingInstant.value = false;
+        }, 1000);
     }
 };
 

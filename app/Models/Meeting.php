@@ -16,6 +16,7 @@ class Meeting extends Model
         'status',
         'settings',
         'password',
+        'is_locked',
         'app_id',
     ];
 

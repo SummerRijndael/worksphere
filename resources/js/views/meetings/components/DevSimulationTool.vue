@@ -211,43 +211,16 @@ const generateName = () => {
 };
 
 const addDummyParticipant = () => {
-    const id = `dummy-${Math.random().toString(36).substring(2, 9)}`;
-    const newParticipant = {
-        id: Math.floor(Math.random() * 10000),
-        meeting_id: meetingStore.meeting?.id || 0,
-        user_id: null,
-        public_id: id,
-        role: "participant",
-        status: "admitted",
-        metadata: {
-            guest_name: generateName(),
-        },
-        user: undefined,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-    };
-
-    // Inject into store
-    meetingStore.participants.push(newParticipant);
-    dummyParticipants.value.push(id);
+    meetingStore.addMockParticipant();
 };
 
 const removeDummyParticipant = () => {
-    if (dummyParticipants.value.length === 0) return;
-    const idToRemove = dummyParticipants.value.pop();
-    if (idToRemove) {
-        meetingStore.removeParticipant(idToRemove);
-    }
+    meetingStore.removeMockParticipant();
 };
 
 const toggleHostRole = () => {
-    if (!meetingStore.localParticipant) return;
-
-    const wasHost = meetingStore.localParticipant.role === "host";
-    meetingStore.localParticipant.role = wasHost ? "participant" : "host";
-
-    // For reactive getters that might be cached
-    meetingStore.participants = [...meetingStore.participants];
+    const wasHost = meetingStore.isHost;
+    meetingStore.setSimulatedRole(wasHost ? 'participant' : 'host');
 };
 
 const simulateScreenShare = () => {

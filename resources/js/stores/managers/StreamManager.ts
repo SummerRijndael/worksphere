@@ -33,6 +33,8 @@ export function createStreamManager(
     const participantTransceivers = new Map<string, { audioMid?: string; videoMid?: string }>();
     const participantPullAttempts = new Map<string, number>();
     const pendingTrackEvents: { track: MediaStreamTrack, mid: string, transceiver: RTCRtpTransceiver, streams: readonly MediaStream[] }[] = [];
+    // Queue for signals that arrive before SFU session is established
+    const pendingPullSignals: { participantPublicId: string, remoteSessionId?: string, audioMid?: string, videoMid?: string, screenMid?: string }[] = [];
     
     // SFU Queue
     let sfuQueue: Promise<void> = Promise.resolve();
@@ -164,18 +166,26 @@ export function createStreamManager(
 
     function getLocalTrackMids() {
         if (!sfuPc) return { audioMid: undefined, videoMid: undefined, screenMid: undefined };
-        // Extract MIDs from transceivers directly (as CallApp.vue does at L2326-2331)
-        const trackObjects = sfuPc.getTransceivers()
-            .filter(t => t.mid !== null && (t.receiver.track.kind === "audio" || t.receiver.track.kind === "video"))
-            .map(t => ({
-                trackName: sfuTransceiverMap.get(t)?.trackName || t.receiver.track.kind,
-                mid: t.mid
-            }));
-        return {
-            audioMid: trackObjects.find(t => t.trackName === 'audio')?.mid || undefined,
-            videoMid: trackObjects.find(t => t.trackName === 'video')?.mid || undefined,
-            screenMid: trackObjects.find(t => t.trackName === 'screen')?.mid || undefined,
-        };
+        const localId = localParticipantRef.value?.public_id || 'self';
+        // Only include MIDs for transceivers that have an ACTIVE sender track
+        // Prevents broadcasting empty placeholder MIDs that can't be pulled
+        let audioMid: string | undefined;
+        let videoMid: string | undefined;
+        let screenMid: string | undefined;
+
+        for (const tc of sfuPc.getTransceivers()) {
+            if (!tc.mid) continue;
+            const assoc = sfuTransceiverMap.get(tc);
+            if (!assoc || assoc.participantId !== localId) continue;
+
+            // Only include MID if sender has a real track
+            const hasTrack = tc.sender.track && tc.sender.track.readyState === 'live';
+            if (assoc.trackName === 'audio' && hasTrack) audioMid = tc.mid;
+            else if (assoc.trackName === 'video' && hasTrack) videoMid = tc.mid;
+            else if (assoc.trackName === 'screen' && hasTrack) screenMid = tc.mid;
+        }
+
+        return { audioMid, videoMid, screenMid };
     }
 
     function broadcastMediaMids() {
@@ -362,6 +372,16 @@ export function createStreamManager(
 
                 await iceConnectedPromise;
                 broadcastMediaMids();
+
+                // Replay any queued signals that arrived before we were ready
+                if (pendingPullSignals.length > 0) {
+                    log('SFU', `Replaying ${pendingPullSignals.length} queued pull signals`);
+                    const signals = [...pendingPullSignals];
+                    pendingPullSignals.length = 0;
+                    for (const sig of signals) {
+                        pullParticipantTracks(sig.participantPublicId, sig.remoteSessionId, sig.audioMid, sig.videoMid, sig.screenMid);
+                    }
+                }
             }
         } catch (e) {
             onSFUError(e);
@@ -370,7 +390,12 @@ export function createStreamManager(
 
     // Ported from CallApp.vue L2768-2985: Server-initiated SDP flow
     async function pullParticipantTracks(participantPublicId: string, remoteSessionId?: string, audioMid?: string, videoMid?: string, screenMid?: string) {
-        if (!sfuPc || !sfuSessionId.value) return;
+        // Queue if session not ready yet (signal arrived before initSFU completed)
+        if (!sfuPc || !sfuSessionId.value) {
+            log('SFU', `Session not ready, queuing signal for ${participantPublicId}`);
+            pendingPullSignals.push({ participantPublicId, remoteSessionId, audioMid, videoMid, screenMid });
+            return;
+        }
 
         // Resolve sessionId and MIDs from state if not provided (Rescue Path)
         const targetSessionId = remoteSessionId || remoteSfuSessions.get(participantPublicId);
@@ -383,8 +408,10 @@ export function createStreamManager(
             return;
         }
 
-        // DEDUP: Avoid pulling tracks we already have (from CallApp.vue L2792)
-        if (participantTransceivers.has(participantPublicId)) {
+        // DEDUP: Only skip if we already have camera transceivers AND no new screen track
+        // (Allow re-pulling when screen share starts even if camera was already pulled)
+        const existingTc = participantTransceivers.get(participantPublicId);
+        if (existingTc && !screenMid) {
             log('SFU', `Already have transceivers for ${participantPublicId}, skipping redundant pull`);
             return;
         }
@@ -542,20 +569,20 @@ export function createStreamManager(
             const tc = sfuPc.getTransceivers().find(t => sfuTransceiverMap.get(t)?.trackName === kind && sfuTransceiverMap.get(t)?.participantId === (localParticipantRef.value?.public_id || 'self'));
             
             if (tc) {
-                let directionChanged = false;
+                // Only renegotiate when enabling for the first time (inactive → sendonly)
+                // Turning OFF: just null the track, no direction/SDP change needed
+                let needsRenegotiation = false;
                 if (newTrack && tc.direction !== 'sendonly') {
                     tc.direction = 'sendonly';
-                    directionChanged = true;
+                    needsRenegotiation = true;
                     log('MEDIA', `Upgraded ${kind} transceiver to sendonly`);
-                } else if (!newTrack && tc.direction !== 'inactive') {
-                    tc.direction = 'inactive';
-                    directionChanged = true;
-                    log('MEDIA', `Downgraded ${kind} transceiver to inactive`);
                 }
+                // Note: we do NOT change direction to 'inactive' on OFF.
+                // This avoids SDP renegotiation (which was causing 406 errors).
 
                 await tc.sender.replaceTrack(newTrack);
 
-                if (directionChanged) {
+                if (needsRenegotiation) {
                     log('MEDIA', `Renegotiating ${kind} due to direction change`);
                     const offer = await sfuPc.createOffer();
                     await sfuPc.setLocalDescription(offer);
@@ -568,16 +595,20 @@ export function createStreamManager(
                             mungeSdp(sfuPc.localDescription!.sdp)
                         );
                         await sfuPc.setRemoteDescription(toSdpAnswer(res.sessionDescription));
-                        broadcastMediaMids();
                     } catch (error: any) {
                         if (error?.response?.status === 406) {
                             log('ERROR', '406 Not Acceptable caught during replaceTrack renegotiation. Triggering Rescue state.');
                             await handleSFU406Rescue();
+                            return; // Don't broadcast after rescue
                         } else {
                             log('ERROR', 'Failed to renegotiate backend track direction', error);
                         }
                     }
                 }
+
+                // Always broadcast MIDs after any track change (not just direction changes)
+                // so others know when our media becomes available or goes away
+                broadcastMediaMids();
             }
         });
     }

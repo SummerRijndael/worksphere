@@ -1,292 +1,5 @@
 <template>
-    <div
-        class="meeting-room bg-slate-900 min-h-screen relative flex flex-col overflow-hidden text-white font-sans"
-    >
-        <!-- Header -->
-        <header
-            class="h-14 flex items-center justify-between px-6 z-10 bg-slate-900/90 border-b border-slate-800"
-        >
-            <span
-                class="text-sm font-medium text-slate-300 truncate max-w-xs"
-                >{{ meetingTitle }}</span
-            >
-            <span class="text-xs text-slate-500"
-                >{{ participantCount }} participant{{
-                    participantCount !== 1 ? "s" : ""
-                }}</span
-            >
-        </header>
-
-        <!-- Main Video Grid -->
-        <main
-            class="flex-1 relative flex flex-col items-center justify-center p-4 min-h-0 overflow-hidden space-y-4"
-        >
-            <!-- Pagination Controls (Grid) -->
-            <button
-                v-if="!isSpotlightMode && gridPage > 0"
-                @click="prevPage"
-                class="absolute left-6 top-1/2 -translate-y-1/2 z-50 w-12 h-12 bg-slate-800/80 hover:bg-slate-700 text-white rounded-full flex items-center justify-center shadow-2xl backdrop-blur-sm transition-all hover:scale-110 border border-slate-600"
-            >
-                <Icon name="chevron-left" size="24" />
-            </button>
-            <button
-                v-if="!isSpotlightMode && gridPage < totalGridPages - 1"
-                @click="nextPage"
-                class="absolute right-6 top-1/2 -translate-y-1/2 z-50 w-12 h-12 bg-slate-800/80 hover:bg-slate-700 text-white rounded-full flex items-center justify-center shadow-2xl backdrop-blur-sm transition-all hover:scale-110 border border-slate-600"
-            >
-                <Icon name="chevron-right" size="24" />
-            </button>
-
-            <!-- Spotlight Stage -->
-            <div
-                v-if="isSpotlightMode && spotlightTile"
-                class="w-full max-w-5xl aspect-video shrink-0 bg-black rounded-2xl overflow-hidden shadow-2xl border border-slate-700 relative"
-            >
-                <ParticipantTile
-                    :participant="spotlightTile.participant"
-                    :is-spotlight="true"
-                    :is-screen-share="spotlightTile.isScreen"
-                    :local-camera-on="isCameraOn"
-                    :local-mic-on="isMicOn"
-                    :local-stream-override="screenStream"
-                />
-            </div>
-
-            <!-- Grid or Filmstrip Container -->
-            <div
-                class="w-full flex-1 max-w-7xl mx-auto flex flex-wrap gap-3 items-center justify-center content-center relative"
-                :class="{
-                    'flex-row flex-nowrap overflow-hidden h-40 max-h-40':
-                        isSpotlightMode,
-                }"
-            >
-                <!-- Filmstrip Pagination -->
-                <button
-                    v-if="isSpotlightMode && filmstripPage > 0"
-                    @click="prevPage"
-                    class="absolute left-0 z-20 w-8 h-8 bg-slate-800/80 hover:bg-slate-700 text-white rounded-full flex items-center justify-center shadow-lg backdrop-blur-sm transition-all hover:scale-110 -translate-x-2 border border-slate-600"
-                >
-                    <Icon name="chevron-left" size="18" />
-                </button>
-                <button
-                    v-if="
-                        isSpotlightMode &&
-                        filmstripPage < totalFilmstripPages - 1
-                    "
-                    @click="nextPage"
-                    class="absolute right-0 z-20 w-8 h-8 bg-slate-800/80 hover:bg-slate-700 text-white rounded-full flex items-center justify-center shadow-lg backdrop-blur-sm transition-all hover:scale-110 translate-x-2 border border-slate-600"
-                >
-                    <Icon name="chevron-right" size="18" />
-                </button>
-
-                <!-- Tiles -->
-                <div
-                    v-for="tile in paginatedTiles"
-                    :key="tile.id"
-                    class="relative rounded-2xl overflow-hidden shadow-xl aspect-video border border-slate-700 transition-all duration-300 transform"
-                    :style="gridItemStyle"
-                >
-                    <ParticipantTile
-                        :participant="tile.participant"
-                        :is-screen-share="tile.isScreen"
-                        :local-camera-on="isCameraOn"
-                        :local-mic-on="isMicOn"
-                        :local-stream-override="screenStream"
-                    />
-                </div>
-            </div>
-
-            <!-- Floating Local Self-View (PiP) -->
-            <div
-                v-if="localCameraTile"
-                class="absolute bottom-6 right-6 w-48 sm:w-56 aspect-[16/9] rounded-xl overflow-hidden shadow-black/40 shadow-2xl border-2 border-slate-700 hover:border-indigo-500 transition-all duration-300 z-40 bg-slate-900 group hover:scale-105"
-            >
-                <ParticipantTile
-                    :participant="localCameraTile.participant"
-                    :is-screen-share="false"
-                    :local-camera-on="isCameraOn"
-                    :local-mic-on="isMicOn"
-                    :is-local="true"
-                />
-            </div>
-        </main>
-
-        <!-- Group Call Style Controls Bar (Expandable) -->
-        <div 
-            class="controls-bar" 
-            :class="{ 'collapsed': isControlsCollapsed, 'is-dragging': isDragging }"
-            :style="isDragging || hasMoved ? { left: `${controlsPosition.x}px`, top: `${controlsPosition.y}px`, bottom: 'auto', transform: 'none' } : {}"
-            @touchstart="startDrag"
-            @mousedown="startDrag"
-        >
-            <!-- Drag Handle -->
-            <div class="drag-handle" title="Drag to move">
-                <Icon name="grip-vertical" size="20" />
-            </div>
-
-            <button
-                class="control-btn collapse-toggle"
-                @click="isControlsCollapsed = !isControlsCollapsed"
-                :title="controlToggleTitle"
-            >
-                <Icon :name="isControlsCollapsed ? 'chevron-right' : 'chevron-left'" size="20" />
-            </button>
-
-            <div class="main-controls" v-show="!isControlsCollapsed">
-                <button
-                    v-if="meetingStore.isHost"
-                    @click="showAdmissionPanel = !showAdmissionPanel"
-                    class="relative w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300"
-                    :class="[
-                        showAdmissionPanel
-                            ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20'
-                            : 'bg-slate-800/80 text-slate-300 hover:bg-slate-700 hover:text-white',
-                    ]"
-                    :title="waitingRoomTitle"
-                >
-                    <Icon name="users" size="20" />
-                    <span
-                        v-if="meetingStore.waitingParticipants.length > 0"
-                        class="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-slate-900 animate-bounce"
-                    >
-                        {{ meetingStore.waitingParticipants.length }}
-                    </span>
-                </button>
-
-                <button
-                    class="control-btn"
-                    :class="{ 'bg-red-500/20 text-red-500 hover:bg-red-500/30': !isMicOn }"
-                    @click="toggleMic"
-                    :title="micToggleTitle"
-                >
-                    <Icon :name="isMicOn ? 'mic' : 'mic-off'" size="24" />
-                </button>
-
-                <button
-                    class="control-btn"
-                    :class="{ 'bg-red-500/20 text-red-500 hover:bg-red-500/30': !isCameraOn }"
-                    @click="toggleCamera"
-                    :title="cameraToggleTitle"
-                >
-                    <Icon :name="isCameraOn ? 'video' : 'video-off'" size="24" />
-                </button>
-
-                <button
-                    class="control-btn"
-                    :class="{ 'active': isScreenSharing }"
-                    @click="toggleScreenShare"
-                    :title="screenShareToggleTitle"
-                >
-                    <Icon name="monitor" size="24" />
-                </button>
-
-                <button
-                    class="control-btn"
-                    :class="{ 'active': isHandRaised }"
-                    @click="meetingStore.toggleHand()"
-                    title="Raise Hand"
-                >
-                    <Icon name="hand" size="24" />
-                </button>
-
-                <button
-                    class="control-btn"
-                    @click="showSettings = true"
-                    title="Device Settings"
-                >
-                    <Icon name="settings" size="24" />
-                </button>
-
-                <button
-                    class="control-btn hangup"
-                    @click="leaveMeeting"
-                    title="End Call"
-                >
-                    <Icon name="phone-off" size="24" />
-                </button>
-            </div>
-
-            <div class="collapsed-status" v-show="isControlsCollapsed">
-                <Icon :name="isMicOn ? 'mic' : 'mic-off'" size="16" :class="{ 'text-red-500': !isMicOn }" />
-                <Icon :name="isCameraOn ? 'video' : 'video-off'" size="16" :class="{ 'text-red-500': !isCameraOn }" />
-                <button class="control-btn hangup small" @click="leaveMeeting">
-                    <Icon name="phone-off" size="16" />
-                </button>
-            </div>
-        </div>
-
-        <!-- Modals and Tools -->
-        <DeviceSettingsModal
-            v-model:open="showSettings"
-            @close="showSettings = false"
-        />
-
-        <DevSimulationTool 
-            v-if="isDevMode"
-            v-model:show="showDevTool" 
-        />
-
-        <!-- Admission Management Panel (Host Only) -->
-        <Transition
-            enter-active-class="transition duration-300 ease-out"
-            enter-from-class="translate-x-full"
-            enter-to-class="translate-x-0"
-            leave-active-class="transition duration-200 ease-in"
-            leave-from-class="translate-x-0"
-            leave-to-class="translate-x-full"
-        >
-            <div
-                v-if="showAdmissionPanel && meetingStore.isHost"
-                class="fixed top-0 right-0 w-80 h-full bg-slate-900 border-l border-slate-800 shadow-2xl z-50 flex flex-col"
-            >
-                <div class="p-4 border-b border-slate-800 flex items-center justify-between">
-                    <h3 class="font-semibold text-white">Waiting Room</h3>
-                    <button @click="showAdmissionPanel = false" class="text-slate-400 hover:text-white">
-                        <Icon name="x" size="20" />
-                    </button>
-                </div>
-                
-                <div class="flex-1 overflow-y-auto p-4 space-y-4">
-                    <div v-if="meetingStore.waitingParticipants.length === 0" class="text-center py-10">
-                        <Icon name="users" size="32" class="mx-auto text-slate-700 mb-2" />
-                        <p class="text-slate-500 text-sm">No one is waiting to join.</p>
-                    </div>
-                    
-                    <div
-                        v-for="p in meetingStore.waitingParticipants"
-                        :key="p.public_id"
-                        class="bg-slate-800/50 rounded-xl p-3 border border-slate-700/50"
-                    >
-                        <div class="flex items-center gap-3 mb-3">
-                            <div class="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold">
-                                {{ getParticipantInitial(p) }}
-                            </div>
-                            <div class="flex-1 min-w-0">
-                                <p class="text-sm font-medium text-white truncate">
-                                    {{ getParticipantName(p) }}
-                                </p>
-                                <p class="text-xs text-slate-500">Wants to join</p>
-                            </div>
-                        </div>
-                        <div class="flex gap-2">
-                            <button
-                                @click="meetingStore.admitParticipant(p.public_id)"
-                                class="flex-1 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg transition-colors"
-                            >
-                                Admit
-                            </button>
-                            <button
-                                @click="meetingStore.rejectParticipant(p.public_id)"
-                                class="flex-1 py-1.5 bg-slate-700 hover:bg-red-900/40 text-slate-300 hover:text-red-400 text-xs font-semibold rounded-lg transition-colors border border-slate-600"
-                            >
-                                Reject
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </Transition>
-
+    <div class="gmeet-root">
         <!-- Waiting Room Overlay (Participant Only) -->
         <Transition
             enter-active-class="transition duration-500 ease-out"
@@ -296,40 +9,384 @@
             leave-from-class="opacity-100 scale-100"
             leave-to-class="opacity-0 scale-95"
         >
-            <div
-                v-if="isWaiting"
-                class="fixed inset-0 z-100 bg-slate-950 flex flex-col items-center justify-center p-6 text-center"
-            >
-                <div class="mb-8 relative">
-                    <div class="w-24 h-24 rounded-full bg-indigo-600/20 flex items-center justify-center animate-pulse">
-                        <Icon name="lock" size="40" class="text-indigo-400" />
+            <div v-if="isWaiting" class="waiting-overlay">
+                <div class="waiting-content">
+                    <div class="waiting-icon-wrap">
+                        <div class="waiting-icon-circle">
+                            <Icon name="lock" size="40" class="text-indigo-400" />
+                        </div>
+                        <div class="waiting-ping">
+                            <div class="ping-dot"></div>
+                        </div>
                     </div>
-                    <div class="absolute -bottom-2 -right-2 w-8 h-8 rounded-full bg-slate-900 flex items-center justify-center border-2 border-slate-950">
-                        <div class="w-3 h-3 rounded-full bg-blue-500 animate-ping"></div>
+                    <h1 class="waiting-title">You're in the Waiting Room</h1>
+                    <p class="waiting-desc">
+                        The meeting host has been notified. They'll let you in shortly.
+                    </p>
+                    <div class="waiting-meta">
+                        <div class="waiting-host-badge">
+                            <img v-if="meetingStore.meeting?.host?.avatar_url" :src="meetingStore.meeting.host.avatar_url" class="waiting-host-avatar" />
+                            <span>Host: {{ meetingHostName }}</span>
+                        </div>
+                        <button @click="router.push({ name: 'home' })" class="waiting-cancel-btn">
+                            Cancel and return home
+                        </button>
                     </div>
-                </div>
-                
-                <h1 class="text-2xl font-bold text-white mb-2">You're in the Waiting Room</h1>
-                <p class="text-slate-400 max-w-md">
-                    The meeting host has been notified. They'll let you in shortly.
-                    Please keep this window open.
-                </p>
-                
-                <div class="mt-12 flex flex-col items-center gap-4">
-                    <div class="flex items-center gap-2 px-4 py-2 bg-slate-900 rounded-full border border-slate-800">
-                        <img v-if="meetingStore.meeting?.host?.avatar_url" :src="meetingStore.meeting.host.avatar_url" class="w-6 h-6 rounded-full" />
-                        <span class="text-sm text-slate-300">Host: {{ meetingHostName }}</span>
-                    </div>
-                    
-                    <button
-                        @click="router.push({ name: 'home' })"
-                        class="text-sm text-slate-500 hover:text-white transition-colors underline underline-offset-4"
-                    >
-                        Cancel and return home
-                    </button>
                 </div>
             </div>
         </Transition>
+
+        <!-- Top Bar -->
+        <header class="gmeet-topbar">
+            <div class="topbar-left">
+                <span class="topbar-title">{{ meetingTitle }}</span>
+                <span v-if="meetingStore.isLocked" class="ml-3 text-[#f28b82] flex items-center" title="This meeting is locked">
+                    <Icon name="lock" size="16" />
+                </span>
+                <span v-if="isRecording" class="recording-indicator ml-3" title="Recording in progress">
+                    <span class="recording-dot"></span>
+                    <span class="recording-label">REC</span>
+                </span>
+            </div>
+            <div class="topbar-center">
+                <span class="topbar-clock">{{ currentTime }}</span>
+            </div>
+            <div class="topbar-right">
+                <button
+                    v-if="meetingStore.isHost && meetingStore.waitingParticipants.length > 0"
+                    class="topbar-btn topbar-btn--alert"
+                    @click="showAdmissionPanel = !showAdmissionPanel"
+                    title="Waiting Room"
+                >
+                    <Icon name="user-plus" size="18" />
+                    <span class="topbar-badge">{{ meetingStore.waitingParticipants.length }}</span>
+                </button>
+                <button class="topbar-btn" :class="{ 'topbar-btn--active': showParticipantsPanel }" @click="toggleParticipantsPanel" title="Participants">
+                    <Icon name="users" size="18" />
+                    <span class="topbar-count">{{ participantCount }}</span>
+                </button>
+                <button class="topbar-btn" :class="{ 'topbar-btn--active': showChatPanel }" @click="toggleChatPanel" title="Chat">
+                    <Icon name="message-square" size="18" />
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <div class="gmeet-body" :class="{ 'has-panel': showParticipantsPanel || showChatPanel || showAdmissionPanel }">
+            <div class="gmeet-stage">
+                <!-- Spotlight Mode: Presentation + Filmstrip -->
+                <template v-if="isSpotlightMode && spotlightTile">
+                    <div class="spotlight-main">
+                        <ParticipantTile
+                            :participant="spotlightTile.participant"
+                            :is-spotlight="true"
+                            :is-screen-share="spotlightTile.isScreen"
+                            :local-camera-on="isCameraOn"
+                            :local-mic-on="isMicOn"
+                            :local-stream-override="screenStream"
+                        />
+                    </div>
+                    <div class="filmstrip" v-if="paginatedTiles.length > 0">
+                        <button v-if="filmstripPage > 0" @click="prevPage" class="filmstrip-nav filmstrip-nav--left">
+                            <Icon name="chevron-left" size="16" />
+                        </button>
+                        <div class="filmstrip-tiles">
+                            <div
+                                v-for="tile in paginatedTiles"
+                                :key="tile.id"
+                                class="filmstrip-tile"
+                            >
+                                <ParticipantTile
+                                    :participant="tile.participant"
+                                    :is-screen-share="tile.isScreen"
+                                    :local-camera-on="isCameraOn"
+                                    :local-mic-on="isMicOn"
+                                    :local-stream-override="screenStream"
+                                />
+                            </div>
+                        </div>
+                        <button v-if="filmstripPage < totalFilmstripPages - 1" @click="nextPage" class="filmstrip-nav filmstrip-nav--right">
+                            <Icon name="chevron-right" size="16" />
+                        </button>
+                    </div>
+                </template>
+
+                <!-- Grid Mode: Equal-sized tiles -->
+                <template v-else-if="paginatedTiles.length > 0">
+                    <div class="grid-container" :class="gridLayoutClass">
+                        <div
+                            v-for="tile in paginatedTiles"
+                            :key="tile.id"
+                            class="grid-tile"
+                        >
+                            <ParticipantTile
+                                :participant="tile.participant"
+                                :is-screen-share="tile.isScreen"
+                                :local-camera-on="isCameraOn"
+                                :local-mic-on="isMicOn"
+                                :local-stream-override="screenStream"
+                            />
+                        </div>
+                    </div>
+                    <!-- Grid Pagination Arrows -->
+                    <button v-if="gridPage > 0" @click="prevPage" class="grid-nav grid-nav--left">
+                        <Icon name="chevron-left" size="20" />
+                    </button>
+                    <button v-if="gridPage < totalGridPages - 1" @click="nextPage" class="grid-nav grid-nav--right">
+                        <Icon name="chevron-right" size="20" />
+                    </button>
+                </template>
+
+                <!-- Solo/Empty State when alone with no camera -->
+                <template v-else>
+                    <div class="solo-empty-state">
+                        <div class="solo-avatar">
+                            {{ meetingStore.localParticipant?.display_name?.[0]?.toUpperCase() || 'Y' }}
+                        </div>
+                        <p class="solo-name">{{ meetingStore.localParticipant?.display_name || 'You' }}</p>
+                        <p class="solo-hint">No one else has joined yet</p>
+                        <p class="solo-hint-sub">Share the meeting link to invite others</p>
+                    </div>
+                </template>
+
+                <!-- PiP Self-View -->
+                <Transition
+                    enter-active-class="transition duration-300 ease-out"
+                    enter-from-class="opacity-0 translateY-4"
+                    enter-to-class="opacity-100 translateY-0"
+                    leave-active-class="transition duration-200 ease-in"
+                    leave-from-class="opacity-100 translateY-0"
+                    leave-to-class="opacity-0 translateY-4"
+                >
+                    <div v-if="localCameraTile" class="pip-self-view">
+                        <ParticipantTile
+                            :participant="localCameraTile.participant"
+                            :is-screen-share="false"
+                            :local-camera-on="isCameraOn"
+                            :local-mic-on="isMicOn"
+                            :is-local="true"
+                        />
+                    </div>
+                </Transition>
+            </div>
+
+            <!-- Participants Side Panel -->
+            <Transition
+                enter-active-class="transition duration-250 ease-out"
+                enter-from-class="translate-x-full opacity-0"
+                enter-to-class="translate-x-0 opacity-100"
+                leave-active-class="transition duration-200 ease-in"
+                leave-from-class="translate-x-0 opacity-100"
+                leave-to-class="translate-x-full opacity-0"
+            >
+                <aside v-if="showParticipantsPanel" class="side-panel">
+                    <div class="side-panel-header">
+                        <h3>People ({{ participantCount }})</h3>
+                        <div class="flex items-center gap-2">
+                            <button
+                                v-if="meetingStore.isHost && meetingStore.raisedHands.size > 0"
+                                @click="lowerAllHands"
+                                class="text-xs px-3 py-1.5 bg-[#3c4043] hover:bg-[#4c4d50] text-[#e8eaed] rounded-full transition-colors border-none cursor-pointer whitespace-nowrap"
+                                title="Lower all raised hands"
+                            >
+                                ✋ Lower all
+                            </button>
+                            <button @click="showParticipantsPanel = false" class="side-panel-close">
+                                <Icon name="x" size="18" />
+                            </button>
+                        </div>
+                    </div>
+                    <div class="side-panel-body">
+                        <div
+                            v-for="p in meetingStore.allParticipants"
+                            :key="p.public_id"
+                            class="participant-row"
+                        >
+                            <div class="participant-avatar">
+                                {{ getParticipantInitial(p) }}
+                            </div>
+                            <div class="participant-info">
+                                <span class="participant-name">
+                                    {{ getParticipantName(p) }}
+                                    <span v-if="p.public_id === meetingStore.localParticipant?.public_id" class="you-badge">You</span>
+                                    <span v-if="p.role === 'host'" class="ml-2 text-xs text-blue-400 bg-blue-400/10 px-1.5 py-0.5 rounded">Host</span>
+                                    <span v-if="p.role === 'co-host'" class="ml-2 text-xs text-purple-400 bg-purple-400/10 px-1.5 py-0.5 rounded">Co-host</span>
+                                </span>
+                            </div>
+                            <div class="participant-status-icons flex items-center">
+                                <Icon v-if="meetingStore.raisedHands.has(p.public_id)" name="hand" size="14" class="text-amber-400" />
+                                <Icon v-if="p.is_muted_by_host" name="mic-off" size="14" class="text-red-500 ml-1" />
+                                <Icon v-if="p.is_camera_disabled_by_host" name="video-off" size="14" class="text-red-500 ml-1" />
+                                <!-- Co-Hosts can moderate participants, but only the true Host can promote/demote/kick Co-Hosts. -->
+                                <Menu as="div" class="relative inline-block text-left ml-2" 
+                                      v-if="(meetingStore.isHost || meetingStore.localParticipant?.role === 'co-host') && p.public_id !== meetingStore.localParticipant?.public_id && p.role !== 'host'">
+                                    <MenuButton class="p-1 hover:bg-[#3c4043] rounded-full text-[#9aa0a6]">
+                                        <Icon name="more-vertical" size="16" />
+                                    </MenuButton>
+                                    <transition enter-active-class="transition ease-out duration-100" enter-from-class="transform opacity-0 scale-95" enter-to-class="transform opacity-100 scale-100" leave-active-class="transition ease-in duration-75" leave-from-class="transform opacity-100 scale-100" leave-to-class="transform opacity-0 scale-95">
+                                        <MenuItems class="absolute right-0 mt-1 w-48 origin-top-right bg-[#28292c] rounded-md shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-50 py-1 border border-[#3c4043]">
+                                            <MenuItem v-slot="{ active }">
+                                                <button @click="p.is_muted_by_host ? meetingStore.unmuteParticipant(p.public_id) : meetingStore.muteParticipant(p.public_id)" :class="[active ? 'bg-[#3c4043] text-white' : 'text-[#e8eaed]', 'group flex items-center w-full px-4 py-2 text-sm']">
+                                                    <Icon :name="p.is_muted_by_host ? 'mic' : 'mic-off'" size="16" class="mr-3 text-[#9aa0a6]" />
+                                                    {{ p.is_muted_by_host ? 'Allow Unmute' : 'Mute Microphone' }}
+                                                </button>
+                                            </MenuItem>
+                                            <MenuItem v-slot="{ active }">
+                                                <button @click="p.is_camera_disabled_by_host ? meetingStore.allowCamera(p.public_id) : meetingStore.disableCamera(p.public_id)" :class="[active ? 'bg-[#3c4043] text-white' : 'text-[#e8eaed]', 'group flex items-center w-full px-4 py-2 text-sm']">
+                                                    <Icon :name="p.is_camera_disabled_by_host ? 'video' : 'video-off'" size="16" class="mr-3 text-[#9aa0a6]" />
+                                                    {{ p.is_camera_disabled_by_host ? 'Allow Camera' : 'Turn Off Camera' }}
+                                                </button>
+                                            </MenuItem>
+                                            
+                                            <!-- Only True Host can promote/demote -->
+                                            <template v-if="meetingStore.isHost">
+                                                <div class="my-1 border-t border-[#3c4043]"></div>
+                                                <MenuItem v-slot="{ active }">
+                                                    <button v-if="p.role === 'participant'" @click="meetingStore.promoteParticipant(p.public_id)" :class="[active ? 'bg-[#3c4043] text-white' : 'text-[#e8eaed]', 'group flex items-center w-full px-4 py-2 text-sm']">
+                                                        <Icon name="shield" size="16" class="mr-3 text-[#9aa0a6]" />
+                                                        Make Co-host
+                                                    </button>
+                                                    <button v-else-if="p.role === 'co-host'" @click="meetingStore.demoteParticipant(p.public_id)" :class="[active ? 'bg-[#3c4043] text-white' : 'text-[#e8eaed]', 'group flex items-center w-full px-4 py-2 text-sm']">
+                                                        <Icon name="shield-off" size="16" class="mr-3 text-[#9aa0a6]" />
+                                                        Remove Co-host
+                                                    </button>
+                                                </MenuItem>
+                                            </template>
+
+                                            <div class="my-1 border-t border-[#3c4043]"></div>
+                                            <MenuItem v-slot="{ active }">
+                                                <!-- Co-hosts cannot kick other Co-hosts -->
+                                                <button v-if="meetingStore.isHost || p.role === 'participant'" @click="meetingStore.kickParticipant(p.public_id)" :class="[active ? 'bg-[#3c4043] text-red-500' : 'text-red-400', 'group flex items-center w-full px-4 py-2 text-sm']">
+                                                    <Icon name="minus-circle" size="16" class="mr-3 border-red-500" />
+                                                    Remove from call
+                                                </button>
+                                            </MenuItem>
+                                        </MenuItems>
+                                    </transition>
+                                </Menu>
+                            </div>
+                        </div>
+                    </div>
+                </aside>
+            </Transition>
+
+            <!-- Chat Side Panel -->
+            <Transition
+                enter-active-class="transition duration-250 ease-out"
+                enter-from-class="translate-x-full opacity-0"
+                enter-to-class="translate-x-0 opacity-100"
+                leave-active-class="transition duration-200 ease-in"
+                leave-from-class="translate-x-0 opacity-100"
+                leave-to-class="translate-x-full opacity-0"
+            >
+                <MeetingChatPanel v-if="showChatPanel" @close="showChatPanel = false" />
+            </Transition>
+
+            <!-- Admission Side Panel (Host Only) -->
+            <Transition
+                enter-active-class="transition duration-250 ease-out"
+                enter-from-class="translate-x-full opacity-0"
+                enter-to-class="translate-x-0 opacity-100"
+                leave-active-class="transition duration-200 ease-in"
+                leave-from-class="translate-x-0 opacity-100"
+                leave-to-class="translate-x-full opacity-0"
+            >
+                <aside v-if="showAdmissionPanel && meetingStore.isHost" class="side-panel">
+                    <div class="side-panel-header">
+                        <h3>Waiting Room</h3>
+                        <button @click="showAdmissionPanel = false" class="side-panel-close">
+                            <Icon name="x" size="18" />
+                        </button>
+                    </div>
+                    <div class="side-panel-body">
+                        <div v-if="meetingStore.waitingParticipants.length === 0" class="panel-empty">
+                            <Icon name="users" size="28" class="text-[#5f6368]" />
+                            <p>No one is waiting</p>
+                        </div>
+                        <div
+                            v-for="p in meetingStore.waitingParticipants"
+                            :key="p.public_id"
+                            class="admission-card"
+                        >
+                            <div class="admission-info">
+                                <div class="participant-avatar">{{ getParticipantInitial(p) }}</div>
+                                <div>
+                                    <p class="admission-name">{{ getParticipantName(p) }}</p>
+                                    <p class="admission-sub">Wants to join</p>
+                                </div>
+                            </div>
+                            <div class="admission-actions">
+                                <button @click="meetingStore.rejectParticipant(p.public_id)" class="admission-btn admission-btn--reject">Deny</button>
+                                <button @click="meetingStore.admitParticipant(p.public_id)" class="admission-btn admission-btn--admit">Admit</button>
+                            </div>
+                        </div>
+                    </div>
+                </aside>
+            </Transition>
+        </div>
+
+        <!-- Floating Reactions Component -->
+        <ReactionOverlay :showPicker="showReactionPicker" @reaction-sent="showReactionPicker = false" />
+
+        <!-- Bottom Control Bar -->
+        <footer class="gmeet-controls">
+            <div class="controls-center">
+                <button class="ctrl-btn" :class="{ 'ctrl-btn--off': !isMicOn }" @click="toggleMic" :title="micToggleTitle">
+                    <Icon :name="isMicOn ? 'mic' : 'mic-off'" size="22" />
+                </button>
+                <button class="ctrl-btn" :class="{ 'ctrl-btn--off': !isCameraOn }" @click="toggleCamera" :title="cameraToggleTitle">
+                    <Icon :name="isCameraOn ? 'video' : 'video-off'" size="22" />
+                </button>
+                <button class="ctrl-btn" :class="{ 'ctrl-btn--active': isScreenSharing }" @click="toggleScreenShare" :title="screenShareToggleTitle">
+                    <Icon name="monitor" size="22" />
+                </button>
+                <div class="relative flex items-center">
+                    <button class="ctrl-btn reaction-quick-btn" @click="sendQuickReaction" :title="`Send ${lastReactionEmoji}`">
+                        <span class="text-lg">{{ lastReactionEmoji }}</span>
+                    </button>
+                    <button class="ctrl-btn reaction-chevron-btn" :class="{ 'ctrl-btn--active': showReactionPicker }" @click="showReactionPicker = !showReactionPicker" title="Change reaction">
+                        <Icon name="chevron-up" size="14" />
+                    </button>
+                </div>
+                <button class="ctrl-btn" :class="{ 'ctrl-btn--active': isHandRaised }" @click="meetingStore.toggleHand()" title="Raise Hand">
+                    <Icon name="hand" size="22" />
+                </button>
+                <button v-if="meetingStore.isHost"
+                    class="ctrl-btn ctrl-btn--lock" 
+                    :class="{ 'ctrl-btn--lock-active': meetingStore.isLocked }" 
+                    @click="meetingStore.toggleLock()" 
+                    :title="meetingStore.isLocked ? 'Unlock Meeting' : 'Lock Meeting'"
+                >
+                    <Icon :name="meetingStore.isLocked ? 'lock' : 'unlock'" size="22" />
+                </button>
+                <button class="ctrl-btn" @click="showSettings = true" title="Settings">
+                    <Icon name="settings" size="22" />
+                </button>
+                <button v-if="meetingStore.isHost" class="ctrl-btn" :class="{ 'ctrl-btn--recording': isRecording }" @click="toggleRecording" :title="isRecording ? 'Stop Recording' : 'Start Recording'">
+                    <Icon :name="isRecording ? 'circle-stop' : 'circle-dot'" size="22" />
+                </button>
+                <div class="relative">
+                    <button class="ctrl-btn ctrl-btn--hangup" @click="showHangupMenu = !showHangupMenu" title="Leave or End">
+                        <Icon name="phone-off" size="22" />
+                    </button>
+                    <!-- Hangup Popup Menu -->
+                    <div v-if="showHangupMenu" class="hangup-menu">
+                        <button class="hangup-menu-item" @click="leaveMeeting">
+                            <Icon name="log-out" size="18" />
+                            <span>Leave meeting</span>
+                        </button>
+                        <button v-if="meetingStore.isHost" class="hangup-menu-item hangup-menu-item--end" @click="endMeetingForAll">
+                            <Icon name="phone-off" size="18" />
+                            <span>End meeting for all</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </footer>
+
+        <!-- Modals and Dev Tools -->
+        <DeviceSettingsModal v-model:open="showSettings" @close="showSettings = false" />
+        <DevSimulationTool v-if="isDevMode" v-model:show="showDevTool" />
     </div>
 </template>
 
@@ -342,8 +399,11 @@ import { useVideoCallStore } from "@/stores/videocall";
 import DeviceSettingsModal from "./components/DeviceSettingsModal.vue";
 import DevSimulationTool from "./components/DevSimulationTool.vue";
 import ParticipantTile from "./components/ParticipantTile.vue";
+import MeetingChatPanel from "./components/MeetingChatPanel.vue";
+import ReactionOverlay from "./components/ReactionOverlay.vue";
 import { Icon } from "@/components/ui";
 import { toast } from "vue-sonner";
+import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -357,18 +417,40 @@ const isCameraOn = ref(false);
 const isMicOn = ref(false);
 const showSettings = ref(false);
 const showAdmissionPanel = ref(false);
-const isControlsCollapsed = ref(false);
+const showParticipantsPanel = ref(false);
+const showChatPanel = ref(false);
+const showReactionPicker = ref(false);
 const showDevTool = ref(false);
+
+function toggleParticipantsPanel() {
+    showParticipantsPanel.value = !showParticipantsPanel.value;
+    if (showParticipantsPanel.value) showChatPanel.value = false;
+}
+
+function toggleChatPanel() {
+    showChatPanel.value = !showChatPanel.value;
+    if (showChatPanel.value) {
+        showParticipantsPanel.value = false;
+        // Fetch messages when opening the panel
+        meetingStore.fetchMessages();
+    }
+}
+
+// Live clock
+const currentTime = ref('');
+let clockInterval: number;
+
+function updateClock() {
+    currentTime.value = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
 
 const isWaiting = computed(() => meetingStore.localParticipant?.status === 'waiting');
 
 const meetingTitle = computed(() => meetingStore.meeting?.title || 'Meeting');
-const participantCount = computed(() => meetingStore.participants.length);
-const waitingRoomTitle = computed(() => `Waiting Room (${meetingStore.waitingParticipants.length})`);
-const micToggleTitle = computed(() => isMicOn.value ? 'Mute' : 'Unmute');
-const cameraToggleTitle = computed(() => isCameraOn.value ? 'Turn off camera' : 'Turn on camera');
+const participantCount = computed(() => meetingStore.allParticipants.length);
+const micToggleTitle = computed(() => isMicOn.value ? 'Mute (Ctrl+D)' : 'Unmute (Ctrl+D)');
+const cameraToggleTitle = computed(() => isCameraOn.value ? 'Turn off camera (Ctrl+E)' : 'Turn on camera (Ctrl+E)');
 const screenShareToggleTitle = computed(() => isScreenSharing.value ? 'Stop sharing' : 'Share Screen');
-const controlToggleTitle = computed(() => isControlsCollapsed.value ? 'Expand Controls' : 'Collapse Controls');
 const isHandRaised = computed(() => meetingStore.raisedHands.has(meetingStore.localParticipant?.public_id || ''));
 const isDevMode = computed(() => !!import.meta.env.DEV);
 const meetingHostName = computed(() => meetingStore.meeting?.host?.name || 'Authorized Personnel');
@@ -381,71 +463,6 @@ function getParticipantInitial(p: any) {
 function getParticipantName(p: any) {
     return p.user?.name || p.metadata?.guest_name || 'Guest';
 }
-
-// ─── Draggable Controls ─────────────────────────────────────────────────────
-
-const isDragging = ref(false);
-const hasMoved = ref(false);
-const controlsPosition = reactive({ x: 0, y: 0 });
-const dragOffset = reactive({ x: 0, y: 0 });
-
-const startDrag = (event: MouseEvent | TouchEvent) => {
-    const target = event.target as HTMLElement;
-    if (target.closest("button")) return;
-
-    isDragging.value = true;
-    hasMoved.value = false;
-
-    const clientX = "touches" in event ? event.touches[0].clientX : event.clientX;
-    const clientY = "touches" in event ? event.touches[0].clientY : event.clientY;
-
-    const controlsEl = document.querySelector(".controls-bar") as HTMLElement;
-    if (controlsEl) {
-        const rect = controlsEl.getBoundingClientRect();
-        dragOffset.x = clientX - rect.left;
-        dragOffset.y = clientY - rect.top;
-    }
-
-    window.addEventListener("mousemove", onDrag);
-    window.addEventListener("mouseup", stopDrag);
-    window.addEventListener("touchmove", onDrag, { passive: false });
-    window.addEventListener("touchend", stopDrag);
-};
-
-const onDrag = (event: MouseEvent | TouchEvent) => {
-    if (!isDragging.value) return;
-
-    const clientX = "touches" in event ? event.touches[0].clientX : (event as MouseEvent).clientX;
-    const clientY = "touches" in event ? event.touches[0].clientY : (event as MouseEvent).clientY;
-
-    let newX = clientX - dragOffset.x;
-    let newY = clientY - dragOffset.y;
-
-    const controlsEl = document.querySelector(".controls-bar") as HTMLElement;
-    if (controlsEl) {
-        const rect = controlsEl.getBoundingClientRect();
-        const maxX = window.innerWidth - rect.width - 16;
-        const maxY = window.innerHeight - rect.height - 16;
-        newX = Math.max(16, Math.min(newX, maxX));
-        newY = Math.max(16, Math.min(newY, maxY));
-    }
-
-    controlsPosition.x = newX;
-    controlsPosition.y = newY;
-    hasMoved.value = true;
-
-    if ("touches" in event && event.cancelable) {
-        event.preventDefault();
-    }
-};
-
-const stopDrag = () => {
-    isDragging.value = false;
-    window.removeEventListener("mousemove", onDrag);
-    window.removeEventListener("mouseup", stopDrag);
-    window.removeEventListener("touchmove", onDrag);
-    window.removeEventListener("touchend", stopDrag);
-};
 
 // ─── Computed / Layout ──────────────────────────────────────────────────────
 
@@ -489,7 +506,6 @@ const renderedTiles = computed(() => {
 const spotlightTile = computed(() => {
     // 1. Pinned participant
     if (meetingStore.pinnedParticipantId) {
-        // If they are screen sharing, pin their screen. Otherwise pin their camera.
         const pinScreen = renderedTiles.value.find(t => t.id === `${meetingStore.pinnedParticipantId}:screen`);
         if (pinScreen) return pinScreen;
         return renderedTiles.value.find(t => t.id === meetingStore.pinnedParticipantId);
@@ -539,18 +555,17 @@ const paginatedTiles = computed(() => {
     }
 });
 
-const gridItemStyle = computed(() => {
-    if (isSpotlightMode.value) {
-        const count = Math.min(paginatedTiles.value.length, FILMSTRIP_PAGE_SIZE);
-        return { width: `calc(${100 / (count || 1)}% - 8px)`, maxWidth: '240px' };
-    }
-    const total = paginatedTiles.value.length;
-    if (total === 1) return { width: '100%', maxWidth: '1000px' };
-    if (total <= 2) return { width: 'calc(50% - 8px)', maxWidth: '640px' };
-    if (total <= 4) return { width: 'calc(50% - 8px)', maxWidth: '480px' };
-    if (total <= 6) return { width: 'calc(33.33% - 8px)', maxWidth: '400px' };
-    if (total <= 9) return { width: 'calc(33.33% - 8px)', maxWidth: '340px' };
-    return { width: 'calc(25% - 8px)', maxWidth: '280px' }; 
+// Google Meet-style grid layout class based on tile count
+const gridLayoutClass = computed(() => {
+    const count = paginatedTiles.value.length;
+    if (count === 0) return 'grid-0';
+    if (count === 1) return 'grid-1';
+    if (count === 2) return 'grid-2';
+    if (count <= 4) return 'grid-4';
+    if (count <= 6) return 'grid-6';
+    if (count <= 9) return 'grid-9';
+    if (count <= 12) return 'grid-12';
+    return 'grid-16';
 });
 
 function prevPage() {
@@ -571,6 +586,9 @@ function nextPage() {
 // ─── Mount / Unmount ─────────────────────────────────────────────────────────
 
 onMounted(async () => {
+    updateClock();
+    clockInterval = window.setInterval(updateClock, 10000);
+
     if (!participantId) {
         toast.error("No participant ID — returning to lobby.");
         router.push({ name: "meeting-lobby", params: { id: meetingId } });
@@ -601,6 +619,13 @@ onMounted(async () => {
         });
 
         window.addEventListener('keydown', handleGlobalKeydown);
+
+        // Auto-start screen share if joined via "Present" button
+        if (route.query.present === '1') {
+            setTimeout(() => {
+                toggleScreenShare();
+            }, 2000); // Wait for SFU connection to establish
+        }
     } catch (e) {
         console.error("[MeetingRoom] Failed to initialize:", e);
         toast.error("Failed to initialize meeting room.");
@@ -608,7 +633,7 @@ onMounted(async () => {
 });
 
 function handleGlobalKeydown(e: KeyboardEvent) {
-    if (e.ctrlKey && e.altKey && e.key.toLowerCase() === 'd') {
+    if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'd') {
         e.preventDefault();
         showDevTool.value = !showDevTool.value;
         if (showDevTool.value) {
@@ -619,6 +644,7 @@ function handleGlobalKeydown(e: KeyboardEvent) {
 
 onUnmounted(() => {
     window.removeEventListener('keydown', handleGlobalKeydown);
+    window.clearInterval(clockInterval);
     meetingStore.cleanup();
 });
 
@@ -662,6 +688,11 @@ async function toggleScreenShare() {
 }
 
 const toggleCamera = async () => {
+    if (meetingStore.localParticipant?.is_camera_disabled_by_host && !isCameraOn.value) {
+        toast.error('The host has disabled your camera.');
+        return;
+    }
+
     let stream = meetingStore.localStream;
     if (!stream) {
         stream = new MediaStream();
@@ -694,6 +725,11 @@ const toggleCamera = async () => {
 };
 
 const toggleMic = async () => {
+    if (meetingStore.localParticipant?.is_muted_by_host && !isMicOn.value) {
+        toast.error('The host has muted your microphone.');
+        return;
+    }
+
     let stream = meetingStore.localStream;
     if (!stream) {
         stream = new MediaStream();
@@ -770,132 +806,863 @@ watch(
     },
 );
 
+watch(() => meetingStore.localParticipant?.is_muted_by_host, (isMuted) => {
+    if (isMuted) {
+        toast.error('The host has muted your microphone.');
+        if (isMicOn.value) {
+            toggleMic();
+        }
+    } else if (isMuted === false) {
+        toast.success('The host has allowed you to unmute your microphone.');
+    }
+});
+
+watch(() => meetingStore.localParticipant?.is_camera_disabled_by_host, (isDisabled) => {
+    if (isDisabled) {
+        toast.error('The host has disabled your camera.');
+        if (isCameraOn.value) {
+            toggleCamera();
+        }
+    } else if (isDisabled === false) {
+        toast.success('The host has allowed you to turn on your camera.');
+    }
+});
+
+const showHangupMenu = ref(false);
+const lastReactionEmoji = ref('👍');
+const isRecording = ref(false);
+
+function toggleRecording() {
+    isRecording.value = !isRecording.value;
+    if (isRecording.value) {
+        toast.success('Recording started (simulated)');
+    } else {
+        toast.info('Recording stopped (simulated)');
+    }
+}
+
+function sendQuickReaction() {
+    meetingStore.sendReaction(lastReactionEmoji.value);
+}
+
+// Watch for reactions sent via the picker to update the quick-action emoji
+watch(() => meetingStore.activeReactions, (reactions) => {
+    // If the local participant just sent a reaction, update the quick-action button
+    if (reactions.length > 0) {
+        const localPid = meetingStore.localParticipant?.public_id;
+        const myReactions = reactions.filter(r => r.publicId === localPid);
+        if (myReactions.length > 0) {
+            lastReactionEmoji.value = myReactions[myReactions.length - 1].emoji;
+        }
+    }
+}, { deep: true });
+
+function lowerAllHands() {
+    // Clear all raised hands locally and broadcast
+    const hands = Array.from(meetingStore.raisedHands);
+    hands.forEach(pid => {
+        presence_lowerHand(pid);
+    });
+}
+
+function presence_lowerHand(pid: string) {
+    // Lower individual hand via presence manager
+    const store = meetingStore;
+    // Use the toggleHandState via the store's internal presence manager
+    // Since raisedHands is a Set, we need to remove from it and broadcast
+    if (store.raisedHands.has(pid)) {
+        store.raisedHands.delete(pid);
+        // Force reactivity
+        store.raisedHands = new Set(store.raisedHands);
+    }
+}
+
 const leaveMeeting = () => {
+    showHangupMenu.value = false;
     meetingStore.localStream?.getTracks().forEach((t) => t.stop());
     router.push({ name: "meeting-lobby", params: { id: meetingId } });
+};
+
+const endMeetingForAll = async () => {
+    showHangupMenu.value = false;
+    await meetingStore.endMeeting();
 };
 </script>
 
 <style scoped>
-.controls-bar {
-    position: absolute;
-    bottom: calc(32px + env(safe-area-inset-bottom, 0));
-    left: 50%;
-    transform: translateX(-50%);
+/* ─── Root & Reset ─────────────────────────────────────────────────────────── */
+.gmeet-root {
     display: flex;
-    flex-direction: row;
-    align-items: center;
-    gap: 12px;
-    z-index: 500;
-    transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
-    background: rgba(20, 20, 25, 0.8);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    padding: 14px 28px;
-    user-select: none;
-    border-radius: 40px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-}
-
-.controls-bar:active {
-    cursor: grabbing;
-}
-
-.controls-bar.is-dragging {
-    transition: none !important;
-    pointer-events: auto;
-}
-
-.controls-bar.collapsed {
-    padding: 8px 16px;
-    gap: 8px;
-    border-radius: 24px;
-}
-
-.drag-handle {
-    cursor: grab;
-    color: #a1a1aa;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 4px;
-    margin-right: -4px;
-}
-.drag-handle:active {
-    cursor: grabbing;
-    color: white;
-}
-
-.collapse-toggle {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.05);
-    border: none;
-    color: #a1a1aa;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-.collapse-toggle:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: white;
-}
-
-.main-controls {
-    display: flex;
-    gap: 20px;
-}
-
-.collapsed-status {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    color: white;
-}
-
-.control-btn {
-    width: 48px;
-    height: 48px;
-    border-radius: 24px;
-    border: none;
-    background: rgba(255, 255, 255, 0.1);
-    color: white;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+    background: #202124;
+    color: #e8eaed;
+    font-family: 'Google Sans', 'Roboto', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    overflow: hidden;
     position: relative;
+}
+
+/* ─── Top Bar ──────────────────────────────────────────────────────────────── */
+.gmeet-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 56px;
+    padding: 0 16px 0 24px;
+    background: #202124;
+    z-index: 20;
+    flex-shrink: 0;
+}
+
+.topbar-left {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    flex: 1;
+}
+
+.topbar-title {
+    font-size: 18px;
+    font-weight: 500;
+    color: #e8eaed;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.topbar-center {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    padding: 0 16px;
+}
+
+.topbar-clock {
+    font-size: 14px;
+    color: #9aa0a6;
+    font-weight: 400;
+    letter-spacing: 0.25px;
+}
+
+.topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 1;
+    justify-content: flex-end;
+}
+
+.topbar-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border: none;
+    background: transparent;
+    color: #e8eaed;
+    border-radius: 24px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.15s;
+}
+.topbar-btn:hover { background: rgba(255,255,255,0.08); }
+.topbar-btn--active { background: rgba(138,180,248,0.12); color: #8ab4f8; }
+.topbar-btn--alert { position: relative; }
+
+.topbar-badge {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    min-width: 16px;
+    height: 16px;
+    background: #ea4335;
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+    animation: pulse-badge 2s infinite;
+}
+
+@keyframes pulse-badge {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.15); }
+}
+
+.topbar-count {
+    font-weight: 500;
+}
+
+/* ─── Main Body ────────────────────────────────────────────────────────────── */
+.gmeet-body {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+    overflow: hidden;
+    transition: padding-right 0.25s ease;
+}
+.gmeet-body.has-panel {
+    /* panel takes 320px */
+}
+
+.gmeet-stage {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 8px;
+    gap: 8px;
+    position: relative;
+    min-width: 0;
+}
+
+/* ─── Grid Layout ──────────────────────────────────────────────────────────── */
+.grid-container {
+    flex: 1;
+    display: grid;
+    gap: 8px;
+    padding: 8px;
+    min-height: 0;
+    align-content: center;
+    justify-content: center;
+}
+
+.grid-0 { place-items: center; }
+
+.grid-1 {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr;
+    max-width: 960px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.grid-2 {
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: 1fr;
+    align-items: center;
+}
+
+.grid-4 {
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+}
+
+.grid-6 {
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+}
+
+.grid-9 {
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+}
+
+.grid-12 {
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+}
+
+.grid-16 {
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: repeat(4, 1fr);
+}
+
+.grid-tile {
+    /* Critical formula for 16:9 boxes inside dynamic grid cells */
+    aspect-ratio: 16 / 9;
+    height: 100%;
+    max-height: 100%;
+    max-width: 100%;
+    margin: auto;
+    
+    background: #3c4043;
+    border-radius: 8px;
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.grid-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 30;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(32,33,36,0.85);
+    color: #e8eaed;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, transform 0.15s;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+.grid-nav:hover {
+    background: rgba(60,64,67,0.95);
+    transform: translateY(-50%) scale(1.08);
+}
+.grid-nav--left { left: 16px; }
+.grid-nav--right { right: 16px; }
+
+/* ─── Spotlight Layout ─────────────────────────────────────────────────────── */
+.spotlight-main {
+    flex: 1;
+    background: #000;
+    border-radius: 8px;
+    overflow: hidden;
+    min-height: 0;
+}
+
+.filmstrip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 120px;
+    flex-shrink: 0;
+    position: relative;
+}
+
+.filmstrip-tiles {
+    display: flex;
+    gap: 8px;
+    flex: 1;
     overflow: hidden;
 }
 
-.control-btn.small {
+.filmstrip-tile {
+    width: 180px;
+    flex-shrink: 0;
+    aspect-ratio: 16/9;
+    background: #3c4043;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.filmstrip-nav {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(32,33,36,0.9);
+    color: #e8eaed;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    z-index: 5;
+}
+.filmstrip-nav:hover { background: #3c4043; }
+
+/* ─── PiP Self-View ────────────────────────────────────────────────────────── */
+.pip-self-view {
+    position: absolute;
+    bottom: 16px;
+    right: 16px;
+    width: 200px;
+    aspect-ratio: 16/9;
+    border-radius: 8px;
+    overflow: hidden;
+    z-index: 35;
+    background: #3c4043;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.pip-self-view:hover {
+    transform: scale(1.04);
+    box-shadow: 0 6px 24px rgba(0,0,0,0.6);
+}
+
+/* ─── Side Panels ──────────────────────────────────────────────────────────── */
+.side-panel {
+    width: 320px;
+    flex-shrink: 0;
+    background: #292a2d;
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid #3c4043;
+    z-index: 25;
+}
+
+.side-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 20px;
+    border-bottom: 1px solid #3c4043;
+    flex-shrink: 0;
+}
+.side-panel-header h3 {
+    font-size: 16px;
+    font-weight: 600;
+    color: #e8eaed;
+    margin: 0;
+    letter-spacing: -0.01em;
+}
+
+.side-panel-close {
     width: 32px;
     height: 32px;
+    border-radius: 50%;
+    border: none;
+    background: transparent;
+    color: #9aa0a6;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.side-panel-close:hover { background: rgba(255,255,255,0.08); color: #e8eaed; }
+
+.side-panel-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
 }
 
-.control-btn:hover {
-    background: rgba(255, 255, 255, 0.2);
-    transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+.participant-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    transition: background 0.12s;
+}
+.participant-row:hover { background: rgba(255,255,255,0.05); }
+
+.participant-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #5f6368;
+    color: #e8eaed;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 600;
+    flex-shrink: 0;
 }
 
-.control-btn.active {
-    background: #10b981;
+.participant-info { flex: 1; min-width: 0; }
+
+.participant-name {
+    font-size: 13px;
+    color: #e8eaed;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.you-badge {
+    font-size: 10px;
+    color: #8ab4f8;
+    background: rgba(138,180,248,0.12);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-weight: 500;
+}
+
+.participant-status-icons {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.panel-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 40px 0;
+    color: #9aa0a6;
+    font-size: 13px;
+}
+
+.admission-card {
+    background: #3c4043;
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 8px;
+}
+
+.admission-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.admission-name {
+    font-size: 13px;
+    color: #e8eaed;
+    font-weight: 500;
+    margin: 0;
+}
+.admission-sub {
+    font-size: 11px;
+    color: #9aa0a6;
+    margin: 0;
+}
+
+.admission-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.admission-btn {
+    flex: 1;
+    padding: 6px 0;
+    border-radius: 20px;
+    border: none;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.admission-btn--admit {
+    background: #8ab4f8;
+    color: #202124;
+}
+.admission-btn--admit:hover { background: #aecbfa; }
+
+.admission-btn--reject {
+    background: transparent;
+    color: #e8eaed;
+    border: 1px solid #5f6368;
+}
+.admission-btn--reject:hover { background: rgba(234,67,53,0.15); color: #f28b82; border-color: #f28b82; }
+
+/* ─── Bottom Control Bar ───────────────────────────────────────────────────── */
+.gmeet-controls {
+    display: flex;
+    justify-content: center;
+    padding: 12px 0 max(12px, env(safe-area-inset-bottom));
+    background: #202124;
+    z-index: 40;
+    flex-shrink: 0;
+}
+
+.controls-center {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 20px;
+    background: #303134;
+    border-radius: 28px;
+}
+
+.ctrl-btn {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    border: none;
+    background: #3c4043;
+    color: #e8eaed;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+    position: relative;
+}
+.ctrl-btn:hover {
+    background: #4a4d51;
+    transform: scale(1.05);
+}
+.ctrl-btn:active {
+    transform: scale(0.95);
+}
+
+.ctrl-btn--off {
+    background: #ea4335;
     color: white;
-    box-shadow: 0 0 20px rgba(16, 185, 129, 0.4);
+}
+.ctrl-btn--off:hover {
+    background: #d93025;
 }
 
-.control-btn.hangup {
-    background: rgba(239, 68, 68, 0.85);
-    color: white;
+.ctrl-btn--active {
+    background: #8ab4f8;
+    color: #202124;
 }
-.control-btn.hangup:hover {
-    background: rgba(239, 68, 68, 1);
-    box-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
+.ctrl-btn--active:hover {
+    background: #aecbfa;
+}
+
+.ctrl-btn--hangup {
+    background: #ea4335;
+    color: white;
+    width: 56px;
+    border-radius: 28px;
+}
+.ctrl-btn--hangup:hover {
+    background: #d93025;
+    box-shadow: 0 0 16px rgba(234,67,53,0.4);
+}
+
+/* Hangup Popup Menu */
+.hangup-menu {
+    position: absolute;
+    bottom: calc(100% + 12px);
+    right: 0;
+    background: #2d2e30;
+    border: 1px solid #3c4043;
+    border-radius: 12px;
+    padding: 8px 0;
+    min-width: 220px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    z-index: 50;
+}
+.hangup-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 16px;
+    border: none;
+    background: transparent;
+    color: #e8eaed;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background-color 0.15s;
+    text-align: left;
+}
+.hangup-menu-item:hover {
+    background: #3c4043;
+}
+.hangup-menu-item--end {
+    color: #f28b82;
+}
+.hangup-menu-item--end:hover {
+    background: rgba(234,67,53,0.15);
+}
+
+/* Reaction Split Button */
+.reaction-quick-btn {
+    border-top-right-radius: 0 !important;
+    border-bottom-right-radius: 0 !important;
+    padding-right: 8px !important;
+    min-width: 40px;
+}
+.reaction-chevron-btn {
+    border-top-left-radius: 0 !important;
+    border-bottom-left-radius: 0 !important;
+    padding-left: 4px !important;
+    padding-right: 6px !important;
+    min-width: 24px;
+    width: 24px;
+    border-left: 1px solid rgba(255,255,255,0.1);
+}
+
+/* Recording Indicator in Top Bar */
+.recording-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.recording-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #ea4335;
+    animation: pulse-dot 1.5s ease-in-out infinite;
+}
+.recording-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #ea4335;
+    letter-spacing: 0.05em;
+}
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+/* Recording Button */
+.ctrl-btn--recording {
+    background: rgba(234,67,53,0.2) !important;
+    color: #ea4335 !important;
+}
+
+/* Lock Button */
+.ctrl-btn--lock-active {
+    background: rgba(242,139,130,0.2) !important;
+    color: #f28b82 !important;
+}
+.ctrl-btn--lock-active:hover {
+    background: rgba(242,139,130,0.3) !important;
+}
+
+/* Solo / Empty Meeting State */
+.solo-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    width: 100%;
+    gap: 8px;
+}
+.solo-avatar {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #5f6368, #3c4043);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 48px;
+    font-weight: 500;
+    color: #e8eaed;
+    margin-bottom: 16px;
+}
+.solo-name {
+    font-size: 20px;
+    font-weight: 500;
+    color: #e8eaed;
+    margin: 0;
+}
+.solo-hint {
+    font-size: 14px;
+    color: #9aa0a6;
+    margin: 4px 0 0 0;
+}
+.solo-hint-sub {
+    font-size: 12px;
+    color: #5f6368;
+    margin: 2px 0 0 0;
+}
+
+/* ─── Waiting Room Overlay ─────────────────────────────────────────────────── */
+.waiting-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background: #202124;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+
+.waiting-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    max-width: 420px;
+}
+
+.waiting-icon-wrap { position: relative; margin-bottom: 32px; }
+.waiting-icon-circle {
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    background: rgba(138,180,248,0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.05); opacity: 0.8; }
+}
+
+.waiting-ping {
+    position: absolute;
+    bottom: -4px;
+    right: -4px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #202124;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.ping-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #8ab4f8;
+    animation: ping 1.5s ease-in-out infinite;
+}
+
+@keyframes ping {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(1.3); }
+}
+
+.waiting-title {
+    font-size: 24px;
+    font-weight: 400;
+    color: #e8eaed;
+    margin: 0 0 8px;
+}
+.waiting-desc {
+    font-size: 14px;
+    color: #9aa0a6;
+    margin: 0;
+    line-height: 1.5;
+}
+
+.waiting-meta {
+    margin-top: 40px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+}
+
+.waiting-host-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: #303134;
+    border-radius: 20px;
+    font-size: 13px;
+    color: #9aa0a6;
+}
+.waiting-host-avatar { width: 24px; height: 24px; border-radius: 50%; }
+
+.waiting-cancel-btn {
+    background: none;
+    border: none;
+    color: #8ab4f8;
+    font-size: 13px;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 4px;
+}
+.waiting-cancel-btn:hover { color: #aecbfa; }
+
+/* ─── Responsive ───────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+    .gmeet-topbar { padding: 0 12px; height: 48px; }
+    .topbar-center { display: none; }
+    .side-panel { width: 100%; position: absolute; right: 0; top: 0; bottom: 0; }
+    .pip-self-view { width: 140px; bottom: 12px; right: 12px; }
+    .ctrl-btn { width: 42px; height: 42px; }
+    .ctrl-btn--hangup { width: 50px; }
+    .controls-center { gap: 8px; padding: 6px 14px; }
+    .filmstrip { height: 90px; }
+    .filmstrip-tile { width: 140px; }
 }
 </style>
