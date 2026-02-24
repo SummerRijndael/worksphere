@@ -39,8 +39,14 @@ export function createSignalingManager(
                 handleSignal(e.sender_participant_public_id, e.signal_type, e.signal_data);
             })
             .listen('.MeetingParticipantJoined', (e: any) => {
-                log('RECV', `Participant joined event: ${e.participant?.public_id}`, e);
+                const joinedId = e.participant?.public_id?.toLowerCase();
+                log('RECV', `Participant joined event: ${joinedId}`, e);
                 presenceManager.upsertParticipant(e.participant);
+                
+                // If they bypassed the lobby (directly admitted), rebroadcast our media
+                if (e.participant?.status === 'admitted' && localParticipantRef.value && joinedId && joinedId !== localParticipantRef.value.public_id.toLowerCase()) {
+                    streamManager.rebroadcastToJoiner(joinedId);
+                }
             })
             .listen('.MeetingParticipantAdmitted', (e: any) => {
                 const admitId = e.participant_public_id?.toLowerCase();
@@ -61,6 +67,9 @@ export function createSignalingManager(
                         public_id: admitId, 
                         status: 'admitted' 
                     });
+                    
+                    // Re-broadcast so the person who just got admitted knows our MIDs
+                    streamManager.rebroadcastToJoiner(admitId);
                 }
             });
     }
@@ -124,6 +133,7 @@ export function createSignalingManager(
                     public_id: admitId, 
                     status: 'admitted' 
                 });
+                streamManager.rebroadcastToJoiner(admitId);
             }
             return;
         }

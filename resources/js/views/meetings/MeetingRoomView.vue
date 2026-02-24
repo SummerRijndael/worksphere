@@ -140,12 +140,19 @@
                 <!-- Solo/Empty State when alone with no camera -->
                 <template v-else>
                     <div class="solo-empty-state">
-                        <div class="solo-avatar">
-                            {{ meetingStore.localParticipant?.display_name?.[0]?.toUpperCase() || 'Y' }}
+                        <div class="ambient-background">
+                            <div class="blob blob-1"></div>
+                            <div class="blob blob-2"></div>
+                            <div class="blob blob-3"></div>
                         </div>
-                        <p class="solo-name">{{ meetingStore.localParticipant?.display_name || 'You' }}</p>
-                        <p class="solo-hint">No one else has joined yet</p>
-                        <p class="solo-hint-sub">Share the meeting link to invite others</p>
+                        <div class="solo-content glass-panel">
+                            <div class="solo-avatar">
+                                {{ meetingStore.localParticipant?.display_name?.[0]?.toUpperCase() || 'Y' }}
+                            </div>
+                            <p class="solo-name">{{ meetingStore.localParticipant?.display_name || 'You' }}</p>
+                            <p class="solo-hint">No one else has joined yet</p>
+                            <p class="solo-hint-sub">Share the meeting link to invite others</p>
+                        </div>
                     </div>
                 </template>
 
@@ -566,14 +573,17 @@ const paginatedTiles = computed(() => {
 // Google Meet-style grid layout class based on tile count
 const gridLayoutClass = computed(() => {
     const count = paginatedTiles.value.length;
-    if (count === 0) return 'grid-0';
-    if (count === 1) return 'grid-1';
-    if (count === 2) return 'grid-2';
-    if (count <= 4) return 'grid-4';
-    if (count <= 6) return 'grid-6';
-    if (count <= 9) return 'grid-9';
-    if (count <= 12) return 'grid-12';
-    return 'grid-16';
+    let baseClass = '';
+    if (count === 0) baseClass = 'grid-0';
+    else if (count === 1) baseClass = 'grid-1';
+    else if (count === 2) baseClass = 'grid-2';
+    else if (count <= 4) baseClass = 'grid-4';
+    else if (count <= 6) baseClass = 'grid-6';
+    else if (count <= 9) baseClass = 'grid-9';
+    else if (count <= 12) baseClass = 'grid-12';
+    else baseClass = 'grid-16';
+    
+    return `${baseClass} count-${count}`;
 });
 
 function prevPage() {
@@ -904,7 +914,7 @@ const endMeetingForAll = async () => {
     flex-direction: column;
     height: 100vh;
     height: 100dvh;
-    background: #202124;
+    background: radial-gradient(circle at 50% 10%, #292a2d 0%, #111111 100%);
     color: #e8eaed;
     font-family: 'Google Sans', 'Roboto', 'Segoe UI', system-ui, -apple-system, sans-serif;
     overflow: hidden;
@@ -916,10 +926,13 @@ const endMeetingForAll = async () => {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    height: 56px;
-    padding: 0 16px 0 24px;
-    background: #202124;
-    z-index: 20;
+    height: 64px;
+    padding: 0 24px;
+    background: rgba(32, 33, 36, 0.7);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    z-index: 40;
     flex-shrink: 0;
 }
 
@@ -933,10 +946,11 @@ const endMeetingForAll = async () => {
 .topbar-title {
     font-size: 18px;
     font-weight: 500;
-    color: #e8eaed;
+    color: #ffffff;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    letter-spacing: -0.2px;
 }
 
 .topbar-center {
@@ -944,20 +958,20 @@ const endMeetingForAll = async () => {
     align-items: center;
     justify-content: center;
     flex: 0 0 auto;
-    padding: 0 16px;
+    padding: 0 20px;
 }
 
 .topbar-clock {
     font-size: 14px;
     color: #9aa0a6;
-    font-weight: 400;
+    font-weight: 500;
     letter-spacing: 0.25px;
 }
 
 .topbar-right {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 8px;
     flex: 1;
     justify-content: flex-end;
 }
@@ -966,17 +980,25 @@ const endMeetingForAll = async () => {
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 8px 12px;
-    border: none;
-    background: transparent;
+    padding: 8px 14px;
+    border: 1px solid transparent;
+    background: rgba(255, 255, 255, 0.03);
     color: #e8eaed;
     border-radius: 24px;
     cursor: pointer;
     font-size: 13px;
-    transition: background 0.15s;
+    font-weight: 500;
+    transition: all 0.2s ease;
 }
-.topbar-btn:hover { background: rgba(255,255,255,0.08); }
-.topbar-btn--active { background: rgba(138,180,248,0.12); color: #8ab4f8; }
+.topbar-btn:hover { 
+    background: rgba(255, 255, 255, 0.08); 
+    border-color: rgba(255, 255, 255, 0.05);
+}
+.topbar-btn--active { 
+    background: rgba(138, 180, 248, 0.15); 
+    color: #8ab4f8; 
+    border-color: rgba(138, 180, 248, 0.3);
+}
 .topbar-btn--alert { position: relative; }
 
 .topbar-badge {
@@ -1022,7 +1044,7 @@ const endMeetingForAll = async () => {
     flex: 1;
     display: flex;
     flex-direction: column;
-    padding: 8px;
+    padding: 16px 16px 90px 16px; /* Extra padding at bottom for absolute floating controls */
     gap: 8px;
     position: relative;
     min-width: 0;
@@ -1044,7 +1066,7 @@ const endMeetingForAll = async () => {
 .grid-1 {
     grid-template-columns: 1fr;
     grid-template-rows: 1fr;
-    max-width: 960px;
+    max-width: 1080px;
     margin: 0 auto;
     width: 100%;
 }
@@ -1056,29 +1078,51 @@ const endMeetingForAll = async () => {
 }
 
 .grid-4 {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     grid-template-rows: repeat(2, 1fr);
 }
+.grid-4 .grid-tile { grid-column: span 2; }
+.grid-container.count-3 .grid-tile:nth-child(3) { grid-column: 2 / span 2; }
 
 .grid-6 {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     grid-template-rows: repeat(2, 1fr);
 }
+.grid-6 .grid-tile { grid-column: span 2; }
+.grid-container.count-5 .grid-tile:nth-child(4) { grid-column: 2 / span 2; }
+.grid-container.count-5 .grid-tile:nth-child(5) { grid-column: 4 / span 2; }
 
 .grid-9 {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     grid-template-rows: repeat(3, 1fr);
 }
+.grid-9 .grid-tile { grid-column: span 2; }
+.grid-container.count-7 .grid-tile:nth-child(7) { grid-column: 3 / span 2; }
+.grid-container.count-8 .grid-tile:nth-child(7) { grid-column: 2 / span 2; }
+.grid-container.count-8 .grid-tile:nth-child(8) { grid-column: 4 / span 2; }
 
 .grid-12 {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(8, 1fr);
     grid-template-rows: repeat(3, 1fr);
 }
+.grid-12 .grid-tile { grid-column: span 2; }
+.grid-container.count-10 .grid-tile:nth-child(9) { grid-column: 3 / span 2; }
+.grid-container.count-10 .grid-tile:nth-child(10) { grid-column: 5 / span 2; }
+.grid-container.count-11 .grid-tile:nth-child(9) { grid-column: 2 / span 2; }
+.grid-container.count-11 .grid-tile:nth-child(10) { grid-column: 4 / span 2; }
+.grid-container.count-11 .grid-tile:nth-child(11) { grid-column: 6 / span 2; }
 
 .grid-16 {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(8, 1fr);
     grid-template-rows: repeat(4, 1fr);
 }
+.grid-16 .grid-tile { grid-column: span 2; }
+.grid-container.count-13 .grid-tile:nth-child(13) { grid-column: 4 / span 2; }
+.grid-container.count-14 .grid-tile:nth-child(13) { grid-column: 3 / span 2; }
+.grid-container.count-14 .grid-tile:nth-child(14) { grid-column: 5 / span 2; }
+.grid-container.count-15 .grid-tile:nth-child(13) { grid-column: 2 / span 2; }
+.grid-container.count-15 .grid-tile:nth-child(14) { grid-column: 4 / span 2; }
+.grid-container.count-15 .grid-tile:nth-child(15) { grid-column: 6 / span 2; }
 
 .grid-tile {
     /* Critical formula for 16:9 boxes inside dynamic grid cells */
@@ -1088,13 +1132,16 @@ const endMeetingForAll = async () => {
     max-width: 100%;
     margin: auto;
     
-    background: #3c4043;
-    border-radius: 8px;
+    background: #303134;
+    border-radius: 12px;
     overflow: hidden;
     position: relative;
     display: flex;
     justify-content: center;
     align-items: center;
+    border: 1px solid rgba(255, 255, 255, 0.08); /* Premium outline */
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25); /* Subtle lift */
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
 }
 
 .grid-nav {
@@ -1151,9 +1198,11 @@ const endMeetingForAll = async () => {
     width: 180px;
     flex-shrink: 0;
     aspect-ratio: 16/9;
-    background: #3c4043;
-    border-radius: 8px;
+    background: #303134;
+    border-radius: 12px;
     overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 .filmstrip-nav {
@@ -1359,19 +1408,29 @@ const endMeetingForAll = async () => {
 .gmeet-controls {
     display: flex;
     justify-content: center;
-    padding: 12px 0 max(12px, env(safe-area-inset-bottom));
-    background: #202124;
+    padding: 16px 0 max(24px, env(safe-area-inset-bottom));
+    background: linear-gradient(0deg, rgba(20, 20, 22, 0.95) 0%, rgba(20, 20, 22, 0) 100%);
     z-index: 40;
     flex-shrink: 0;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    pointer-events: none; /* Allows clicking through the gradient */
 }
 
 .controls-center {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 8px 20px;
-    background: #303134;
-    border-radius: 28px;
+    padding: 8px 24px;
+    background: rgba(48, 49, 52, 0.85);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 36px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    pointer-events: auto; /* Re-enable clicks for the actual pill menu */
 }
 
 .ctrl-btn {
@@ -1518,62 +1577,138 @@ const endMeetingForAll = async () => {
 
 /* Solo / Empty Meeting State */
 .solo-empty-state {
+    position: relative;
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
     height: 100%;
     width: 100%;
-    gap: 8px;
-    animation: soloFadeIn 1s ease-out;
+    overflow: hidden;
+    background-color: #111111;
 }
+
+.ambient-background {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    z-index: 0;
+    opacity: 0.6;
+}
+
+.blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(90px);
+    opacity: 0.5;
+    animation: floatBlob 20s infinite ease-in-out alternate;
+    will-change: transform;
+}
+
+.blob-1 {
+    width: 500px;
+    height: 500px;
+    background: #1a73e8;
+    top: -100px;
+    left: -100px;
+    animation-delay: 0s;
+}
+
+.blob-2 {
+    width: 600px;
+    height: 600px;
+    background: #8ab4f8;
+    bottom: -150px;
+    right: -100px;
+    animation-delay: -5s;
+    animation-duration: 25s;
+}
+
+.blob-3 {
+    width: 400px;
+    height: 400px;
+    background: #9333ea;
+    bottom: 20%;
+    left: 20%;
+    animation-delay: -10s;
+    animation-duration: 22s;
+}
+
+@keyframes floatBlob {
+    0% { transform: translate(0, 0) scale(1); }
+    33% { transform: translate(50px, -50px) scale(1.1); }
+    66% { transform: translate(-30px, 40px) scale(0.9); }
+    100% { transform: translate(0, 0) scale(1); }
+}
+
+.solo-content {
+    position: relative;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 64px 96px;
+    background: rgba(32, 33, 36, 0.5);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 32px;
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    animation: soloFadeIn 1s cubic-bezier(0.16, 1, 0.3, 1);
+    text-align: center;
+}
+
 @keyframes soloFadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
+    from { opacity: 0; transform: translateY(20px) scale(0.95); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
 }
+
 .solo-avatar {
-    width: 120px;
-    height: 120px;
+    width: 140px;
+    height: 140px;
     border-radius: 50%;
     background: linear-gradient(135deg, #1a73e8, #8ab4f8);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 48px;
+    font-size: 56px;
     font-weight: 500;
     color: #ffffff;
-    margin-bottom: 24px;
+    margin-bottom: 32px;
     position: relative;
-    box-shadow: 0 8px 32px rgba(26, 115, 232, 0.3);
+    box-shadow: 0 12px 36px rgba(26, 115, 232, 0.4);
 }
 .solo-avatar::after {
     content: '';
     position: absolute;
-    inset: -8px;
+    inset: -12px;
     border-radius: 50%;
     border: 2px solid #8ab4f8;
     opacity: 0.5;
-    animation: soloPulse 2s infinite ease-out;
+    animation: soloPulse 2.5s infinite cubic-bezier(0.16, 1, 0.3, 1);
 }
 @keyframes soloPulse {
-    0% { transform: scale(1); opacity: 0.5; }
-    100% { transform: scale(1.3); opacity: 0; }
+    0% { transform: scale(1); opacity: 0.6; }
+    100% { transform: scale(1.4); opacity: 0; }
 }
+
 .solo-name {
-    font-size: 24px;
+    font-size: 28px;
     font-weight: 600;
-    color: #e8eaed;
+    color: #ffffff;
     margin: 0;
+    letter-spacing: -0.5px;
 }
 .solo-hint {
-    font-size: 16px;
-    color: #9aa0a6;
-    margin: 8px 0 0 0;
+    font-size: 18px;
+    color: #e8eaed;
+    margin: 12px 0 0 0;
+    font-weight: 400;
 }
 .solo-hint-sub {
-    font-size: 14px;
-    color: #5f6368;
-    margin: 4px 0 0 0;
+    font-size: 15px;
+    color: #9aa0a6;
+    margin: 8px 0 0 0;
 }
 
 /* ─── Waiting Room Overlay ─────────────────────────────────────────────────── */
