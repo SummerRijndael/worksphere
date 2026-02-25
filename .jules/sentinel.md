@@ -6,3 +6,8 @@
 **Vulnerability:** User-controlled input in `EmailAccount` configuration was used directly in `EsmtpTransport` and IMAP client, allowing connection to internal/private IPs (SSRF).
 **Learning:** `empty($host)` allows "0" (string) to pass, which resolves to `0.0.0.0` (localhost), bypassing simplistic checks.
 **Prevention:** Use strict checks (`$host === null || $host === ''`) and validate resolved IPs against private ranges using `filter_var`.
+
+## 2026-02-24 - [SSRF] IPv4-mapped IPv6 Bypass
+**Vulnerability:** The `SecureOpenGraph` service was vulnerable to SSRF via IPv4-mapped IPv6 addresses (e.g., `::ffff:127.0.0.1`), which bypassed the IPv4-only blocklist.
+**Learning:** Standard PHP/Symfony IP validation libraries might treat mapped addresses as valid IPv6 and not check them against IPv4 blocklists unless explicitly handled or the mapped range `::ffff:0:0/96` is blocked.
+**Prevention:** Always block `::ffff:0:0/96` when implementing IP blocklists if the application handles IPv6, or normalize IPs to their canonical form before checking.

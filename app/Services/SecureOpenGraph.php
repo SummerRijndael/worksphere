@@ -32,6 +32,7 @@ class SecureOpenGraph
         '::/128',
         'fc00::/7',
         'fe80::/10',
+        '::ffff:0:0/96', // IPv4-mapped IPv6
         '2002::/16', // 6to4
         '64:ff9b::/96', // NAT64
         '100::/64', // Discard
