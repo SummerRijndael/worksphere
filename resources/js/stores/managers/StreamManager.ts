@@ -632,33 +632,40 @@ export function createStreamManager(
                 ]
             });
             sfuTransceiverMap.set(screenTc, { participantId: localParticipantRef.value?.public_id || 'self', trackName: 'screen' });
+            
+            // Renegotiate with SFU for NEW transceiver
+            const offer = await sfuPc.createOffer();
+            await sfuPc.setLocalDescription(offer);
+
+            try {
+                const res = await meetingService.sfuSessionTracks(
+                    meetingRef.value!.public_id,
+                    sfuSessionId.value!,
+                    [{ location: "local", mid: screenTc.mid, trackName: "screen" }],
+                    mungeSdp(sfuPc.localDescription!.sdp)
+                );
+                await sfuPc.setRemoteDescription(toSdpAnswer(res.sessionDescription));
+                broadcastMediaMids();
+                return { mid: screenTc.mid || '' };
+            } catch (error: any) {
+                if (error?.response?.status === 406) {
+                    log('ERROR', '406 Not Acceptable during publish screen track. Rescuing.');
+                    await handleSFU406Rescue();
+                } else {
+                    log('ERROR', 'Failed to publish screen track', error);
+                }
+                return null;
+            }
         } else {
             log('MEDIA', `Reusing inactive screen transceiver`);
-            screenTc.direction = 'sendonly';
+            // We consciously avoided setting direction to 'inactive' in unpublishScreenTrack,
+            // so it should already be 'sendonly'. We just need to inject the new track.
             await screenTc.sender.replaceTrack(videoTrack);
-        }
-
-        const offer = await sfuPc.createOffer();
-        await sfuPc.setLocalDescription(offer);
-
-        try {
-            const res = await meetingService.sfuSessionTracks(
-                meetingRef.value!.public_id,
-                sfuSessionId.value!,
-                [{ location: "local", mid: screenTc.mid, trackName: "screen" }],
-                mungeSdp(sfuPc.localDescription!.sdp)
-            );
-            await sfuPc.setRemoteDescription(toSdpAnswer(res.sessionDescription));
+            
+            // Because the track is just a hot-swap on an existing sendonly transceiver,
+            // we DO NOT need to renegotiate SDP or call sfuSessionTracks.
             broadcastMediaMids();
             return { mid: screenTc.mid || '' };
-        } catch (error: any) {
-            if (error?.response?.status === 406) {
-                log('ERROR', '406 Not Acceptable during publish screen track. Rescuing.');
-                await handleSFU406Rescue();
-            } else {
-                log('ERROR', 'Failed to publish screen track', error);
-            }
-            return null;
         }
     }
 

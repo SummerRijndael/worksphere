@@ -234,6 +234,7 @@ import { meetingService, type Meeting } from "@/services/meeting.service";
 import { useAuthStore } from "@/stores/auth";
 import { useMeetingStore } from "@/stores/meeting";
 import { useVideoCallStore } from "@/stores/videocall";
+import { useBackgroundBlur } from "@/composables/useBackgroundBlur";
 import DeviceSettingsModal from "./components/DeviceSettingsModal.vue";
 import { Icon } from "@/components/ui";
 import { toast } from "vue-sonner";
@@ -254,6 +255,7 @@ const localVideo = ref<HTMLVideoElement | null>(null);
 const localStream = ref<MediaStream | null>(null);
 const isCameraOn = ref(false); // Default OFF
 const isMicOn = ref(false); // Default OFF
+const backgroundBlur = useBackgroundBlur();
 const guestName = ref("");
 const guestEmail = ref("");
 const guestEmailError = ref("");
@@ -292,8 +294,13 @@ onMounted(async () => {
 
 onUnmounted(() => {
     // If we leave lobby WITHOUT joining, stop tracks
+    backgroundBlur.stopProcessing();
     if (localStream.value && !joining.value) {
         localStream.value.getTracks().forEach((t) => t.stop());
+    }
+    if (meetingStore.originalVideoTrack && !joining.value) {
+        meetingStore.originalVideoTrack.stop();
+        meetingStore.originalVideoTrack = null;
     }
 });
 
@@ -341,10 +348,26 @@ const toggleCamera = async () => {
                     : true,
             });
             const videoTrack = stream.getVideoTracks()[0];
-            localStream.value.addTrack(videoTrack);
+            meetingStore.originalVideoTrack = videoTrack;
+
+            let finalTrack = videoTrack;
+            if (
+                (videoCallStore.videoEffect === "blur" ||
+                    videoCallStore.videoEffect === "image") &&
+                videoTrack
+            ) {
+                finalTrack = await backgroundBlur.startVideoEffect(
+                    videoTrack,
+                    videoCallStore.videoEffect,
+                    videoCallStore.backgroundImage || undefined,
+                    videoCallStore.autoFraming,
+                );
+            }
+
+            localStream.value.addTrack(finalTrack);
             isCameraOn.value = true;
             console.info(
-                `[LOBBY-TRACE] Started new camera track ${videoTrack.id}`,
+                `[LOBBY-TRACE] Started new camera track ${finalTrack.id}`,
             );
         } catch (e) {
             console.error("Failed to start camera", e);
@@ -359,6 +382,11 @@ const toggleCamera = async () => {
                 `[LOBBY-TRACE] Stopped and removed camera track ${t.id}`,
             );
         });
+        if (meetingStore.originalVideoTrack) {
+            meetingStore.originalVideoTrack.stop();
+            meetingStore.originalVideoTrack = null;
+        }
+        backgroundBlur.stopProcessing();
         isCameraOn.value = false;
     }
 };
@@ -416,6 +444,45 @@ const toggleMic = async () => {
         isMicOn.value = false;
     }
 };
+
+// Watch for video effect changes and hot-swap the track
+watch(
+    [
+        () => videoCallStore.videoEffect,
+        () => videoCallStore.backgroundImage,
+        () => videoCallStore.autoFraming,
+    ],
+    async ([effect, bgImage, framing]) => {
+        if (!isCameraOn.value || !meetingStore.originalVideoTrack || !localStream.value)
+            return;
+
+        try {
+            let newTrack: MediaStreamTrack;
+            if (effect === "blur" || effect === "image") {
+                newTrack = await backgroundBlur.startVideoEffect(
+                    meetingStore.originalVideoTrack as MediaStreamTrack,
+                    effect,
+                    bgImage || undefined,
+                    framing,
+                );
+            } else {
+                backgroundBlur.stopProcessing();
+                newTrack = meetingStore.originalVideoTrack as MediaStreamTrack;
+            }
+
+            const oldTrack = localStream.value.getVideoTracks()[0];
+            if (oldTrack && oldTrack.id !== newTrack.id) {
+                localStream.value.removeTrack(oldTrack);
+                localStream.value.addTrack(newTrack);
+                console.info(
+                    `[LOBBY-TRACE] Swapped camera track from ${oldTrack.id} to ${newTrack.id}`,
+                );
+            }
+        } catch (e) {
+            console.error("[LOBBY] Failed to swap effect track", e);
+        }
+    },
+);
 
 // Listen for device changes from the Settings modal and apply them
 watch(

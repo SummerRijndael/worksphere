@@ -1,20 +1,53 @@
 <template>
     <div class="tile-root" :class="{ 'tile-speaking': isSpeaking }">
-        <!-- Local Video -->
-        <video
-            v-if="isLocal"
-            v-show="actualHasVideo"
-            autoplay
-            muted
-            playsinline
-            :ref="bindLocalVideo"
-            class="tile-video"
-            :class="
-                isSpotlight || isScreenShare
-                    ? 'tile-video--contain'
-                    : 'tile-video--cover'
-            "
-        ></video>
+        <!-- Core Video Content Box -->
+        <div v-show="actualHasVideo" class="tile-video-container">
+            <div 
+                class="tile-video-content" 
+                :style="videoContentStyle"
+            >
+                <!-- Local Video (Persistent to avoid iOS Safari play failures) -->
+                <video
+                    v-if="isLocal"
+                    v-show="actualHasVideo"
+                    autoplay
+                    muted
+                    playsinline
+                    :ref="bindLocalVideo"
+                    class="tile-video"
+                ></video>
+
+                <!-- Remote Video (Persistent) -->
+                <video
+                    v-if="!isLocal"
+                    v-show="actualHasVideo"
+                    autoplay
+                    muted
+                    playsinline
+                    :ref="bindRemoteVideo"
+                    class="tile-video"
+                    :data-participant="participant.public_id"
+                    :data-screen="isScreenShare ? 'true' : 'false'"
+                ></video>
+
+                <!-- Targeted Laser Pointer Overlay -->
+                <!-- Renders relative to the video aspect-ratio box -->
+                <LaserPointerOverlay 
+                    v-if="meetingStore.laserPointerMode !== 'off'"
+                    :target-participant-id="participant.public_id" 
+                    :is-screen-share="isScreenShare"
+                />
+
+                <!-- Screenshare Annotation Overlay -->
+                <!-- Renders relative to the video aspect-ratio box -->
+                <AnnotationOverlay
+                    v-if="actualHasVideo && isScreenShare"
+                    :ref="bindAnnotationOverlay"
+                    :participant-id="participant.public_id"
+                    :is-local="isLocal"
+                />
+            </div>
+        </div>
 
         <!-- Remote Audio -->
         <audio
@@ -23,24 +56,6 @@
             :ref="bindRemoteAudio"
             class="hidden"
         ></audio>
-
-        <!-- Remote Video -->
-        <video
-            v-if="!isLocal"
-            v-show="actualHasVideo"
-            autoplay
-            muted
-            playsinline
-            :ref="bindRemoteVideo"
-            class="tile-video"
-            :class="
-                isSpotlight || isScreenShare
-                    ? 'tile-video--contain'
-                    : 'tile-video--cover'
-            "
-            :data-participant="participant.public_id"
-            :data-screen="isScreenShare ? 'true' : 'false'"
-        ></video>
 
         <!-- Avatar Fallback (Initials) -->
         <div v-if="!actualHasVideo" class="tile-avatar-wrap">
@@ -78,12 +93,7 @@
             <Icon name="pin-off" size="14" />
         </button>
 
-        <!-- Targeted Laser Pointer Overlay -->
-        <LaserPointerOverlay 
-            v-if="meetingStore.laserPointerMode !== 'off'"
-            :target-participant-id="participant.public_id" 
-            :is-screen-share="isScreenShare"
-        />
+        <!-- Laser pointer moved inside video container -->
     </div>
 </template>
 
@@ -92,6 +102,7 @@ import { computed, ref, watch, onMounted, onUnmounted } from "vue";
 import { useMeetingStore } from "@/stores/meeting";
 import { Icon } from "@/components/ui";
 import LaserPointerOverlay from "./LaserPointerOverlay.vue";
+import AnnotationOverlay from "./AnnotationOverlay.vue";
 
 const props = defineProps<{
     participant: any;
@@ -174,6 +185,44 @@ const isSpeaking = computed(() => {
     );
 });
 
+// -- Aspect Ratio & Content Scaling Logic --
+const streamAspectRatio = ref(16 / 9);
+
+function updateAspectRatio(el: HTMLVideoElement | null) {
+    if (el && el.videoWidth && el.videoHeight) {
+        streamAspectRatio.value = el.videoWidth / el.videoHeight;
+    }
+}
+
+const videoContentStyle = computed(() => {
+    // If not in spotlight/screenshare, we want to cover the tile (fill)
+    if (!props.isSpotlight && !props.isScreenShare) {
+        return {
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover' as any
+        };
+    }
+
+    // In spotlight/screenshare, we want to contain (show all pixels)
+    // We use aspect-ratio to ensure the container matches the video EXACTLY.
+    // By using width/height: auto and max-width/max-height: 100%, 
+    // the browser will scale the box to fit perfectly while maintaining the ratio.
+    return {
+        aspectRatio: `${streamAspectRatio.value}`,
+        width: 'auto',
+        height: 'auto',
+        maxWidth: '100%',
+        maxHeight: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 1,
+        flexGrow: 0
+    };
+});
+
+
 const displayName = computed(() => {
     let name = isLocal.value
         ? "You"
@@ -197,17 +246,18 @@ const localVideo = ref<HTMLVideoElement | null>(null);
 
 const bindLocalVideo = (el: any) => {
     localVideo.value = el as HTMLVideoElement | null;
+    if (el) {
+        el.addEventListener('resize', () => updateAspectRatio(el as HTMLVideoElement));
+        updateAspectRatio(el as HTMLVideoElement);
+    }
 };
 
 watch(
     () => [
         localVideo.value,
         meetingStore.localStream,
-        props.localStreamOverride,
-        props.isScreenShare,
-        props.localCameraOn,
     ],
-    ([videoEl, camStream, overrideStream, isScreen, isCamOn]) => {
+    ([videoEl, camStream]) => {
         const stream =
             props.isScreenShare && props.localStreamOverride
                 ? props.localStreamOverride
@@ -231,6 +281,10 @@ const remoteAudio = ref<HTMLAudioElement | null>(null);
 
 const bindRemoteVideo = (el: any) => {
     remoteVideo.value = el as HTMLVideoElement | null;
+    if (el) {
+        el.addEventListener('resize', () => updateAspectRatio(el as HTMLVideoElement));
+        updateAspectRatio(el as HTMLVideoElement);
+    }
     updateRemoteStream();
 };
 
@@ -271,6 +325,19 @@ onMounted(() => {
         updateRemoteStream();
     }
 });
+
+// -- Annotation Handling --
+const annotationOverlay = ref<any>(null);
+const bindAnnotationOverlay = (el: any) => {
+    annotationOverlay.value = el;
+};
+
+// Handle remote annotation updates
+watch(() => meetingStore.lastAnnotationSignal, (data) => {
+    if (data && data.participant_id?.toLowerCase() === props.participant.public_id?.toLowerCase()) {
+        annotationOverlay.value?.handleRemoteUpdate(data);
+    }
+});
 </script>
 
 <style scoped>
@@ -290,21 +357,30 @@ onMounted(() => {
     box-shadow: 0 0 0 3px #8ab4f8;
 }
 
+.tile-video-container {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    z-index: 0;
+}
+
+.tile-video-content {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+}
+
 .tile-video {
     width: 100%;
     height: 100%;
-    transition: opacity 0.3s ease;
-}
-.tile-video--cover {
-    object-fit: cover;
-}
-.tile-video--contain {
-    object-fit: contain;
-    background: #000;
-}
-.tile-video--hidden {
-    opacity: 0;
-    position: absolute;
+    display: block;
+    object-fit: inherit;
 }
 
 /* Avatar */

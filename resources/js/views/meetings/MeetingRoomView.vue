@@ -732,6 +732,16 @@
                 >
                     <Icon name="monitor" size="22" />
                 </button>
+                <!-- Annotation Toggle (Only for local presenter) -->
+                <button
+                    v-if="isScreenSharing"
+                    class="ctrl-btn"
+                    :class="{ 'ctrl-btn--active': meetingStore.isAnnotating }"
+                    @click="meetingStore.isAnnotating = !meetingStore.isAnnotating"
+                    title="Annotate Screen"
+                >
+                    <Icon name="pen-tool" size="22" />
+                </button>
                 <div class="relative flex items-center">
                     <button
                         class="ctrl-btn reaction-quick-btn"
@@ -834,6 +844,7 @@ import { useRoute, useRouter } from "vue-router";
 import { meetingService } from "@/services/meeting.service";
 import { useMeetingStore } from "@/stores/meeting";
 import { useVideoCallStore } from "@/stores/videocall";
+import { useBackgroundBlur } from "@/composables/useBackgroundBlur";
 import DeviceSettingsModal from "./components/DeviceSettingsModal.vue";
 import DevSimulationTool from "./components/DevSimulationTool.vue";
 import ParticipantTile from "./components/ParticipantTile.vue";
@@ -856,6 +867,7 @@ const participantId = route.query.participant as string;
 
 const isCameraOn = ref(false);
 const isMicOn = ref(false);
+const backgroundBlur = useBackgroundBlur();
 const showSettings = ref(false);
 const showAdmissionPanel = ref(false);
 const showParticipantsPanel = ref(false);
@@ -1114,8 +1126,21 @@ onMounted(async () => {
         if (stream) {
             const videoTrack = stream.getVideoTracks()[0];
             const audioTrack = stream.getAudioTracks()[0];
+            
+            // If the track in the stream is NOT a canvas track but we have an effect set,
+            // it means we just came from the lobby and might need to re-bind.
+            // But wait, Lobby already applied the effect to the stream in meetingStore.
+            // We just need to identify the ORIGINAL track for future swaps.
+            
             isCameraOn.value = videoTrack ? videoTrack.enabled : false;
             isMicOn.value = audioTrack ? audioTrack.enabled : false;
+            
+            // If we don't have an originalVideoTrack yet, and the current one is likely a real track 
+            // (or if we trust the lobby set it)
+            if (!meetingStore.originalVideoTrack && videoTrack) {
+                meetingStore.originalVideoTrack = videoTrack;
+            }
+
             await meetingStore.addLocalStream(stream);
         } else {
             // Cold start: Join without an initial stream (camera/mic off)
@@ -1157,6 +1182,7 @@ function handleGlobalKeydown(e: KeyboardEvent) {
 onUnmounted(() => {
     window.removeEventListener("keydown", handleGlobalKeydown);
     window.clearInterval(clockInterval);
+    backgroundBlur.stopProcessing();
     meetingStore.cleanup();
 });
 
@@ -1222,13 +1248,29 @@ const toggleCamera = async () => {
                     : true,
             });
             const videoTrack = newStream.getVideoTracks()[0];
+            meetingStore.originalVideoTrack = videoTrack;
+
+            let finalTrack = videoTrack;
+            if (
+                (videoCallStore.videoEffect === "blur" ||
+                    videoCallStore.videoEffect === "image") &&
+                videoTrack
+            ) {
+                finalTrack = await backgroundBlur.startVideoEffect(
+                    videoTrack,
+                    videoCallStore.videoEffect,
+                    videoCallStore.backgroundImage || undefined,
+                    videoCallStore.autoFraming,
+                );
+            }
+
             const updatedStream = new MediaStream([
                 ...stream.getAudioTracks(),
-                videoTrack
+                finalTrack,
             ]);
             meetingStore.setStream(updatedStream);
             isCameraOn.value = true;
-            meetingStore.replaceTrack("video", videoTrack);
+            meetingStore.replaceTrack("video", finalTrack);
         } catch (e) {
             console.error("Failed to start camera", e);
             toast.error("Could not access camera hardware.");
@@ -1237,6 +1279,11 @@ const toggleCamera = async () => {
         stream.getVideoTracks().forEach((t) => {
             t.stop();
         });
+        if (meetingStore.originalVideoTrack) {
+            meetingStore.originalVideoTrack.stop();
+            meetingStore.originalVideoTrack = null;
+        }
+        backgroundBlur.stopProcessing();
         const updatedStream = new MediaStream(stream.getAudioTracks());
         meetingStore.setStream(updatedStream);
         isCameraOn.value = false;
@@ -1288,6 +1335,51 @@ const toggleMic = async () => {
 
 watch(
     [
+        () => videoCallStore.videoEffect,
+        () => videoCallStore.backgroundImage,
+        () => videoCallStore.autoFraming,
+    ],
+    async ([effect, bgImage, framing]) => {
+        if (!isCameraOn.value || !meetingStore.originalVideoTrack || !meetingStore.localStream)
+            return;
+
+        try {
+            let newTrack: MediaStreamTrack;
+            if (effect === "blur" || effect === "image") {
+                newTrack = await backgroundBlur.startVideoEffect(
+                    meetingStore.originalVideoTrack,
+                    effect,
+                    bgImage || undefined,
+                    framing,
+                );
+            } else {
+                backgroundBlur.stopProcessing();
+                newTrack = meetingStore.originalVideoTrack;
+            }
+
+            const stream = meetingStore.localStream;
+            const oldTrack = stream.getVideoTracks()[0];
+            
+            if (oldTrack && oldTrack.id !== newTrack.id) {
+                stream.removeTrack(oldTrack);
+                stream.addTrack(newTrack);
+                
+                // Keep enabled state synced
+                newTrack.enabled = oldTrack.enabled;
+                
+                meetingStore.replaceTrack("video", newTrack);
+                console.info(
+                    `[MeetingRoom] Swapped camera track from ${oldTrack.id} to ${newTrack.id}`,
+                );
+            }
+        } catch (e) {
+            console.error("[MeetingRoom] Failed to swap effect track", e);
+        }
+    },
+);
+
+watch(
+    [
         () => videoCallStore.selectedAudioInput,
         () => videoCallStore.selectedVideoInput,
     ],
@@ -1313,17 +1405,33 @@ watch(
         }
 
         if (isCameraOn.value && newVideo !== oldVideo) {
-            stream.getVideoTracks().forEach((t) => {
-                t.stop();
-                stream.removeTrack(t);
-            });
+            // Hot swap camera device
+            if (meetingStore.originalVideoTrack) {
+                meetingStore.originalVideoTrack.stop();
+            }
+            backgroundBlur.stopProcessing();
+
             try {
                 const newS = await navigator.mediaDevices.getUserMedia({
                     video: newVideo ? { deviceId: newVideo } : true,
                 });
-                const track = newS.getVideoTracks()[0];
-                stream.addTrack(track);
-                meetingStore.replaceTrack("video", track);
+                const videoTrack = newS.getVideoTracks()[0];
+                meetingStore.originalVideoTrack = videoTrack;
+
+                let finalTrack = videoTrack;
+                if ((videoCallStore.videoEffect === 'blur' || videoCallStore.videoEffect === 'image') && videoTrack) {
+                    finalTrack = await backgroundBlur.startVideoEffect(
+                        videoTrack,
+                        videoCallStore.videoEffect,
+                        videoCallStore.backgroundImage || undefined,
+                        videoCallStore.autoFraming
+                    );
+                }
+
+                const oldTrack = stream.getVideoTracks()[0];
+                if (oldTrack) stream.removeTrack(oldTrack);
+                stream.addTrack(finalTrack);
+                meetingStore.replaceTrack("video", finalTrack);
             } catch (e) {
                 console.error(e);
             }

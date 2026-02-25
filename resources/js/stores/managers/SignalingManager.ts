@@ -40,10 +40,13 @@ export function createSignalingManager(
             })
             .listenForWhisper('laser-move', (data: any) => {
                 // Whisper events don't have the same envelope as broadcast events
-                // The sender is handled by the presence channel's peer-to-peer nature
-                // But we usually include participant_id in the data for whispers
                 if (data.participant_id) {
                     handleSignal(data.participant_id, 'laser-move', data);
+                }
+            })
+            .listenForWhisper('annotation-update', (data: any) => {
+                if (data.participant_id) {
+                    handleSignal(data.participant_id, 'annotation-update', data);
                 }
             })
             .listen('.MeetingParticipantJoined', (e: any) => {
@@ -290,6 +293,12 @@ export function createSignalingManager(
             return;
         }
 
+        if (type === 'annotation-update') {
+            const { useMeetingStore } = await import('@/stores/meeting');
+            useMeetingStore().handleAnnotationUpdate(data);
+            return;
+        }
+
         if (type === 'role-changed') {
             log('SIGNAL', `Role changed: ${data.targetId} is now ${data.role}`);
             if (data.targetId === localParticipantRef.value.public_id) {
@@ -355,6 +364,14 @@ export function createSignalingManager(
                 ...data,
                 participant_id: localParticipantRef.value.public_id,
                 target_participant_id: data.target_participant_id
+            });
+            return;
+        }
+
+        if (type === 'annotation-update') {
+            presenceManager.whisper('annotation-update', {
+                ...data,
+                participant_id: localParticipantRef.value.public_id
             });
             return;
         }

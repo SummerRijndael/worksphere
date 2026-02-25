@@ -20,6 +20,7 @@ export const useMeetingStore = defineStore('meeting', () => {
     const isDevMode = ref(false);
     const chatMessages = ref<any[]>([]);
     const isLocked = ref(false);
+    const originalVideoTrack = ref<MediaStreamTrack | null>(null);
 
     // ── Polls ──────────────────────────────────────────────────────────────────
     interface Poll {
@@ -46,6 +47,12 @@ export const useMeetingStore = defineStore('meeting', () => {
     }
     const remotePointers = reactive(new Map<string, LaserPointer>());
     const laserPointerMode = ref<'off' | 'global' | 'targeted'>('off');
+    
+    // ── Annotations ─────────────────────────────────────────────────────────────
+    const isAnnotating = ref(false);
+    const activeAnnotationTool = ref('pen');
+    const activeAnnotationColor = ref('#ea4335');
+    const lastAnnotationSignal = ref<any>(null);
 
     interface ReactionEvent {
         id: string;
@@ -416,6 +423,16 @@ export const useMeetingStore = defineStore('meeting', () => {
         }, 4000);
     }
 
+    // --- Annotations ---
+
+    function sendAnnotationUpdate(data: any) {
+        signaling.sendSignal('annotation-update', data);
+    }
+
+    function receiveAnnotationUpdate(data: any) {
+        lastAnnotationSignal.value = { ...data, _timestamp: Date.now() };
+    }
+
     // --- Chat ---
 
     async function fetchMessages() {
@@ -456,6 +473,7 @@ export const useMeetingStore = defineStore('meeting', () => {
         // State
         meeting,
         localParticipant,
+        originalVideoTrack,
         isDevMode,
         
         // Presence Manager
@@ -590,6 +608,15 @@ export const useMeetingStore = defineStore('meeting', () => {
         removeMockParticipant: presence.removeMockParticipant,
         resetSimulation: presence.resetSimulation,
         setSimulatedRole: (r: any) => { presence.simulatedRole.value = r; },
-        toggleDevMode
+        toggleDevMode,
+
+        // Annotations
+        isAnnotating,
+        activeAnnotationTool,
+        activeAnnotationColor,
+        lastAnnotationSignal,
+        sendAnnotationUpdate,
+        receiveAnnotationUpdate,
+        handleAnnotationUpdate: receiveAnnotationUpdate,
     };
 });
