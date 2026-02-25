@@ -703,129 +703,151 @@
         />
 
         <!-- Bottom Control Bar -->
-        <footer class="gmeet-controls">
-            <div class="controls-center">
-                <button
-                    class="ctrl-btn"
-                    :class="{ 'ctrl-btn--off': !isMicOn }"
-                    @click="toggleMic"
-                    :title="micToggleTitle"
+        <footer 
+            class="gmeet-controls"
+            :class="{ 
+                'gmeet-controls--collapsed': isControlsCollapsed,
+                'gmeet-controls--dragging': isDraggingControls
+            }"
+        >
+            <div class="controls-center" ref="controlsRef" :style="controlsStyle">
+                <!-- Drag Grip -->
+                <div 
+                    class="drag-grip"
+                    @mousedown="startDragControls"
+                    @touchstart="startDragControls"
                 >
-                    <Icon :name="isMicOn ? 'mic' : 'mic-off'" size="22" />
-                </button>
-                <button
-                    class="ctrl-btn"
-                    :class="{ 'ctrl-btn--off': !isCameraOn }"
-                    @click="toggleCamera"
-                    :title="cameraToggleTitle"
-                >
-                    <Icon
-                        :name="isCameraOn ? 'video' : 'video-off'"
-                        size="22"
-                    />
-                </button>
-                <button
-                    class="ctrl-btn"
-                    :class="{ 'ctrl-btn--active': isScreenSharing }"
-                    @click="toggleScreenShare"
-                    :title="screenShareToggleTitle"
-                >
-                    <Icon name="monitor" size="22" />
-                </button>
-                <!-- Annotation Toggle (Only for local presenter) -->
-                <button
-                    v-if="isScreenSharing"
-                    class="ctrl-btn"
-                    :class="{ 'ctrl-btn--active': meetingStore.isAnnotating }"
-                    @click="meetingStore.isAnnotating = !meetingStore.isAnnotating"
-                    title="Annotate Screen"
-                >
-                    <Icon name="pen-tool" size="22" />
-                </button>
-                <div class="relative flex items-center">
-                    <button
-                        class="ctrl-btn reaction-quick-btn"
-                        @click="sendQuickReaction"
-                        :title="`Send ${lastReactionEmoji}`"
-                    >
-                        <span class="text-lg">{{ lastReactionEmoji }}</span>
-                    </button>
-                    <button
-                        class="ctrl-btn reaction-chevron-btn"
-                        :class="{ 'ctrl-btn--active': showReactionPicker }"
-                        @click="showReactionPicker = !showReactionPicker"
-                        title="Change reaction"
-                    >
-                        <Icon name="chevron-up" size="14" />
-                    </button>
+                    <Icon name="grip-vertical" size="18" />
                 </div>
-                <button
-                    class="ctrl-btn"
-                    :class="{ 'ctrl-btn--active': isHandRaised }"
-                    @click="meetingStore.toggleHand()"
-                    title="Raise Hand"
-                >
-                    <Icon name="hand" size="22" />
-                </button>
-                <button
-                    v-if="meetingStore.isHost"
-                    class="ctrl-btn ctrl-btn--lock"
-                    :class="{ 'ctrl-btn--lock-active': meetingStore.isLocked }"
-                    @click="meetingStore.toggleLock()"
-                    :title="
-                        meetingStore.isLocked
-                            ? 'Unlock Meeting'
-                            : 'Lock Meeting'
-                    "
-                >
-                    <Icon
-                        :name="meetingStore.isLocked ? 'lock' : 'unlock'"
-                        size="22"
-                    />
-                </button>
-                <button
-                    class="ctrl-btn"
-                    @click="showSettings = true"
-                    title="Settings"
-                >
-                    <Icon name="settings" size="22" />
-                </button>
-                <button
-                    v-if="meetingStore.isHost"
-                    class="ctrl-btn"
-                    :class="{ 'ctrl-btn--recording': isRecording }"
-                    @click="toggleRecording"
-                    :title="isRecording ? 'Stop Recording' : 'Start Recording'"
-                >
-                    <Icon
-                        :name="isRecording ? 'circle-stop' : 'circle-dot'"
-                        size="22"
-                    />
-                </button>
-                <div class="relative">
+
+                <template v-if="!isControlsCollapsed">
                     <button
-                        class="ctrl-btn ctrl-btn--hangup"
-                        @click="showHangupMenu = !showHangupMenu"
-                        title="Leave or End"
+                        class="ctrl-btn"
+                        :class="{ 'ctrl-btn--off': !isMicOn }"
+                        @click="toggleMic"
+                        :title="micToggleTitle"
                     >
-                        <Icon name="phone-off" size="22" />
+                        <Icon :name="isMicOn ? 'mic' : 'mic-off'" size="22" />
                     </button>
-                    <!-- Hangup Popup Menu -->
-                    <div v-if="showHangupMenu" class="hangup-menu">
-                        <button class="hangup-menu-item" @click="leaveMeeting">
-                            <Icon name="log-out" size="18" />
-                            <span>Leave meeting</span>
+                    <button
+                        class="ctrl-btn"
+                        :class="{ 'ctrl-btn--off': !isCameraOn }"
+                        @click="toggleCamera"
+                        :title="cameraToggleTitle"
+                    >
+                        <Icon
+                            :name="isCameraOn ? 'video' : 'video-off'"
+                            size="22"
+                        />
+                    </button>
+                    <button
+                        class="ctrl-btn"
+                        :class="{ 'ctrl-btn--active': isScreenSharing }"
+                        @click="toggleScreenShare"
+                        :title="screenShareToggleTitle"
+                    >
+                        <Icon name="monitor" size="22" />
+                    </button>
+                    <!-- Annotation Toggle (Only for local presenter) -->
+                    <button
+                        v-if="isScreenSharing"
+                        class="ctrl-btn"
+                        :class="{ 'ctrl-btn--active': meetingStore.isAnnotating }"
+                        @click="meetingStore.isAnnotating = !meetingStore.isAnnotating"
+                        title="Annotate Screen"
+                    >
+                        <Icon name="pen-tool" size="22" />
+                    </button>
+                    <div class="relative flex items-center">
+                        <button
+                            class="ctrl-btn reaction-quick-btn"
+                            @click="sendQuickReaction"
+                            :title="`Send ${lastReactionEmoji}`"
+                        >
+                            <span class="text-lg">{{ lastReactionEmoji }}</span>
                         </button>
                         <button
-                            v-if="meetingStore.isHost"
-                            class="hangup-menu-item hangup-menu-item--end"
-                            @click="endMeetingForAll"
+                            class="ctrl-btn reaction-chevron-btn"
+                            :class="{ 'ctrl-btn--active': showReactionPicker }"
+                            @click="showReactionPicker = !showReactionPicker"
+                            title="Change reaction"
                         >
-                            <Icon name="phone-off" size="18" />
-                            <span>End meeting for all</span>
+                            <Icon name="chevron-up" size="14" />
                         </button>
                     </div>
-                </div>
+                    <button
+                        class="ctrl-btn"
+                        :class="{ 'ctrl-btn--active': isHandRaised }"
+                        @click="meetingStore.toggleHand()"
+                        title="Raise Hand"
+                    >
+                        <Icon name="hand" size="22" />
+                    </button>
+                    <button
+                        v-if="meetingStore.isHost"
+                        class="ctrl-btn ctrl-btn--lock"
+                        :class="{ 'ctrl-btn--lock-active': meetingStore.isLocked }"
+                        @click="meetingStore.toggleLock()"
+                        :title="
+                            meetingStore.isLocked
+                                ? 'Unlock Meeting'
+                                : 'Lock Meeting'
+                        "
+                    >
+                        <Icon
+                            :name="meetingStore.isLocked ? 'lock' : 'unlock'"
+                            size="22"
+                        />
+                    </button>
+                    <button
+                        class="ctrl-btn"
+                        @click="showSettings = true"
+                        title="Settings"
+                    >
+                        <Icon name="settings" size="22" />
+                    </button>
+                    <button
+                        v-if="meetingStore.isHost"
+                        class="ctrl-btn"
+                        :class="{ 'ctrl-btn--recording': isRecording }"
+                        @click="toggleRecording"
+                        :title="isRecording ? 'Stop Recording' : 'Start Recording'"
+                    >
+                        <Icon
+                            :name="isRecording ? 'circle-stop' : 'circle-dot'"
+                            size="22"
+                        />
+                    </button>
+                    <div class="relative">
+                        <button
+                            class="ctrl-btn ctrl-btn--hangup"
+                            @click="showHangupMenu = !showHangupMenu"
+                            title="Leave or End"
+                        >
+                            <Icon name="phone-off" size="22" />
+                        </button>
+                        <!-- Hangup Popup Menu -->
+                        <div v-if="showHangupMenu" class="hangup-menu">
+                            <button class="hangup-menu-item" @click="leaveMeeting">
+                                <Icon name="log-out" size="18" />
+                                <span>Leave meeting</span>
+                            </button>
+                            <button
+                                v-if="meetingStore.isHost"
+                                class="hangup-menu-item hangup-menu-item--end"
+                                @click="endMeetingForAll"
+                            >
+                                <Icon name="phone-off" size="18" />
+                                <span>End meeting for all</span>
+                            </button>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- Toggle Collapse -->
+                <button class="ctrl-btn collapse-btn" @click="isControlsCollapsed = !isControlsCollapsed" :title="isControlsCollapsed ? 'Expand' : 'Collapse'">
+                    <Icon :name="isControlsCollapsed ? 'chevron-up' : 'chevron-down'" size="20" />
+                </button>
             </div>
         </footer>
 
@@ -1547,6 +1569,83 @@ const endMeetingForAll = async () => {
     showHangupMenu.value = false;
     await meetingStore.endMeeting();
 };
+
+const isControlsCollapsed = ref(false);
+
+// Draggability Logic for Controls
+const controlsPosition = ref({ x: 0, y: 0 }); // Offset from default bottom center
+const isDraggingControls = ref(false);
+let startX = 0;
+let startY = 0;
+
+const controlsStyle = computed(() => {
+    const isMobile = window.innerWidth <= 600;
+    const scale = isMobile ? 0.65 : 1;
+    return {
+        transform: `translate(${controlsPosition.value.x}px, ${controlsPosition.value.y}px) scale(${scale})`,
+        transformOrigin: 'bottom center',
+        transition: isDraggingControls.value ? 'none' : 'transform 0.2s ease'
+    };
+});
+
+function startDragControls(e: MouseEvent | TouchEvent) {
+    isDraggingControls.value = true;
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    
+    startX = clientX - controlsPosition.value.x;
+    startY = clientY - controlsPosition.value.y;
+
+    window.addEventListener('mousemove', onDragControls);
+    window.addEventListener('touchmove', onDragControls);
+    window.addEventListener('mouseup', stopDragControls);
+    window.addEventListener('touchend', stopDragControls);
+}
+
+const controlsRef = ref<HTMLElement | null>(null);
+
+function onDragControls(e: MouseEvent | TouchEvent) {
+    if (!isDraggingControls.value || !controlsRef.value) return;
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    
+    const nextX = clientX - startX;
+    const nextY = clientY - startY;
+
+    // Boundary constraints
+    const el = controlsRef.value;
+    const rect = el.getBoundingClientRect();
+    const deltaX = nextX - controlsPosition.value.x;
+    const deltaY = nextY - controlsPosition.value.y;
+
+    let finalX = nextX;
+    let finalY = nextY;
+
+    // Clamp within viewport with 8px padding
+    if (rect.left + deltaX < 8) {
+        finalX = controlsPosition.value.x - rect.left + 8;
+    } else if (rect.right + deltaX > window.innerWidth - 8) {
+        finalX = controlsPosition.value.x + (window.innerWidth - rect.right - 8);
+    }
+
+    if (rect.top + deltaY < 8) {
+        finalY = controlsPosition.value.y - rect.top + 8;
+    } else if (rect.bottom + deltaY > window.innerHeight - 8) {
+        finalY = controlsPosition.value.y + (window.innerHeight - rect.bottom - 8);
+    }
+
+    controlsPosition.value = { x: finalX, y: finalY };
+}
+
+function stopDragControls() {
+    isDraggingControls.value = false;
+    window.removeEventListener('mousemove', onDragControls);
+    window.removeEventListener('touchmove', onDragControls);
+    window.removeEventListener('mouseup', stopDragControls);
+    window.removeEventListener('touchend', stopDragControls);
+}
+
+onUnmounted(stopDragControls);
 </script>
 
 <style scoped>
@@ -2219,27 +2318,91 @@ const endMeetingForAll = async () => {
 }
 
 @media (max-width: 600px) {
-    .controls-center {
-        gap: 8px;
-        padding: 6px 16px;
-        max-width: 90vw;
-        overflow-x: auto;
-        -ms-overflow-style: none; /* IE and Edge */
-        scrollbar-width: none; /* Firefox */
+    .gmeet-controls {
+        padding-bottom: max(48px, env(safe-area-inset-bottom));
     }
-    .controls-center::-webkit-scrollbar {
-        display: none;
+    .controls-center {
+        gap: 3px;
+        padding: 4px 14px 4px 8px; /* More padding on right for chevron */
+        max-width: none !important;
+        width: max-content !important;
+        border-radius: 18px;
     }
     .ctrl-btn {
-        width: 44px;
-        height: 44px;
-        flex-shrink: 0;
+        width: 30px !important;
+        height: 30px !important;
+        flex: 0 0 30px !important;
+        min-width: 30px !important;
+        padding: 0 !important;
+    }
+    .ctrl-btn :deep(svg) {
+        width: 14px;
+        height: 14px;
     }
     .ctrl-btn--hangup {
-        width: 52px;
-        height: 44px;
-        border-radius: 22px;
+        width: 30px !important;
+        height: 30px !important;
+        border-radius: 50% !important;
+        flex: 0 0 30px !important;
     }
+    .reaction-quick-btn {
+        min-width: 32px !important;
+        padding-right: 4px !important;
+    }
+    .reaction-chevron-btn {
+        width: 20px !important;
+        min-width: 20px !important;
+        padding: 0 !important;
+    }
+    .collapse-btn {
+        margin-left: -2px !important; /* Pull it slightly inside the gap */
+        opacity: 0.9 !important;
+        padding: 0 4px !important;
+    }
+    .solo-content {
+        border-radius: 0 !important;
+        padding: 40px 20px !important;
+        width: 100% !important;
+        height: 100% !important;
+        border: none !important;
+    }
+    .drag-grip {
+        display: none; /* Hide grip on small screens to save space */
+    }
+    .gmeet-controls--collapsed .controls-center {
+        padding: 2px 8px;
+    }
+}
+
+.drag-grip {
+    padding: 8px 4px;
+    cursor: grab;
+    color: #5f6368;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.2s;
+}
+
+.drag-grip:hover {
+    color: #bdc1c6;
+}
+
+.drag-grip:active {
+    cursor: grabbing;
+}
+
+.collapse-btn {
+    opacity: 0.6;
+    margin-left: 4px;
+}
+
+.collapse-btn:hover {
+    opacity: 1;
+}
+
+.gmeet-controls--collapsed .controls-center {
+    padding: 8px 12px;
 }
 
 /* Hangup Popup Menu */
@@ -2253,7 +2416,20 @@ const endMeetingForAll = async () => {
     padding: 8px 0;
     min-width: 220px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-    z-index: 50;
+    z-index: 1000; /* Ensure it stays above everything */
+}
+
+@media (max-width: 600px) {
+    .hangup-menu {
+        position: fixed;
+        bottom: 80px;
+        left: 50%;
+        transform: translateX(-50%);
+        right: auto;
+        min-width: calc(100vw - 40px);
+        margin: 0 20px;
+        z-index: 10000;
+    }
 }
 .hangup-menu-item {
     display: flex;

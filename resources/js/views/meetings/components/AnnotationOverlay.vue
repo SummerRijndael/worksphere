@@ -10,6 +10,7 @@
             v-if="isLocal && isAnnotating"
             v-model:active-tool="meetingStore.activeAnnotationTool"
             v-model:active-color="meetingStore.activeAnnotationColor"
+            :is-annotating="isAnnotating"
             @clear="clearCanvas"
             @undo="undoLast"
         />
@@ -415,6 +416,5 @@ defineExpose({
 
 canvas {
     display: block;
-    border: 2px dashed red; /* Temporary debug border */
 }
 </style>

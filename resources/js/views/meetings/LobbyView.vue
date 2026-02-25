@@ -47,7 +47,7 @@
 
                 <!-- Floating Controls -->
                 <div
-                    class="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-4"
+                    class="absolute bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 flex gap-3 sm:gap-4"
                 >
                     <button
                         @click="toggleMic"
@@ -64,8 +64,8 @@
                     >
                         <Icon
                             :name="isMicOn ? 'mic' : 'mic-off'"
-                            size="24"
-                            :class="{ 'text-white': true }"
+                            size="20"
+                            class="sm:size-6 text-white"
                         />
                     </button>
                     <button
@@ -81,8 +81,8 @@
                     >
                         <Icon
                             :name="isCameraOn ? 'video' : 'video-off'"
-                            size="24"
-                            :class="{ 'text-white': true }"
+                            size="20"
+                            class="sm:size-6 text-white"
                         />
                     </button>
                     <!-- Settings Button -->
@@ -91,7 +91,7 @@
                         class="control-btn bg-slate-700 hover:bg-slate-600 rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-105 active:scale-95"
                         title="Device settings"
                     >
-                        <Icon name="settings" size="24" class="text-white" />
+                        <Icon name="settings" size="20" class="sm:size-6 text-white" />
                     </button>
                 </div>
             </div>
@@ -118,24 +118,24 @@
                 <!-- Regular Join UI -->
                 <template v-else>
                     <h1
-                        class="text-3xl font-semibold mb-2 tracking-tight"
+                        class="text-2xl sm:text-3xl font-semibold mb-2 tracking-tight"
                         style="color: #ffffff !important"
                     >
                         Ready to join?
                     </h1>
-                    <p class="text-slate-400 mb-8">
+                    <p class="text-sm sm:text-base text-slate-400 mb-6 sm:mb-8">
                         {{ meeting?.title || "Loading meeting details..." }}
                     </p>
 
                     <div v-if="authStore.isAuthenticated" class="w-full mb-6 py-3 px-4 bg-slate-800/50 border border-slate-700/50 rounded-lg flex items-center justify-between text-left">
                         <div class="flex items-center gap-3">
-                            <img v-if="authStore.user?.avatar_url" :src="authStore.user.avatar_url" class="w-10 h-10 rounded-full border border-slate-600" />
-                            <div v-else class="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold">
+                            <img v-if="authStore.user?.avatar_url" :src="authStore.user.avatar_url" class="w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-slate-600" />
+                            <div v-else class="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-sm sm:text-base">
                                 {{ authStore.user?.name?.[0]?.toUpperCase() }}
                             </div>
                             <div>
                                 <p class="text-sm font-medium text-white">{{ authStore.user?.name }}</p>
-                                <p class="text-xs text-slate-500">Joining as yourself</p>
+                                <p class="text-[11px] sm:text-xs text-slate-500">Joining as yourself</p>
                             </div>
                         </div>
                     </div>
@@ -144,14 +144,14 @@
                         <input
                             v-model="guestName"
                             placeholder="Enter your name"
-                            class="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                            class="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
                             @keyup.enter="joinMeeting"
                         />
                         <input
                             v-model="guestEmail"
                             type="email"
                             placeholder="Enter your email address"
-                            class="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                            class="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
                             @keyup.enter="joinMeeting"
                         />
                         <p v-if="guestEmailError" class="text-xs text-red-400 text-left">{{ guestEmailError }}</p>
@@ -169,12 +169,12 @@
                             v-model="password"
                             type="password"
                             placeholder="Enter meeting password"
-                            class="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                            class="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
                             @keyup.enter="joinMeeting"
                         />
                     </div>
 
-                    <div class="flex flex-col sm:flex-row gap-4 w-full">
+                    <div class="flex flex-col sm:flex-row gap-3 sm:gap-4 w-full">
                         <button
                             @click="joinMeeting"
                             :disabled="
@@ -184,7 +184,7 @@
                                     !isHost &&
                                     !password.trim())
                             "
-                            class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-full font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-h-[48px]"
+                            class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-full font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-h-[48px] text-sm sm:text-base"
                         >
                             <Icon
                                 v-if="joining"
@@ -204,7 +204,7 @@
                                     !isHost &&
                                     !password.trim())
                             "
-                            class="flex-1 bg-transparent hover:bg-slate-800 text-blue-400 px-6 py-3 rounded-full font-medium transition-colors border border-slate-700 min-h-[48px] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                            class="flex-1 bg-transparent hover:bg-slate-800 text-blue-400 px-6 py-3 rounded-full font-medium transition-colors border border-slate-700 min-h-[48px] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center text-sm sm:text-base"
                             title="Join meeting and start presenting"
                         >
                             <Icon name="monitor-up" size="18" class="inline mr-2" />
