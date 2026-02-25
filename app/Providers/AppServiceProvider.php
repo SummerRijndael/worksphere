@@ -63,6 +63,11 @@ class AppServiceProvider extends ServiceProvider
         );
 
         $this->app->bind(
+            \App\Contracts\MeetingServiceContract::class,
+            \App\Services\MeetingService::class
+        );
+
+        $this->app->bind(
             \App\Contracts\InvoiceTemplateServiceContract::class,
             \App\Services\InvoiceTemplateService::class
         );
@@ -86,6 +91,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(\App\Models\FaqCategory::class, \App\Policies\FaqPolicy::class);
         Gate::policy(\App\Models\FaqArticle::class, \App\Policies\FaqPolicy::class);
         Gate::policy(\Spatie\Permission\Models\Role::class, \App\Policies\RolePolicy::class);
+        Gate::policy(\App\Models\Meeting::class, \App\Policies\MeetingPolicy::class);
 
         // Pulse authorization - allow users with system.maintenance permission
         Gate::define('viewPulse', function ($user) {

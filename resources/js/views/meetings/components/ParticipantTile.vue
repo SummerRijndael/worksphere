@@ -77,6 +77,13 @@
         >
             <Icon name="pin-off" size="14" />
         </button>
+
+        <!-- Targeted Laser Pointer Overlay -->
+        <LaserPointerOverlay 
+            v-if="meetingStore.laserPointerMode !== 'off'"
+            :target-participant-id="participant.public_id" 
+            :is-screen-share="isScreenShare"
+        />
     </div>
 </template>
 
@@ -84,6 +91,7 @@
 import { computed, ref, watch, onMounted, onUnmounted } from "vue";
 import { useMeetingStore } from "@/stores/meeting";
 import { Icon } from "@/components/ui";
+import LaserPointerOverlay from "./LaserPointerOverlay.vue";
 
 const props = defineProps<{
     participant: any;
@@ -206,13 +214,15 @@ watch(
                 : camStream;
         if (videoEl && stream) {
             const el = videoEl as HTMLVideoElement;
-            // Force browser to fully re-evaluate the media pipeline
-            // by giving it a completely fresh MediaStream instance
-            // made up of the current tracks.
-            el.srcObject = new MediaStream(stream.getTracks());
+            if (el.srcObject !== stream) {
+                el.srcObject = stream as MediaStream;
+                el.play().catch(e => console.warn("[LocalVideo] Auto-play prevented", e));
+            }
+        } else if (videoEl && !stream) {
+            (videoEl as HTMLVideoElement).srcObject = null;
         }
     },
-    { immediate: true },
+    { immediate: true, flush: 'post' },
 );
 
 // -- Remote Video Binding --

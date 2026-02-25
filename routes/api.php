@@ -998,7 +998,20 @@ Route::middleware(['throttle:meetings'])->prefix('meetings')->group(function () 
         ->middleware('throttle:signaling');
     Route::post('/{meeting}/lock', [\App\Http\Controllers\Api\MeetingController::class, 'lock']);
     Route::post('/{meeting}/unlock', [\App\Http\Controllers\Api\MeetingController::class, 'unlock']);
+    Route::patch('/{meeting}/settings', [\App\Http\Controllers\Api\MeetingController::class, 'updateSettings']);
     Route::post('/{meeting}/end', [\App\Http\Controllers\Api\MeetingController::class, 'end']);
+
+    // Polls
+    Route::get('/{meeting}/polls', [\App\Http\Controllers\Api\MeetingController::class, 'getPolls']);
+    Route::post('/{meeting}/polls', [\App\Http\Controllers\Api\MeetingController::class, 'createPoll']);
+    Route::patch('/{meeting}/polls/{poll}', [\App\Http\Controllers\Api\MeetingController::class, 'updatePoll']);
+    Route::delete('/{meeting}/polls/{poll}', [\App\Http\Controllers\Api\MeetingController::class, 'deletePoll']);
+    Route::post('/{meeting}/polls/{poll}/vote', [\App\Http\Controllers\Api\MeetingController::class, 'votePoll']);
+    Route::post('/{meeting}/polls/{poll}/end', [\App\Http\Controllers\Api\MeetingController::class, 'endPoll']);
+
+    // Laser Pointer (throttled to match ~10fps client sending rate)
+    Route::post('/{meeting}/laser-move', [\App\Http\Controllers\Api\MeetingController::class, 'laserMove'])
+        ->middleware('throttle:600,1');
 
     // Meeting Chat
     Route::get('/{meeting}/messages', [\App\Http\Controllers\Api\MeetingController::class, 'getMessages']);

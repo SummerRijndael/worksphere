@@ -277,6 +277,11 @@ onMounted(async () => {
         meeting.value = await meetingService.getMeeting(meetingId);
         // Do NOT acquire camera/mic here — we only do it on explicit toggle.
         // This prevents the camera indicator light from turning on immediately.
+        
+        const savedPwd = localStorage.getItem(`worksphere_meeting_pwd_${meetingId}`);
+        if (savedPwd) {
+            password.value = savedPwd;
+        }
     } catch (e) {
         console.error("Failed to load meeting:", e);
         toast.error("Failed to load meeting details");

@@ -103,6 +103,27 @@
                 >
                     <Icon name="message-square" size="18" />
                 </button>
+                <button
+                    class="topbar-btn"
+                    :class="{ 'topbar-btn--active': showPollPanel }"
+                    @click="togglePollPanel"
+                    title="Polls"
+                >
+                    <Icon name="bar-chart-2" size="18" />
+                    <span v-if="meetingStore.activePoll?.is_active" class="topbar-badge topbar-badge--poll">●</span>
+                </button>
+                <!-- Host-only laser pointer toggle (only shown when screensharing is active) -->
+                <button
+                    v-if="meetingStore.isHost && meetingStore.screenShares.size > 0"
+                    class="topbar-btn"
+                    :class="{ 'topbar-btn--active': meetingStore.laserPointerMode !== 'off' }"
+                    :title="laserPointerLabel"
+                    @click="cycleLaserMode"
+                >
+                    <Icon name="mouse-pointer-2" size="18" />
+                    <span v-if="meetingStore.laserPointerMode === 'global'" class="topbar-badge topbar-badge--laser">ALL</span>
+                    <span v-if="meetingStore.laserPointerMode === 'targeted'" class="topbar-badge topbar-badge--laser">1</span>
+                </button>
             </div>
         </header>
 
@@ -113,11 +134,13 @@
                 'has-panel':
                     showParticipantsPanel ||
                     showChatPanel ||
+                    showPollPanel ||
                     showAdmissionPanel,
             }"
         >
-            <div class="gmeet-stage">
-                <!-- Spotlight Mode: Presentation + Filmstrip -->
+            <div class="gmeet-stage" style="position: relative;">
+                <!-- Laser Pointer Overlay: transparent, sits above video grid -->
+
                 <template v-if="isSpotlightMode && spotlightTile">
                     <div class="spotlight-main">
                         <ParticipantTile
@@ -573,6 +596,28 @@
                 />
             </Transition>
 
+            <!-- Poll Side Panel -->
+            <Transition
+                enter-active-class="transition duration-250 ease-out"
+                enter-from-class="translate-x-full opacity-0"
+                enter-to-class="translate-x-0 opacity-100"
+                leave-active-class="transition duration-200 ease-in"
+                leave-from-class="translate-x-0 opacity-100"
+                leave-to-class="translate-x-full opacity-0"
+            >
+                <aside v-if="showPollPanel" class="side-panel">
+                    <div class="side-panel-header">
+                        <h3>Polls</h3>
+                        <button @click="showPollPanel = false" class="side-panel-close">
+                            <Icon name="x" size="18" />
+                        </button>
+                    </div>
+                    <div class="side-panel-body" style="padding: 0; overflow: hidden;">
+                        <MeetingPollPanel />
+                    </div>
+                </aside>
+            </Transition>
+
             <!-- Admission Side Panel (Moderator Only) -->
             <Transition
                 enter-active-class="transition duration-250 ease-out"
@@ -793,9 +838,12 @@ import DeviceSettingsModal from "./components/DeviceSettingsModal.vue";
 import DevSimulationTool from "./components/DevSimulationTool.vue";
 import ParticipantTile from "./components/ParticipantTile.vue";
 import MeetingChatPanel from "./components/MeetingChatPanel.vue";
+import MeetingPollPanel from "./components/MeetingPollPanel.vue";
+
 import ReactionOverlay from "./components/ReactionOverlay.vue";
 import { Icon } from "@/components/ui";
 import { toast } from "vue-sonner";
+import api from "@/lib/api";
 import { Menu, MenuButton, MenuItems, MenuItem } from "@headlessui/vue";
 
 const route = useRoute();
@@ -812,6 +860,7 @@ const showSettings = ref(false);
 const showAdmissionPanel = ref(false);
 const showParticipantsPanel = ref(false);
 const showChatPanel = ref(false);
+const showPollPanel = ref(false);
 const showReactionPicker = ref(false);
 const showDevTool = ref(false);
 
@@ -824,8 +873,41 @@ function toggleChatPanel() {
     showChatPanel.value = !showChatPanel.value;
     if (showChatPanel.value) {
         showParticipantsPanel.value = false;
+        showPollPanel.value = false;
         // Fetch messages when opening the panel
         meetingStore.fetchMessages();
+    }
+}
+
+function togglePollPanel() {
+    showPollPanel.value = !showPollPanel.value;
+    if (showPollPanel.value) {
+        showParticipantsPanel.value = false;
+        showChatPanel.value = false;
+    }
+}
+
+// Laser Pointer
+const laserPointerLabel = computed(() => {
+    const mode = meetingStore.laserPointerMode;
+    if (mode === 'off') return 'Enable Laser Pointer (everyone)';
+    if (mode === 'global') return 'Laser Pointer ON (everyone) — click to turn off';
+    return 'Laser Pointer targeted — click to turn off';
+});
+
+async function cycleLaserMode() {
+    if (!meetingStore.meeting) return;
+    const next = meetingStore.laserPointerMode === 'off' ? 'global' : 'off';
+    meetingStore.laserPointerMode = next;
+    try {
+        await api.patch(`/api/meetings/${meetingStore.meeting.public_id}/settings`, {
+            settings: { laser_pointer_mode: next },
+        });
+        // Sync to all participants
+        meetingStore.sendSignal('laser-mode-changed', { mode: next });
+    } catch {
+        // Revert on failure
+        meetingStore.laserPointerMode = next === 'global' ? 'off' : 'global';
     }
 }
 
@@ -1140,7 +1222,11 @@ const toggleCamera = async () => {
                     : true,
             });
             const videoTrack = newStream.getVideoTracks()[0];
-            stream.addTrack(videoTrack);
+            const updatedStream = new MediaStream([
+                ...stream.getAudioTracks(),
+                videoTrack
+            ]);
+            meetingStore.setStream(updatedStream);
             isCameraOn.value = true;
             meetingStore.replaceTrack("video", videoTrack);
         } catch (e) {
@@ -1150,8 +1236,9 @@ const toggleCamera = async () => {
     } else {
         stream.getVideoTracks().forEach((t) => {
             t.stop();
-            stream!.removeTrack(t);
         });
+        const updatedStream = new MediaStream(stream.getAudioTracks());
+        meetingStore.setStream(updatedStream);
         isCameraOn.value = false;
         meetingStore.replaceTrack("video", null);
     }
@@ -1177,7 +1264,11 @@ const toggleMic = async () => {
                     : true,
             });
             const audioTrack = newStream.getAudioTracks()[0];
-            stream.addTrack(audioTrack);
+            const updatedStream = new MediaStream([
+                ...stream.getVideoTracks(),
+                audioTrack
+            ]);
+            meetingStore.setStream(updatedStream);
             isMicOn.value = true;
             meetingStore.replaceTrack("audio", audioTrack);
         } catch (e) {
@@ -1187,8 +1278,9 @@ const toggleMic = async () => {
     } else {
         stream.getAudioTracks().forEach((t) => {
             t.stop();
-            stream!.removeTrack(t);
         });
+        const updatedStream = new MediaStream(stream.getVideoTracks());
+        meetingStore.setStream(updatedStream);
         isMicOn.value = false;
         meetingStore.replaceTrack("audio", null);
     }
@@ -1303,6 +1395,18 @@ watch(
         }
     },
     { deep: true },
+);
+
+// Auto-disable laser pointer if screensharing ends or if enabled without screensharing
+watch(
+    [() => meetingStore.laserPointerMode, () => meetingStore.screenShares.size],
+    ([mode, count]) => {
+        if (mode !== "off" && count === 0) {
+            console.log("[LASER] Enforcement: No screensharing active. Disabling laser pointer.");
+            meetingStore.laserPointerMode = "off";
+        }
+    },
+    { immediate: true }
 );
 
 function lowerAllHands() {

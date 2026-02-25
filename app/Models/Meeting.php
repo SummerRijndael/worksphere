@@ -51,4 +51,23 @@ class Meeting extends Model
     {
         return $this->hasMany(MeetingParticipant::class);
     }
+
+    public function event(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(Event::class);
+    }
+
+    public function polls(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(MeetingPoll::class);
+    }
+
+    /**
+     * Check whether a given MeetingParticipant is the host of this meeting.
+     */
+    public function isHost(MeetingParticipant $participant): bool
+    {
+        return $participant->user_id !== null
+            && $participant->user_id === $this->user_id;
+    }
 }
