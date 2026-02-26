@@ -956,9 +956,11 @@ function updateClock() {
     });
 }
 
-const isWaiting = computed(
-    () => meetingStore.localParticipant?.status === "waiting",
-);
+const isWaiting = computed(() => {
+    // Safety: Host/Moderator should never see the waiting room overlay
+    if (meetingStore.isModerator || meetingStore.isHost) return false;
+    return meetingStore.localParticipant?.status === "waiting";
+});
 
 const meetingTitle = computed(() => meetingStore.meeting?.title || "Meeting");
 const participantCount = computed(() => meetingStore.allParticipants.length);

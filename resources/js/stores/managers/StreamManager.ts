@@ -36,6 +36,9 @@ export function createStreamManager(
     // Queue for signals that arrive before SFU session is established
     const pendingPullSignals: { participantPublicId: string, remoteSessionId?: string, audioMid?: string, videoMid?: string, screenMid?: string }[] = [];
     
+    // Desync Guard (Self-Healing)
+    let healthCheckInterval: number | null = null;
+    
     // SFU Queue
     let sfuQueue: Promise<void> = Promise.resolve();
     function runInSFUQueue<T>(fn: () => Promise<T>): Promise<T> {
@@ -210,11 +213,12 @@ export function createStreamManager(
                 sessionId: sfuSessionId.value,
                 audioMid,
                 videoMid,
+                screenMid // Ensure screenMid is also shared
             },
             target_participant_public_id: joinerPublicId,
         }).catch(() => {});
 
-        // Also notify about active screen share
+        // Also notify about active screen share explicitly if it exists
         if (screenMid) {
             meetingService.sendSignal(meetingRef.value!.public_id, {
                 sender_participant_public_id: localParticipantRef.value.public_id,
@@ -223,6 +227,57 @@ export function createStreamManager(
                 target_participant_public_id: joinerPublicId,
             }).catch(() => {});
         }
+    }
+
+    function requestMediaInfo(participantPublicId: string) {
+        if (!localParticipantRef.value || !meetingRef.value) return;
+        log('SIGNAL', `Requesting media info from ${participantPublicId}`);
+        meetingService.sendSignal(meetingRef.value.public_id, {
+            sender_participant_public_id: localParticipantRef.value.public_id,
+            signal_type: 'request-media-info',
+            signal_data: {},
+            target_participant_public_id: participantPublicId
+        }).catch(() => {});
+    }
+
+    function startHealthCheck() {
+        if (healthCheckInterval) return;
+        
+        log('HEALTH', 'Starting SFU Desync Guard (60s check)');
+        healthCheckInterval = window.setInterval(async () => {
+            if (!sfuPc || !sfuSessionId.value || !meetingRef.value) return;
+
+            const participants = meetingRef.value.participants || [];
+            const localId = localParticipantRef.value?.public_id.toLowerCase();
+
+            for (const p of participants) {
+                const pid = p.public_id.toLowerCase();
+                if (pid === localId || p.status !== 'admitted') continue;
+
+                const stream = remoteStreams.value.get(pid);
+                const sessionId = remoteSfuSessions.get(pid);
+                
+                // Case 1: No session info yet (missed sfu-media-ready)
+                if (!sessionId) {
+                    log('HEALTH', `No session for ${pid}. Requesting media info.`);
+                    requestMediaInfo(pid);
+                }
+                // Case 2: Have session but no stream or broken stream
+                else if (!stream || (stream.getVideoTracks().length === 0 && stream.getAudioTracks().length === 0)) {
+                    log('HEALTH', `Broken/Missing stream for ${pid}. Triggering repair pull.`);
+                    pullParticipantTracks(pid, sessionId);
+                }
+                // Case 3: "Zombie" check - checks if tracks are ended
+                else {
+                    const allEnded = stream.getTracks().every(t => t.readyState === 'ended');
+                    if (allEnded && stream.getTracks().length > 0) {
+                        log('HEALTH', `Zombie stream detected for ${pid}. Cleaning up for repair.`);
+                        removeParticipantStreams(pid);
+                        pullParticipantTracks(pid, sessionId);
+                    }
+                }
+            }
+        }, 60000);
     }
 
     async function initSFU(stream: MediaStream | null = null) {
@@ -372,6 +427,7 @@ export function createStreamManager(
 
                 await iceConnectedPromise;
                 broadcastMediaMids();
+                startHealthCheck();
 
                 // Replay any queued signals that arrived before we were ready
                 if (pendingPullSignals.length > 0) {
@@ -739,6 +795,10 @@ export function createStreamManager(
     }
 
     function cleanup() {
+        if (healthCheckInterval) {
+            window.clearInterval(healthCheckInterval);
+            healthCheckInterval = null;
+        }
         if (sfuPc) sfuPc.close();
         remoteStreams.value.clear();
         audioAnalysers.forEach(x => {

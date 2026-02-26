@@ -64,7 +64,7 @@ class MeetingPoll extends Model
         $this->votes()->select('option_index', \DB::raw('count(*) as total'))
             ->groupBy('option_index')
             ->get()
-            ->each(fn($row) => $counts[$row->option_index] = $row->total);
-        return $counts;
+            ->each(fn($row) => $counts[(int)$row->option_index] = (int)$row->total);
+        return array_values($counts);
     }
 }

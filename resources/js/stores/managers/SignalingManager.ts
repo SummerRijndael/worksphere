@@ -97,6 +97,11 @@ export function createSignalingManager(
                 log('RECV', '[Poll] Poll ended', e);
                 const { useMeetingStore } = await import('@/stores/meeting');
                 useMeetingStore().handlePollEnded(e);
+            })
+            .listen('.MeetingPollDeleted', async (e: any) => {
+                log('RECV', '[Poll] Poll deleted', e);
+                const { useMeetingStore } = await import('@/stores/meeting');
+                useMeetingStore().handlePollDeleted(e.pollId);
             });
             // Note: Laser pointer now goes through MeetingSignal (sendSignal)
             // so MeetingLaserPointerMoved HTTP listener is not needed
@@ -241,6 +246,12 @@ export function createSignalingManager(
             const { useMeetingStore } = await import('@/stores/meeting');
             const meetingStore = useMeetingStore();
             meetingStore.handleMeetingEnded();
+            return;
+        }
+
+        if (type === 'request-media-info') {
+            log('SIGNAL', `Participant ${normalizedSenderId} requested our media info`);
+            streamManager.rebroadcastToJoiner(normalizedSenderId);
             return;
         }
 

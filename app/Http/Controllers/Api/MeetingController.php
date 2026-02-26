@@ -593,7 +593,7 @@ class MeetingController extends Controller
         $poll->delete();
 
         // Broadcast MeetingPollDeleted event
-        // broadcast(new \App\Events\Meetings\MeetingPollDeleted($meeting, $poll->public_id));
+        broadcast(new \App\Events\Meetings\MeetingPollDeleted($meeting, $poll->public_id));
 
         return response()->json(['message' => 'Poll deleted.']);
     }

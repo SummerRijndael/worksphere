@@ -19,10 +19,12 @@ window.global = window;
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import CallApp from './views/call/CallApp.vue';
+import VueKonva from 'vue-konva';
 
 const app = createApp(CallApp);
 const pinia = createPinia();
 app.use(pinia);
+app.use(VueKonva);
 
 app.config.errorHandler = (err: unknown, _instance, info: string) => {
   console.error('[Call Error]', err);

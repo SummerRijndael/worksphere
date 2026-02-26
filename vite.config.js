@@ -16,14 +16,7 @@ export default defineConfig(({ mode, command }) => ({
             ],
             refresh: true,
         }),
-        vue({
-            template: {
-                transformAssetUrls: {
-                    base: null,
-                    includeAbsolute: false,
-                },
-            },
-        }),
+        vue(),
         tailwindcss(),
     ],
     resolve: {

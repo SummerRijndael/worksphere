@@ -104,8 +104,8 @@ export const useMeetingStore = defineStore('meeting', () => {
                         if (active.my_vote !== undefined && !Array.isArray(active.my_vote)) {
                             active.my_votes = [active.my_vote];
                         }
-                        activePoll.value = active;
                     }
+                    activePoll.value = active;
                     recentPolls.value = recent;
                 } catch {
                     // Non-critical — polls will still appear via Pusher events
@@ -162,6 +162,25 @@ export const useMeetingStore = defineStore('meeting', () => {
              // the actual local stream. Calling it here would cause a double-init.
              if (localParticipant.value?.status === 'admitted') {
                  log('SYS', 'Participant admitted, SFU will start when addLocalStream is called');
+                 // Also fetch existing polls since we bypass onAdmittedCallback when rejoining already-admitted
+                 (async () => {
+                     try {
+                         const { default: api } = await import('@/lib/api');
+                         const res = await api.get(`/api/meetings/${meetingId}/polls`);
+                         const polls: any[] = res.data?.data ?? [];
+                         const active = polls.find(p => p.is_active) ?? null;
+                         const recent = polls.filter(p => !p.is_active);
+                         if (active) {
+                             if (active.my_vote !== undefined && !Array.isArray(active.my_vote)) {
+                                 active.my_votes = [active.my_vote];
+                             }
+                         }
+                         activePoll.value = active;
+                         recentPolls.value = recent;
+                     } catch (e) {
+                         log('ERROR', 'Initial poll fetch failed', e);
+                     }
+                 })();
              } else {
                  log('SYS', 'Participant in waiting room');
              }

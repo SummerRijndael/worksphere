@@ -6,9 +6,11 @@ import { createPinia } from 'pinia';
 import piniaPluginPersistedstate from 'pinia-plugin-persistedstate';
 import App from './App.vue';
 import router from './router';
+import VueKonva from 'vue-konva';
 
 // Create Vue app
 const app: VueApp = createApp(App);
+app.use(VueKonva);
 
 // Create Pinia with persistence plugin
 const pinia = createPinia();

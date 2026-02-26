@@ -176,6 +176,7 @@ const routes: RouteRecordRaw[] = [
             },
             {
                 path: "reset-password",
+                alias: "/reset-password",
                 name: "reset-password",
                 component: () => import("@/views/auth/ResetPasswordView.vue"),
                 meta: {
@@ -183,11 +184,24 @@ const routes: RouteRecordRaw[] = [
                     transition: "fade",
                 },
                 beforeEnter: (to, from, next) => {
+                    if (to.name === "setup-account") {
+                        next();
+                        return;
+                    }
                     if (!to.query.token || !to.query.email) {
                         next({ name: "login" });
                     } else {
                         next();
                     }
+                },
+            },
+            {
+                path: "/setup-account/:id",
+                name: "setup-account",
+                component: () => import("@/views/auth/ResetPasswordView.vue"),
+                meta: {
+                    title: "Setup Account",
+                    transition: "fade",
                 },
             },
             {

@@ -53,6 +53,7 @@
         <audio
             v-if="!isLocal"
             autoplay
+            playsinline
             :ref="bindRemoteAudio"
             class="hidden"
         ></audio>
@@ -180,7 +181,7 @@ watch(
 
 const isSpeaking = computed(() => {
     return (
-        meetingStore.activeSpeakerId === props.participant.public_id &&
+        meetingStore.talkingParticipants.has(props.participant.public_id) &&
         !props.isScreenShare
     );
 });
@@ -314,6 +315,9 @@ watch(
             }
             if (audioEl && audioEl.srcObject !== newStream) {
                 audioEl.srcObject = newStream;
+                audioEl.play().catch((e: any) => {
+                    console.warn(`[AudioPlayback] Playback failed for ${props.participant.public_id}:`, e);
+                });
             }
         }
     },
@@ -334,7 +338,17 @@ const bindAnnotationOverlay = (el: any) => {
 
 // Handle remote annotation updates
 watch(() => meetingStore.lastAnnotationSignal, (data) => {
-    if (data && data.participant_id?.toLowerCase() === props.participant.public_id?.toLowerCase()) {
+    if (!data) return;
+    
+    const signalSenderId = data.participant_id?.toLowerCase();
+    const myId = props.participant.public_id?.toLowerCase();
+    
+    // Normal case: Update for this tile's strokes (sender == tile owner)
+    if (signalSenderId === myId) {
+        annotationOverlay.value?.handleRemoteUpdate(data);
+    }
+    // SPECIAL CASE: Someone is requesting sync from US (we are the presenter)
+    else if (isLocal.value && data.type === 'request-sync' && data.target_participant_id?.toLowerCase() === myId) {
         annotationOverlay.value?.handleRemoteUpdate(data);
     }
 });
