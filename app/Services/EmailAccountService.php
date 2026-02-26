@@ -6,10 +6,43 @@ use App\Models\EmailAccount;
 use App\Models\User;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Symfony\Component\HttpFoundation\IpUtils;
 use Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport;
 
 class EmailAccountService
 {
+    /**
+     * Private/Internal IP ranges to block (IPv4 and IPv6).
+     */
+    protected array $blockedRanges = [
+        // IPv4
+        '0.0.0.0/8',
+        '10.0.0.0/8',
+        '100.64.0.0/10',
+        '127.0.0.0/8',
+        '169.254.0.0/16',
+        '172.16.0.0/12',
+        '192.0.0.0/24',
+        '192.0.2.0/24',
+        '192.88.99.0/24',
+        '192.168.0.0/16',
+        '198.18.0.0/15',
+        '198.51.100.0/24',
+        '203.0.113.0/24',
+        '224.0.0.0/4',
+        '240.0.0.0/4',
+        '255.255.255.255/32',
+        // IPv6
+        '::1/128',
+        '::/128',
+        'fc00::/7',
+        'fe80::/10',
+        '2002::/16', // 6to4
+        '64:ff9b::/96', // NAT64
+        '100::/64', // Discard
+        '::ffff:0:0/96', // IPv4-mapped IPv6
+    ];
+
     /**
      * OAuth configuration for providers.
      */
@@ -135,7 +168,7 @@ class EmailAccountService
 
         // 1. Check if it's an IP address
         if (filter_var($host, FILTER_VALIDATE_IP)) {
-            if (! filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+            if (IpUtils::checkIp($host, $this->blockedRanges)) {
                 throw new \Exception('Access to private IP addresses is not allowed.');
             }
 
@@ -155,7 +188,7 @@ class EmailAccountService
 
         // 3. Check all resolved IPs
         foreach ($ips as $ip) {
-            if (! filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+            if (IpUtils::checkIp($ip, $this->blockedRanges)) {
                 throw new \Exception('Host resolves to a private IP address. Access denied.');
             }
         }
