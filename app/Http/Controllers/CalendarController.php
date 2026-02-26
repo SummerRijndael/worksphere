@@ -91,7 +91,7 @@ class CalendarController extends Controller
             'send_invite' => 'boolean',
         ]);
 
-        return DB::transaction(function () use ($validated) {
+        return DB::transaction(function () use ($validated, $request) {
             $event = Event::create([
                 ...$validated,
                 'user_id' => auth()->id(),
@@ -100,6 +100,8 @@ class CalendarController extends Controller
 
             // Handle Meeting Creation
             if ($request->boolean('is_meeting')) {
+                $hasGuests = !empty($validated['external_emails']) || !empty($validated['attendees']);
+                
                 $meeting = \App\Models\Meeting::create([
                     'title' => $event->title,
                     'description' => $event->description,
@@ -107,9 +109,11 @@ class CalendarController extends Controller
                     'end_time' => $event->end_time,
                     'user_id' => auth()->id(),
                     'status' => 'scheduled',
+                    'password' => $hasGuests ? \Illuminate\Support\Str::random(10) : null,
                     'settings' => [
                         'lobby_enabled' => true,
                         'guest_access' => true,
+                        'invited_only' => $hasGuests,
                     ]
                 ]);
                 $event->update(['meeting_id' => $meeting->id]);
@@ -185,6 +189,8 @@ class CalendarController extends Controller
             // Sync Meeting
             if ($request->has('is_meeting')) {
                 if ($request->boolean('is_meeting')) {
+                    $hasGuests = !empty($validated['external_emails']) || !empty($validated['attendees']);
+
                     if (!$event->meeting_id) {
                         $meeting = \App\Models\Meeting::create([
                             'title' => $event->title,
@@ -193,9 +199,11 @@ class CalendarController extends Controller
                             'end_time' => $event->end_time,
                             'user_id' => auth()->id(),
                             'status' => 'scheduled',
+                            'password' => $hasGuests ? \Illuminate\Support\Str::random(10) : null,
                             'settings' => [
                                 'lobby_enabled' => true,
                                 'guest_access' => true,
+                                'invited_only' => $hasGuests,
                             ]
                         ]);
                         $event->update(['meeting_id' => $meeting->id]);

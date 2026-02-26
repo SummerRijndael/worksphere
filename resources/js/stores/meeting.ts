@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref } from 'vue';
+import { ref, reactive } from 'vue';
 import { meetingService } from '@/services/meeting.service';
 import type { Meeting, MeetingParticipant } from '@/types/models';
 import { createLogger } from './managers/logger';
@@ -20,6 +20,39 @@ export const useMeetingStore = defineStore('meeting', () => {
     const isDevMode = ref(false);
     const chatMessages = ref<any[]>([]);
     const isLocked = ref(false);
+    const originalVideoTrack = ref<MediaStreamTrack | null>(null);
+
+    // ── Polls ──────────────────────────────────────────────────────────────────
+    interface Poll {
+        public_id: string;
+        question: string;
+        options: string[];
+        is_active: boolean;
+        vote_counts: number[];
+        my_votes?: number[]; // indices of what THIS participant voted
+        allow_multiple: boolean;
+        allow_change_vote: boolean;
+        anonymous: boolean;
+    }
+    const activePoll = ref<Poll | null>(null);
+    const recentPolls = ref<Poll[]>([]);
+
+    // ── Laser Pointer ──────────────────────────────────────────────────────────
+    interface LaserPointer {
+        participantId: string;
+        targetParticipantId?: string;
+        x: number;
+        y: number;
+        lastSeen: number;
+    }
+    const remotePointers = reactive(new Map<string, LaserPointer>());
+    const laserPointerMode = ref<'off' | 'global' | 'targeted'>('off');
+    
+    // ── Annotations ─────────────────────────────────────────────────────────────
+    const isAnnotating = ref(false);
+    const activeAnnotationTool = ref('pen');
+    const activeAnnotationColor = ref('#ea4335');
+    const lastAnnotationSignal = ref<any>(null);
 
     interface ReactionEvent {
         id: string;
@@ -55,9 +88,29 @@ export const useMeetingStore = defineStore('meeting', () => {
         localParticipant, 
         presence, 
         stream,
-        () => {
+        async () => {
             // onAdmitted callback: initialize WebRTC when host lets them in
             stream.initSFU(stream.localStream.value);
+            // Fetch any polls that were already created before we joined
+            if (meeting.value?.public_id) {
+                try {
+                    const { default: api } = await import('@/lib/api');
+                    const res = await api.get(`/api/meetings/${meeting.value.public_id}/polls`);
+                    const polls: any[] = res.data?.data ?? [];
+                    const active = polls.find(p => p.is_active) ?? null;
+                    const recent = polls.filter(p => !p.is_active);
+                    if (active) {
+                        // Normalize my_votes if it comes from the API
+                        if (active.my_vote !== undefined && !Array.isArray(active.my_vote)) {
+                            active.my_votes = [active.my_vote];
+                        }
+                    }
+                    activePoll.value = active;
+                    recentPolls.value = recent;
+                } catch {
+                    // Non-critical — polls will still appear via Pusher events
+                }
+            }
         }
     );
 
@@ -71,6 +124,7 @@ export const useMeetingStore = defineStore('meeting', () => {
              const participants = data.participants || [];
              meeting.value = data;
              isLocked.value = !!data.is_locked;
+             laserPointerMode.value = data.settings?.laser_pointer_mode || 'off';
              
              // Normalize all incoming participant IDs
              participants.forEach((p: any) => {
@@ -108,6 +162,25 @@ export const useMeetingStore = defineStore('meeting', () => {
              // the actual local stream. Calling it here would cause a double-init.
              if (localParticipant.value?.status === 'admitted') {
                  log('SYS', 'Participant admitted, SFU will start when addLocalStream is called');
+                 // Also fetch existing polls since we bypass onAdmittedCallback when rejoining already-admitted
+                 (async () => {
+                     try {
+                         const { default: api } = await import('@/lib/api');
+                         const res = await api.get(`/api/meetings/${meetingId}/polls`);
+                         const polls: any[] = res.data?.data ?? [];
+                         const active = polls.find(p => p.is_active) ?? null;
+                         const recent = polls.filter(p => !p.is_active);
+                         if (active) {
+                             if (active.my_vote !== undefined && !Array.isArray(active.my_vote)) {
+                                 active.my_votes = [active.my_vote];
+                             }
+                         }
+                         activePoll.value = active;
+                         recentPolls.value = recent;
+                     } catch (e) {
+                         log('ERROR', 'Initial poll fetch failed', e);
+                     }
+                 })();
              } else {
                  log('SYS', 'Participant in waiting room');
              }
@@ -125,6 +198,7 @@ export const useMeetingStore = defineStore('meeting', () => {
          layout.clearSpotlight();
          meeting.value = null;
          localParticipant.value = null;
+         remotePointers.clear();
     }
 
     function toggleHand() {
@@ -149,8 +223,8 @@ export const useMeetingStore = defineStore('meeting', () => {
         signaling.broadcastScreenShareState(false);
     }
 
-    function setStream(kind: 'audio' | 'video', track: MediaStreamTrack | null) {
-        stream.replaceTrack(kind, track);
+    function setStream(newStream: MediaStream | null) {
+        stream.setLocalStream(newStream);
     }
 
     async function muteParticipant(publicId: string) {
@@ -317,15 +391,27 @@ export const useMeetingStore = defineStore('meeting', () => {
     function handleMeetingEnded() {
         // Stop all local tracks
         stream.localStream.value?.getTracks().forEach(t => t.stop());
+        const id = meeting.value?.public_id;
         cleanup();
-        // Route to home via window since we don't have router in store
-        window.location.href = '/';
+        if (id) {
+            window.location.href = `/m/${id}?ended=1`;
+        } else {
+            // Route to home via window since we don't have router in store
+            window.location.href = '/';
+        }
     }
 
     // --- Reactions ---
 
+    let lastReactionTime = 0;
+    const REACTION_THROTTLE = 500; // ms
+
     function sendReaction(emoji: string) {
         if (!localParticipant.value) return;
+        
+        const now = Date.now();
+        if (now - lastReactionTime < REACTION_THROTTLE) return;
+        lastReactionTime = now;
         
         signaling.sendSignal('reaction', { emoji });
         
@@ -354,6 +440,16 @@ export const useMeetingStore = defineStore('meeting', () => {
                 activeReactions.value.splice(idx, 1);
             }
         }, 4000);
+    }
+
+    // --- Annotations ---
+
+    function sendAnnotationUpdate(data: any) {
+        signaling.sendSignal('annotation-update', data);
+    }
+
+    function receiveAnnotationUpdate(data: any) {
+        lastAnnotationSignal.value = { ...data, _timestamp: Date.now() };
     }
 
     // --- Chat ---
@@ -396,6 +492,7 @@ export const useMeetingStore = defineStore('meeting', () => {
         // State
         meeting,
         localParticipant,
+        originalVideoTrack,
         isDevMode,
         
         // Presence Manager
@@ -416,10 +513,12 @@ export const useMeetingStore = defineStore('meeting', () => {
         localStream: stream.localStream,
         sfuConnectionState: stream.sfuConnectionState,
         sfuIceState: stream.sfuIceState,
+        sfuPc: stream.sfuPc,
         
         // Layout Manager
         pinnedParticipantId: layout.pinnedParticipantId,
         activeSpeakerId: layout.activeSpeakerId,
+        preferredLayout: layout.preferredLayout,
 
         // High-level Actions
         initializeMeeting,
@@ -432,6 +531,7 @@ export const useMeetingStore = defineStore('meeting', () => {
         unpublishScreenTrack,
         
         // Host Action proxies
+        sendSignal: signaling.sendSignal, // used by LaserPointerOverlay for laser-move events
         admitParticipant: presence.admitParticipant,
         rejectParticipant: presence.rejectParticipant,
         removeParticipant: presence.removeParticipant,
@@ -454,6 +554,67 @@ export const useMeetingStore = defineStore('meeting', () => {
         sendReaction,
         receiveReaction,
 
+        // Polls
+        activePoll,
+        recentPolls,
+        handlePollCreated: (poll: Poll) => {
+            // If the poll already exists (update), replace it in recentPolls too
+            const idx = recentPolls.value.findIndex(p => p.public_id === poll.public_id);
+            if (idx !== -1) {
+                recentPolls.value[idx] = poll;
+            } else {
+                recentPolls.value.unshift(poll);
+            }
+            // Always set as active poll if it's active
+            if (poll.is_active) {
+                activePoll.value = poll;
+            }
+        },
+        handlePollVoted: (data: { poll_id: string; vote_counts: number[]; total_votes: number }) => {
+            if (activePoll.value?.public_id === data.poll_id) {
+                activePoll.value.vote_counts = data.vote_counts;
+            }
+            const recent = recentPolls.value.find(p => p.public_id === data.poll_id);
+            if (recent) recent.vote_counts = data.vote_counts;
+        },
+        handlePollEnded: (data: { poll_id: string; final_vote_counts: number[] }) => {
+            if (activePoll.value?.public_id === data.poll_id) {
+                activePoll.value.is_active = false;
+                activePoll.value.vote_counts = data.final_vote_counts;
+                activePoll.value = null; // Clear active poll when it ends
+            }
+            const recent = recentPolls.value.find(p => p.public_id === data.poll_id);
+            if (recent) {
+                recent.is_active = false;
+                recent.vote_counts = data.final_vote_counts;
+            }
+        },
+        handlePollDeleted: (pollId: string) => {
+            if (activePoll.value?.public_id === pollId) {
+                activePoll.value = null;
+            }
+            recentPolls.value = recentPolls.value.filter(p => p.public_id !== pollId);
+        },
+
+        // Laser Pointer
+        remotePointers,
+        laserPointerMode,
+        handleLaserMove: (data: { participant_id: string; target_participant_id?: string; x: number; y: number }) => {
+            const myId = localParticipant.value?.public_id;
+            if (data.participant_id === myId) return; // ignore own echo
+            remotePointers.set(data.participant_id, {
+                participantId: data.participant_id,
+                targetParticipantId: data.target_participant_id,
+                x: data.x,
+                y: data.y,
+                lastSeen: Date.now(),
+            });
+        },
+        handleLaserModeChanged: (mode: 'off' | 'global' | 'targeted') => {
+            log('SYS', `Laser pointer mode changed to: ${mode}`);
+            laserPointerMode.value = mode;
+        },
+
         // Host Actions
         toggleLock, // Exposed toggleLock
         endMeeting,
@@ -462,12 +623,22 @@ export const useMeetingStore = defineStore('meeting', () => {
         // Layout Action proxies
         setSpotlight: layout.setSpotlight,
         clearSpotlight: layout.clearSpotlight,
+        setLayout: layout.setLayout,
 
         // Dev tool wrappers
         addMockParticipant: presence.addMockParticipant,
         removeMockParticipant: presence.removeMockParticipant,
         resetSimulation: presence.resetSimulation,
         setSimulatedRole: (r: any) => { presence.simulatedRole.value = r; },
-        toggleDevMode
+        toggleDevMode,
+
+        // Annotations
+        isAnnotating,
+        activeAnnotationTool,
+        activeAnnotationColor,
+        lastAnnotationSignal,
+        sendAnnotationUpdate,
+        receiveAnnotationUpdate,
+        handleAnnotationUpdate: receiveAnnotationUpdate,
     };
 });

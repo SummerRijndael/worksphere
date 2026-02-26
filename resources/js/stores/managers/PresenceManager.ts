@@ -78,7 +78,14 @@ export function createPresenceManager(
                 const newTalking = new Set(talkingParticipants.value);
                 newTalking.delete(pid);
                 talkingParticipants.value = newTalking;
+        talkingParticipants.value = newTalking;
             });
+    }
+
+    function whisper(event: string, data: any) {
+        if (echoChannel.value) {
+            echoChannel.value.whisper(event, data);
+        }
     }
 
     function leaveEcho() {
@@ -255,6 +262,7 @@ export function createPresenceManager(
         addMockParticipant,
         removeMockParticipant,
         resetSimulation,
+        whisper,
         
         allParticipants,
         waitingParticipants,

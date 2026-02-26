@@ -1,32 +1,52 @@
 <template>
-    <div class="p-6">
-        <div class="flex justify-between items-center mb-8">
+    <div class="p-3 sm:p-6">
+        <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-8 gap-4">
             <div>
-                <h1 class="text-2xl font-bold text-(--text-primary)">
+                <h1 class="text-xl sm:text-2xl font-bold text-(--text-primary)">
                     Meetings
                 </h1>
-                <p class="text-(--text-muted)">
+                <p class="text-sm text-(--text-muted)">
                     Schedule and manage your video conferences
                 </p>
             </div>
-            <div class="flex gap-3">
+            <div class="flex flex-col sm:flex-row gap-3 items-center">
+                <!-- Join by ID -->
+                <div class="flex items-center bg-(--surface-primary) border border-(--border-muted) rounded-lg px-2 py-1 focus-within:ring-2 focus-within:ring-(--color-primary-500) transition-all">
+                    <Icon name="hash" size="14" class="text-(--text-muted) ml-1" />
+                    <input 
+                        v-model="joinId"
+                        placeholder="Enter Meeting ID"
+                        class="bg-transparent border-none outline-none px-2 py-1 text-sm w-40 text-(--text-primary)"
+                        @keyup.enter="handleJoinById"
+                    />
+                    <button 
+                        @click="handleJoinById"
+                        :disabled="!joinId.trim()"
+                        class="px-3 py-1 bg-(--color-primary-600) hover:bg-(--color-primary-700) text-white rounded text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                        Join
+                    </button>
+                </div>
+
+                <div class="h-6 w-px bg-(--border-muted) hidden sm:block"></div>
+
                 <button
                     @click="startInstantMeeting"
                     :disabled="isCreatingInstant"
-                    class="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg font-medium transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    class="w-full sm:w-auto px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
                 >
                     <Icon
                         :name="isCreatingInstant ? 'loader-2' : 'zap'"
                         :class="{ 'animate-spin': isCreatingInstant }"
-                        size="18"
+                        size="16"
                     />
                     {{ isCreatingInstant ? "Starting..." : "Instant Meeting" }}
                 </button>
                 <button
                     @click="showCreateModal = true"
-                    class="px-4 py-2 bg-(--color-primary-600) hover:bg-(--color-primary-700) text-white rounded-lg font-medium transition-colors flex items-center gap-2"
+                    class="w-full sm:w-auto px-4 py-2.5 bg-(--color-primary-600) hover:bg-(--color-primary-700) text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2 text-sm"
                 >
-                    <Icon name="calendar-plus" size="18" />
+                    <Icon name="calendar-plus" size="16" />
                     Schedule Meeting
                 </button>
             </div>
@@ -42,21 +62,21 @@
 
         <div
             v-else-if="!meetings || meetings.length === 0"
-            class="bg-(--surface-primary) border border-(--border-muted) rounded-xl p-20 text-center"
+            class="bg-(--surface-primary) border border-(--border-muted) rounded-xl p-10 sm:p-20 text-center"
         >
             <div
-                class="w-20 h-20 bg-(--surface-tertiary) rounded-full flex items-center justify-center mx-auto mb-6"
+                class="w-16 h-16 sm:w-20 sm:h-20 bg-(--surface-tertiary) rounded-full flex items-center justify-center mx-auto mb-6"
             >
-                <Icon name="video" size="32" class="text-(--text-muted)" />
+                <Icon name="video" size="28" class="sm:text-(--text-muted)" />
             </div>
-            <h3 class="text-xl font-semibold mb-2">No meetings scheduled</h3>
-            <p class="text-(--text-muted) mb-8 max-w-sm mx-auto">
+            <h3 class="text-lg sm:text-xl font-semibold mb-2">No meetings scheduled</h3>
+            <p class="text-sm text-(--text-muted) mb-8 max-w-sm mx-auto">
                 Host a quick catch-up or schedule a formal discussion with your
                 team or external guests.
             </p>
             <button
                 @click="showCreateModal = true"
-                class="px-6 py-3 bg-(--color-primary-600) text-white rounded-lg font-medium hover:bg-(--color-primary-700) transition-all"
+                class="w-full sm:w-auto px-6 py-3 bg-(--color-primary-600) text-white rounded-lg font-medium hover:bg-(--color-primary-700) transition-all"
             >
                 Create Your First Meeting
             </button>
@@ -64,7 +84,7 @@
 
         <div
             v-else
-            class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+            class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6"
         >
             <div
                 v-for="meeting in meetings"
@@ -295,6 +315,13 @@ const showCreateModal = ref(false);
 const editingMeeting = ref<Meeting | null>(null);
 const createdMeeting = ref<Meeting | null>(null);
 const revealedPasswords = ref<Set<number>>(new Set());
+const joinId = ref("");
+
+const handleJoinById = () => {
+    if (!joinId.value.trim()) return;
+    openMeetingPopup(joinId.value.trim());
+    joinId.value = "";
+};
 
 const fetchMeetings = async () => {
     loading.value = true;

@@ -60,7 +60,7 @@ class AccountCreated extends Notification implements ShouldQueue
         // Let's assume standard Laravel routing serving Vue app.
 
         return (new MailMessage)
-            ->subject('Welcome to CoreSync - Setup Your Account')
+            ->subject('Welcome to WorkSphere - Setup Your Account')
             ->greeting('Hello '.$notifiable->name.'!')
             ->line('Your account has been created. Please click the button below to set up your password and log in.')
             ->action('Setup Account', $url)

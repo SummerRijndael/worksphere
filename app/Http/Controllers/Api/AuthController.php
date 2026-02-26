@@ -781,7 +781,7 @@ class AuthController extends Controller
             // Send Welcome Email
             try {
                 $token = Password::createToken($user);
-                $resetUrl = url(config('app.url').'/reset-password?token='.$token.'&email='.urlencode($user->email));
+                $resetUrl = url(config('app.url').'/auth/reset-password?token='.$token.'&email='.urlencode($user->email));
                 $user->notify(new \App\Notifications\WelcomeEmailNotification(true, $resetUrl, 'Set Password & Access Dashboard'));
             } catch (\Exception $e) {
                 \Illuminate\Support\Facades\Log::error('Failed to send welcome email: '.$e->getMessage());

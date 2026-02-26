@@ -37,7 +37,7 @@ class RegisterRequest extends FormRequest
                 'required',
                 'string',
                 'lowercase',
-                'email:rfc',
+                'email:rfc,spoof',
                 'max:255',
                 'unique:'.User::class,
             ],

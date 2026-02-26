@@ -7,6 +7,7 @@
         >
             <!-- Left Side: Video Preview -->
             <div
+                v-if="!(meeting?.status === 'ended' || isEndedQuery)"
                 class="video-section flex-1 w-full max-w-3xl relative rounded-2xl overflow-hidden bg-black shadow-2xl aspect-video"
             >
                 <div
@@ -46,7 +47,7 @@
 
                 <!-- Floating Controls -->
                 <div
-                    class="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-4"
+                    class="absolute bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 flex gap-3 sm:gap-4"
                 >
                     <button
                         @click="toggleMic"
@@ -63,8 +64,8 @@
                     >
                         <Icon
                             :name="isMicOn ? 'mic' : 'mic-off'"
-                            size="24"
-                            :class="{ 'text-white': true }"
+                            size="20"
+                            class="sm:size-6 text-white"
                         />
                     </button>
                     <button
@@ -80,8 +81,8 @@
                     >
                         <Icon
                             :name="isCameraOn ? 'video' : 'video-off'"
-                            size="24"
-                            :class="{ 'text-white': true }"
+                            size="20"
+                            class="sm:size-6 text-white"
                         />
                     </button>
                     <!-- Settings Button -->
@@ -90,7 +91,7 @@
                         class="control-btn bg-slate-700 hover:bg-slate-600 rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-105 active:scale-95"
                         title="Device settings"
                     >
-                        <Icon name="settings" size="24" class="text-white" />
+                        <Icon name="settings" size="20" class="sm:size-6 text-white" />
                     </button>
                 </div>
             </div>
@@ -99,104 +100,122 @@
             <div
                 class="join-section w-full md:w-96 flex flex-col items-center text-center"
             >
-                <h1
-                    class="text-3xl font-semibold mb-2 tracking-tight"
-                    style="color: #ffffff !important"
-                >
-                    Ready to join?
-                </h1>
-                <p class="text-slate-400 mb-8">
-                    {{ meeting?.title || "Loading meeting details..." }}
-                </p>
-
-                <div v-if="authStore.isAuthenticated" class="w-full mb-6 py-3 px-4 bg-slate-800/50 border border-slate-700/50 rounded-lg flex items-center justify-between text-left">
-                    <div class="flex items-center gap-3">
-                        <img v-if="authStore.user?.avatar_url" :src="authStore.user.avatar_url" class="w-10 h-10 rounded-full border border-slate-600" />
-                        <div v-else class="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold">
-                            {{ authStore.user?.name?.[0]?.toUpperCase() }}
+                <!-- Meeting Ended State -->
+                <template v-if="meeting?.status === 'ended' || isEndedQuery">
+                    <div class="w-full mb-8 pt-6 pb-8 px-6 bg-slate-800/80 border border-slate-700/80 rounded-2xl flex flex-col items-center shadow-lg">
+                        <div class="w-16 h-16 bg-slate-700 text-slate-300 rounded-full flex items-center justify-center mb-6 shadow-inner cursor-not-allowed">
+                            <Icon name="phone-off" size="32" class="opacity-80" />
                         </div>
-                        <div>
-                            <p class="text-sm font-medium text-white">{{ authStore.user?.name }}</p>
-                            <p class="text-xs text-slate-500">Joining as yourself</p>
+                        <h2 class="text-xl font-bold text-white mb-2">Meeting has Ended</h2>
+                        <p class="text-slate-400 text-sm">The host has ended this meeting for everyone.</p>
+                    </div>
+                    <router-link to="/" class="w-full bg-slate-800 hover:bg-slate-700 text-white px-6 py-4 rounded-xl font-medium transition-colors flex items-center justify-center border border-slate-700">
+                        <Icon name="home" size="20" class="mr-2" />
+                        Return to Home
+                    </router-link>
+                </template>
+
+                <!-- Regular Join UI -->
+                <template v-else>
+                    <h1
+                        class="text-2xl sm:text-3xl font-semibold mb-2 tracking-tight"
+                        style="color: #ffffff !important"
+                    >
+                        Ready to join?
+                    </h1>
+                    <p class="text-sm sm:text-base text-slate-400 mb-6 sm:mb-8">
+                        {{ meeting?.title || "Loading meeting details..." }}
+                    </p>
+
+                    <div v-if="authStore.isAuthenticated" class="w-full mb-6 py-3 px-4 bg-slate-800/50 border border-slate-700/50 rounded-lg flex items-center justify-between text-left">
+                        <div class="flex items-center gap-3">
+                            <img v-if="authStore.user?.avatar_url" :src="authStore.user.avatar_url" class="w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-slate-600" />
+                            <div v-else class="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-sm sm:text-base">
+                                {{ authStore.user?.name?.[0]?.toUpperCase() }}
+                            </div>
+                            <div>
+                                <p class="text-sm font-medium text-white">{{ authStore.user?.name }}</p>
+                                <p class="text-[11px] sm:text-xs text-slate-500">Joining as yourself</p>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <div v-if="!authStore.isAuthenticated" class="w-full space-y-3 mb-4">
-                    <input
-                        v-model="guestName"
-                        placeholder="Enter your name"
-                        class="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                        @keyup.enter="joinMeeting"
-                    />
-                    <input
-                        v-model="guestEmail"
-                        type="email"
-                        placeholder="Enter your email address"
-                        class="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                        @keyup.enter="joinMeeting"
-                    />
-                    <p v-if="guestEmailError" class="text-xs text-red-400 text-left">{{ guestEmailError }}</p>
-                </div>
-
-                <!-- Password input: shown only for non-hosts when meeting is password protected -->
-                <div
-                    v-if="meeting?.has_password && !isHost"
-                    class="w-full mb-6"
-                >
-                    <label class="block text-xs text-slate-500 mb-1.5 text-left"
-                        >Meeting password</label
-                    >
-                    <input
-                        v-model="password"
-                        type="password"
-                        placeholder="Enter meeting password"
-                        class="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                        @keyup.enter="joinMeeting"
-                    />
-                </div>
-
-                <div class="flex flex-col sm:flex-row gap-4 w-full">
-                    <button
-                        @click="joinMeeting"
-                        :disabled="
-                            joining ||
-                            (!authStore.isAuthenticated && (!guestName.trim() || !guestEmail.trim() || !!guestEmailError)) ||
-                            (meeting?.has_password &&
-                                !isHost &&
-                                !password.trim())
-                        "
-                        class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-full font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-h-[48px]"
-                    >
-                        <Icon
-                            v-if="joining"
-                            name="loader"
-                            size="20"
-                            class="animate-spin mr-2"
+                    <div v-if="!authStore.isAuthenticated" class="w-full space-y-3 mb-4">
+                        <input
+                            v-model="guestName"
+                            placeholder="Enter your name"
+                            class="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
+                            @keyup.enter="joinMeeting"
                         />
-                        {{ joining ? "Joining..." : "Join now" }}
-                    </button>
-                    <!-- Present Button -->
-                    <button
-                        @click="joinAndPresent"
-                        :disabled="
-                            joining ||
-                            (!authStore.isAuthenticated && (!guestName.trim() || !guestEmail.trim() || !!guestEmailError)) ||
-                            (meeting?.has_password &&
-                                !isHost &&
-                                !password.trim())
-                        "
-                        class="flex-1 bg-transparent hover:bg-slate-800 text-blue-400 px-6 py-3 rounded-full font-medium transition-colors border border-slate-700 min-h-[48px] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-                        title="Join meeting and start presenting"
-                    >
-                        <Icon name="monitor-up" size="18" class="inline mr-2" />
-                        Present
-                    </button>
-                </div>
+                        <input
+                            v-model="guestEmail"
+                            type="email"
+                            placeholder="Enter your email address"
+                            class="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
+                            @keyup.enter="joinMeeting"
+                        />
+                        <p v-if="guestEmailError" class="text-xs text-red-400 text-left">{{ guestEmailError }}</p>
+                    </div>
 
-                <div class="mt-8 text-sm text-slate-500">
-                    <p>Other joining options (audio only)</p>
-                </div>
+                    <!-- Password input: shown only for non-hosts when meeting is password protected -->
+                    <div
+                        v-if="meeting?.has_password && !isHost"
+                        class="w-full mb-6"
+                    >
+                        <label class="block text-xs text-slate-500 mb-1.5 text-left"
+                            >Meeting password</label
+                        >
+                        <input
+                            v-model="password"
+                            type="password"
+                            placeholder="Enter meeting password"
+                            class="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
+                            @keyup.enter="joinMeeting"
+                        />
+                    </div>
+
+                    <div class="flex flex-col sm:flex-row gap-3 sm:gap-4 w-full">
+                        <button
+                            @click="joinMeeting"
+                            :disabled="
+                                joining ||
+                                (!authStore.isAuthenticated && (!guestName.trim() || !guestEmail.trim() || !!guestEmailError)) ||
+                                (meeting?.has_password &&
+                                    !isHost &&
+                                    !password.trim())
+                            "
+                            class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-full font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-h-[48px] text-sm sm:text-base"
+                        >
+                            <Icon
+                                v-if="joining"
+                                name="loader"
+                                size="20"
+                                class="animate-spin mr-2"
+                            />
+                            {{ joining ? "Joining..." : "Join now" }}
+                        </button>
+                        <!-- Present Button -->
+                        <button
+                            @click="joinAndPresent"
+                            :disabled="
+                                joining ||
+                                (!authStore.isAuthenticated && (!guestName.trim() || !guestEmail.trim() || !!guestEmailError)) ||
+                                (meeting?.has_password &&
+                                    !isHost &&
+                                    !password.trim())
+                            "
+                            class="flex-1 bg-transparent hover:bg-slate-800 text-blue-400 px-6 py-3 rounded-full font-medium transition-colors border border-slate-700 min-h-[48px] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center text-sm sm:text-base"
+                            title="Join meeting and start presenting"
+                        >
+                            <Icon name="monitor-up" size="18" class="inline mr-2" />
+                            Present
+                        </button>
+                    </div>
+
+                    <div class="mt-8 text-sm text-slate-500">
+                        <p>Other joining options (audio only)</p>
+                    </div>
+                </template>
             </div>
         </div>
 
@@ -215,6 +234,7 @@ import { meetingService, type Meeting } from "@/services/meeting.service";
 import { useAuthStore } from "@/stores/auth";
 import { useMeetingStore } from "@/stores/meeting";
 import { useVideoCallStore } from "@/stores/videocall";
+import { useBackgroundBlur } from "@/composables/useBackgroundBlur";
 import DeviceSettingsModal from "./components/DeviceSettingsModal.vue";
 import { Icon } from "@/components/ui";
 import { toast } from "vue-sonner";
@@ -229,11 +249,13 @@ const meetingId = route.params.id as string;
 const meeting = ref<Meeting | null>(null);
 const loading = ref(true);
 const joining = ref(false);
+const isEndedQuery = computed(() => route.query.ended === '1');
 
 const localVideo = ref<HTMLVideoElement | null>(null);
 const localStream = ref<MediaStream | null>(null);
 const isCameraOn = ref(false); // Default OFF
 const isMicOn = ref(false); // Default OFF
+const backgroundBlur = useBackgroundBlur();
 const guestName = ref("");
 const guestEmail = ref("");
 const guestEmailError = ref("");
@@ -257,6 +279,11 @@ onMounted(async () => {
         meeting.value = await meetingService.getMeeting(meetingId);
         // Do NOT acquire camera/mic here — we only do it on explicit toggle.
         // This prevents the camera indicator light from turning on immediately.
+        
+        const savedPwd = localStorage.getItem(`worksphere_meeting_pwd_${meetingId}`);
+        if (savedPwd) {
+            password.value = savedPwd;
+        }
     } catch (e) {
         console.error("Failed to load meeting:", e);
         toast.error("Failed to load meeting details");
@@ -267,8 +294,13 @@ onMounted(async () => {
 
 onUnmounted(() => {
     // If we leave lobby WITHOUT joining, stop tracks
+    backgroundBlur.stopProcessing();
     if (localStream.value && !joining.value) {
         localStream.value.getTracks().forEach((t) => t.stop());
+    }
+    if (meetingStore.originalVideoTrack && !joining.value) {
+        meetingStore.originalVideoTrack.stop();
+        meetingStore.originalVideoTrack = null;
     }
 });
 
@@ -316,10 +348,26 @@ const toggleCamera = async () => {
                     : true,
             });
             const videoTrack = stream.getVideoTracks()[0];
-            localStream.value.addTrack(videoTrack);
+            meetingStore.originalVideoTrack = videoTrack;
+
+            let finalTrack = videoTrack;
+            if (
+                (videoCallStore.videoEffect === "blur" ||
+                    videoCallStore.videoEffect === "image") &&
+                videoTrack
+            ) {
+                finalTrack = await backgroundBlur.startVideoEffect(
+                    videoTrack,
+                    videoCallStore.videoEffect,
+                    videoCallStore.backgroundImage || undefined,
+                    videoCallStore.autoFraming,
+                );
+            }
+
+            localStream.value.addTrack(finalTrack);
             isCameraOn.value = true;
             console.info(
-                `[LOBBY-TRACE] Started new camera track ${videoTrack.id}`,
+                `[LOBBY-TRACE] Started new camera track ${finalTrack.id}`,
             );
         } catch (e) {
             console.error("Failed to start camera", e);
@@ -334,6 +382,11 @@ const toggleCamera = async () => {
                 `[LOBBY-TRACE] Stopped and removed camera track ${t.id}`,
             );
         });
+        if (meetingStore.originalVideoTrack) {
+            meetingStore.originalVideoTrack.stop();
+            meetingStore.originalVideoTrack = null;
+        }
+        backgroundBlur.stopProcessing();
         isCameraOn.value = false;
     }
 };
@@ -391,6 +444,45 @@ const toggleMic = async () => {
         isMicOn.value = false;
     }
 };
+
+// Watch for video effect changes and hot-swap the track
+watch(
+    [
+        () => videoCallStore.videoEffect,
+        () => videoCallStore.backgroundImage,
+        () => videoCallStore.autoFraming,
+    ],
+    async ([effect, bgImage, framing]) => {
+        if (!isCameraOn.value || !meetingStore.originalVideoTrack || !localStream.value)
+            return;
+
+        try {
+            let newTrack: MediaStreamTrack;
+            if (effect === "blur" || effect === "image") {
+                newTrack = await backgroundBlur.startVideoEffect(
+                    meetingStore.originalVideoTrack as MediaStreamTrack,
+                    effect,
+                    bgImage || undefined,
+                    framing,
+                );
+            } else {
+                backgroundBlur.stopProcessing();
+                newTrack = meetingStore.originalVideoTrack as MediaStreamTrack;
+            }
+
+            const oldTrack = localStream.value.getVideoTracks()[0];
+            if (oldTrack && oldTrack.id !== newTrack.id) {
+                localStream.value.removeTrack(oldTrack);
+                localStream.value.addTrack(newTrack);
+                console.info(
+                    `[LOBBY-TRACE] Swapped camera track from ${oldTrack.id} to ${newTrack.id}`,
+                );
+            }
+        } catch (e) {
+            console.error("[LOBBY] Failed to swap effect track", e);
+        }
+    },
+);
 
 // Listen for device changes from the Settings modal and apply them
 watch(

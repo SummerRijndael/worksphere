@@ -277,6 +277,12 @@ return [
                     'permission' => 'security.view',
                 ],
                 [
+                    'id' => 'engagement-dashboard',
+                    'label' => 'User Pulse',
+                    'route' => '/admin/engagement',
+                    'permission' => 'system.maintenance',
+                ],
+                [
                     'id' => 'system-logs',
                     'label' => 'System Logs',
                     'route' => '/system/logs',

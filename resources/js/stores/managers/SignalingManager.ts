@@ -38,6 +38,17 @@ export function createSignalingManager(
                 log('RECV', `Received ${e.signal_type} from ${e.sender_participant_public_id}`, e.signal_data);
                 handleSignal(e.sender_participant_public_id, e.signal_type, e.signal_data);
             })
+            .listenForWhisper('laser-move', (data: any) => {
+                // Whisper events don't have the same envelope as broadcast events
+                if (data.participant_id) {
+                    handleSignal(data.participant_id, 'laser-move', data);
+                }
+            })
+            .listenForWhisper('annotation-update', (data: any) => {
+                if (data.participant_id) {
+                    handleSignal(data.participant_id, 'annotation-update', data);
+                }
+            })
             .listen('.MeetingParticipantJoined', (e: any) => {
                 const joinedId = e.participant?.public_id?.toLowerCase();
                 log('RECV', `Participant joined event: ${joinedId}`, e);
@@ -71,7 +82,29 @@ export function createSignalingManager(
                     // Re-broadcast so the person who just got admitted knows our MIDs
                     streamManager.rebroadcastToJoiner(admitId);
                 }
+            })
+            .listen('.MeetingPollCreated', async (e: any) => {
+                log('RECV', '[Poll] Poll created', e.poll);
+                const { useMeetingStore } = await import('@/stores/meeting');
+                useMeetingStore().handlePollCreated(e.poll);
+            })
+            .listen('.MeetingPollVoted', async (e: any) => {
+                log('RECV', '[Poll] Vote update', e);
+                const { useMeetingStore } = await import('@/stores/meeting');
+                useMeetingStore().handlePollVoted(e);
+            })
+            .listen('.MeetingPollEnded', async (e: any) => {
+                log('RECV', '[Poll] Poll ended', e);
+                const { useMeetingStore } = await import('@/stores/meeting');
+                useMeetingStore().handlePollEnded(e);
+            })
+            .listen('.MeetingPollDeleted', async (e: any) => {
+                log('RECV', '[Poll] Poll deleted', e);
+                const { useMeetingStore } = await import('@/stores/meeting');
+                useMeetingStore().handlePollDeleted(e.pollId);
             });
+            // Note: Laser pointer now goes through MeetingSignal (sendSignal)
+            // so MeetingLaserPointerMoved HTTP listener is not needed
     }
 
     function leaveSignaling() {
@@ -216,6 +249,12 @@ export function createSignalingManager(
             return;
         }
 
+        if (type === 'request-media-info') {
+            log('SIGNAL', `Participant ${normalizedSenderId} requested our media info`);
+            streamManager.rebroadcastToJoiner(normalizedSenderId);
+            return;
+        }
+
         if (type === 'participant-waiting') {
             log('SIGNAL', 'New participant in waiting room', data);
             const { toast } = await import('vue-sonner');
@@ -234,16 +273,40 @@ export function createSignalingManager(
         }
 
         if (type === 'reaction') {
-            log('SIGNAL', `Received reaction from ${data.sender_participant_public_id}: ${data.emoji}`);
+            log('SIGNAL', `Received reaction from ${senderId}: ${data.emoji}`);
             const { useMeetingStore } = await import('@/stores/meeting');
             const meetingStore = useMeetingStore();
-            // In the new MeetingSignal format, sender is in the outer event, or in data
-            // data.sender_participant_public_id should be available if we broadcasted it right, 
-            // but let's check the MeetingSignal structure: it sends $signalData.
-            meetingStore.receiveReaction({ 
-                publicId: data.sender_participant_public_id || data.publicId || 'unknown', 
-                emoji: data.emoji 
+            // senderId comes from the outer MeetingSignal envelope — always correct
+            meetingStore.receiveReaction({
+                publicId: senderId,
+                emoji: data.emoji
             });
+            return;
+        }
+
+        if (type === 'laser-move') {
+            // Already checked at top of handleSignal, but being explicit
+            if (localParticipantRef.value && senderId === localParticipantRef.value.public_id) return;
+
+            const { useMeetingStore } = await import('@/stores/meeting');
+            useMeetingStore().handleLaserMove({
+                participant_id: senderId,
+                target_participant_id: data.target_participant_id,
+                x: data.x,
+                y: data.y,
+            });
+            return;
+        }
+
+        if (type === 'laser-mode-changed') {
+            const { useMeetingStore } = await import('@/stores/meeting');
+            useMeetingStore().handleLaserModeChanged(data.mode);
+            return;
+        }
+
+        if (type === 'annotation-update') {
+            const { useMeetingStore } = await import('@/stores/meeting');
+            useMeetingStore().handleAnnotationUpdate(data);
             return;
         }
 
@@ -305,6 +368,25 @@ export function createSignalingManager(
     // --- Broadcast senders ---
     async function sendSignal(type: string, data: any) {
         if (!meetingRef.value || !localParticipantRef.value) return;
+        
+        // High-frequency events use whispers to avoid rate limits
+        if (type === 'laser-move') {
+            presenceManager.whisper('laser-move', {
+                ...data,
+                participant_id: localParticipantRef.value.public_id,
+                target_participant_id: data.target_participant_id
+            });
+            return;
+        }
+
+        if (type === 'annotation-update') {
+            presenceManager.whisper('annotation-update', {
+                ...data,
+                participant_id: localParticipantRef.value.public_id
+            });
+            return;
+        }
+
         try {
             await meetingService.sendSignal(meetingRef.value.public_id, {
                 sender_participant_public_id: localParticipantRef.value.public_id,

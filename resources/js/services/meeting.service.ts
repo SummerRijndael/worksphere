@@ -109,10 +109,19 @@ class MeetingService extends BaseService {
     }
 
     async joinMeeting(id: string, name?: string, password?: string, email?: string): Promise<{ meeting: Meeting; participant: MeetingParticipant }> {
-        return this.post<{ meeting: Meeting; participant: MeetingParticipant }>(
+        const response = await this.post<{ meeting: Meeting; participant: MeetingParticipant }>(
             `/api/meetings/${id}/join`,
             { name, password, email }
         );
+
+        if (response?.participant?.public_id) {
+            localStorage.setItem(`worksphere_meeting_token_${id}`, response.participant.public_id);
+            if (password) {
+                localStorage.setItem(`worksphere_meeting_pwd_${id}`, password);
+            }
+        }
+        
+        return response;
     }
 
     async sendSignal(id: string, signalData: {

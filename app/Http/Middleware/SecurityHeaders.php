@@ -60,7 +60,7 @@ class SecurityHeaders
         $response->headers->remove('X-Powered-By');
 
         // Permissions Policy
-        $response->headers->set('Permissions-Policy', 'geolocation=(), microphone=(self), camera=(self), display-capture=(self)');
+        $response->headers->set('Permissions-Policy', 'camera=(self), microphone=(self), display-capture=(self), geolocation=(self), payment=(), autoplay=(self), unload=(self)');
 
         // Content Security Policy
         if (! $request->is('horizon*', 'pulse*')) {
@@ -78,10 +78,14 @@ class SecurityHeaders
         $scriptSrc = "'self' 'nonce-{$nonce}'";
         $connectSrc = "'self' https://rtc.live.cloudflare.com"; // Cloudflare Calls Origin
         $styleSrc = "'self' 'unsafe-inline' https://fonts.bunny.net https://fonts.googleapis.com";
+        $imgSrc = "'self' data: https: blob: cid:";
+        $fontSrc = "'self' https://fonts.bunny.net https://fonts.gstatic.com data: blob:";
 
         // Vite Dev Server Handling
         if (app()->isLocal()) {
             $scriptSrc .= " 'unsafe-eval'";
+            $imgSrc .= ' http: https:';
+            $fontSrc .= " http: https: http://localhost:* http://127.0.0.1:*"; // Fallback for various local dev IPs
 
             // Check if Vite is running (hot file exists)
             $hotFile = public_path('hot');
@@ -90,6 +94,7 @@ class SecurityHeaders
                 if ($viteUrl) {
                     $scriptSrc .= " {$viteUrl}";
                     $styleSrc .= " {$viteUrl}";
+                    $fontSrc .= " {$viteUrl}";
                     $connectSrc .= ' ws://'.parse_url($viteUrl, PHP_URL_HOST).':'.parse_url($viteUrl, PHP_URL_PORT);
                     $connectSrc .= " {$viteUrl}";
                 }
@@ -111,18 +116,13 @@ class SecurityHeaders
              $connectSrc .= " ws://localhost:{$envReverbPort} ws://127.0.0.1:{$envReverbPort}";
         }
 
-        $imgSrc = "'self' data: https: blob: cid:";
-        if (app()->isLocal()) {
-            $imgSrc .= ' http:';
-        }
-
         // Definitions
         $policy = [
             "default-src 'self'",
             "script-src {$scriptSrc} 'wasm-unsafe-eval' https://www.google.com https://www.gstatic.com https://cdn.jsdelivr.net https://storage.googleapis.com https://static.cloudflareinsights.com",
             "script-src-elem {$scriptSrc} https://www.google.com https://www.gstatic.com https://cdn.jsdelivr.net https://storage.googleapis.com https://static.cloudflareinsights.com",
             "style-src {$styleSrc}",
-            "font-src 'self' https://fonts.bunny.net https://fonts.gstatic.com data:",
+            "font-src {$fontSrc}",
             "img-src {$imgSrc}",
             "connect-src {$connectSrc} https://www.google.com https://cdn.jsdelivr.net https://storage.googleapis.com https://static.cloudflareinsights.com",
             "frame-src 'self' https://www.google.com https://www.gstatic.com",

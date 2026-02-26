@@ -36,6 +36,9 @@ export function createStreamManager(
     // Queue for signals that arrive before SFU session is established
     const pendingPullSignals: { participantPublicId: string, remoteSessionId?: string, audioMid?: string, videoMid?: string, screenMid?: string }[] = [];
     
+    // Desync Guard (Self-Healing)
+    let healthCheckInterval: number | null = null;
+    
     // SFU Queue
     let sfuQueue: Promise<void> = Promise.resolve();
     function runInSFUQueue<T>(fn: () => Promise<T>): Promise<T> {
@@ -210,11 +213,12 @@ export function createStreamManager(
                 sessionId: sfuSessionId.value,
                 audioMid,
                 videoMid,
+                screenMid // Ensure screenMid is also shared
             },
             target_participant_public_id: joinerPublicId,
         }).catch(() => {});
 
-        // Also notify about active screen share
+        // Also notify about active screen share explicitly if it exists
         if (screenMid) {
             meetingService.sendSignal(meetingRef.value!.public_id, {
                 sender_participant_public_id: localParticipantRef.value.public_id,
@@ -223,6 +227,57 @@ export function createStreamManager(
                 target_participant_public_id: joinerPublicId,
             }).catch(() => {});
         }
+    }
+
+    function requestMediaInfo(participantPublicId: string) {
+        if (!localParticipantRef.value || !meetingRef.value) return;
+        log('SIGNAL', `Requesting media info from ${participantPublicId}`);
+        meetingService.sendSignal(meetingRef.value.public_id, {
+            sender_participant_public_id: localParticipantRef.value.public_id,
+            signal_type: 'request-media-info',
+            signal_data: {},
+            target_participant_public_id: participantPublicId
+        }).catch(() => {});
+    }
+
+    function startHealthCheck() {
+        if (healthCheckInterval) return;
+        
+        log('HEALTH', 'Starting SFU Desync Guard (60s check)');
+        healthCheckInterval = window.setInterval(async () => {
+            if (!sfuPc || !sfuSessionId.value || !meetingRef.value) return;
+
+            const participants = meetingRef.value.participants || [];
+            const localId = localParticipantRef.value?.public_id.toLowerCase();
+
+            for (const p of participants) {
+                const pid = p.public_id.toLowerCase();
+                if (pid === localId || p.status !== 'admitted') continue;
+
+                const stream = remoteStreams.value.get(pid);
+                const sessionId = remoteSfuSessions.get(pid);
+                
+                // Case 1: No session info yet (missed sfu-media-ready)
+                if (!sessionId) {
+                    log('HEALTH', `No session for ${pid}. Requesting media info.`);
+                    requestMediaInfo(pid);
+                }
+                // Case 2: Have session but no stream or broken stream
+                else if (!stream || (stream.getVideoTracks().length === 0 && stream.getAudioTracks().length === 0)) {
+                    log('HEALTH', `Broken/Missing stream for ${pid}. Triggering repair pull.`);
+                    pullParticipantTracks(pid, sessionId);
+                }
+                // Case 3: "Zombie" check - checks if tracks are ended
+                else {
+                    const allEnded = stream.getTracks().every(t => t.readyState === 'ended');
+                    if (allEnded && stream.getTracks().length > 0) {
+                        log('HEALTH', `Zombie stream detected for ${pid}. Cleaning up for repair.`);
+                        removeParticipantStreams(pid);
+                        pullParticipantTracks(pid, sessionId);
+                    }
+                }
+            }
+        }, 60000);
     }
 
     async function initSFU(stream: MediaStream | null = null) {
@@ -372,6 +427,7 @@ export function createStreamManager(
 
                 await iceConnectedPromise;
                 broadcastMediaMids();
+                startHealthCheck();
 
                 // Replay any queued signals that arrived before we were ready
                 if (pendingPullSignals.length > 0) {
@@ -632,33 +688,40 @@ export function createStreamManager(
                 ]
             });
             sfuTransceiverMap.set(screenTc, { participantId: localParticipantRef.value?.public_id || 'self', trackName: 'screen' });
+            
+            // Renegotiate with SFU for NEW transceiver
+            const offer = await sfuPc.createOffer();
+            await sfuPc.setLocalDescription(offer);
+
+            try {
+                const res = await meetingService.sfuSessionTracks(
+                    meetingRef.value!.public_id,
+                    sfuSessionId.value!,
+                    [{ location: "local", mid: screenTc.mid, trackName: "screen" }],
+                    mungeSdp(sfuPc.localDescription!.sdp)
+                );
+                await sfuPc.setRemoteDescription(toSdpAnswer(res.sessionDescription));
+                broadcastMediaMids();
+                return { mid: screenTc.mid || '' };
+            } catch (error: any) {
+                if (error?.response?.status === 406) {
+                    log('ERROR', '406 Not Acceptable during publish screen track. Rescuing.');
+                    await handleSFU406Rescue();
+                } else {
+                    log('ERROR', 'Failed to publish screen track', error);
+                }
+                return null;
+            }
         } else {
             log('MEDIA', `Reusing inactive screen transceiver`);
-            screenTc.direction = 'sendonly';
+            // We consciously avoided setting direction to 'inactive' in unpublishScreenTrack,
+            // so it should already be 'sendonly'. We just need to inject the new track.
             await screenTc.sender.replaceTrack(videoTrack);
-        }
-
-        const offer = await sfuPc.createOffer();
-        await sfuPc.setLocalDescription(offer);
-
-        try {
-            const res = await meetingService.sfuSessionTracks(
-                meetingRef.value!.public_id,
-                sfuSessionId.value!,
-                [{ location: "local", mid: screenTc.mid, trackName: "screen" }],
-                mungeSdp(sfuPc.localDescription!.sdp)
-            );
-            await sfuPc.setRemoteDescription(toSdpAnswer(res.sessionDescription));
+            
+            // Because the track is just a hot-swap on an existing sendonly transceiver,
+            // we DO NOT need to renegotiate SDP or call sfuSessionTracks.
             broadcastMediaMids();
             return { mid: screenTc.mid || '' };
-        } catch (error: any) {
-            if (error?.response?.status === 406) {
-                log('ERROR', '406 Not Acceptable during publish screen track. Rescuing.');
-                await handleSFU406Rescue();
-            } else {
-                log('ERROR', 'Failed to publish screen track', error);
-            }
-            return null;
         }
     }
 
@@ -732,6 +795,10 @@ export function createStreamManager(
     }
 
     function cleanup() {
+        if (healthCheckInterval) {
+            window.clearInterval(healthCheckInterval);
+            healthCheckInterval = null;
+        }
         if (sfuPc) sfuPc.close();
         remoteStreams.value.clear();
         audioAnalysers.forEach(x => {
@@ -749,6 +816,7 @@ export function createStreamManager(
         sfuIceState,
         sfuConnectionState,
         sfuSessionId,
+        sfuPc: () => sfuPc, // Expose as a getter function since it can be reassigned
 
         addLocalStream,
         setLocalStream,

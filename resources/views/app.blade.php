@@ -46,10 +46,15 @@
 
     <!-- Runtime Config -->
     <script nonce="{{ app(\App\Services\CSPService::class)->getNonce() }}">
-        window.CoreSync = {
-            name: "{{ config('app.name', 'CoreSync') }}",
+        window.WorkSphere = {
+            name: "{{ config('app.name', 'WorkSphere') }}",
             url: "{{ config('app.url') }}",
+            features: {
+                public_pricing_page_enabled: {{ app(\App\Services\AppSettingsService::class)->get('features.public_pricing_page.enabled', true) ? 'true' : 'false' }}
+            }
         };
+        // Legacy support
+        window.CoreSync = window.WorkSphere;
     </script>
 </head>
 

@@ -49,7 +49,7 @@ let echo: EchoInstance | null = null;
  * Check if Reverb configuration is available.
  */
 function isReverbConfigured(): boolean {
-    const runtimeKey = (window as any).CoreSync?.reverb?.app_key;
+    const runtimeKey = (window as any).WorkSphere?.reverb?.app_key;
     const buildKey = import.meta.env.VITE_REVERB_APP_KEY;
     const key = runtimeKey || buildKey;
     return Boolean(key && key !== 'undefined' && key !== '');

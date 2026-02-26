@@ -18,7 +18,11 @@ import {
     Star,
 } from "lucide-vue-next";
 import { appConfig } from "@/config/app";
-
+import ReviewModal from "@/components/public/ReviewModal.vue";
+import axios from "axios";
+import { useAuthStore } from "@/stores/auth";
+ 
+const authStore = useAuthStore();
 const isLoading = ref(true);
 
 // Animation refs
@@ -97,29 +101,17 @@ const plans = [
     },
 ];
 
-const reviews = [
-    {
-        content:
-            "WorkSphere has completely transformed how we manage our projects. The real-time collaboration features are a game changer.",
-        author: "Sarah J.",
-        role: "Product Manager at TechFlow",
-        avatar: "SJ",
-    },
-    {
-        content:
-            "The best project management tool we've used. Simple, intuitive, and powerful. Highly recommended for any team.",
-        author: "Michael C.",
-        role: "CTO at StartupInc",
-        avatar: "MC",
-    },
-    {
-        content:
-            "We moved from Jira and haven't looked back. The interface is beautiful and the performance is incredible.",
-        author: "Emily R.",
-        role: "Director of Ops at GlobalCorp",
-        avatar: "ER",
-    },
-];
+const reviews = ref<any[]>([]);
+const showReviewModal = ref(false);
+
+const fetchReviews = async () => {
+    try {
+        const response = await axios.get("/api/public/reviews");
+        reviews.value = response.data.data;
+    } catch (error) {
+        console.error("Failed to fetch reviews:", error);
+    }
+};
 
 // Re-using scroll animation logic from original file
 function createScrollAnimation(
@@ -159,6 +151,7 @@ function createScrollAnimation(
 }
 
 onMounted(() => {
+    fetchReviews();
     setTimeout(() => {
         isLoading.value = false;
 
@@ -539,6 +532,7 @@ onMounted(() => {
 
         <!-- Pricing Section -->
         <section
+            v-if="appConfig.features.publicPricingEnabled"
             id="pricing"
             ref="pricingRef"
             class="py-24 bg-[var(--surface-secondary)] dark:bg-[var(--surface-secondary)] relative border-t border-[var(--color-neutral-200)] dark:border-white/5 scroll-mt-28"
@@ -646,6 +640,21 @@ onMounted(() => {
                         >
                         worldwide.
                     </h2>
+                    <p
+                        v-if="authStore.isAuthenticated"
+                        class="text-lg text-[var(--text-secondary)] dark:text-[var(--text-muted)] mb-8"
+                    >
+                        Share your thoughts and join the conversation.
+                    </p>
+                    <div v-if="authStore.isAuthenticated" class="flex justify-center">
+                        <Button
+                            variant="primary"
+                            class="bg-[var(--color-landing-primary)] hover:bg-violet-700 text-white px-6 py-2 rounded-xl"
+                            @click="showReviewModal = true"
+                        >
+                            Write a Review
+                        </Button>
+                    </div>
                 </div>
 
                 <div class="grid md:grid-cols-3 gap-8">
@@ -658,28 +667,31 @@ onMounted(() => {
                             <Star
                                 v-for="i in 5"
                                 :key="i"
-                                class="w-5 h-5 fill-current"
+                                :class="[
+                                    'w-5 h-5',
+                                    i <= review.rating ? 'fill-current' : 'text-gray-300 dark:text-gray-600'
+                                ]"
                             />
                         </div>
                         <p
                             class="text-lg text-[var(--text-primary)] dark:text-gray-200 mb-6 italic leading-relaxed"
                         >
-                            "{{ review.content }}"
+                            "{{ review.comment }}"
                         </p>
                         <div class="flex items-center gap-4">
                             <div
                                 class="w-12 h-12 rounded-full bg-[var(--color-landing-secondary)] flex items-center justify-center text-[var(--text-primary)] font-bold text-lg"
                             >
-                                {{ review.avatar }}
+                                {{ review.user.name.charAt(0) }}
                             </div>
                             <div>
                                 <div
                                     class="font-bold text-[var(--text-primary)] dark:text-white"
                                 >
-                                    {{ review.author }}
+                                    {{ review.user.name }}
                                 </div>
                                 <div class="text-sm text-[var(--text-muted)]">
-                                    {{ review.role }}
+                                    Member since {{ new Date(review.created_at).toLocaleDateString() }}
                                 </div>
                             </div>
                         </div>
@@ -687,6 +699,12 @@ onMounted(() => {
                 </div>
             </div>
         </section>
+
+        <!-- Review Modal -->
+        <ReviewModal
+            v-model:open="showReviewModal"
+            @submitted="fetchReviews"
+        />
 
         <!-- Global Scale Section -->
         <section

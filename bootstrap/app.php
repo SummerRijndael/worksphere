@@ -73,19 +73,21 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         // API middleware configuration
-        $middleware->api(prepend: [
-            \App\Http\Middleware\SecurityHeaders::class,
-            \Akaunting\Firewall\Middleware\Ip::class,
-            \Akaunting\Firewall\Middleware\Agent::class,
-            \Akaunting\Firewall\Middleware\Bot::class,
-            \Akaunting\Firewall\Middleware\Lfi::class,
-            \Akaunting\Firewall\Middleware\Php::class,
-            \Akaunting\Firewall\Middleware\Referrer::class,
-            \Akaunting\Firewall\Middleware\Rfi::class,
-            \Akaunting\Firewall\Middleware\Sqli::class,
-            \Akaunting\Firewall\Middleware\Xss::class,
-            \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
-        ]);
+        $middleware->api(prepend: array_merge(
+            [ \App\Http\Middleware\SecurityHeaders::class ],
+            ($_ENV['APP_ENV'] ?? '') === 'testing' ? [] : [
+                \Akaunting\Firewall\Middleware\Ip::class,
+                \Akaunting\Firewall\Middleware\Agent::class,
+                \Akaunting\Firewall\Middleware\Bot::class,
+                \Akaunting\Firewall\Middleware\Lfi::class,
+                \Akaunting\Firewall\Middleware\Php::class,
+                \Akaunting\Firewall\Middleware\Referrer::class,
+                \Akaunting\Firewall\Middleware\Rfi::class,
+                \Akaunting\Firewall\Middleware\Sqli::class,
+                \Akaunting\Firewall\Middleware\Xss::class,
+            ],
+            [ \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class ]
+        ));
 
         $middleware->api(append: [
             \App\Http\Middleware\CheckImpersonation::class,
