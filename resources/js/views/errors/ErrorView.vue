@@ -112,7 +112,7 @@ const reloadPage = () => {
 };
 
 const contactSupport = () => {
-    window.location.href = 'mailto:support@coresync.com';
+    window.location.href = 'mailto:support@worksphere.com';
 };
 
 // Refs for animation

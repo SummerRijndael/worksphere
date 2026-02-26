@@ -72,6 +72,11 @@ class AppServiceProvider extends ServiceProvider
             \App\Services\InvoiceTemplateService::class
         );
 
+        $this->app->bind(
+            \App\Contracts\AppReviewServiceContract::class,
+            \App\Services\AppReviewService::class
+        );
+
         // Content Security Policy Service (Singleton for consistent nonce per request)
         $this->app->singleton(\App\Services\CSPService::class);
     }
@@ -92,6 +97,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(\App\Models\FaqArticle::class, \App\Policies\FaqPolicy::class);
         Gate::policy(\Spatie\Permission\Models\Role::class, \App\Policies\RolePolicy::class);
         Gate::policy(\App\Models\Meeting::class, \App\Policies\MeetingPolicy::class);
+        Gate::policy(\App\Models\AppReview::class, \App\Policies\AppReviewPolicy::class);
 
         // Pulse authorization - allow users with system.maintenance permission
         Gate::define('viewPulse', function ($user) {

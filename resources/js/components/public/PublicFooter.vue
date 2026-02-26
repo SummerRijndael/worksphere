@@ -31,7 +31,7 @@ import { appConfig } from '@/config/app';
                                 Features
                             </a>
                         </li>
-                        <li>
+                        <li v-if="appConfig.features.publicPricingEnabled">
                             <a href="/#pricing" class="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
                                 Pricing
                             </a>

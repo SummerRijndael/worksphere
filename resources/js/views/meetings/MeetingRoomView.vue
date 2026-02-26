@@ -31,7 +31,7 @@
                     <div class="waiting-meta">
                         <div class="waiting-host-badge">
                             <img
-                                v-if="meetingStore.meeting?.host?.avatar_url"
+                                v-if="meetingStore?.meeting?.host?.avatar_url"
                                 :src="meetingStore.meeting.host.avatar_url"
                                 class="waiting-host-avatar"
                             />
@@ -48,84 +48,198 @@
             </div>
         </Transition>
 
-        <!-- Top Bar -->
-        <header class="gmeet-topbar">
-            <div class="topbar-left">
-                <span class="topbar-title">{{ meetingTitle }}</span>
-                <span
-                    v-if="meetingStore.isLocked"
-                    class="ml-3 text-[#f28b82] flex items-center"
-                    title="This meeting is locked"
+        <!-- Meeting Details Overlay -->
+        <aside v-if="meetingStore?.meeting" class="meeting-details-overlay">
+            <Transition name="panel">
+                <div
+                    v-if="showMeetingDetails"
+                    class="details-panel"
+                    v-click-outside="() => (showMeetingDetails = false)"
                 >
-                    <Icon name="lock" size="16" />
-                </span>
-                <span
-                    v-if="isRecording"
-                    class="recording-indicator ml-3"
-                    title="Recording in progress"
+                    <div class="details-header">
+                        <h3>Meeting Info</h3>
+                        <button
+                            @click="showMeetingDetails = false"
+                            class="details-close"
+                        >
+                            <Icon name="x" size="18" />
+                        </button>
+                    </div>
+
+                    <div class="details-body">
+                        <!-- ID & Title section -->
+                        <div class="details-group">
+                            <label>Room Details</label>
+                            <div class="detail-row">
+                                <div class="detail-label">Title</div>
+                                <div class="detail-value">
+                                    {{ meetingStore.meeting.title }}
+                                </div>
+                            </div>
+                            <div class="detail-row">
+                                <div class="detail-label">Meeting ID</div>
+                                <div class="detail-value font-mono">
+                                    {{ meetingId }}
+                                </div>
+                                <button
+                                    @click="
+                                        copyToClipboard(meetingId, 'Meeting ID')
+                                    "
+                                    class="copy-small-btn"
+                                >
+                                    <Icon name="copy" size="14" />
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Security section -->
+                        <div class="details-group">
+                            <label>Security & Access</label>
+                            <div class="detail-row">
+                                <div class="detail-label">Room Lock</div>
+                                <div
+                                    class="detail-value"
+                                    :class="
+                                        meetingStore.isLocked
+                                            ? 'text-red-400'
+                                            : 'text-green-400'
+                                    "
+                                >
+                                    {{
+                                        meetingStore.isLocked
+                                            ? "Locked"
+                                            : "Unlocked"
+                                    }}
+                                </div>
+                            </div>
+                            <div class="detail-row">
+                                <div class="detail-label">
+                                    Lobby/Waiting Room
+                                </div>
+                                <div class="detail-value">
+                                    {{
+                                        meetingStore.meeting.settings
+                                            .lobby_enabled
+                                            ? "Enabled"
+                                            : "Disabled"
+                                    }}
+                                </div>
+                            </div>
+                            <div class="detail-row">
+                                <div class="detail-label">Guest Access</div>
+                                <div class="detail-value">
+                                    {{
+                                        meetingStore.meeting.settings
+                                            .guest_access
+                                            ? "Allowed"
+                                            : "Not allowed"
+                                    }}
+                                </div>
+                            </div>
+                            <div
+                                v-if="meetingStore.meeting.has_password"
+                                class="detail-row"
+                            >
+                                <div class="detail-label">Password</div>
+                                <div class="detail-value">
+                                    {{ meetingStore.meeting.password }}
+                                </div>
+                                <button
+                                    @click="
+                                        copyToClipboard(
+                                            meetingStore.meeting.password,
+                                            'Password',
+                                        )
+                                    "
+                                    class="copy-small-btn"
+                                >
+                                    <Icon name="copy" size="14" />
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Link section -->
+                        <div class="details-group">
+                            <label>Joining Info</label>
+                            <div class="link-box">
+                                <p class="text-xs text-[#9aa0a6] mb-2 truncate">
+                                    {{ meetingStore.meetingLink }}
+                                </p>
+                                <button
+                                    @click="copyMeetingLink"
+                                    class="copy-full-link-btn"
+                                >
+                                    <Icon name="copy" size="16" class="mr-2" />
+                                    <span>Copy joining link</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </Transition>
+        </aside>
+
+        <!-- Admission Overlay (Moderator Only) -->
+        <aside v-if="meetingStore.isHost" class="admission-overlay">
+            <Transition name="panel">
+                <div
+                    v-if="showAdmissionPanel"
+                    class="admission-panel"
+                    v-click-outside="() => (showAdmissionPanel = false)"
                 >
-                    <span class="recording-dot"></span>
-                    <span class="recording-label">REC</span>
-                </span>
-            </div>
-            <div class="topbar-center">
-                <span class="topbar-clock">{{ currentTime }}</span>
-            </div>
-            <div class="topbar-right">
-                <button
-                    v-if="
-                        meetingStore.isHost &&
-                        meetingStore.waitingParticipants.length > 0
-                    "
-                    class="topbar-btn topbar-btn--alert"
-                    @click="showAdmissionPanel = !showAdmissionPanel"
-                    title="Waiting Room"
-                >
-                    <Icon name="user-plus" size="18" />
-                    <span class="topbar-badge">{{
-                        meetingStore.waitingParticipants.length
-                    }}</span>
-                </button>
-                <button
-                    class="topbar-btn"
-                    :class="{ 'topbar-btn--active': showParticipantsPanel }"
-                    @click="toggleParticipantsPanel"
-                    title="Participants"
-                >
-                    <Icon name="users" size="18" />
-                    <span class="topbar-count">{{ participantCount }}</span>
-                </button>
-                <button
-                    class="topbar-btn"
-                    :class="{ 'topbar-btn--active': showChatPanel }"
-                    @click="toggleChatPanel"
-                    title="Chat"
-                >
-                    <Icon name="message-square" size="18" />
-                </button>
-                <button
-                    class="topbar-btn"
-                    :class="{ 'topbar-btn--active': showPollPanel }"
-                    @click="togglePollPanel"
-                    title="Polls"
-                >
-                    <Icon name="bar-chart-2" size="18" />
-                    <span v-if="meetingStore.activePoll?.is_active" class="topbar-badge topbar-badge--poll">●</span>
-                </button>
-                <!-- Host-only laser pointer toggle (only shown when screensharing is active) -->
-                <button
-                    v-if="meetingStore.isHost && meetingStore.screenShares.size > 0"
-                    class="topbar-btn"
-                    :class="{ 'topbar-btn--active': meetingStore.laserPointerMode !== 'off' }"
-                    :title="laserPointerLabel"
-                    @click="cycleLaserMode"
-                >
-                    <Icon name="mouse-pointer-2" size="18" />
-                    <span v-if="meetingStore.laserPointerMode === 'global'" class="topbar-badge topbar-badge--laser">ALL</span>
-                    <span v-if="meetingStore.laserPointerMode === 'targeted'" class="topbar-badge topbar-badge--laser">1</span>
-                </button>
-            </div>
-        </header>
+                    <div class="admission-header">
+                        <h3>Waiting Room</h3>
+                        <div class="badge-pill">
+                            {{ meetingStore.waitingParticipants.length }}
+                        </div>
+                    </div>
+                    <div class="admission-list">
+                        <div
+                            v-for="p in meetingStore.waitingParticipants"
+                            :key="p.public_id"
+                            class="admission-item"
+                        >
+                            <div class="admission-user">
+                                <Avatar
+                                    :user="p.user"
+                                    :fallback="p.metadata?.guest_name || 'G'"
+                                    size="32"
+                                />
+                                <div class="user-meta">
+                                    <span class="user-name">{{
+                                        p.user?.name ||
+                                        p.metadata?.guest_name ||
+                                        "Guest"
+                                    }}</span>
+                                </div>
+                            </div>
+                            <div class="admission-actions">
+                                <button
+                                    @click="
+                                        meetingStore.rejectParticipant(
+                                            p.public_id,
+                                        )
+                                    "
+                                    class="admission-btn admission-btn--reject"
+                                >
+                                    Deny
+                                </button>
+                                <button
+                                    @click="
+                                        meetingStore.admitParticipant(
+                                            p.public_id,
+                                        )
+                                    "
+                                    class="admission-btn admission-btn--admit"
+                                >
+                                    Admit
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </Transition>
+        </aside>
 
         <!-- Main Content Area -->
         <div
@@ -138,7 +252,7 @@
                     showAdmissionPanel,
             }"
         >
-            <div class="gmeet-stage" style="position: relative;">
+            <div class="gmeet-stage" style="position: relative">
                 <!-- Laser Pointer Overlay: transparent, sits above video grid -->
 
                 <template v-if="isSpotlightMode && spotlightTile">
@@ -608,245 +722,258 @@
                 <aside v-if="showPollPanel" class="side-panel">
                     <div class="side-panel-header">
                         <h3>Polls</h3>
-                        <button @click="showPollPanel = false" class="side-panel-close">
-                            <Icon name="x" size="18" />
-                        </button>
-                    </div>
-                    <div class="side-panel-body" style="padding: 0; overflow: hidden;">
-                        <MeetingPollPanel />
-                    </div>
-                </aside>
-            </Transition>
-
-            <!-- Admission Side Panel (Moderator Only) -->
-            <Transition
-                enter-active-class="transition duration-250 ease-out"
-                enter-from-class="translate-x-full opacity-0"
-                enter-to-class="translate-x-0 opacity-100"
-                leave-active-class="transition duration-200 ease-in"
-                leave-from-class="translate-x-0 opacity-100"
-                leave-to-class="translate-x-full opacity-0"
-            >
-                <aside
-                    v-if="showAdmissionPanel && meetingStore.isModerator"
-                    class="side-panel"
-                >
-                    <div class="side-panel-header">
-                        <h3>Waiting Room</h3>
                         <button
-                            @click="showAdmissionPanel = false"
+                            @click="showPollPanel = false"
                             class="side-panel-close"
                         >
                             <Icon name="x" size="18" />
                         </button>
                     </div>
-                    <div class="side-panel-body">
-                        <div
-                            v-if="meetingStore.waitingParticipants.length === 0"
-                            class="panel-empty"
-                        >
-                            <Icon
-                                name="users"
-                                size="28"
-                                class="text-[#5f6368]"
-                            />
-                            <p>No one is waiting</p>
-                        </div>
-                        <div
-                            v-for="p in meetingStore.waitingParticipants"
-                            :key="p.public_id"
-                            class="admission-card"
-                        >
-                            <div class="admission-info">
-                                <div class="participant-avatar">
-                                    {{ getParticipantInitial(p) }}
-                                </div>
-                                <div>
-                                    <p class="admission-name">
-                                        {{ getParticipantName(p) }}
-                                    </p>
-                                    <p class="admission-sub">Wants to join</p>
-                                </div>
-                            </div>
-                            <div class="admission-actions">
-                                <button
-                                    @click="
-                                        meetingStore.rejectParticipant(
-                                            p.public_id,
-                                        )
-                                    "
-                                    class="admission-btn admission-btn--reject"
-                                >
-                                    Deny
-                                </button>
-                                <button
-                                    @click="
-                                        meetingStore.admitParticipant(
-                                            p.public_id,
-                                        )
-                                    "
-                                    class="admission-btn admission-btn--admit"
-                                >
-                                    Admit
-                                </button>
-                            </div>
-                        </div>
+                    <div
+                        class="side-panel-body"
+                        style="padding: 0; overflow: hidden"
+                    >
+                        <MeetingPollPanel />
                     </div>
                 </aside>
             </Transition>
         </div>
 
-        <!-- Floating Reactions Component -->
         <ReactionOverlay
             :showPicker="showReactionPicker"
             @reaction-sent="showReactionPicker = false"
         />
 
-        <!-- Bottom Control Bar -->
-        <footer 
-            class="gmeet-controls"
-            :class="{ 
-                'gmeet-controls--collapsed': isControlsCollapsed,
-                'gmeet-controls--dragging': isDraggingControls
-            }"
-        >
-            <div class="controls-center" ref="controlsRef" :style="controlsStyle">
-                <!-- Drag Grip -->
-                <div 
-                    class="drag-grip"
-                    @mousedown="startDragControls"
-                    @touchstart="startDragControls"
+        <!-- Vibe Summary (Host Only) -->
+        <ReactionVibeSummary v-if="meetingStore.isHost" />
+
+        <!-- Redesigned Bottom bar -->
+        <footer class="app-bottom-bar">
+            <!-- Left: Info -->
+            <div class="bar-section bar-section--left">
+                <div
+                    class="meeting-info-pill"
+                    :class="{ 'info-pill--active': showMeetingDetails }"
+                    @click.stop="showMeetingDetails = !showMeetingDetails"
+                    title="Meeting Details"
                 >
-                    <Icon name="grip-vertical" size="18" />
-                </div>
-
-                <template v-if="!isControlsCollapsed">
-                    <button
-                        class="ctrl-btn"
-                        :class="{ 'ctrl-btn--off': !isMicOn }"
-                        @click="toggleMic"
-                        :title="micToggleTitle"
-                    >
-                        <Icon :name="isMicOn ? 'mic' : 'mic-off'" size="22" />
-                    </button>
-                    <button
-                        class="ctrl-btn"
-                        :class="{ 'ctrl-btn--off': !isCameraOn }"
-                        @click="toggleCamera"
-                        :title="cameraToggleTitle"
-                    >
-                        <Icon
-                            :name="isCameraOn ? 'video' : 'video-off'"
-                            size="22"
-                        />
-                    </button>
-                    <button
-                        class="ctrl-btn"
-                        :class="{ 'ctrl-btn--active': isScreenSharing }"
-                        @click="toggleScreenShare"
-                        :title="screenShareToggleTitle"
-                    >
-                        <Icon name="monitor" size="22" />
-                    </button>
-                    <!-- Annotation Toggle (Only for local presenter) -->
-                    <button
-                        v-if="isScreenSharing"
-                        class="ctrl-btn"
-                        :class="{ 'ctrl-btn--active': meetingStore.isAnnotating }"
-                        @click="meetingStore.isAnnotating = !meetingStore.isAnnotating"
-                        title="Annotate Screen"
-                    >
-                        <Icon name="pen-tool" size="22" />
-                    </button>
-                    <div class="relative flex items-center">
-                        <button
-                            class="ctrl-btn reaction-quick-btn"
-                            @click="sendQuickReaction"
-                            :title="`Send ${lastReactionEmoji}`"
+                    <span class="info-time">{{ currentTime }}</span>
+                    <span class="info-divider"></span>
+                    <span class="info-code">{{
+                        meetingStore.meeting?.title || meetingId
+                    }}</span>
+                    <Transition name="fade">
+                        <div
+                            v-if="meetingStore.isLocked"
+                            class="locked-status-badge"
                         >
-                            <span class="text-lg">{{ lastReactionEmoji }}</span>
-                        </button>
-                        <button
-                            class="ctrl-btn reaction-chevron-btn"
-                            :class="{ 'ctrl-btn--active': showReactionPicker }"
-                            @click="showReactionPicker = !showReactionPicker"
-                            title="Change reaction"
-                        >
-                            <Icon name="chevron-up" size="14" />
-                        </button>
-                    </div>
-                    <button
-                        class="ctrl-btn"
-                        :class="{ 'ctrl-btn--active': isHandRaised }"
-                        @click="meetingStore.toggleHand()"
-                        title="Raise Hand"
-                    >
-                        <Icon name="hand" size="22" />
-                    </button>
-                    <button
-                        v-if="meetingStore.isHost"
-                        class="ctrl-btn ctrl-btn--lock"
-                        :class="{ 'ctrl-btn--lock-active': meetingStore.isLocked }"
-                        @click="meetingStore.toggleLock()"
-                        :title="
-                            meetingStore.isLocked
-                                ? 'Unlock Meeting'
-                                : 'Lock Meeting'
-                        "
-                    >
-                        <Icon
-                            :name="meetingStore.isLocked ? 'lock' : 'unlock'"
-                            size="22"
-                        />
-                    </button>
-                    <button
-                        class="ctrl-btn"
-                        @click="showSettings = true"
-                        title="Settings"
-                    >
-                        <Icon name="settings" size="22" />
-                    </button>
-                    <button
-                        v-if="meetingStore.isHost"
-                        class="ctrl-btn"
-                        :class="{ 'ctrl-btn--recording': isRecording }"
-                        @click="toggleRecording"
-                        :title="isRecording ? 'Stop Recording' : 'Start Recording'"
-                    >
-                        <Icon
-                            :name="isRecording ? 'circle-stop' : 'circle-dot'"
-                            size="22"
-                        />
-                    </button>
-                    <div class="relative">
-                        <button
-                            class="ctrl-btn ctrl-btn--hangup"
-                            @click="showHangupMenu = !showHangupMenu"
-                            title="Leave or End"
-                        >
-                            <Icon name="phone-off" size="22" />
-                        </button>
-                        <!-- Hangup Popup Menu -->
-                        <div v-if="showHangupMenu" class="hangup-menu">
-                            <button class="hangup-menu-item" @click="leaveMeeting">
-                                <Icon name="log-out" size="18" />
-                                <span>Leave meeting</span>
-                            </button>
-                            <button
-                                v-if="meetingStore.isHost"
-                                class="hangup-menu-item hangup-menu-item--end"
-                                @click="endMeetingForAll"
-                            >
-                                <Icon name="phone-off" size="18" />
-                                <span>End meeting for all</span>
-                            </button>
+                            <Icon name="lock" size="14" />
+                            <span>Locked</span>
                         </div>
-                    </div>
-                </template>
+                    </Transition>
+                </div>
+                <div
+                    v-if="isRecording"
+                    class="recording-badge"
+                    title="Recording in progress"
+                >
+                    <span class="recording-dot"></span>
+                    <span>REC</span>
+                </div>
+                
+                <NetworkHealthIndicator 
+                    v-if="meetingStore.sfuPc()"
+                    v-bind="networkStats"
+                    compact
+                    class="ml-2"
+                />
+            </div>
 
-                <!-- Toggle Collapse -->
-                <button class="ctrl-btn collapse-btn" @click="isControlsCollapsed = !isControlsCollapsed" :title="isControlsCollapsed ? 'Expand' : 'Collapse'">
-                    <Icon :name="isControlsCollapsed ? 'chevron-up' : 'chevron-down'" size="20" />
+            <!-- Center: Media Controls -->
+            <div class="bar-section bar-section--center">
+                <button
+                    class="ctrl-btn"
+                    :class="{ 'ctrl-btn--off': !isMicOn }"
+                    @click="toggleMic"
+                    :title="micToggleTitle"
+                >
+                    <Icon :name="isMicOn ? 'mic' : 'mic-off'" size="20" />
+                </button>
+                <button
+                    class="ctrl-btn"
+                    :class="{ 'ctrl-btn--off': !isCameraOn }"
+                    @click="toggleCamera"
+                    :title="cameraToggleTitle"
+                >
+                    <Icon
+                        :name="isCameraOn ? 'video' : 'video-off'"
+                        size="20"
+                    />
+                </button>
+                <button
+                    class="ctrl-btn"
+                    :class="{ 'ctrl-btn--active-bounce': isHandRaised }"
+                    @click="meetingStore.toggleHand()"
+                    title="Raise Hand"
+                >
+                    <Icon name="hand" size="20" />
+                </button>
+                <button
+                    class="ctrl-btn reaction-btn-unified"
+                    :class="{ 'ctrl-btn--active': showReactionPicker }"
+                    @click="showReactionPicker = !showReactionPicker"
+                    title="Reactions"
+                >
+                    <Transition name="pop">
+                        <span
+                            v-if="lastReactionEmoji"
+                            class="quick-emoji-preview"
+                            >{{ lastReactionEmoji }}</span
+                        >
+                    </Transition>
+                    <span
+                        v-if="lastReactionEmoji"
+                        class="unified-reaction-divider"
+                    ></span>
+                    <Icon name="smile" size="20" />
+                </button>
+                <button
+                    class="ctrl-btn"
+                    :class="{ 'ctrl-btn--active': isScreenSharing }"
+                    @click="toggleScreenShare"
+                    :title="screenShareToggleTitle"
+                >
+                    <Icon name="monitor" size="20" />
+                </button>
+                <!-- Annotation (Presenter only) -->
+                <button
+                    v-if="isScreenSharing"
+                    class="ctrl-btn"
+                    :class="{ 'ctrl-btn--active': meetingStore.isAnnotating }"
+                    @click="
+                        meetingStore.isAnnotating = !meetingStore.isAnnotating
+                    "
+                    title="Annotate Screen"
+                >
+                    <Icon name="pen-tool" size="20" />
+                </button>
+
+                <div class="hangup-wrapper">
+                    <button
+                        class="ctrl-btn ctrl-btn--hangup"
+                        @click.stop="showHangupMenu = !showHangupMenu"
+                        title="Leave or End"
+                    >
+                        <Icon name="phone-off" size="22" />
+                    </button>
+                    <div
+                        v-if="showHangupMenu"
+                        class="modern-hangup-menu"
+                        v-click-outside="() => (showHangupMenu = false)"
+                    >
+                        <button class="menu-item" @click="leaveMeeting">
+                            <Icon name="log-out" size="16" />
+                            <span>Leave meeting</span>
+                        </button>
+                        <button
+                            v-if="meetingStore.isHost"
+                            class="menu-item menu-item--danger"
+                            @click="endMeetingForAll"
+                        >
+                            <Icon name="phone-off" size="16" />
+                            <span>End meeting for all</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Activity Toggles -->
+            <div class="bar-section bar-section--right">
+                <button
+                    v-if="meetingStore.isHost"
+                    class="ctrl-btn lock-btn-wrap"
+                    :class="{ 'ctrl-btn--lock-active': meetingStore.isLocked }"
+                    @click="meetingStore.toggleLock()"
+                    :title="
+                        meetingStore.isLocked
+                            ? 'Unlock Meeting'
+                            : 'Lock Meeting'
+                    "
+                >
+                    <Transition name="icon-morph" mode="out-in">
+                        <Icon
+                            :key="meetingStore.isLocked ? 'lock' : 'unlock'"
+                            :name="meetingStore.isLocked ? 'lock' : 'unlock'"
+                            size="20"
+                            class="morph-icon"
+                        />
+                    </Transition>
+                </button>
+
+                <button
+                    v-if="
+                        meetingStore.isHost &&
+                        meetingStore.waitingParticipants.length > 0
+                    "
+                    class="ctrl-btn btn--alert"
+                    @click="showAdmissionPanel = !showAdmissionPanel"
+                    title="Waiting Room"
+                >
+                    <Icon name="user-plus" size="20" />
+                    <span class="badge-count">{{
+                        meetingStore.waitingParticipants.length
+                    }}</span>
+                </button>
+
+                <button
+                    class="ctrl-btn"
+                    :class="{ 'ctrl-btn--active': showParticipantsPanel }"
+                    @click="toggleParticipantsPanel"
+                    title="Participants"
+                >
+                    <Icon name="users" size="20" />
+                    <span class="badge-count badge-count--secondary">{{
+                        meetingStore.allParticipants.length
+                    }}</span>
+                </button>
+                <button
+                    class="ctrl-btn"
+                    :class="{ 'ctrl-btn--active': showChatPanel }"
+                    @click="toggleChatPanel"
+                    title="Chat"
+                >
+                    <Icon name="message-square" size="20" />
+                </button>
+                <button
+                    class="ctrl-btn"
+                    :class="{ 'ctrl-btn--active': showPollPanel }"
+                    @click="togglePollPanel"
+                    title="Polls"
+                >
+                    <Icon name="bar-chart-2" size="20" />
+                </button>
+
+                <MeetingLayoutSelector />
+
+                <button
+                    class="ctrl-btn"
+                    @click="showSettings = true"
+                    title="Settings"
+                >
+                    <Icon name="settings" size="20" />
+                </button>
+
+                <button
+                    v-if="meetingStore.isHost"
+                    class="ctrl-btn"
+                    :class="{ 'ctrl-btn--recording': isRecording }"
+                    @click="toggleRecording"
+                    :title="isRecording ? 'Stop Recording' : 'Start Recording'"
+                >
+                    <Icon
+                        :name="isRecording ? 'circle-stop' : 'circle-dot'"
+                        size="20"
+                    />
                 </button>
             </div>
         </footer>
@@ -861,23 +988,41 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, watch } from "vue";
+import { ref, reactive, computed, onMounted, onUnmounted, onBeforeUnmount, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { meetingService } from "@/services/meeting.service";
 import { useMeetingStore } from "@/stores/meeting";
 import { useVideoCallStore } from "@/stores/videocall";
 import { useBackgroundBlur } from "@/composables/useBackgroundBlur";
-import DeviceSettingsModal from "./components/DeviceSettingsModal.vue";
-import DevSimulationTool from "./components/DevSimulationTool.vue";
-import ParticipantTile from "./components/ParticipantTile.vue";
-import MeetingChatPanel from "./components/MeetingChatPanel.vue";
-import MeetingPollPanel from "./components/MeetingPollPanel.vue";
-
-import ReactionOverlay from "./components/ReactionOverlay.vue";
-import { Icon } from "@/components/ui";
+import { Icon, Avatar } from "@/components/ui";
 import { toast } from "vue-sonner";
 import api from "@/lib/api";
 import { Menu, MenuButton, MenuItems, MenuItem } from "@headlessui/vue";
+
+import DeviceSettingsModal from "./components/DeviceSettingsModal.vue";
+import DevSimulationTool from "./components/DevSimulationTool.vue";
+import ParticipantTile from "./components/ParticipantTile.vue";
+import NetworkHealthIndicator from '../call/components/NetworkHealthIndicator.vue';
+import MeetingChatPanel from "./components/MeetingChatPanel.vue";
+import MeetingPollPanel from "./components/MeetingPollPanel.vue";
+import MeetingLayoutSelector from "./components/MeetingLayoutSelector.vue";
+import ReactionOverlay from "./components/ReactionOverlay.vue";
+import ReactionVibeSummary from "./components/ReactionVibeSummary.vue";
+
+// Custom v-click-outside directive
+const vClickOutside = {
+    mounted(el: any, binding: any) {
+        el.clickOutsideEvent = (event: any) => {
+            if (!(el === event.target || el.contains(event.target))) {
+                binding.value(event);
+            }
+        };
+        document.addEventListener("click", el.clickOutsideEvent);
+    },
+    unmounted(el: any) {
+        document.removeEventListener("click", el.clickOutsideEvent);
+    },
+};
 
 const route = useRoute();
 const router = useRouter();
@@ -896,6 +1041,7 @@ const showParticipantsPanel = ref(false);
 const showChatPanel = ref(false);
 const showPollPanel = ref(false);
 const showReactionPicker = ref(false);
+const showMeetingDetails = ref(false);
 const showDevTool = ref(false);
 
 function toggleParticipantsPanel() {
@@ -924,24 +1070,28 @@ function togglePollPanel() {
 // Laser Pointer
 const laserPointerLabel = computed(() => {
     const mode = meetingStore.laserPointerMode;
-    if (mode === 'off') return 'Enable Laser Pointer (everyone)';
-    if (mode === 'global') return 'Laser Pointer ON (everyone) — click to turn off';
-    return 'Laser Pointer targeted — click to turn off';
+    if (mode === "off") return "Enable Laser Pointer (everyone)";
+    if (mode === "global")
+        return "Laser Pointer ON (everyone) — click to turn off";
+    return "Laser Pointer targeted — click to turn off";
 });
 
 async function cycleLaserMode() {
     if (!meetingStore.meeting) return;
-    const next = meetingStore.laserPointerMode === 'off' ? 'global' : 'off';
+    const next = meetingStore.laserPointerMode === "off" ? "global" : "off";
     meetingStore.laserPointerMode = next;
     try {
-        await api.patch(`/api/meetings/${meetingStore.meeting.public_id}/settings`, {
-            settings: { laser_pointer_mode: next },
-        });
+        await api.patch(
+            `/api/meetings/${meetingStore.meeting.public_id}/settings`,
+            {
+                settings: { laser_pointer_mode: next },
+            },
+        );
         // Sync to all participants
-        meetingStore.sendSignal('laser-mode-changed', { mode: next });
+        meetingStore.sendSignal("laser-mode-changed", { mode: next });
     } catch {
         // Revert on failure
-        meetingStore.laserPointerMode = next === 'global' ? 'off' : 'global';
+        meetingStore.laserPointerMode = next === "global" ? "off" : "global";
     }
 }
 
@@ -1065,7 +1215,10 @@ const spotlightTile = computed(() => {
     return null;
 });
 
-const isSpotlightMode = computed(() => !!spotlightTile.value);
+const isSpotlightMode = computed(() => {
+    if (meetingStore.preferredLayout === "tiled") return false;
+    return !!spotlightTile.value;
+});
 
 const unspotlightedTiles = computed(() => {
     if (!spotlightTile.value) return renderedTiles.value;
@@ -1088,6 +1241,8 @@ watch(totalFilmstripPages, (pages) => {
 });
 
 const paginatedTiles = computed(() => {
+    if (meetingStore.preferredLayout === "spotlight") return [];
+
     if (isSpotlightMode.value) {
         const start = filmstripPage.value * FILMSTRIP_PAGE_SIZE;
         return unspotlightedTiles.value.slice(
@@ -1150,16 +1305,16 @@ onMounted(async () => {
         if (stream) {
             const videoTrack = stream.getVideoTracks()[0];
             const audioTrack = stream.getAudioTracks()[0];
-            
+
             // If the track in the stream is NOT a canvas track but we have an effect set,
             // it means we just came from the lobby and might need to re-bind.
             // But wait, Lobby already applied the effect to the stream in meetingStore.
             // We just need to identify the ORIGINAL track for future swaps.
-            
+
             isCameraOn.value = videoTrack ? videoTrack.enabled : false;
             isMicOn.value = audioTrack ? audioTrack.enabled : false;
-            
-            // If we don't have an originalVideoTrack yet, and the current one is likely a real track 
+
+            // If we don't have an originalVideoTrack yet, and the current one is likely a real track
             // (or if we trust the lobby set it)
             if (!meetingStore.originalVideoTrack && videoTrack) {
                 meetingStore.originalVideoTrack = videoTrack;
@@ -1337,7 +1492,7 @@ const toggleMic = async () => {
             const audioTrack = newStream.getAudioTracks()[0];
             const updatedStream = new MediaStream([
                 ...stream.getVideoTracks(),
-                audioTrack
+                audioTrack,
             ]);
             meetingStore.setStream(updatedStream);
             isMicOn.value = true;
@@ -1364,7 +1519,11 @@ watch(
         () => videoCallStore.autoFraming,
     ],
     async ([effect, bgImage, framing]) => {
-        if (!isCameraOn.value || !meetingStore.originalVideoTrack || !meetingStore.localStream)
+        if (
+            !isCameraOn.value ||
+            !meetingStore.originalVideoTrack ||
+            !meetingStore.localStream
+        )
             return;
 
         try {
@@ -1383,14 +1542,14 @@ watch(
 
             const stream = meetingStore.localStream;
             const oldTrack = stream.getVideoTracks()[0];
-            
+
             if (oldTrack && oldTrack.id !== newTrack.id) {
                 stream.removeTrack(oldTrack);
                 stream.addTrack(newTrack);
-                
+
                 // Keep enabled state synced
                 newTrack.enabled = oldTrack.enabled;
-                
+
                 meetingStore.replaceTrack("video", newTrack);
                 console.info(
                     `[MeetingRoom] Swapped camera track from ${oldTrack.id} to ${newTrack.id}`,
@@ -1443,12 +1602,16 @@ watch(
                 meetingStore.originalVideoTrack = videoTrack;
 
                 let finalTrack = videoTrack;
-                if ((videoCallStore.videoEffect === 'blur' || videoCallStore.videoEffect === 'image') && videoTrack) {
+                if (
+                    (videoCallStore.videoEffect === "blur" ||
+                        videoCallStore.videoEffect === "image") &&
+                    videoTrack
+                ) {
                     finalTrack = await backgroundBlur.startVideoEffect(
                         videoTrack,
                         videoCallStore.videoEffect,
                         videoCallStore.backgroundImage || undefined,
-                        videoCallStore.autoFraming
+                        videoCallStore.autoFraming,
                     );
                 }
 
@@ -1497,13 +1660,22 @@ const showHangupMenu = ref(false);
 const lastReactionEmoji = ref("👍");
 const isRecording = ref(false);
 
+watch(isRecording, (val) => {
+    if (val) {
+        toast.success("Meeting is being recorded", {
+            description:
+                "By staying in the meeting, you consent to being recorded. Please review our privacy policy.",
+            duration: 6000,
+        });
+    } else {
+        toast.info("Recording has stopped", {
+            duration: 4000,
+        });
+    }
+});
+
 function toggleRecording() {
     isRecording.value = !isRecording.value;
-    if (isRecording.value) {
-        toast.success("Recording started (simulated)");
-    } else {
-        toast.info("Recording stopped (simulated)");
-    }
 }
 
 function sendQuickReaction() {
@@ -1534,11 +1706,13 @@ watch(
     [() => meetingStore.laserPointerMode, () => meetingStore.screenShares.size],
     ([mode, count]) => {
         if (mode !== "off" && count === 0) {
-            console.log("[LASER] Enforcement: No screensharing active. Disabling laser pointer.");
+            console.log(
+                "[LASER] Enforcement: No screensharing active. Disabling laser pointer.",
+            );
             meetingStore.laserPointerMode = "off";
         }
     },
-    { immediate: true }
+    { immediate: true },
 );
 
 function lowerAllHands() {
@@ -1572,82 +1746,84 @@ const endMeetingForAll = async () => {
     await meetingStore.endMeeting();
 };
 
-const isControlsCollapsed = ref(false);
+function copyToClipboard(text: string, label: string) {
+    navigator.clipboard.writeText(text);
+    toast.success(`${label} copied to clipboard`);
+}
 
-// Draggability Logic for Controls
-const controlsPosition = ref({ x: 0, y: 0 }); // Offset from default bottom center
-const isDraggingControls = ref(false);
-let startX = 0;
-let startY = 0;
+function copyMeetingLink() {
+    copyToClipboard(meetingStore.meetingLink, "Meeting link");
+}
 
-const controlsStyle = computed(() => {
-    const isMobile = window.innerWidth <= 600;
-    const scale = isMobile ? 0.65 : 1;
-    return {
-        transform: `translate(${controlsPosition.value.x}px, ${controlsPosition.value.y}px) scale(${scale})`,
-        transformOrigin: 'bottom center',
-        transition: isDraggingControls.value ? 'none' : 'transform 0.2s ease'
-    };
+// ── Network Stats Tracking ──────────────────────────────────────────────────
+const networkStats = reactive({
+    bitrate: 0,
+    packetLoss: 0,
+    rtt: 0,
+    score: 0,
 });
 
-function startDragControls(e: MouseEvent | TouchEvent) {
-    isDraggingControls.value = true;
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-    
-    startX = clientX - controlsPosition.value.x;
-    startY = clientY - controlsPosition.value.y;
+let lastBytes = 0;
+let lastStatsTime = Date.now();
+let statsInterval: number | null = null;
 
-    window.addEventListener('mousemove', onDragControls);
-    window.addEventListener('touchmove', onDragControls);
-    window.addEventListener('mouseup', stopDragControls);
-    window.addEventListener('touchend', stopDragControls);
-}
+async function updateNetworkStats() {
+    const pc = meetingStore.sfuPc();
+    if (!pc) return;
 
-const controlsRef = ref<HTMLElement | null>(null);
+    try {
+        const stats = await pc.getStats();
+        const now = Date.now();
+        const delta = (now - lastStatsTime) / 1000;
+        lastStatsTime = now;
 
-function onDragControls(e: MouseEvent | TouchEvent) {
-    if (!isDraggingControls.value || !controlsRef.value) return;
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-    
-    const nextX = clientX - startX;
-    const nextY = clientY - startY;
+        let currentBytes = 0;
+        let totalPacketsLost = 0;
+        let totalPacketsReceived = 0;
 
-    // Boundary constraints
-    const el = controlsRef.value;
-    const rect = el.getBoundingClientRect();
-    const deltaX = nextX - controlsPosition.value.x;
-    const deltaY = nextY - controlsPosition.value.y;
+        stats.forEach((report) => {
+            // RTT from candidate-pair
+            if (report.type === "candidate-pair" && report.state === "succeeded") {
+                networkStats.rtt = (report.currentRoundTripTime || 0) * 1000;
+            }
+            // Outbound bitrate (bytesSent) or Inbound (bytesReceived)
+            // For general health, we track both but bitrate usually refers to outbound local
+            if (report.type === "outbound-rtp") {
+                currentBytes += report.bytesSent || 0;
+            }
+            // Inbound packet loss
+            if (report.type === "inbound-rtp") {
+                totalPacketsLost += report.packetsLost || 0;
+                totalPacketsReceived += report.packetsReceived || 0;
+            }
+        });
 
-    let finalX = nextX;
-    let finalY = nextY;
+        if (lastBytes > 0 && delta > 0) {
+            networkStats.bitrate = ((currentBytes - lastBytes) * 8) / (delta * 1000); // kbps
+        }
+        lastBytes = currentBytes;
 
-    // Clamp within viewport with 8px padding
-    if (rect.left + deltaX < 8) {
-        finalX = controlsPosition.value.x - rect.left + 8;
-    } else if (rect.right + deltaX > window.innerWidth - 8) {
-        finalX = controlsPosition.value.x + (window.innerWidth - rect.right - 8);
+        const totalPackets = totalPacketsLost + totalPacketsReceived;
+        const lossPercent = totalPackets > 0 ? (totalPacketsLost / totalPackets) * 100 : 0;
+        networkStats.packetLoss = lossPercent;
+
+        // Scoring (0=Good, 1=Fair, 2=Poor)
+        if (lossPercent > 10 || networkStats.rtt > 400) networkStats.score = 2;
+        else if (lossPercent > 3 || networkStats.rtt > 200) networkStats.score = 1;
+        else networkStats.score = 0;
+
+    } catch (e) {
+        // Silent fail for stats
     }
-
-    if (rect.top + deltaY < 8) {
-        finalY = controlsPosition.value.y - rect.top + 8;
-    } else if (rect.bottom + deltaY > window.innerHeight - 8) {
-        finalY = controlsPosition.value.y + (window.innerHeight - rect.bottom - 8);
-    }
-
-    controlsPosition.value = { x: finalX, y: finalY };
 }
 
-function stopDragControls() {
-    isDraggingControls.value = false;
-    window.removeEventListener('mousemove', onDragControls);
-    window.removeEventListener('touchmove', onDragControls);
-    window.removeEventListener('mouseup', stopDragControls);
-    window.removeEventListener('touchend', stopDragControls);
-}
+onMounted(() => {
+    statsInterval = window.setInterval(updateNetworkStats, 3000);
+});
 
-onUnmounted(stopDragControls);
+onBeforeUnmount(() => {
+    if (statsInterval) window.clearInterval(statsInterval);
+});
 </script>
 
 <style scoped>
@@ -1670,118 +1846,243 @@ onUnmounted(stopDragControls);
     position: relative;
 }
 
-/* ─── Top Bar ──────────────────────────────────────────────────────────────── */
-.gmeet-topbar {
+/* ─── Bottom-Fixed Control Bar ─────────────────────────────────────────── */
+.app-bottom-bar {
+    width: 100%;
+    height: 80px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    height: 64px;
     padding: 0 24px;
-    background: rgba(32, 33, 36, 0.7);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    z-index: 40;
+    background: #202124;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    z-index: 100;
     flex-shrink: 0;
 }
 
-.topbar-left {
+.bar-section {
     display: flex;
     align-items: center;
-    min-width: 0;
+    gap: 12px;
     flex: 1;
 }
 
-.topbar-title {
-    font-size: 18px;
-    font-weight: 500;
-    color: #ffffff;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    letter-spacing: -0.2px;
+.bar-section--left {
+    justify-content: flex-start;
 }
 
-.topbar-center {
-    display: flex;
-    align-items: center;
+.bar-section--center {
     justify-content: center;
-    flex: 0 0 auto;
-    padding: 0 20px;
-}
-
-.topbar-clock {
-    font-size: 14px;
-    color: #9aa0a6;
-    font-weight: 500;
-    letter-spacing: 0.25px;
-}
-
-.topbar-right {
-    display: flex;
-    align-items: center;
     gap: 8px;
-    flex: 1;
+}
+
+.bar-section--right {
     justify-content: flex-end;
 }
 
-.topbar-btn {
+/* Info Section */
+.meeting-info-pill {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 16px;
+    height: 44px;
+    border-radius: 22px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.meeting-info-pill:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.info-pill--active {
+    background: rgba(138, 180, 248, 0.1) !important;
+}
+
+.info-time {
+    color: #ffffff;
+    font-size: 15px;
+    font-weight: 500;
+}
+
+.info-divider {
+    width: 1px;
+    height: 16px;
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.info-code {
+    color: #e8eaed;
+    font-size: 14px;
+    font-weight: 400;
+    letter-spacing: 0.5px;
+}
+
+.recording-badge {
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 8px 14px;
-    border: 1px solid transparent;
-    background: rgba(255, 255, 255, 0.03);
+    padding: 4px 10px;
+    background: rgba(234, 67, 53, 0.15);
+    color: #f28b82;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    margin-left: 8px;
+}
+
+.recording-dot {
+    width: 8px;
+    height: 8px;
+    background: #ea4335;
+    border-radius: 50%;
+    animation: pulse-red 2s infinite;
+}
+
+@keyframes pulse-red {
+    0% {
+        box-shadow: 0 0 0 0 rgba(234, 67, 53, 0.7);
+    }
+    70% {
+        box-shadow: 0 0 0 6px rgba(234, 67, 53, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(234, 67, 53, 0);
+    }
+}
+
+/* Control Buttons (Base) */
+.ctrl-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: none;
+    background: transparent;
     color: #e8eaed;
-    border-radius: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     cursor: pointer;
-    font-size: 13px;
-    font-weight: 500;
-    transition: all 0.2s ease;
-}
-.topbar-btn:hover {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(255, 255, 255, 0.05);
-}
-.topbar-btn--active {
-    background: rgba(138, 180, 248, 0.15);
-    color: #8ab4f8;
-    border-color: rgba(138, 180, 248, 0.3);
-}
-.topbar-btn--alert {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
 }
 
-.topbar-badge {
+.ctrl-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.ctrl-btn--off {
+    background: #ea4335 !important;
+    color: white !important;
+}
+
+.ctrl-btn--off:hover {
+    background: #d93025 !important;
+}
+
+.ctrl-btn--active {
+    background: rgba(138, 180, 248, 0.15);
+    color: #8ab4f8;
+}
+
+.ctrl-btn--hangup {
+    background: #ea4335;
+    color: white;
+    width: 56px;
+    border-radius: 28px;
+}
+
+.ctrl-btn--hangup:hover {
+    background: #d93025;
+    box-shadow: 0 4px 16px rgba(234, 67, 53, 0.4);
+}
+
+/* Grouped Components */
+.reaction-group {
+    display: flex;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 24px;
+    padding: 2px;
+}
+
+.reaction-main-btn {
+    width: 40px;
+    height: 40px;
+}
+
+.reaction-trigger-btn {
+    width: 28px;
+    height: 40px;
+    border-radius: 0 20px 20px 0;
+}
+
+.hangup-wrapper {
+    position: relative;
+    margin-left: 8px;
+}
+
+.modern-hangup-menu {
     position: absolute;
-    top: 2px;
-    right: 2px;
-    min-width: 16px;
-    height: 16px;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-bottom: 16px;
+    background: #202124;
+    border: 1px solid #3c4043;
+    border-radius: 12px;
+    padding: 8px;
+    width: 200px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    z-index: 101;
+}
+
+.menu-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    background: transparent;
+    border: none;
+    color: #e8eaed;
+    font-size: 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s;
+}
+
+.menu-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.menu-item--danger {
+    color: #f28b82;
+}
+
+.menu-item--danger:hover {
+    background: rgba(234, 67, 53, 0.15);
+}
+
+.badge-count {
+    position: absolute;
+    top: 4px;
+    right: 4px;
     background: #ea4335;
     color: white;
     font-size: 10px;
     font-weight: 700;
+    min-width: 16px;
+    height: 16px;
     border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 0 4px;
-    animation: pulse-badge 2s infinite;
-}
-
-@keyframes pulse-badge {
-    0%,
-    100% {
-        transform: scale(1);
-    }
-    50% {
-        transform: scale(1.15);
-    }
-}
-
-.topbar-count {
-    font-weight: 500;
+    border: 2px solid #202124;
 }
 
 /* ─── Main Body ────────────────────────────────────────────────────────────── */
@@ -2057,12 +2358,164 @@ onUnmounted(stopDragControls);
 /* ─── Side Panels ──────────────────────────────────────────────────────────── */
 .side-panel {
     width: 320px;
+    height: 100%;
     flex-shrink: 0;
     background: #292a2d;
     display: flex;
     flex-direction: column;
     border-left: 1px solid #3c4043;
     z-index: 25;
+}
+
+/* Meeting Details Overlay Refinements */
+.meeting-details-overlay {
+    position: absolute;
+    bottom: 90px;
+    left: 24px;
+    z-index: 200;
+}
+
+.details-panel {
+    width: 360px;
+    background: #202124;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.details-header {
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.details-header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 500;
+    color: #e8eaed;
+}
+
+.details-close {
+    background: transparent;
+    border: none;
+    color: #9aa0a6;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.details-close:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+}
+
+.details-body {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.details-group {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.details-group label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: #9aa0a6;
+    font-weight: 700;
+}
+
+.detail-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.detail-label {
+    font-size: 13px;
+    color: #bdc1c6;
+    flex-shrink: 0;
+}
+
+.detail-value {
+    font-size: 11px;
+    color: #e8eaed;
+    text-align: right;
+    word-break: break-all;
+    flex: 1;
+}
+
+.copy-small-btn {
+    background: transparent;
+    border: none;
+    color: #8ab4f8;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.copy-small-btn:hover {
+    background: rgba(138, 180, 248, 0.1);
+}
+
+.link-box {
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 8px;
+    padding: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.copy-full-link-btn {
+    width: 100%;
+    background: #8ab4f8;
+    color: #202124;
+    border: none;
+    padding: 10px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.copy-full-link-btn:hover {
+    background: #aecbfa;
+}
+
+.panel-enter-active,
+.panel-leave-active {
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.panel-enter-from {
+    transform: translateY(20px) scale(0.95);
+    opacity: 0;
+}
+.panel-leave-to {
+    transform: translateY(20px) scale(0.95);
+    opacity: 0;
 }
 
 .side-panel-header {
@@ -2102,6 +2555,22 @@ onUnmounted(stopDragControls);
     flex: 1;
     overflow-y: auto;
     padding: 8px;
+}
+
+.ctrl-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    padding: 0;
 }
 
 .participant-row {
@@ -2232,171 +2701,21 @@ onUnmounted(stopDragControls);
     border-color: #f28b82;
 }
 
-/* ─── Bottom Control Bar ───────────────────────────────────────────────────── */
-.gmeet-controls {
-    display: flex;
-    justify-content: center;
-    padding: 16px 0 max(24px, env(safe-area-inset-bottom));
-    background: linear-gradient(
-        0deg,
-        rgba(20, 20, 22, 0.95) 0%,
-        rgba(20, 20, 22, 0) 100%
-    );
-    z-index: 40;
-    flex-shrink: 0;
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    pointer-events: none; /* Allows clicking through the gradient */
-}
-
-.controls-center {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 8px 24px;
-    background: rgba(48, 49, 52, 0.85);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 36px;
-    box-shadow:
-        0 12px 32px rgba(0, 0, 0, 0.4),
-        inset 0 1px 0 rgba(255, 255, 255, 0.05);
-    pointer-events: auto; /* Re-enable clicks for the actual pill menu */
-}
-
-.ctrl-btn {
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
-    border: none;
-    background: #3c4043;
-    color: #e8eaed;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition:
-        background 0.15s,
-        transform 0.1s,
-        box-shadow 0.15s;
-    position: relative;
-}
-.ctrl-btn:hover {
-    background: #4a4d51;
-    transform: scale(1.05);
-}
-.ctrl-btn:active {
-    transform: scale(0.95);
-}
-
-.ctrl-btn--off {
-    background: #ea4335;
-    color: white;
-}
-.ctrl-btn--off:hover {
-    background: #d93025;
-}
-
-.ctrl-btn--active {
-    background: #8ab4f8;
-    color: #202124;
-}
-.ctrl-btn--active:hover {
-    background: #aecbfa;
-}
-
-.ctrl-btn--hangup {
-    background: #ea4335;
-    color: white;
-    width: 56px;
-    border-radius: 28px;
-}
-.ctrl-btn--hangup:hover {
-    background: #d93025;
-    box-shadow: 0 0 16px rgba(234, 67, 53, 0.4);
-}
-
-@media (max-width: 600px) {
-    .gmeet-controls {
-        padding-bottom: max(48px, env(safe-area-inset-bottom));
+@media (max-width: 800px) {
+    .app-bottom-bar {
+        padding: 0 12px;
+        height: 72px;
     }
-    .controls-center {
-        gap: 3px;
-        padding: 4px 14px 4px 8px; /* More padding on right for chevron */
-        max-width: none !important;
-        width: max-content !important;
-        border-radius: 18px;
+    .bar-section--left {
+        display: none; /* Hide meeting code on small screens */
     }
     .ctrl-btn {
-        width: 30px !important;
-        height: 30px !important;
-        flex: 0 0 30px !important;
-        min-width: 30px !important;
-        padding: 0 !important;
-    }
-    .ctrl-btn :deep(svg) {
-        width: 14px;
-        height: 14px;
+        width: 38px;
+        height: 38px;
     }
     .ctrl-btn--hangup {
-        width: 30px !important;
-        height: 30px !important;
-        border-radius: 50% !important;
-        flex: 0 0 30px !important;
+        width: 48px;
     }
-    .reaction-quick-btn {
-        min-width: 32px !important;
-        padding-right: 4px !important;
-    }
-    .reaction-chevron-btn {
-        width: 20px !important;
-        min-width: 20px !important;
-        padding: 0 !important;
-    }
-    .collapse-btn {
-        margin-left: -2px !important; /* Pull it slightly inside the gap */
-        opacity: 0.9 !important;
-        padding: 0 4px !important;
-    }
-    .solo-content {
-        border-radius: 0 !important;
-        padding: 40px 20px !important;
-        width: 100% !important;
-        height: 100% !important;
-        border: none !important;
-    }
-    .drag-grip {
-        display: none; /* Hide grip on small screens to save space */
-    }
-    .gmeet-controls--collapsed .controls-center {
-        padding: 2px 8px;
-    }
-}
-
-.drag-grip {
-    padding: 8px 4px;
-    cursor: grab;
-    color: #5f6368;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: color 0.2s;
-}
-
-.drag-grip:hover {
-    color: #bdc1c6;
-}
-
-.drag-grip:active {
-    cursor: grabbing;
-}
-
-.collapse-btn {
-    opacity: 0.6;
-    margin-left: 4px;
 }
 
 .collapse-btn:hover {
@@ -2408,7 +2727,7 @@ onUnmounted(stopDragControls);
 }
 
 /* Hangup Popup Menu */
-.hangup-menu {
+.modern-hangup-menu {
     position: absolute;
     bottom: calc(100% + 12px);
     right: 0;
@@ -2422,7 +2741,7 @@ onUnmounted(stopDragControls);
 }
 
 @media (max-width: 600px) {
-    .hangup-menu {
+    .modern-hangup-menu {
         position: fixed;
         bottom: 80px;
         left: 50%;
@@ -2433,7 +2752,7 @@ onUnmounted(stopDragControls);
         z-index: 10000;
     }
 }
-.hangup-menu-item {
+.menu-item {
     display: flex;
     align-items: center;
     gap: 12px;
@@ -2447,13 +2766,13 @@ onUnmounted(stopDragControls);
     transition: background-color 0.15s;
     text-align: left;
 }
-.hangup-menu-item:hover {
+.menu-item:hover {
     background: #3c4043;
 }
-.hangup-menu-item--end {
+.menu-item--danger {
     color: #f28b82;
 }
-.hangup-menu-item--end:hover {
+.menu-item--danger:hover {
     background: rgba(234, 67, 53, 0.15);
 }
 
@@ -2509,13 +2828,166 @@ onUnmounted(stopDragControls);
     color: #ea4335 !important;
 }
 
-/* Lock Button */
+/* Lock Button & Indicator */
+.locked-status-badge {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    background: rgba(242, 139, 130, 0.15);
+    color: #f28b82;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-left: 8px;
+    border: 1px solid rgba(242, 139, 130, 0.2);
+}
+
+.lock-btn-wrap {
+    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+}
+
 .ctrl-btn--lock-active {
     background: rgba(242, 139, 130, 0.2) !important;
     color: #f28b82 !important;
+    transform: scale(1.1) rotate(5deg);
+    box-shadow: 0 0 15px rgba(242, 139, 130, 0.2);
 }
-.ctrl-btn--lock-active:hover {
-    background: rgba(242, 139, 130, 0.3) !important;
+
+.icon-morph-enter-active,
+.icon-morph-leave-active {
+    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.icon-morph-enter-from {
+    transform: scale(0) rotate(-180deg);
+    opacity: 0;
+}
+.icon-morph-leave-to {
+    transform: scale(0) rotate(180deg);
+    opacity: 0;
+}
+
+.morph-icon {
+    transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Reaction Button Unified Pill */
+.reaction-btn-unified {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 16px !important;
+    width: auto !important;
+    min-width: 48px;
+    border-radius: 24px !important;
+    background: rgba(255, 255, 255, 0.08) !important;
+    transition: all 0.2s ease;
+}
+.reaction-btn-unified:hover {
+    background: rgba(255, 255, 255, 0.12) !important;
+    transform: scale(1.02);
+}
+.unified-reaction-divider {
+    width: 1px;
+    height: 16px;
+    background: rgba(255, 255, 255, 0.2);
+}
+.quick-emoji-preview {
+    font-size: 18px;
+    line-height: 1;
+}
+
+/* Blended Badge - Premium Glass Style */
+.badge-count {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    background: #ea4335;
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    border: 2px solid #202124;
+    z-index: 10;
+}
+
+.badge-count--secondary {
+    background: rgba(255, 255, 255, 0.12) !important;
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    color: #e8eaed !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.pop-enter-active {
+    animation: pop-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes pop-in {
+    0% {
+        transform: scale(0);
+        opacity: 0;
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+/* Bounce & Pulse Animations */
+.ctrl-btn--active-bounce {
+    background: rgba(251, 188, 5, 0.2) !important;
+    color: #fbbc05 !important;
+    animation: bounce 0.5s cubic-bezier(0.36, 0, 0.66, -0.56);
+}
+
+.recording-badge {
+    animation: pulse-soft 2s infinite ease-in-out;
+}
+
+@keyframes bounce {
+    0%,
+    100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.25);
+    }
+    70% {
+        transform: scale(0.9);
+    }
+}
+
+@keyframes pulse-soft {
+    0%,
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.8;
+        transform: scale(0.98);
+    }
+}
+
+/* Side Panel Transitions */
+.panel-enter-active,
+.panel-leave-active {
+    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.panel-enter-from,
+.panel-leave-to {
+    opacity: 0;
+    transform: translateX(30px);
+}
+
+.details-panel.panel-enter-from,
+.details-panel.panel-leave-to {
+    transform: translateY(30px);
 }
 
 /* Solo / Empty Meeting State */

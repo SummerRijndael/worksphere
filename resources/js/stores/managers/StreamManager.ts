@@ -816,6 +816,7 @@ export function createStreamManager(
         sfuIceState,
         sfuConnectionState,
         sfuSessionId,
+        sfuPc: () => sfuPc, // Expose as a getter function since it can be reassigned
 
         addLocalStream,
         setLocalStream,

@@ -325,6 +325,13 @@ class AppSettingsService
                     'value' => $this->get('app.is_demo_mode', false),
                     'description' => 'Enable Demo Mode (restricts destructive actions)',
                 ],
+                [
+                    'key' => 'features.public_pricing_page.enabled',
+                    'label' => 'Public Pricing Page',
+                    'type' => 'boolean',
+                    'value' => $this->get('features.public_pricing_page.enabled', true),
+                    'description' => 'Show or hide the public-facing pricing page/section',
+                ],
             ],
             'security' => [
                 [

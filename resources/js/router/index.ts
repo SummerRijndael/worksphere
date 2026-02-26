@@ -731,6 +731,19 @@ const routes: RouteRecordRaw[] = [
                     permission: "security.view",
                 },
             },
+ 
+            // Engagement Dashboard
+            {
+                path: "/admin/engagement",
+                name: "admin.engagement",
+                component: () => import("@/views/admin/EngagementDashboardView.vue"),
+                meta: {
+                    title: "User Engagement",
+                    breadcrumb: "Engagement",
+                    transition: "slide-fade",
+                    permission: "system.maintenance",
+                },
+            },
 
             // User Management
             {

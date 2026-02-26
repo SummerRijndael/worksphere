@@ -47,6 +47,7 @@ const settings = ref({
     "app.timezone": "UTC",
     "app.locale": "en",
     "app.is_demo_mode": false,
+    "features.public_pricing_page.enabled": true,
     // Security
     "auth.registration_enabled": true,
     "auth.email_verification": true,
@@ -790,6 +791,30 @@ onMounted(async () => {
                         <Switch
                             :model-value="settings['app.is_demo_mode']"
                             @update:model-value="handleDemoModeToggle"
+                        />
+                    </div>
+
+                    <!-- Public Pricing Toggle -->
+                    <div
+                        class="p-4 bg-blue-500/5 rounded-lg border border-blue-200 mt-4 flex items-center justify-between"
+                    >
+                        <div class="flex items-start gap-3">
+                            <div
+                                class="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0"
+                            >
+                                <Settings class="w-4 h-4 text-blue-600" />
+                            </div>
+                            <div>
+                                <h4 class="text-sm font-medium text-blue-900">
+                                    Public Pricing Page
+                                </h4>
+                                <p class="text-xs text-blue-700 mt-0.5">
+                                    Show or hide the pricing section on the landing page and header/footer links.
+                                </p>
+                            </div>
+                        </div>
+                        <Switch
+                            v-model="settings['features.public_pricing_page.enabled']"
                         />
                     </div>
                 </div>

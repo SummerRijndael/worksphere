@@ -56,7 +56,7 @@ return [
     |
     */
 
-    'tag_prefix' => env('CACHE_TAG_PREFIX', 'coresync'),
+    'tag_prefix' => env('CACHE_TAG_PREFIX', 'worksphere'),
 
     /*
     |--------------------------------------------------------------------------

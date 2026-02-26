@@ -513,10 +513,12 @@ export const useMeetingStore = defineStore('meeting', () => {
         localStream: stream.localStream,
         sfuConnectionState: stream.sfuConnectionState,
         sfuIceState: stream.sfuIceState,
+        sfuPc: stream.sfuPc,
         
         // Layout Manager
         pinnedParticipantId: layout.pinnedParticipantId,
         activeSpeakerId: layout.activeSpeakerId,
+        preferredLayout: layout.preferredLayout,
 
         // High-level Actions
         initializeMeeting,
@@ -621,6 +623,7 @@ export const useMeetingStore = defineStore('meeting', () => {
         // Layout Action proxies
         setSpotlight: layout.setSpotlight,
         clearSpotlight: layout.clearSpotlight,
+        setLayout: layout.setLayout,
 
         // Dev tool wrappers
         addMockParticipant: presence.addMockParticipant,

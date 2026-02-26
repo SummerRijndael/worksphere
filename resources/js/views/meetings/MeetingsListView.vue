@@ -9,7 +9,27 @@
                     Schedule and manage your video conferences
                 </p>
             </div>
-            <div class="flex flex-col sm:flex-row gap-2 sm:gap-3">
+            <div class="flex flex-col sm:flex-row gap-3 items-center">
+                <!-- Join by ID -->
+                <div class="flex items-center bg-(--surface-primary) border border-(--border-muted) rounded-lg px-2 py-1 focus-within:ring-2 focus-within:ring-(--color-primary-500) transition-all">
+                    <Icon name="hash" size="14" class="text-(--text-muted) ml-1" />
+                    <input 
+                        v-model="joinId"
+                        placeholder="Enter Meeting ID"
+                        class="bg-transparent border-none outline-none px-2 py-1 text-sm w-40 text-(--text-primary)"
+                        @keyup.enter="handleJoinById"
+                    />
+                    <button 
+                        @click="handleJoinById"
+                        :disabled="!joinId.trim()"
+                        class="px-3 py-1 bg-(--color-primary-600) hover:bg-(--color-primary-700) text-white rounded text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                        Join
+                    </button>
+                </div>
+
+                <div class="h-6 w-px bg-(--border-muted) hidden sm:block"></div>
+
                 <button
                     @click="startInstantMeeting"
                     :disabled="isCreatingInstant"
@@ -295,6 +315,13 @@ const showCreateModal = ref(false);
 const editingMeeting = ref<Meeting | null>(null);
 const createdMeeting = ref<Meeting | null>(null);
 const revealedPasswords = ref<Set<number>>(new Set());
+const joinId = ref("");
+
+const handleJoinById = () => {
+    if (!joinId.value.trim()) return;
+    openMeetingPopup(joinId.value.trim());
+    joinId.value = "";
+};
 
 const fetchMeetings = async () => {
     loading.value = true;

@@ -10,6 +10,7 @@ export function createLayoutManager(
 ) {
     const pinnedParticipantId = ref<string | null>(null);
     const activeSpeakerId = ref<string | null>(null);
+    const preferredLayout = ref<'auto' | 'tiled' | 'spotlight' | 'sidebar'>('auto');
 
     function setSpotlight(publicId: string | null) {
         log('UI', `Spotlight set to: ${publicId || 'none'}`);
@@ -29,11 +30,18 @@ export function createLayoutManager(
         }
     }
 
+    function setLayout(layout: 'auto' | 'tiled' | 'spotlight' | 'sidebar') {
+        log('UI', `Preferred layout set to: ${layout}`);
+        preferredLayout.value = layout;
+    }
+
     return {
         pinnedParticipantId,
         activeSpeakerId,
+        preferredLayout,
         setSpotlight,
         clearSpotlight,
-        setActiveSpeaker
+        setActiveSpeaker,
+        setLayout
     };
 }
