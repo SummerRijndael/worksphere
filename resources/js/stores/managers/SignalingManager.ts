@@ -249,6 +249,27 @@ export function createSignalingManager(
             return;
         }
 
+        if (type === 'breakout-started') {
+            log('SIGNAL', 'Breakout session started', data);
+            const { useMeetingStore } = await import('@/stores/meeting');
+            useMeetingStore().handleBreakoutStarted(data);
+            return;
+        }
+
+        if (type === 'breakout-ended') {
+            log('SIGNAL', 'Breakout session ended');
+            const { useMeetingStore } = await import('@/stores/meeting');
+            useMeetingStore().handleBreakoutEnded();
+            return;
+        }
+
+        if (type === 'breakout-help-request') {
+            log('SIGNAL', 'Breakout help requested', data);
+            const { useMeetingStore } = await import('@/stores/meeting');
+            useMeetingStore().handleBreakoutHelpRequest(data);
+            return;
+        }
+
         if (type === 'request-media-info') {
             log('SIGNAL', `Participant ${normalizedSenderId} requested our media info`);
             streamManager.rebroadcastToJoiner(normalizedSenderId);

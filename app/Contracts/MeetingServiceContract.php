@@ -22,4 +22,8 @@ interface MeetingServiceContract
     public function authenticateBroadcasting(Meeting $meeting, ?User $user, string $channelName, string $socketId, ?string $participantSessionId);
     
     public function generateTurnCredentials(): array;
+
+    public function startBreakout(Meeting $meeting, array $rooms, int $duration): void;
+    public function endBreakout(Meeting $meeting): void;
+    public function requestBreakoutHelp(Meeting $meeting, string $roomId): void;
 }

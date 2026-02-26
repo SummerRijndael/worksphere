@@ -90,6 +90,18 @@
                                     <Icon name="copy" size="14" />
                                 </button>
                             </div>
+                            <div class="detail-row">
+                                <div class="detail-label">Created</div>
+                                <div class="detail-value">
+                                    {{ formatDate(meetingStore.meeting.created_at) }}
+                                </div>
+                            </div>
+                            <div class="detail-row">
+                                <div class="detail-label">Last Updated</div>
+                                <div class="detail-value">
+                                    {{ formatDate(meetingStore.meeting.updated_at) }}
+                                </div>
+                            </div>
                         </div>
 
                         <!-- Security section -->
@@ -399,7 +411,22 @@
                         />
                     </div>
                 </Transition>
+
+                <!-- Whiteboard Layer -->
+                <Transition
+                    enter-active-class="transition duration-300 ease-out"
+                    enter-from-class="opacity-0 scale-95"
+                    enter-to-class="opacity-100 scale-100"
+                    leave-active-class="transition duration-200 ease-in"
+                    leave-from-class="opacity-100 scale-100"
+                    leave-to-class="opacity-0 scale-95"
+                >
+                    <WhiteboardView v-if="whiteboardStore.isVisible" />
+                </Transition>
             </div>
+            <!-- Breakout Room Layer -->
+            <BreakoutOverlay v-if="meetingStore.isInBreakout" />
+            <BreakoutDashboard v-if="meetingStore.isInBreakout && meetingStore.isHost" />
 
             <!-- Participants Side Panel -->
             <Transition
@@ -953,6 +980,16 @@
                     <Icon name="bar-chart-2" size="20" />
                 </button>
 
+                <button
+                    v-if="meetingStore.isHost"
+                    class="ctrl-btn"
+                    :class="{ 'ctrl-btn--active': meetingStore.showBreakoutManager }"
+                    @click="meetingStore.showBreakoutManager = !meetingStore.showBreakoutManager"
+                    title="Breakout Rooms"
+                >
+                    <Icon name="layout-grid" size="20" />
+                </button>
+
                 <MeetingLayoutSelector />
 
                 <button
@@ -983,6 +1020,11 @@
             v-model:open="showSettings"
             @close="showSettings = false"
         />
+        <BreakoutManagerModal 
+            v-if="meetingStore.showBreakoutManager" 
+            @close="meetingStore.showBreakoutManager = false" 
+        />
+        <BreakoutOverlay />
         <DevSimulationTool v-if="isDevMode" v-model:show="showDevTool" />
     </div>
 </template>
@@ -993,6 +1035,7 @@ import { useRoute, useRouter } from "vue-router";
 import { meetingService } from "@/services/meeting.service";
 import { useMeetingStore } from "@/stores/meeting";
 import { useVideoCallStore } from "@/stores/videocall";
+import { useWhiteboardStore } from "@/stores/whiteboard";
 import { useBackgroundBlur } from "@/composables/useBackgroundBlur";
 import { Icon, Avatar } from "@/components/ui";
 import { toast } from "vue-sonner";
@@ -1008,6 +1051,11 @@ import MeetingPollPanel from "./components/MeetingPollPanel.vue";
 import MeetingLayoutSelector from "./components/MeetingLayoutSelector.vue";
 import ReactionOverlay from "./components/ReactionOverlay.vue";
 import ReactionVibeSummary from "./components/ReactionVibeSummary.vue";
+import WhiteboardView from "./components/WhiteboardView.vue";
+import BreakoutManagerModal from "./components/BreakoutManagerModal.vue";
+import BreakoutOverlay from "./components/BreakoutOverlay.vue";
+import BreakoutDashboard from './components/BreakoutDashboard.vue';
+import { usePresenceStore } from '@/stores/presence';
 
 // Custom v-click-outside directive
 const vClickOutside = {
@@ -1028,6 +1076,7 @@ const route = useRoute();
 const router = useRouter();
 const meetingStore = useMeetingStore();
 const videoCallStore = useVideoCallStore();
+const whiteboardStore = useWhiteboardStore();
 
 const meetingId = route.params.id as string;
 const participantId = route.query.participant as string;
@@ -1746,7 +1795,19 @@ const endMeetingForAll = async () => {
     await meetingStore.endMeeting();
 };
 
-function copyToClipboard(text: string, label: string) {
+function formatDate(dateString: string) {
+    if (!dateString) return "N/A";
+    try {
+        return new Date(dateString).toLocaleString(undefined, {
+            dateStyle: 'medium',
+            timeStyle: 'short'
+        });
+    } catch (e) {
+        return dateString;
+    }
+}
+
+async function copyToClipboard(text: string, label: string) {
     navigator.clipboard.writeText(text);
     toast.success(`${label} copied to clipboard`);
 }

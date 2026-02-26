@@ -149,6 +149,24 @@ class MeetingService extends BaseService {
         return this.post(`/api/meetings/${id}/unlock`, {});
     }
 
+    // --- Breakout Rooms ---
+
+    async createBreakoutSession(meetingId: string, data: { rooms: any[], duration_minutes: number }) {
+        return this.post(`/api/meetings/${meetingId}/breakout-sessions`, data);
+    }
+
+    async endBreakoutSession(meetingId: string) {
+        return this.delete(`/api/meetings/${meetingId}/breakout-sessions`);
+    }
+
+    async joinBreakoutRoom(meetingId: string, roomId: string) {
+        return this.post(`/api/meetings/${meetingId}/breakout-rooms/${roomId}/join`, {});
+    }
+
+    async requestHostHelp(meetingId: string, roomId: string) {
+        return this.post(`/api/meetings/${meetingId}/breakout-rooms/${roomId}/request-help`, {});
+    }
+
     // --- SFU Protocol endpoints ---
 
     async sfuSessionNew(id: string, offer: string, tracks?: any[]): Promise<any> {

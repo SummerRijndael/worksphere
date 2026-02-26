@@ -353,4 +353,40 @@ class MeetingService implements MeetingServiceContract
 
         return ['ice_servers' => $iceServers];
     }
+
+    public function startBreakout(Meeting $meeting, array $rooms, int $durationMinutes): void
+    {
+        // Broadcast breakout-started signal to everyone
+        // The signal contains the assignment mapping
+        broadcast(new MeetingSignal(
+            $meeting,
+            'system',
+            'breakout-started',
+            [
+                'rooms' => $rooms,
+                'duration' => $durationMinutes,
+                'started_at' => now()->toIso8601String(),
+            ]
+        ));
+    }
+
+    public function endBreakout(Meeting $meeting): void
+    {
+        broadcast(new MeetingSignal(
+            $meeting,
+            'system',
+            'breakout-ended',
+            []
+        ));
+    }
+
+    public function requestBreakoutHelp(Meeting $meeting, string $roomId): void
+    {
+        broadcast(new MeetingSignal(
+            $meeting,
+            'system',
+            'breakout-help-request',
+            ['room_id' => $roomId]
+        ));
+    }
 }

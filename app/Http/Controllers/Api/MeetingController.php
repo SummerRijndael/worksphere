@@ -724,6 +724,57 @@ class MeetingController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    // ──── Breakout Rooms ───────────────────────────────────────────────────────
+
+    public function startBreakout(Request $request, Meeting $meeting): JsonResponse
+    {
+        \Illuminate\Support\Facades\Log::info('Start breakout request', [
+            'meeting' => $meeting->public_id,
+            'payload' => $request->all(),
+        ]);
+
+        $this->authorize('update', $meeting);
+
+        $validated = $request->validate([
+            'rooms' => 'required|array',
+            'duration_minutes' => 'required|integer|min:1',
+        ]);
+
+        $this->meetingService->startBreakout($meeting, $validated['rooms'], $validated['duration_minutes']);
+
+        return response()->json(['message' => 'Breakout session started.']);
+    }
+
+    public function endBreakout(Request $request, Meeting $meeting): JsonResponse
+    {
+        $this->authorize('update', $meeting);
+
+        $this->meetingService->endBreakout($meeting);
+
+        return response()->json(['message' => 'Breakout session ended.']);
+    }
+
+    public function joinBreakoutRoom(Request $request, Meeting $meeting, string $roomId): JsonResponse
+    {
+        $participant = $this->resolveParticipant($request, $meeting);
+        if (!$participant) return response()->json(['message' => 'Unauthorized'], 403);
+
+        // Logic to track participant in room could go here if needed.
+        // For now, we just acknowledge.
+        
+        return response()->json(['message' => 'Joined room.']);
+    }
+
+    public function requestBreakoutHelp(Request $request, Meeting $meeting, string $roomId): JsonResponse
+    {
+        $participant = $this->resolveParticipant($request, $meeting);
+        if (!$participant) return response()->json(['message' => 'Unauthorized'], 403);
+
+        $this->meetingService->requestBreakoutHelp($meeting, $roomId);
+
+        return response()->json(['message' => 'Help requested.']);
+    }
+
     // ──── Helper ───────────────────────────────────────────────────────────────
 
     /**

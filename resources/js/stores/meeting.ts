@@ -61,6 +61,13 @@ export const useMeetingStore = defineStore('meeting', () => {
         timestamp: number;
     }
     const activeReactions = ref<ReactionEvent[]>([]);
+    
+    // ── Breakout Rooms ─────────────────────────────────────────────────────────
+    const activeBreakoutSession = ref<any>(null);
+    const isInBreakout = ref(false);
+    const breakoutTimer = ref(0);
+    const showBreakoutManager = ref(false);
+    let timerInterval: any = null;
 
     // 2. Initialize Sub-Managers
     const layout = createLayoutManager(meeting, localParticipant);
@@ -486,6 +493,135 @@ export const useMeetingStore = defineStore('meeting', () => {
     function toggleDevMode() { 
         isDevMode.value = !isDevMode.value; 
     }
+
+    // --- Breakout Handlers ---
+
+    async function handleBreakoutStarted(data: any) {
+        log('BREAKOUT', 'Received breakout started signal', data);
+        activeBreakoutSession.value = data;
+        isInBreakout.value = true;
+        
+        // Find if this participant is assigned to a room
+        const myRoom = data.rooms.find((r: any) => 
+            r.participants.some((p: any) => p.public_id === localParticipant.value?.public_id)
+        );
+
+        if (myRoom) {
+            log('BREAKOUT', `Joining breakout room: ${myRoom.name}`);
+            const { toast } = await import('vue-sonner');
+            toast.info(`Joining breakout room: ${myRoom.name}`);
+            
+            // Re-initialize SFU with room context
+            // In a real implementation, we might need to swap the meeting ID in streamManager
+            // or use a room-specific session. For now, we'll simulate the switch.
+            // stream.reconnectToRoom(myRoom.id);
+        }
+
+        // Start timer
+        breakoutTimer.value = (data.duration || 10) * 60;
+        timerInterval = setInterval(() => {
+            if (breakoutTimer.value > 0) {
+                breakoutTimer.value--;
+            } else {
+                clearInterval(timerInterval);
+                // If we're the host, automatically end the session for everyone
+                if (presence.isHost.value) {
+                    log('BREAKOUT', 'Timer expired, auto-ending breakout session');
+                    endBreakout();
+                }
+            }
+        }, 1000);
+    }
+
+    async function handleBreakoutEnded() {
+        log('BREAKOUT', 'Received breakout ended signal');
+        const { toast } = await import('vue-sonner');
+        toast.info('Breakout session ended. Returning to main room.');
+        
+        activeBreakoutSession.value = null;
+        isInBreakout.value = false;
+        breakoutTimer.value = 0;
+        if (timerInterval) clearInterval(timerInterval);
+        
+        // Return to main SFU context
+        // stream.reconnectToMain();
+    }
+
+    async function handleBreakoutHelpRequest(data: any) {
+        if (!presence.isHost.value) return;
+        const { toast } = await import('vue-sonner');
+        toast.info(`🆘 Help requested in ${data.roomName}`, {
+            duration: 15000,
+            description: `A participant in ${data.roomName} is asking for assistance.`,
+            action: {
+                label: 'Join Room',
+                onClick: () => {
+                    joinBreakoutRoom(data.roomId, data.roomName);
+                }
+            }
+        });
+    }
+
+    async function joinBreakoutRoom(roomId: string, roomName: string) {
+        if (!meeting.value) return;
+        try {
+            await meetingService.joinBreakoutRoom(meeting.value.public_id, roomId);
+            log('BREAKOUT', `Host joining room: ${roomName}`);
+            const { toast } = await import('vue-sonner');
+            toast.success(`Joining ${roomName}...`);
+            
+            // Note: In this implementation, 'joining' a room is primarily about 
+            // signaling intent and getting the UI/context to switch.
+            // In a production app, this would trigger a reconnection to a different SFU room.
+            if (activeBreakoutSession.value) {
+                // Update local state to reflect which room we are "in" for the overlay
+                // Even though the host isn't 'assigned' in the rooms array, 
+                // we can track it separately or just use a local ref.
+            }
+        } catch (e) {
+            log('ERROR', 'Failed to join breakout room', e);
+        }
+    }
+
+    async function startBreakout(rooms: any[], duration: number) {
+        if (!meeting.value) return;
+        try {
+            await meetingService.createBreakoutSession(meeting.value.public_id, {
+                rooms,
+                duration_minutes: duration
+            });
+        } catch (e) {
+            log('ERROR', 'Failed to start breakout', e);
+            throw e;
+        }
+    }
+
+    async function endBreakout() {
+        if (!meeting.value) return;
+        try {
+            await meetingService.endBreakoutSession(meeting.value.public_id);
+        } catch (e) {
+            log('ERROR', 'Failed to end breakout', e);
+            throw e;
+        }
+    }
+
+    async function requestHostHelp() {
+        if (!meeting.value || !isInBreakout.value) return;
+        try {
+            // Find current room ID
+            const myRoom = activeBreakoutSession.value?.rooms?.find((r: any) => 
+                r.participants.some((p: any) => p.public_id === localParticipant.value?.public_id)
+            );
+            if (myRoom) {
+                await meetingService.requestHostHelp(meeting.value.public_id, myRoom.id);
+                const { toast } = await import('vue-sonner');
+                toast.success('Host has been notified.');
+            }
+        } catch (e) {
+            log('ERROR', 'Failed to request help', e);
+        }
+    }
     
     // 4. Expose unified API to Vue components
     return {
@@ -495,6 +631,24 @@ export const useMeetingStore = defineStore('meeting', () => {
         originalVideoTrack,
         isDevMode,
         
+        // Breakout Rooms
+        activeBreakoutSession,
+        isInBreakout,
+        breakoutTimer,
+        formatBreakoutTime: computed(() => {
+            const mins = Math.floor(breakoutTimer.value / 60);
+            const secs = breakoutTimer.value % 60;
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }),
+        showBreakoutManager,
+        handleBreakoutStarted,
+        handleBreakoutEnded,
+        handleBreakoutHelpRequest,
+        startBreakout,
+        endBreakout,
+        joinBreakoutRoom,
+        requestHostHelp,
+
         // Presence Manager
         participants: presence.participants,
         allParticipants: presence.allParticipants,

@@ -104,6 +104,33 @@ function selectLayout(id: any) {
     align-items: center;
 }
 
+.layout-selector :deep(.ctrl-btn) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    padding: 0;
+}
+
+.layout-selector :deep(.ctrl-btn:hover) {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.layout-selector :deep(.ctrl-btn--active) {
+    background: #8ab4f8 !important;
+    color: #202124 !important;
+    border-color: #8ab4f8 !important;
+}
+
 .layout-menu {
     position: absolute;
     bottom: calc(100% + 12px);

@@ -1031,6 +1031,12 @@ Route::middleware(['throttle:meetings'])->prefix('meetings')->group(function () 
     Route::get('/{meeting}/messages', [\App\Http\Controllers\Api\MeetingController::class, 'getMessages']);
     Route::post('/{meeting}/messages', [\App\Http\Controllers\Api\MeetingController::class, 'sendMessage']);
 
+    // Breakout Rooms
+    Route::post('/{meeting}/breakout-sessions', [\App\Http\Controllers\Api\MeetingController::class, 'startBreakout']);
+    Route::delete('/{meeting}/breakout-sessions', [\App\Http\Controllers\Api\MeetingController::class, 'endBreakout']);
+    Route::post('/{meeting}/breakout-rooms/{room}/join', [\App\Http\Controllers\Api\MeetingController::class, 'joinBreakoutRoom']);
+    Route::post('/{meeting}/breakout-rooms/{room}/help', [\App\Http\Controllers\Api\MeetingController::class, 'requestBreakoutHelp']);
+
     // SFU Proxy Routes — exclude content-scanning firewall middleware
     // SDP and WebRTC data triggers false positives in XSS/SQLi/LFI detectors
     Route::withoutMiddleware([
