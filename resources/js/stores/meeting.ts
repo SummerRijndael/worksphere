@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref, reactive } from 'vue';
+import { ref, reactive, computed } from 'vue';
 import { meetingService } from '@/services/meeting.service';
 import type { Meeting, MeetingParticipant } from '@/types/models';
 import { createLogger } from './managers/logger';
