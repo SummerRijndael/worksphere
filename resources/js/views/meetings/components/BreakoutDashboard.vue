@@ -124,19 +124,61 @@
                             v-for="p in (room.participants || [])" 
                             :key="p.public_id"
                             class="group relative"
-                            :title="getDisplayName(p)"
                         >
-                            <div class="w-6 h-6 rounded-full bg-(--color-primary-500)/20 flex items-center justify-center text-[10px] font-bold text-(--color-primary-500) border border-(--color-primary-500)/30">
-                                {{ getDisplayName(p).charAt(0) }}
-                            </div>
-                            <!-- Pull back button -->
-                            <button 
-                                @click="pullBack(p, room)"
-                                class="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
-                                title="Pull to Main room"
-                            >
-                                <Icon name="arrow-down-left" size="8" />
-                            </button>
+                            <Menu as="div" class="relative">
+                                <MenuButton 
+                                    class="w-6 h-6 rounded-full bg-(--color-primary-500)/20 flex items-center justify-center text-[10px] font-bold text-(--color-primary-500) border border-(--color-primary-500)/30 hover:border-(--color-primary-500) transition-all"
+                                    :title="getDisplayName(p)"
+                                >
+                                    {{ getDisplayName(p).charAt(0) }}
+                                </MenuButton>
+                                <transition
+                                    enter-active-class="transition duration-100 ease-out"
+                                    enter-from-class="transform scale-95 opacity-0"
+                                    enter-to-class="transform scale-100 opacity-100"
+                                    leave-active-class="transition duration-75 ease-in"
+                                    leave-from-class="transform scale-100 opacity-100"
+                                    leave-to-class="transform scale-95 opacity-0"
+                                >
+                                    <MenuItems class="absolute left-0 bottom-full mb-2 w-48 bg-(--surface-primary) border border-(--border-muted) rounded-xl shadow-2xl z-50 overflow-hidden outline-none">
+                                        <div class="px-3 py-2 border-b border-(--border-muted) bg-(--surface-tertiary)/50">
+                                            <p class="text-[10px] font-bold uppercase text-(--text-muted) truncate">{{ getDisplayName(p) }}</p>
+                                        </div>
+                                        <div class="p-1">
+                                            <!-- Move to other rooms -->
+                                            <template v-for="targetRoom in (meetingStore.activeBreakoutSession?.rooms || [])" :key="targetRoom.id">
+                                                <MenuItem v-if="String(targetRoom.id) !== String(room.id)" v-slot="{ active }">
+                                                    <button
+                                                        @click="assignParticipant(p, targetRoom)"
+                                                        :class="[
+                                                            active ? 'bg-(--color-primary-600) text-white' : 'text-(--text-primary)',
+                                                            'flex w-full items-center px-3 py-2 text-xs rounded-lg transition-colors'
+                                                        ]"
+                                                    >
+                                                        <Icon name="shuffle" size="12" class="mr-2 opacity-50" />
+                                                        Move to {{ targetRoom.name }}
+                                                    </button>
+                                                </MenuItem>
+                                            </template>
+                                            
+                                            <!-- Pull back to main -->
+                                            <div class="my-1 border-t border-(--border-muted)"></div>
+                                            <MenuItem v-slot="{ active }">
+                                                <button
+                                                    @click="pullBack(p, room)"
+                                                    :class="[
+                                                        active ? 'bg-red-600 text-white' : 'text-red-500',
+                                                        'flex w-full items-center px-3 py-2 text-xs rounded-lg transition-colors'
+                                                    ]"
+                                                >
+                                                    <Icon name="arrow-down-left" size="12" class="mr-2 opacity-50" />
+                                                    Pull to Main Room
+                                                </button>
+                                            </MenuItem>
+                                        </div>
+                                    </MenuItems>
+                                </transition>
+                            </Menu>
                         </div>
                     </div>
 

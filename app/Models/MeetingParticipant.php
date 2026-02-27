@@ -15,6 +15,8 @@ class MeetingParticipant extends Model
         'metadata',
         'is_muted_by_host',
         'is_camera_disabled_by_host',
+        'assigned_room_id',
+        'current_room_id',
     ];
 
     protected $casts = [

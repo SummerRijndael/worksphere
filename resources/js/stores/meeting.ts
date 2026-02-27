@@ -771,11 +771,14 @@ export const useMeetingStore = defineStore('meeting', () => {
     async function joinBreakoutRoom(roomId: string | number | null, roomName: string) {
         if (!meeting.value) return;
         
-        // Strict Guard: Only Host can return to Main Room during a session
+        // Guard: Prevent manual return to main if assigned to a room
         if (roomId === null && !presence.isHost.value) {
-            const { toast } = await import('vue-sonner');
-            toast.error('Only the host can return to the main room during a breakout session.');
-            return;
+            const myAssignment = localParticipant.value?.assigned_room_id;
+            if (myAssignment) {
+                const { toast } = await import('vue-sonner');
+                toast.error('Only the host can return to the main room during a breakout session.');
+                return;
+            }
         }
 
         const normalizedRoomId = roomId === null ? null : String(roomId);

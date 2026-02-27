@@ -69,7 +69,13 @@ class Meeting extends Model
 
     public function activeBreakoutSession(): \Illuminate\Database\Eloquent\Relations\HasOne
     {
-        return $this->hasOne(BreakoutSession::class)->where('status', 'active');
+        return $this->hasOne(BreakoutSession::class)
+            ->where('status', 'active')
+            ->where(function ($query) {
+                // Return if NO duration is set (infinite) OR if duration + 1 min grace has not passed
+                $query->whereNull('duration_minutes')
+                    ->orWhereRaw('DATE_ADD(started_at, INTERVAL duration_minutes + 1 MINUTE) > ?', [now()]);
+            });
     }
 
     /**

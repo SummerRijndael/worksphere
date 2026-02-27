@@ -361,7 +361,12 @@ class MeetingService implements MeetingServiceContract
     public function startBreakout(Meeting $meeting, array $rooms, int $durationMinutes): void
     {
         DB::transaction(function () use ($meeting, $rooms, $durationMinutes) {
-            // Create session record
+            // Cleanup existing active sessions to prevent state bloat/desync
+            BreakoutSession::where('meeting_id', $meeting->id)
+                ->where('status', 'active')
+                ->update(['status' => 'ended', 'ended_at' => now()]);
+
+            // Create new session record
             $session = BreakoutSession::create([
                 'meeting_id' => $meeting->id,
                 'status' => 'active',
