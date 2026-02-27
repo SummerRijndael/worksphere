@@ -55,7 +55,7 @@ class InvoicePolicy
             return false;
         }
 
-        return $user->can('invoices.create');
+        return app(\App\Services\PermissionService::class)->hasTeamPermission($user, $team, 'invoices.create');
     }
 
     /**

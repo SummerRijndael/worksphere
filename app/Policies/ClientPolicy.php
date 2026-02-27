@@ -76,6 +76,6 @@ class ClientPolicy
      */
     protected function isTeamAdmin(User $user): bool
     {
-        return $user->teams()->wherePivotIn('role', ['owner', 'admin'])->exists();
+        return $user->teams()->wherePivotIn('role', ['team_lead', 'subject_matter_expert'])->exists();
     }
 }

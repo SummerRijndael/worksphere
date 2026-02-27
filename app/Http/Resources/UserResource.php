@@ -62,7 +62,8 @@ class UserResource extends JsonResource
                         // Let's return the flattened collection from the persona
                         $permissions = $persona->globalPermissions;
 
-                        foreach ($persona->teamPermissions as $teamId => $teamPerms) {
+                        foreach ($this->resource->teams as $team) {
+                            $teamPerms = $persona->resolveTeam($team->id);
                             $permissions = $permissions->merge($teamPerms);
                         }
 
@@ -90,9 +91,7 @@ class UserResource extends JsonResource
 
                         $teamPermissions = [];
                         foreach ($this->resource->teams as $team) {
-                            if (isset($persona->teamPermissions[$team->id])) {
-                                $teamPermissions[$team->public_id] = $persona->teamPermissions[$team->id];
-                            }
+                            $teamPermissions[$team->public_id] = $persona->resolveTeam($team->id);
                         }
 
                         return $teamPermissions;

@@ -9,6 +9,7 @@ export function createStreamManager(
     meetingRef: Ref<Meeting | null>,
     localParticipantRef: Ref<MeetingParticipant | null>,
     iceServersRef: Ref<any[]>,
+    currentRoomIdRef: Ref<string | null>,
     emitTalkingState: (participantId: string, isTalking: boolean) => void,
     onSfuMediaReady: (audioMid?: string, videoMid?: string, screenMid?: string) => void,
     onSFUError: (err: any) => void
@@ -21,7 +22,8 @@ export function createStreamManager(
     
     // SFU Connection State
     const sfuIceState = ref("new");
-    const sfuConnectionState = ref("new");
+    const sfuConnectionState = ref<string>('new');
+    const isInitializingSFU = ref(false);
     let sfuPc: RTCPeerConnection | null = null;
     const sfuSessionId = ref<string | null>(null);
     let sfuGeneration = Date.now();
@@ -209,7 +211,7 @@ export function createStreamManager(
             sender_participant_public_id: localParticipantRef.value.public_id,
             signal_type: 'signal',
             signal_data: {
-                type: 'sfu-media-ready',
+                current_room_id: currentRoomIdRef.value,
                 sessionId: sfuSessionId.value,
                 audioMid,
                 videoMid,
@@ -280,7 +282,22 @@ export function createStreamManager(
         }, 60000);
     }
 
-    async function initSFU(stream: MediaStream | null = null) {
+    async function initSFU(stream: MediaStream | null) {
+        if (!meetingRef.value || !localParticipantRef.value) return;
+        if (isInitializingSFU.value) {
+            log('SFU', 'SFU initialization already in progress, skipping');
+            return;
+        }
+
+        isInitializingSFU.value = true;
+        try {
+            await doInitSFU(stream);
+        } finally {
+            isInitializingSFU.value = false;
+        }
+    }
+
+    async function doInitSFU(stream: MediaStream | null) {
         if (sfuPc) sfuPc.close();
 
         log('SFU', 'Initializing RTCPeerConnection (Cold Start)', { hasStream: !!stream });
@@ -408,24 +425,16 @@ export function createStreamManager(
                 trackObjects
             );
 
-            if (sessionRes.sessionDescription) {
-                await sfuPc.setRemoteDescription(toSdpAnswer(sessionRes.sessionDescription));
-            }
-
             if (sessionRes.sessionId) {
                 sfuSessionId.value = sessionRes.sessionId;
                 log('SFU', 'Session Established', sessionRes.sessionId);
 
-                if (sfuSessionId.value && trackObjects.length > 0) {
-                    log('SFU', 'Explicitly registering tracks via sfuSessionTracks (Double Tap)...', trackObjects);
-                    try {
-                        await meetingService.sfuSessionTracks(meetingRef.value!.public_id, sfuSessionId.value!, trackObjects);
-                    } catch (e) {
-                        log('SFU', 'Double Tap track registration warning:', e);
-                    }
-                }
-
                 await iceConnectedPromise;
+                
+                // Deterministic Handshake Guard:
+                // Wait a tiny bit for the browser to fully settle MIDs in the PC 
+                await new Promise(r => setTimeout(r, 100));
+                
                 broadcastMediaMids();
                 startHealthCheck();
 
@@ -744,25 +753,16 @@ export function createStreamManager(
     }
 
     async function resetSFUSession(activeLocalStream: MediaStream | null) {
-        log('SFU', 'Tearing down SFU State completely...');
-        sfuGeneration = Date.now();
-        remoteStreams.value.clear();
-        remoteSfuSessions.clear();
-        remoteSfuTracks.clear();
-        sfuTransceiverMap.clear();
-        midToParticipantMap.clear();
-        requestedRemoteTracks.clear();
-        participantTransceivers.clear();
-        participantPullAttempts.clear();
-        pendingTrackEvents.length = 0;
-        
-        Array.from(audioAnalysers.values()).forEach(entry => {
-            window.clearInterval(entry.interval);
-            entry.context.close().catch(() => {});
-        });
-        audioAnalysers.clear();
+        if (isInitializingSFU.value) {
+            log('SFU', 'Reset requested while already initializing, skipping');
+            return;
+        }
 
+        log('SFU', 'Tearing down SFU State completely...');
+        cleanup();
+        
         if (sfuPc) {
+            sfuPc.onicecandidate = null;
             sfuPc.ontrack = null;
             sfuPc.oniceconnectionstatechange = null;
             sfuPc.onconnectionstatechange = null;
@@ -771,7 +771,6 @@ export function createStreamManager(
         }
 
         sfuSessionId.value = null;
-        sfuQueue = Promise.resolve();
 
         log('SFU', 'Rebuilding SFU State...');
         await initSFU(activeLocalStream);
@@ -821,6 +820,7 @@ export function createStreamManager(
         addLocalStream,
         setLocalStream,
         initSFU,
+        resetSFUSession,
         pullParticipantTracks,
         rebroadcastToJoiner,
         replaceTrack,

@@ -18,33 +18,53 @@
             <div class="flex-1 overflow-y-auto p-6 space-y-8">
                 <!-- Configuration -->
                 <div class="grid grid-cols-2 gap-6">
-                    <div class="space-y-2">
-                        <label class="text-sm font-semibold flex items-center gap-2">
-                            <Icon name="columns" size="14" />
-                            Number of Rooms
-                        </label>
+                    <div class="space-y-4">
+                        <div class="flex items-center h-6">
+                            <label class="text-sm font-semibold flex items-center gap-2">
+                                <Icon name="columns" size="14" />
+                                Number of Rooms
+                            </label>
+                        </div>
                         <select 
                             v-model="roomCount" 
-                            class="w-full bg-(--surface-tertiary) border border-(--border-muted) rounded-xl p-3 outline-none focus:ring-2 focus:ring-(--color-primary-500)/50"
+                            class="w-full h-[50px] bg-(--surface-tertiary) border border-(--border-muted) rounded-xl px-3 outline-none focus:ring-2 focus:ring-(--color-primary-500)/50"
                         >
                             <option v-for="n in 9" :key="n+1" :value="n+1">{{ n+1 }} Rooms</option>
                         </select>
                     </div>
 
-                    <div class="space-y-2">
-                        <label class="text-sm font-semibold flex items-center gap-2">
-                            <Icon name="clock" size="14" />
-                            Duration (minutes)
-                        </label>
-                        <div class="flex items-center gap-3">
-                            <input 
-                                v-model.number="duration" 
-                                type="number" 
-                                min="1" 
-                                max="60"
-                                class="w-full bg-(--surface-tertiary) border border-(--border-muted) rounded-xl p-3 outline-none focus:ring-2 focus:ring-(--color-primary-500)/50"
-                            />
-                            <span class="text-sm text-(--text-muted)">min</span>
+                    <div class="space-y-4">
+                        <div class="flex items-center justify-between h-6">
+                            <label class="text-sm font-semibold flex items-center gap-2">
+                                <Icon name="clock" size="14" />
+                                Session Timer
+                            </label>
+                            <div 
+                                @click="hasTimer = !hasTimer"
+                                class="w-10 h-6 rounded-full p-1 cursor-pointer transition-colors relative"
+                                :class="hasTimer ? 'bg-(--color-primary-600)' : 'bg-(--border-muted)'"
+                            >
+                                <div 
+                                    class="w-4 h-4 bg-white rounded-full transition-transform"
+                                    :class="hasTimer ? 'translate-x-4' : 'translate-x-0'"
+                                ></div>
+                            </div>
+                        </div>
+                        
+                        <div class="h-[50px] flex items-center">
+                            <div v-show="hasTimer" class="flex items-center gap-3 w-full animate-in fade-in slide-in-from-top-1 duration-200">
+                                <input 
+                                    v-model.number="duration" 
+                                    type="number" 
+                                    min="1" 
+                                    max="60"
+                                    class="w-full bg-(--surface-tertiary) border border-(--border-muted) rounded-xl p-3 outline-none focus:ring-2 focus:ring-(--color-primary-500)/50"
+                                />
+                                <span class="text-sm text-(--text-muted)">min</span>
+                            </div>
+                            <div v-show="!hasTimer" class="w-full p-3 bg-(--surface-tertiary) border border-dashed border-(--border-muted) rounded-xl text-xs text-(--text-muted) text-center italic animate-in fade-in duration-200">
+                                Rooms will stay open indefinitely
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -169,6 +189,7 @@ const meetingStore = useMeetingStore();
 const loading = ref(false);
 const roomCount = ref(2);
 const duration = ref(10);
+const hasTimer = ref(true);
 const assignmentMode = ref<'auto' | 'manual'>('auto');
 
 interface Room {
@@ -247,10 +268,10 @@ async function start() {
 
         console.log('Starting breakout with payload:', {
             rooms: finalRooms,
-            duration: duration.value
+            duration: hasTimer.value ? duration.value : null
         });
 
-        await meetingStore.startBreakout(finalRooms, duration.value);
+        await meetingStore.startBreakout(finalRooms, hasTimer.value ? duration.value : 0);
         toast.success(`Breakout session started with ${finalRooms.length} rooms`);
         emit('close');
     } catch (e: any) {

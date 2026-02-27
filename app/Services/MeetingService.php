@@ -6,6 +6,7 @@ use App\Contracts\MeetingServiceContract;
 use App\Events\Meetings\MeetingParticipantAdmitted;
 use App\Events\Meetings\MeetingParticipantJoined;
 use App\Events\Meetings\MeetingSignal;
+use App\Models\BreakoutSession;
 use App\Models\Meeting;
 use App\Models\MeetingParticipant;
 use App\Models\User;
@@ -185,7 +186,10 @@ class MeetingService implements MeetingServiceContract
             ));
         }
 
-        return ['meeting' => $meeting->load(['host', 'participants.user']), 'participant' => $participant];
+        return [
+            'meeting' => $meeting->load(['host', 'participants.user', 'activeBreakoutSession']), 
+            'participant' => $participant
+        ];
     }
 
     public function admitParticipant(Meeting $meeting, MeetingParticipant $participant): MeetingParticipant
@@ -356,37 +360,184 @@ class MeetingService implements MeetingServiceContract
 
     public function startBreakout(Meeting $meeting, array $rooms, int $durationMinutes): void
     {
-        // Broadcast breakout-started signal to everyone
-        // The signal contains the assignment mapping
-        broadcast(new MeetingSignal(
-            $meeting,
-            'system',
-            'breakout-started',
-            [
-                'rooms' => $rooms,
-                'duration' => $durationMinutes,
-                'started_at' => now()->toIso8601String(),
-            ]
-        ));
+        DB::transaction(function () use ($meeting, $rooms, $durationMinutes) {
+            // Create session record
+            $session = BreakoutSession::create([
+                'meeting_id' => $meeting->id,
+                'status' => 'active',
+                'rooms_config' => $rooms,
+                'duration_minutes' => $durationMinutes,
+                'started_at' => now(),
+            ]);
+
+            // Update participant assignments
+            foreach ($rooms as $room) {
+                $roomId = (string) $room['id'];
+                foreach ($room['participants'] as $pData) {
+                    MeetingParticipant::where('meeting_id', $meeting->id)
+                        ->where('public_id', $pData['public_id'])
+                        ->update(['assigned_room_id' => $roomId]);
+                }
+            }
+
+            // Broadcast breakout-started signal to everyone
+            broadcast(new MeetingSignal(
+                $meeting,
+                'system',
+                'breakout-started',
+                [
+                    'public_id' => $session->public_id,
+                    'rooms' => $rooms,
+                    'duration' => $durationMinutes,
+                    'started_at' => $session->started_at->toIso8601String(),
+                ]
+            ));
+        });
     }
 
     public function endBreakout(Meeting $meeting): void
     {
-        broadcast(new MeetingSignal(
-            $meeting,
-            'system',
-            'breakout-ended',
-            []
-        ));
+        DB::transaction(function () use ($meeting) {
+            $session = $meeting->activeBreakoutSession;
+            if ($session) {
+                $session->update([
+                    'status' => 'ended',
+                    'ended_at' => now()
+                ]);
+            }
+
+            // Clear assignments
+            $meeting->participants()->update([
+                'assigned_room_id' => null,
+                'current_room_id' => null
+            ]);
+
+            broadcast(new MeetingSignal(
+                $meeting,
+                'system',
+                'breakout-ended',
+                []
+            ));
+        });
     }
 
     public function requestBreakoutHelp(Meeting $meeting, string $roomId): void
     {
+        $roomName = 'Room';
+        $session = $meeting->activeBreakoutSession;
+        if ($session) {
+            $room = collect($session->rooms_config)->firstWhere('id', $roomId);
+            if ($room) $roomName = $room['name'];
+        }
+
         broadcast(new MeetingSignal(
             $meeting,
             'system',
             'breakout-help-request',
-            ['room_id' => $roomId]
+            [
+                'room_id' => $roomId,
+                'room_name' => $roomName
+            ]
+        ));
+    }
+
+    public function moveParticipantToBreakout(Meeting $meeting, string $participantPublicId, ?string $targetRoomId): void
+    {
+        Log::info('Move participant request', [
+            'meeting' => $meeting->public_id,
+            'participant' => $participantPublicId,
+            'target_room' => $targetRoomId
+        ]);
+
+        $participant = $meeting->participants()
+            ->whereRaw('LOWER(public_id) = ?', [strtolower($participantPublicId)])
+            ->first();
+        if ($participant) {
+            $participant->update(['assigned_room_id' => $targetRoomId]);
+            Log::info('Participant assigned_room_id updated', [
+                'participant' => $participant->public_id,
+                'new_assigned_room_id' => $targetRoomId
+            ]);
+        }
+
+        broadcast(new MeetingSignal(
+            $meeting,
+            'system',
+            'breakout-move',
+            [
+                'target_id' => $participantPublicId,
+                'target_room_id' => $targetRoomId, // null means Main Room
+            ]
+        ));
+    }
+
+    public function updateBreakoutTimer(Meeting $meeting, int $additionalMinutes): void
+    {
+        broadcast(new MeetingSignal(
+            $meeting,
+            'system',
+            'breakout-timer-updated',
+            [
+                'additional_minutes' => $additionalMinutes,
+                'updated_at' => now()->toIso8601String(),
+            ]
+        ));
+    }
+
+    public function joinBreakoutRoom(Meeting $meeting, MeetingParticipant $participant, string $roomId): void
+    {
+        // Force refresh from database to avoid race conditions with recent moveParticipantToBreakout updates
+        $participant->refresh();
+
+        // AUTHORIZATION: Only allow if host or if assigned to this room
+        $isHost = $meeting->user_id === $participant->user_id;
+        $isAssigned = (string)$participant->assigned_room_id === (string)$roomId;
+
+        Log::info('Join breakout room attempt', [
+            'meeting' => $meeting->public_id,
+            'participant' => $participant->public_id,
+            'room_id' => $roomId,
+            'assigned_room_id' => $participant->assigned_room_id,
+            'is_host' => $isHost,
+            'is_assigned' => $isAssigned
+        ]);
+
+        if (!$isHost && !$isAssigned) {
+            abort(403, 'You are not assigned to this breakout room.');
+        }
+
+        // Update current room in DB
+        $participant->update(['current_room_id' => $roomId]);
+
+        // Broadcast move signal so everyone's local store updates participant position
+        broadcast(new MeetingSignal(
+            $meeting,
+            'system',
+            'breakout-move',
+            [
+                'target_id' => $participant->public_id,
+                'target_room_id' => $roomId
+            ]
+        ));
+
+        // Broadcast join activity message
+        $this->notifyBreakoutActivity(
+            $meeting,
+            ($participant->metadata['guest_name'] ?? ($participant->user?->name ?? 'Someone')) . " joined the room",
+            $roomId
+        );
+    }
+
+    public function notifyBreakoutActivity(Meeting $meeting, string $message, ?string $targetRoomId = null): void
+    {
+        broadcast(new MeetingSignal(
+            $meeting,
+            'system',
+            'breakout-activity',
+            [
+                'message' => $message,
+                'target_room_id' => $targetRoomId,
+            ]
         ));
     }
 }

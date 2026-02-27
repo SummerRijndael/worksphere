@@ -275,13 +275,13 @@ return [
         ],
 
         'rfi' => [
-            'enabled' => env('FIREWALL_MIDDLEWARE_RFI_ENABLED', env('FIREWALL_ENABLED', true)),
+            'enabled' => env('FIREWALL_MIDDLEWARE_RFI_ENABLED', false),
 
             'methods' => ['get', 'post', 'delete'],
 
             'routes' => [
                 'only' => [], // i.e. 'contact'
-                'except' => [], // i.e. 'admin/*'
+                'except' => ['api/analytics/*'], // i.e. 'admin/*'
             ],
 
             'inputs' => [

@@ -297,7 +297,7 @@ onMounted(() => {
             @page-change="handlePageChange"
         >
              <template #empty-actions>
-                <Button variant="outline" class="mt-4" @click="openCreateModal">
+                <Button v-if="can('clients.create')" variant="outline" class="mt-4" @click="openCreateModal">
                     Add Client
                 </Button>
             </template>

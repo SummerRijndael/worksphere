@@ -49,7 +49,7 @@ const props = defineProps({
 const emit = defineEmits(['reaction-sent']);
 
 const meetingStore = useMeetingStore();
-const popularEmojis = ['👍', '👎', '👏', '😂', '😮', '🎉', '❤️', '🤔'];
+const popularEmojis = ['👍', '👎', '👏', '😂', '😮', '🎉', '❤️', '🤔', '😢', '💯', '😱'];
 
 // Store random offsets for each reaction so they float differently
 const animationCache = new Map<string, any>();

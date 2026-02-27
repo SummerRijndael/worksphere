@@ -23,7 +23,11 @@ interface MeetingServiceContract
     
     public function generateTurnCredentials(): array;
 
-    public function startBreakout(Meeting $meeting, array $rooms, int $duration): void;
+    public function startBreakout(Meeting $meeting, array $rooms, int $durationMinutes): void;
     public function endBreakout(Meeting $meeting): void;
+    public function joinBreakoutRoom(Meeting $meeting, MeetingParticipant $participant, string $roomId): void;
     public function requestBreakoutHelp(Meeting $meeting, string $roomId): void;
+    public function moveParticipantToBreakout(Meeting $meeting, string $participantPublicId, ?string $targetRoomId): void;
+    public function updateBreakoutTimer(Meeting $meeting, int $additionalMinutes): void;
+    public function notifyBreakoutActivity(Meeting $meeting, string $message, ?string $targetRoomId = null): void;
 }

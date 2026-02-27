@@ -62,6 +62,16 @@ class Meeting extends Model
         return $this->hasMany(MeetingPoll::class);
     }
 
+    public function breakoutSessions(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(BreakoutSession::class);
+    }
+
+    public function activeBreakoutSession(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(BreakoutSession::class)->where('status', 'active');
+    }
+
     /**
      * Check whether a given MeetingParticipant is the host of this meeting.
      */
