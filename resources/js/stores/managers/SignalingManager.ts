@@ -249,6 +249,48 @@ export function createSignalingManager(
             return;
         }
 
+        if (type === 'breakout-started') {
+            log('SIGNAL', 'Breakout session started', data);
+            const { useMeetingStore } = await import('@/stores/meeting');
+            useMeetingStore().handleBreakoutStarted(data);
+            return;
+        }
+
+        if (type === 'breakout-ended') {
+            log('SIGNAL', 'Breakout session ended');
+            const { useMeetingStore } = await import('@/stores/meeting');
+            useMeetingStore().handleBreakoutEnded();
+            return;
+        }
+
+        if (type === 'breakout-help-request') {
+            log('SIGNAL', 'Breakout help requested', data);
+            const { useMeetingStore } = await import('@/stores/meeting');
+            useMeetingStore().handleBreakoutHelpRequest(data);
+            return;
+        }
+
+        if (type === 'breakout-move') {
+            log('SIGNAL', 'Breakout move signal', data);
+            const { useMeetingStore } = await import('@/stores/meeting');
+            useMeetingStore().handleBreakoutMove(data);
+            return;
+        }
+
+        if (type === 'breakout-timer-updated') {
+            log('SIGNAL', 'Breakout timer updated', data);
+            const { useMeetingStore } = await import('@/stores/meeting');
+            useMeetingStore().handleBreakoutTimerUpdated(data);
+            return;
+        }
+
+        if (type === 'breakout-activity') {
+            log('SIGNAL', 'Breakout activity', data);
+            const { useMeetingStore } = await import('@/stores/meeting');
+            useMeetingStore().handleBreakoutActivity(data);
+            return;
+        }
+
         if (type === 'request-media-info') {
             log('SIGNAL', `Participant ${normalizedSenderId} requested our media info`);
             streamManager.rebroadcastToJoiner(normalizedSenderId);
@@ -346,6 +388,36 @@ export function createSignalingManager(
         // SFU Media Signaling (ported from CallApp.vue L1414-1441)
         if (type === 'signal' && data.type === 'sfu-media-ready') {
             const { sessionId, audioMid, videoMid, screenMid } = data;
+            
+            // SECURITY/OPTIMIZATION: Only pull media if we are in the same room context
+            const localParticipant = localParticipantRef.value;
+            const myRoomId = (meetingRef.value as any)?.currentRoomId || null; // Fallback to store if available or passed via context
+            
+            // Extract sender's room from the signal if provided
+            const senderRoomId = data.current_room_id !== undefined ? (data.current_room_id === null ? null : String(data.current_room_id)) : null;
+
+            // Sync the sender's room state in our presence manager
+            if (senderRoomId !== undefined) {
+                presenceManager.upsertParticipant({
+                    public_id: normalizedSenderId,
+                    current_room_id: senderRoomId
+                });
+            }
+
+            // Room check logic
+            const { useMeetingStore } = await import('@/stores/meeting');
+            const meetingStore = useMeetingStore();
+            const myCurrentRoom = meetingStore.currentRoomId ? String(meetingStore.currentRoomId) : null;
+            
+            // Fallback: If the signal doesn't have a room ID, check what we know about this participant
+            const knownParticipant = presenceManager.participants.value.find(p => p.public_id === normalizedSenderId);
+            const effectiveSenderRoom = (senderRoomId !== null) ? senderRoomId : (knownParticipant?.current_room_id || null);
+
+            if (effectiveSenderRoom !== myCurrentRoom) {
+                log('SIGNAL', `Ignoring media-ready from ${normalizedSenderId}: participant is in a different room (${effectiveSenderRoom} vs ${myCurrentRoom}).`);
+                return;
+            }
+
             streamManager.remoteSfuSessions.set(normalizedSenderId, sessionId);
             
             // Persist MIDs for reconnection resilience (from CallApp.vue L1428-1432)
@@ -407,11 +479,12 @@ export function createSignalingManager(
         sendSignal('screen-share-toggle', { sharing, mid });
     }
 
-    function broadcastSfuMediaReady(audioMid?: string, videoMid?: string, screenMid?: string) {
+    function broadcastSfuMediaReady(audioMid?: string, videoMid?: string, screenMid?: string, roomId?: string | null) {
         sendSignal('signal', {
             type: 'sfu-media-ready',
             sessionId: streamManager.sfuSessionId.value,
-            audioMid, videoMid, screenMid
+            audioMid, videoMid, screenMid,
+            current_room_id: roomId !== undefined ? roomId : null
         });
     }
 

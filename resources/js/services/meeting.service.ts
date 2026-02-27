@@ -149,6 +149,44 @@ class MeetingService extends BaseService {
         return this.post(`/api/meetings/${id}/unlock`, {});
     }
 
+    // --- Breakout Rooms ---
+
+    async createBreakoutSession(meetingId: string, data: { rooms: any[], duration_minutes: number }) {
+        return this.post(`/api/meetings/${meetingId}/breakout-sessions`, data);
+    }
+
+    async endBreakoutSession(meetingId: string) {
+        return this.delete(`/api/meetings/${meetingId}/breakout-sessions`);
+    }
+
+    async joinBreakoutRoom(meetingId: string, roomId: string) {
+        return this.post(`/api/meetings/${meetingId}/breakout-rooms/${roomId}/join`, {});
+    }
+
+    async requestHostHelp(meetingId: string, roomId: string) {
+        return this.post(`/api/meetings/${meetingId}/breakout-rooms/${roomId}/help`, {});
+    }
+
+    async moveParticipant(meetingId: string, participantPublicId: string, targetRoomId: string | null) {
+        return this.post(`/api/meetings/${meetingId}/breakout-participant-move`, {
+            participant_public_id: participantPublicId,
+            target_room_id: targetRoomId
+        });
+    }
+
+    async updateBreakoutTimer(meetingId: string, additionalMinutes: number) {
+        return this.post(`/api/meetings/${meetingId}/breakout-timer-update`, {
+            additional_minutes: additionalMinutes
+        });
+    }
+
+    async notifyBreakoutActivity(meetingId: string, message: string, targetRoomId?: string | null) {
+        return this.post(`/api/meetings/${meetingId}/breakout-activity-notify`, {
+            message,
+            target_room_id: targetRoomId
+        });
+    }
+
     // --- SFU Protocol endpoints ---
 
     async sfuSessionNew(id: string, offer: string, tracks?: any[]): Promise<any> {

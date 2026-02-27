@@ -23,6 +23,8 @@ const showAddModal = ref(false);
 const newWhitelist = ref({
     ip_address: "",
     label: "",
+    reason: "",
+    password: "",
 });
 const submitting = ref(false);
 
@@ -39,16 +41,33 @@ const fetchWhitelistedIps = async () => {
 };
 
 const whitelistIp = async () => {
+    if (!newWhitelist.value.reason) {
+        toast.error("A reason is required for whitelisting.");
+        return;
+    }
+    if (!newWhitelist.value.password) {
+        toast.error("Password confirmation is required.");
+        return;
+    }
+
     submitting.value = true;
     try {
-        await axios.post("/api/admin/security/whitelisted-ips", newWhitelist.value);
+        await axios.post(
+            "/api/admin/security/whitelisted-ips",
+            newWhitelist.value,
+        );
         toast.success("IP Address whitelisted successfully");
         showAddModal.value = false;
-        newWhitelist.value = { ip_address: "", label: "" };
+        newWhitelist.value = {
+            ip_address: "",
+            label: "",
+            reason: "",
+            password: "",
+        };
         fetchWhitelistedIps();
         emit("updated");
     } catch (error) {
-         if (error.response?.status === 422) {
+        if (error.response?.status === 422) {
             toast.error(error.response.data.message || "Validation failed");
         } else {
             toast.error("Failed to whitelist IP");
@@ -59,7 +78,8 @@ const whitelistIp = async () => {
 };
 
 const unwhitelistIp = async (id) => {
-    if (!confirm("Are you sure you want to remove this IP from the whitelist?")) return;
+    if (!confirm("Are you sure you want to remove this IP from the whitelist?"))
+        return;
 
     try {
         await axios.delete(`/api/admin/security/whitelisted-ips/${id}`);
@@ -79,41 +99,90 @@ onMounted(() => {
 <template>
     <div class="space-y-4">
         <div class="flex justify-between items-center">
-            <h3 class="text-lg font-medium text-[var(--text-primary)]">Whitelisted IP Addresses</h3>
-            <button class="btn btn-primary flex items-center gap-2" @click="showAddModal = true">
+            <h3 class="text-lg font-medium text-[var(--text-primary)]">
+                Whitelisted IP Addresses
+            </h3>
+            <button
+                class="btn btn-primary flex items-center gap-2"
+                @click="showAddModal = true"
+            >
                 <PlusIcon class="w-4 h-4" />
                 Whitelist IP
             </button>
         </div>
 
         <div class="card overflow-hidden">
-             <div class="overflow-x-auto">
+            <div class="overflow-x-auto">
                 <table class="w-full text-left text-sm">
-                    <thead class="bg-[var(--surface-subtle)] border-b border-[var(--border-default)]">
+                    <thead
+                        class="bg-[var(--surface-subtle)] border-b border-[var(--border-default)]"
+                    >
                         <tr>
-                            <th class="px-6 py-4 font-semibold text-[var(--text-secondary)]">IP Address</th>
-                            <th class="px-6 py-4 font-semibold text-[var(--text-secondary)]">Label / Location</th>
-                            <th class="px-6 py-4 font-semibold text-[var(--text-secondary)]">Added By</th>
-                            <th class="px-6 py-4 font-semibold text-[var(--text-secondary)]">Added On</th>
-                            <th class="px-6 py-4 font-semibold text-[var(--text-secondary)] text-right">Actions</th>
+                            <th
+                                class="px-6 py-4 font-semibold text-[var(--text-secondary)]"
+                            >
+                                IP Address
+                            </th>
+                            <th
+                                class="px-6 py-4 font-semibold text-[var(--text-secondary)]"
+                            >
+                                Label / Location
+                            </th>
+                            <th
+                                class="px-6 py-4 font-semibold text-[var(--text-secondary)]"
+                            >
+                                Added By
+                            </th>
+                            <th
+                                class="px-6 py-4 font-semibold text-[var(--text-secondary)]"
+                            >
+                                Added On
+                            </th>
+                            <th
+                                class="px-6 py-4 font-semibold text-[var(--text-secondary)] text-right"
+                            >
+                                Actions
+                            </th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-[var(--border-default)]">
                         <tr v-if="loading">
-                             <td colspan="5" class="p-4 text-center text-[var(--text-tertiary)]">Loading...</td>
+                            <td
+                                colspan="5"
+                                class="p-4 text-center text-[var(--text-tertiary)]"
+                            >
+                                Loading...
+                            </td>
                         </tr>
                         <tr v-else-if="ips.length === 0">
-                             <td colspan="5" class="p-12 text-center text-[var(--text-tertiary)]">
-                                <ShieldCheckIcon class="w-16 h-16 mx-auto mb-4 opacity-50" />
+                            <td
+                                colspan="5"
+                                class="p-12 text-center text-[var(--text-tertiary)]"
+                            >
+                                <ShieldCheckIcon
+                                    class="w-16 h-16 mx-auto mb-4 opacity-50"
+                                />
                                 <p class="text-lg">No whitelisted IPs found</p>
-                                <p class="text-sm">Whitelisted IPs bypass security blocks.</p>
-                             </td>
+                                <p class="text-sm">
+                                    Whitelisted IPs bypass security blocks.
+                                </p>
+                            </td>
                         </tr>
-                        <tr v-for="ip in ips" :key="ip.id" class="hover:bg-[var(--surface-hover)] transition-colors duration-150">
-                            <td class="px-6 py-4 font-medium font-mono text-[var(--text-primary)] text-base">{{ ip.ip }}</td>
-                            <td class="px-6 py-4 text-[var(--text-secondary)]">{{ ip.label || '-' }}</td>
+                        <tr
+                            v-for="ip in ips"
+                            :key="ip.id"
+                            class="hover:bg-[var(--surface-hover)] transition-colors duration-150"
+                        >
+                            <td
+                                class="px-6 py-4 font-medium font-mono text-[var(--text-primary)] text-base"
+                            >
+                                {{ ip.ip }}
+                            </td>
                             <td class="px-6 py-4 text-[var(--text-secondary)]">
-                                {{ ip.user?.name || 'System' }}
+                                {{ ip.label || "-" }}
+                            </td>
+                            <td class="px-6 py-4 text-[var(--text-secondary)]">
+                                {{ ip.user?.name || "System" }}
                             </td>
                             <td class="px-6 py-4 text-[var(--text-secondary)]">
                                 {{ formatDate(ip.created_at) }}
@@ -130,7 +199,7 @@ onMounted(() => {
                         </tr>
                     </tbody>
                 </table>
-             </div>
+            </div>
         </div>
 
         <!-- Whitelist IP Modal -->
@@ -142,7 +211,10 @@ onMounted(() => {
         >
             <form @submit.prevent="whitelistIp" class="space-y-4">
                 <div class="form-group">
-                    <label class="block text-sm font-medium mb-1 text-[var(--text-secondary)]">IP Address</label>
+                    <label
+                        class="block text-sm font-medium mb-1 text-[var(--text-secondary)]"
+                        >IP Address</label
+                    >
                     <input
                         v-model="newWhitelist.ip_address"
                         type="text"
@@ -152,12 +224,40 @@ onMounted(() => {
                     />
                 </div>
                 <div class="form-group">
-                    <label class="block text-sm font-medium mb-1 text-[var(--text-secondary)]">Label / Note</label>
+                    <label
+                        class="block text-sm font-medium mb-1 text-[var(--text-secondary)]"
+                        >Label / Note</label
+                    >
                     <input
                         v-model="newWhitelist.label"
                         type="text"
                         class="input w-full"
                         placeholder="e.g. Head Office"
+                    />
+                </div>
+                <div class="form-group">
+                    <label
+                        class="block text-sm font-medium mb-1 text-[var(--text-secondary)]"
+                        >Reason for Whitelisting*</label
+                    >
+                    <textarea
+                        v-model="newWhitelist.reason"
+                        class="input w-full min-h-[80px]"
+                        placeholder="Please provide a reason..."
+                        required
+                    ></textarea>
+                </div>
+                <div class="form-group">
+                    <label
+                        class="block text-sm font-medium mb-1 text-[var(--text-secondary)]"
+                        >Confirm Password*</label
+                    >
+                    <input
+                        v-model="newWhitelist.password"
+                        type="password"
+                        class="input w-full"
+                        placeholder="Enter your current password"
+                        required
                     />
                 </div>
             </form>
@@ -175,7 +275,7 @@ onMounted(() => {
                     class="btn btn-primary px-6"
                     :disabled="submitting"
                 >
-                    {{ submitting ? 'Processing...' : 'Whitelist IP' }}
+                    {{ submitting ? "Processing..." : "Whitelist IP" }}
                 </button>
             </template>
         </Modal>

@@ -77,13 +77,24 @@ class AuthorizationPersona
             return true;
         }
 
+        $teamPerms = $this->resolveTeam($teamId);
+
+        return $teamPerms->contains($permission);
+    }
+
+    /**
+     * Resolve and return team permissions for the given team ID.
+     * This handles lazy-loading via the resolver if set.
+     *
+     * @return Collection<int, string>
+     */
+    public function resolveTeam(int $teamId): Collection
+    {
         // Lazily resolve team permissions if a resolver is set
-        if (!isset($this->teamPermissions[$teamId]) && $this->teamPermissionResolver) {
+        if (! isset($this->teamPermissions[$teamId]) && $this->teamPermissionResolver) {
             $this->teamPermissions[$teamId] = ($this->teamPermissionResolver)($teamId);
         }
 
-        $teamPerms = $this->teamPermissions[$teamId] ?? collect();
-
-        return $teamPerms->contains($permission);
+        return $this->teamPermissions[$teamId] ?? collect();
     }
 }

@@ -90,6 +90,18 @@
                                     <Icon name="copy" size="14" />
                                 </button>
                             </div>
+                            <div class="detail-row">
+                                <div class="detail-label">Created</div>
+                                <div class="detail-value">
+                                    {{ formatDate(meetingStore.meeting.created_at) }}
+                                </div>
+                            </div>
+                            <div class="detail-row">
+                                <div class="detail-label">Last Updated</div>
+                                <div class="detail-value">
+                                    {{ formatDate(meetingStore.meeting.updated_at) }}
+                                </div>
+                            </div>
                         </div>
 
                         <!-- Security section -->
@@ -389,7 +401,7 @@
                     leave-from-class="opacity-100 translateY-0"
                     leave-to-class="opacity-0 translateY-4"
                 >
-                    <div v-if="localCameraTile" class="pip-self-view">
+                    <div v-if="localCameraTile && shouldShowPiPSelfView" class="pip-self-view">
                         <ParticipantTile
                             :participant="localCameraTile.participant"
                             :is-screen-share="false"
@@ -399,7 +411,22 @@
                         />
                     </div>
                 </Transition>
+
+                <!-- Whiteboard Layer -->
+                <Transition
+                    enter-active-class="transition duration-300 ease-out"
+                    enter-from-class="opacity-0 scale-95"
+                    enter-to-class="opacity-100 scale-100"
+                    leave-active-class="transition duration-200 ease-in"
+                    leave-from-class="opacity-100 scale-100"
+                    leave-to-class="opacity-0 scale-95"
+                >
+                    <WhiteboardView v-if="whiteboardStore.isVisible" />
+                </Transition>
             </div>
+            <!-- Breakout Room Layer -->
+            <BreakoutOverlay v-if="meetingStore.activeBreakoutSession" />
+            <BreakoutDashboard v-if="meetingStore.activeBreakoutSession && meetingStore.isHost" />
 
             <!-- Participants Side Panel -->
             <Transition
@@ -760,7 +787,7 @@
                     <span class="info-time">{{ currentTime }}</span>
                     <span class="info-divider"></span>
                     <span class="info-code">{{
-                        meetingStore.meeting?.title || meetingId
+                        meetingStore.isInBreakout ? meetingStore.currentRoomName : (meetingStore.meeting?.title || meetingId)
                     }}</span>
                     <Transition name="fade">
                         <div
@@ -818,25 +845,28 @@
                 >
                     <Icon name="hand" size="20" />
                 </button>
-                <button
-                    class="ctrl-btn reaction-btn-unified"
-                    :class="{ 'ctrl-btn--active': showReactionPicker }"
-                    @click="showReactionPicker = !showReactionPicker"
-                    title="Reactions"
-                >
-                    <Transition name="pop">
-                        <span
-                            v-if="lastReactionEmoji"
-                            class="quick-emoji-preview"
-                            >{{ lastReactionEmoji }}</span
-                        >
-                    </Transition>
-                    <span
-                        v-if="lastReactionEmoji"
-                        class="unified-reaction-divider"
-                    ></span>
-                    <Icon name="smile" size="20" />
-                </button>
+
+                <!-- Split Reaction Button -->
+                <div class="reaction-split-wrap">
+                    <button
+                        class="reaction-quick-btn"
+                        @click="sendQuickReaction"
+                        :title="`Quick React: ${lastReactionEmoji}`"
+                    >
+                        <Transition name="pop" mode="out-in">
+                            <span :key="lastReactionEmoji" class="quick-emoji">{{ lastReactionEmoji }}</span>
+                        </Transition>
+                    </button>
+                    <button
+                        class="reaction-picker-trigger"
+                        :class="{ 'picker-open': showReactionPicker }"
+                        @click="showReactionPicker = !showReactionPicker"
+                        title="Reaction Menu"
+                    >
+                        <Icon name="chevron-up" size="14" />
+                    </button>
+                </div>
+
                 <button
                     class="ctrl-btn"
                     :class="{ 'ctrl-btn--active': isScreenSharing }"
@@ -890,39 +920,13 @@
             <!-- Right: Activity Toggles -->
             <div class="bar-section bar-section--right">
                 <button
-                    v-if="meetingStore.isHost"
-                    class="ctrl-btn lock-btn-wrap"
-                    :class="{ 'ctrl-btn--lock-active': meetingStore.isLocked }"
-                    @click="meetingStore.toggleLock()"
-                    :title="
-                        meetingStore.isLocked
-                            ? 'Unlock Meeting'
-                            : 'Lock Meeting'
-                    "
-                >
-                    <Transition name="icon-morph" mode="out-in">
-                        <Icon
-                            :key="meetingStore.isLocked ? 'lock' : 'unlock'"
-                            :name="meetingStore.isLocked ? 'lock' : 'unlock'"
-                            size="20"
-                            class="morph-icon"
-                        />
-                    </Transition>
-                </button>
-
-                <button
-                    v-if="
-                        meetingStore.isHost &&
-                        meetingStore.waitingParticipants.length > 0
-                    "
+                    v-if="meetingStore.isHost && meetingStore.waitingParticipants.length > 0"
                     class="ctrl-btn btn--alert"
                     @click="showAdmissionPanel = !showAdmissionPanel"
                     title="Waiting Room"
                 >
                     <Icon name="user-plus" size="20" />
-                    <span class="badge-count">{{
-                        meetingStore.waitingParticipants.length
-                    }}</span>
+                    <span class="badge-count">{{ meetingStore.waitingParticipants.length }}</span>
                 </button>
 
                 <button
@@ -932,10 +936,9 @@
                     title="Participants"
                 >
                     <Icon name="users" size="20" />
-                    <span class="badge-count badge-count--secondary">{{
-                        meetingStore.allParticipants.length
-                    }}</span>
+                    <span class="badge-count badge-count--secondary">{{ meetingStore.allParticipants.length }}</span>
                 </button>
+
                 <button
                     class="ctrl-btn"
                     :class="{ 'ctrl-btn--active': showChatPanel }"
@@ -944,14 +947,81 @@
                 >
                     <Icon name="message-square" size="20" />
                 </button>
-                <button
-                    class="ctrl-btn"
-                    :class="{ 'ctrl-btn--active': showPollPanel }"
-                    @click="togglePollPanel"
-                    title="Polls"
-                >
-                    <Icon name="bar-chart-2" size="20" />
-                </button>
+
+                <Menu as="div" class="activities-dropdown-wrap">
+                    <MenuButton 
+                        class="ctrl-btn" 
+                        :class="{ 'ctrl-btn--active': whiteboardStore.isVisible || showPollPanel || meetingStore.showBreakoutManager }"
+                        title="Activities"
+                    >
+                        <Icon name="grid" size="20" />
+                    </MenuButton>
+                    <transition
+                        enter-active-class="transition duration-100 ease-out"
+                        enter-from-class="transform scale-95 opacity-0"
+                        enter-to-class="transform scale-100 opacity-100"
+                        leave-active-class="transition duration-75 ease-in"
+                        leave-from-class="transform scale-100 opacity-100"
+                        leave-to-class="transform scale-95 opacity-0"
+                    >
+                        <MenuItems class="activities-menu-items">
+                            <div class="px-1 py-1">
+                                <MenuItem v-slot="{ active }">
+                                    <button
+                                        @click="togglePollPanel"
+                                        :class="[
+                                            active ? 'bg-[#3c4043] text-white' : 'text-[#e8eaed]',
+                                            'menu-action-item'
+                                        ]"
+                                    >
+                                        <Icon name="bar-chart-2" size="18" class="mr-3 text-[#9aa0a6]" />
+                                        <span>Polls</span>
+                                    </button>
+                                </MenuItem>
+                                <MenuItem v-slot="{ active }">
+                                    <button
+                                        @click="whiteboardStore.isVisible = !whiteboardStore.isVisible"
+                                        :class="[
+                                            active ? 'bg-[#3c4043] text-white' : 'text-[#e8eaed]',
+                                            'menu-action-item'
+                                        ]"
+                                    >
+                                        <Icon name="edit-3" size="18" class="mr-3 text-[#9aa0a6]" />
+                                        <span>Whiteboard</span>
+                                    </button>
+                                </MenuItem>
+                                
+                                <template v-if="meetingStore.isHost">
+                                    <div class="menu-divider"></div>
+                                    <MenuItem v-slot="{ active }">
+                                        <button
+                                            @click="meetingStore.showBreakoutManager = true"
+                                            :class="[
+                                                active ? 'bg-[#3c4043] text-white' : 'text-[#e8eaed]',
+                                                'menu-action-item'
+                                            ]"
+                                        >
+                                            <Icon name="layout-grid" size="18" class="mr-3 text-[#9aa0a6]" />
+                                            <span>Breakout Rooms</span>
+                                        </button>
+                                    </MenuItem>
+                                    <MenuItem v-slot="{ active }">
+                                        <button
+                                            @click="meetingStore.toggleLock()"
+                                            :class="[
+                                                active ? 'bg-[#3c4043] text-white' : 'text-[#e8eaed]',
+                                                'menu-action-item'
+                                            ]"
+                                        >
+                                            <Icon :name="meetingStore.isLocked ? 'lock' : 'unlock'" size="18" class="mr-3 text-[#9aa0a6]" />
+                                            <span>{{ meetingStore.isLocked ? 'Unlock Meeting' : 'Lock Meeting' }}</span>
+                                        </button>
+                                    </MenuItem>
+                                </template>
+                            </div>
+                        </MenuItems>
+                    </transition>
+                </Menu>
 
                 <MeetingLayoutSelector />
 
@@ -983,6 +1053,11 @@
             v-model:open="showSettings"
             @close="showSettings = false"
         />
+        <BreakoutManagerModal 
+            v-if="meetingStore.showBreakoutManager" 
+            @close="meetingStore.showBreakoutManager = false" 
+        />
+
         <DevSimulationTool v-if="isDevMode" v-model:show="showDevTool" />
     </div>
 </template>
@@ -993,6 +1068,7 @@ import { useRoute, useRouter } from "vue-router";
 import { meetingService } from "@/services/meeting.service";
 import { useMeetingStore } from "@/stores/meeting";
 import { useVideoCallStore } from "@/stores/videocall";
+import { useWhiteboardStore } from "@/stores/whiteboard";
 import { useBackgroundBlur } from "@/composables/useBackgroundBlur";
 import { Icon, Avatar } from "@/components/ui";
 import { toast } from "vue-sonner";
@@ -1008,6 +1084,11 @@ import MeetingPollPanel from "./components/MeetingPollPanel.vue";
 import MeetingLayoutSelector from "./components/MeetingLayoutSelector.vue";
 import ReactionOverlay from "./components/ReactionOverlay.vue";
 import ReactionVibeSummary from "./components/ReactionVibeSummary.vue";
+import WhiteboardView from "./components/WhiteboardView.vue";
+import BreakoutManagerModal from "./components/BreakoutManagerModal.vue";
+import BreakoutOverlay from "./components/BreakoutOverlay.vue";
+import BreakoutDashboard from './components/BreakoutDashboard.vue';
+import { usePresenceStore } from '@/stores/presence';
 
 // Custom v-click-outside directive
 const vClickOutside = {
@@ -1028,6 +1109,7 @@ const route = useRoute();
 const router = useRouter();
 const meetingStore = useMeetingStore();
 const videoCallStore = useVideoCallStore();
+const whiteboardStore = useWhiteboardStore();
 
 const meetingId = route.params.id as string;
 const participantId = route.query.participant as string;
@@ -1132,6 +1214,17 @@ const isDevMode = computed(() => !!import.meta.env.DEV);
 const meetingHostName = computed(
     () => meetingStore.meeting?.host?.name || "Authorized Personnel",
 );
+
+/**
+ * Smart Self-View Logic:
+ * Shows the small PIP self-view only if:
+ * 1. Camera is on
+ * 2. AND (we are screensharing OR there are other participants)
+ * This prevents seeing ourselves twice when alone (main area shows self when alone).
+ */
+const shouldShowPiPSelfView = computed(() => {
+    return isCameraOn.value && (isScreenSharing.value || participantCount.value > 1);
+});
 
 function getParticipantInitial(p: any) {
     if (!p) return "Y";
@@ -1746,7 +1839,19 @@ const endMeetingForAll = async () => {
     await meetingStore.endMeeting();
 };
 
-function copyToClipboard(text: string, label: string) {
+function formatDate(dateString: string) {
+    if (!dateString) return "N/A";
+    try {
+        return new Date(dateString).toLocaleString(undefined, {
+            dateStyle: 'medium',
+            timeStyle: 'short'
+        });
+    } catch (e) {
+        return dateString;
+    }
+}
+
+async function copyToClipboard(text: string, label: string) {
     navigator.clipboard.writeText(text);
     toast.success(`${label} copied to clipboard`);
 }
@@ -2871,30 +2976,106 @@ onBeforeUnmount(() => {
     transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-/* Reaction Button Unified Pill */
-.reaction-btn-unified {
+/* Split Reaction Button */
+.reaction-split-wrap {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 0 16px !important;
-    width: auto !important;
-    min-width: 48px;
-    border-radius: 24px !important;
-    background: rgba(255, 255, 255, 0.08) !important;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 24px;
+    padding: 2px;
+    height: 44px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
     transition: all 0.2s ease;
 }
-.reaction-btn-unified:hover {
-    background: rgba(255, 255, 255, 0.12) !important;
-    transform: scale(1.02);
+
+.reaction-split-wrap:hover {
+    background: rgba(255, 255, 255, 0.12);
 }
-.unified-reaction-divider {
-    width: 1px;
-    height: 16px;
-    background: rgba(255, 255, 255, 0.2);
+
+.reaction-quick-btn {
+    height: 40px;
+    padding: 0 12px;
+    display: flex;
+    align-items: center;
+    border-radius: 20px 0 0 20px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: background 0.15s;
 }
-.quick-emoji-preview {
+
+.reaction-quick-btn:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.reaction-picker-trigger {
+    width: 28px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0 20px 20px 0;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: #9aa0a6;
+    transition: all 0.15s;
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.reaction-picker-trigger:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: white;
+}
+
+.reaction-picker-trigger.picker-open {
+    color: #8ab4f8;
+    background: rgba(138, 180, 248, 0.1);
+}
+
+.quick-emoji {
     font-size: 18px;
     line-height: 1;
+}
+
+/* Activities Menu */
+.activities-dropdown-wrap {
+    position: relative;
+    display: inline-block;
+}
+
+.activities-menu-items {
+    position: absolute;
+    bottom: 100%;
+    right: 0;
+    margin-bottom: 16px;
+    width: 220px;
+    background: #28292c;
+    border: 1px solid #3c4043;
+    border-radius: 12px;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
+    z-index: 50;
+    outline: none;
+    overflow: hidden;
+}
+
+.menu-action-item {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 12px 16px;
+    font-size: 14px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s;
+}
+
+.menu-divider {
+    height: 1px;
+    background: #3c4043;
+    margin: 4px 8px;
 }
 
 /* Blended Badge - Premium Glass Style */
@@ -3277,42 +3458,117 @@ onBeforeUnmount(() => {
 }
 
 /* ─── Responsive ───────────────────────────────────────────────────────────── */
-@media (max-width: 768px) {
-    .gmeet-topbar {
-        padding: 0 12px;
-        height: 48px;
+/* ─── Mobile Responsiveness ─────────────────────────────────────────── */
+@media (max-width: 1024px) {
+    .meeting-info-pill {
+        padding: 0 8px;
     }
-    .topbar-center {
+    .info-code {
         display: none;
     }
+}
+
+@media (max-width: 768px) {
+    .app-bottom-bar {
+        padding: 0 12px;
+        height: 72px;
+    }
+    
+    .meeting-info-pill {
+        display: none;
+    }
+    
+    .bar-section {
+        gap: 6px;
+    }
+    
+    .ctrl-btn {
+        width: 40px;
+        height: 40px;
+    }
+    
+    .ctrl-btn--hangup {
+        width: 48px;
+    }
+    
+    .reaction-split-wrap {
+        height: 40px;
+    }
+    
+    .reaction-quick-btn {
+        height: 36px;
+        padding: 0 8px;
+    }
+    
+    .reaction-picker-trigger {
+        width: 24px;
+        height: 36px;
+    }
+    
+    .activities-menu-items {
+        width: 180px;
+    }
+
     .side-panel {
         width: 100%;
         position: absolute;
         right: 0;
         top: 0;
         bottom: 0;
+        border-radius: 0;
+        z-index: 150;
     }
+
     .pip-self-view {
-        width: 140px;
-        bottom: 12px;
+        width: 130px;
+        bottom: 84px; /* Above control bar */
         right: 12px;
     }
+}
+
+@media (max-width: 480px) {
+    .app-bottom-bar {
+        height: 64px;
+        padding: 0 8px;
+    }
+    
+    .bar-section--center {
+        gap: 4px;
+        flex: 2;
+    }
+    
     .ctrl-btn {
-        width: 42px;
-        height: 42px;
+        width: 36px;
+        height: 36px;
     }
+    
     .ctrl-btn--hangup {
-        width: 50px;
+        width: 44px;
     }
-    .controls-center {
-        gap: 8px;
-        padding: 6px 14px;
+    
+    .reaction-split-wrap {
+        height: 36px;
     }
-    .filmstrip {
-        height: 90px;
+    
+    .reaction-quick-btn {
+        height: 32px;
+        padding: 0 6px;
     }
-    .filmstrip-tile {
-        width: 140px;
+    
+    .reaction-picker-trigger {
+        width: 20px;
+        height: 32px;
+    }
+    
+    .bar-section--right {
+        gap: 4px;
+        flex: 1;
+        justify-content: flex-end;
+    }
+
+    /* Hide less critical items on very small screens to avoid overlap */
+    .bar-section--right .MeetingLayoutSelector {
+        display: none;
     }
 }
 </style>

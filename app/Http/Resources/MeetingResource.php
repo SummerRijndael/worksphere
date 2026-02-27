@@ -33,6 +33,7 @@ class MeetingResource extends JsonResource
                 ];
             }),
             'participants' => MeetingParticipantResource::collection($this->whenLoaded('participants')),
+            'active_breakout_session' => $this->activeBreakoutSession,
         ];
     }
 }

@@ -62,6 +62,22 @@ class Meeting extends Model
         return $this->hasMany(MeetingPoll::class);
     }
 
+    public function breakoutSessions(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(BreakoutSession::class);
+    }
+
+    public function activeBreakoutSession(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(BreakoutSession::class)
+            ->where('status', 'active')
+            ->where(function ($query) {
+                // Return if NO duration is set (infinite) OR if duration + 1 min grace has not passed
+                $query->whereNull('duration_minutes')
+                    ->orWhereRaw('DATE_ADD(started_at, INTERVAL duration_minutes + 1 MINUTE) > ?', [now()]);
+            });
+    }
+
     /**
      * Check whether a given MeetingParticipant is the host of this meeting.
      */

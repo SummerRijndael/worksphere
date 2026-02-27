@@ -269,7 +269,18 @@ class SecurityDashboardController extends Controller
         $validated = $request->validate([
             'ip_address' => 'required|ip',
             'label' => 'nullable|string|max:100',
+            'reason' => 'required|string|max:255',
+            'password' => 'required|string',
         ]);
+
+        if (! \Illuminate\Support\Facades\Hash::check($validated['password'], $request->user()->password)) {
+            return response()->json([
+                'message' => 'The provided password does not match our records.',
+                'errors' => [
+                    'password' => ['The provided password does not match our records.'],
+                ],
+            ], 422);
+        }
 
         if (FirewallIp::where('ip', $validated['ip_address'])->where('blocked', 0)->exists()) {
             return response()->json(['message' => 'IP already whitelisted.'], 422);
@@ -279,8 +290,19 @@ class SecurityDashboardController extends Controller
             'ip' => $validated['ip_address'],
             'blocked' => 0,
             'label' => $validated['label'],
-            'user_id' => $request->user()?->id,
+            'reason' => $validated['reason'],
+            'user_id' => $request->user()->id,
         ]);
+
+        app(\App\Services\AuditService::class)->log(
+            \App\Enums\AuditAction::Created,
+            \App\Enums\AuditCategory::Security,
+            $whitelisted,
+            $request->user(),
+            null,
+            $whitelisted->toArray(),
+            ['ip' => $whitelisted->ip, 'reason' => $whitelisted->reason]
+        );
 
         return response()->json([
             'message' => 'IP address added to whitelist successfully',
