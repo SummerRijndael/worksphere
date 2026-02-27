@@ -1,4 +1,6 @@
 import '../css/app.css';
+import { logManager } from './utils/LogManager';
+logManager.init();
 // import './echo'; // Initialize WebSocket connection - MOVED to auth store on-demand
 import { createApp } from 'vue';
 import type { App as VueApp } from 'vue';

@@ -91,7 +91,11 @@
                         class="control-btn bg-slate-700 hover:bg-slate-600 rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-105 active:scale-95"
                         title="Device settings"
                     >
-                        <Icon name="settings" size="20" class="sm:size-6 text-white" />
+                        <Icon
+                            name="settings"
+                            size="20"
+                            class="sm:size-6 text-white"
+                        />
                     </button>
                 </div>
             </div>
@@ -102,14 +106,29 @@
             >
                 <!-- Meeting Ended State -->
                 <template v-if="meeting?.status === 'ended' || isEndedQuery">
-                    <div class="w-full mb-8 pt-6 pb-8 px-6 bg-slate-800/80 border border-slate-700/80 rounded-2xl flex flex-col items-center shadow-lg">
-                        <div class="w-16 h-16 bg-slate-700 text-slate-300 rounded-full flex items-center justify-center mb-6 shadow-inner cursor-not-allowed">
-                            <Icon name="phone-off" size="32" class="opacity-80" />
+                    <div
+                        class="w-full mb-8 pt-6 pb-8 px-6 bg-slate-800/80 border border-slate-700/80 rounded-2xl flex flex-col items-center shadow-lg"
+                    >
+                        <div
+                            class="w-16 h-16 bg-slate-700 text-slate-300 rounded-full flex items-center justify-center mb-6 shadow-inner cursor-not-allowed"
+                        >
+                            <Icon
+                                name="phone-off"
+                                size="32"
+                                class="opacity-80"
+                            />
                         </div>
-                        <h2 class="text-xl font-bold text-white mb-2">Meeting has Ended</h2>
-                        <p class="text-slate-400 text-sm">The host has ended this meeting for everyone.</p>
+                        <h2 class="text-xl font-bold text-white mb-2">
+                            Meeting has Ended
+                        </h2>
+                        <p class="text-slate-400 text-sm">
+                            The host has ended this meeting for everyone.
+                        </p>
                     </div>
-                    <router-link to="/" class="w-full bg-slate-800 hover:bg-slate-700 text-white px-6 py-4 rounded-xl font-medium transition-colors flex items-center justify-center border border-slate-700">
+                    <router-link
+                        to="/"
+                        class="w-full bg-slate-800 hover:bg-slate-700 text-white px-6 py-4 rounded-xl font-medium transition-colors flex items-center justify-center border border-slate-700"
+                    >
                         <Icon name="home" size="20" class="mr-2" />
                         Return to Home
                     </router-link>
@@ -127,20 +146,39 @@
                         {{ meeting?.title || "Loading meeting details..." }}
                     </p>
 
-                    <div v-if="authStore.isAuthenticated" class="w-full mb-6 py-3 px-4 bg-slate-800/50 border border-slate-700/50 rounded-lg flex items-center justify-between text-left">
+                    <div
+                        v-if="authStore.isAuthenticated"
+                        class="w-full mb-6 py-3 px-4 bg-slate-800/50 border border-slate-700/50 rounded-lg flex items-center justify-between text-left"
+                    >
                         <div class="flex items-center gap-3">
-                            <img v-if="authStore.user?.avatar_url" :src="authStore.user.avatar_url" class="w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-slate-600" />
-                            <div v-else class="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-sm sm:text-base">
+                            <img
+                                v-if="authStore.user?.avatar_url"
+                                :src="authStore.user.avatar_url"
+                                class="w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-slate-600"
+                            />
+                            <div
+                                v-else
+                                class="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-sm sm:text-base"
+                            >
                                 {{ authStore.user?.name?.[0]?.toUpperCase() }}
                             </div>
                             <div>
-                                <p class="text-sm font-medium text-white">{{ authStore.user?.name }}</p>
-                                <p class="text-[11px] sm:text-xs text-slate-500">Joining as yourself</p>
+                                <p class="text-sm font-medium text-white">
+                                    {{ authStore.user?.name }}
+                                </p>
+                                <p
+                                    class="text-[11px] sm:text-xs text-slate-500"
+                                >
+                                    Joining as yourself
+                                </p>
                             </div>
                         </div>
                     </div>
 
-                    <div v-if="!authStore.isAuthenticated" class="w-full space-y-3 mb-4">
+                    <div
+                        v-if="!authStore.isAuthenticated"
+                        class="w-full space-y-3 mb-4"
+                    >
                         <input
                             v-model="guestName"
                             placeholder="Enter your name"
@@ -154,7 +192,12 @@
                             class="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
                             @keyup.enter="joinMeeting"
                         />
-                        <p v-if="guestEmailError" class="text-xs text-red-400 text-left">{{ guestEmailError }}</p>
+                        <p
+                            v-if="guestEmailError"
+                            class="text-xs text-red-400 text-left"
+                        >
+                            {{ guestEmailError }}
+                        </p>
                     </div>
 
                     <!-- Password input: shown only for non-hosts when meeting is password protected -->
@@ -162,7 +205,8 @@
                         v-if="meeting?.has_password && !isHost"
                         class="w-full mb-6"
                     >
-                        <label class="block text-xs text-slate-500 mb-1.5 text-left"
+                        <label
+                            class="block text-xs text-slate-500 mb-1.5 text-left"
                             >Meeting password</label
                         >
                         <input
@@ -174,12 +218,17 @@
                         />
                     </div>
 
-                    <div class="flex flex-col sm:flex-row gap-3 sm:gap-4 w-full">
+                    <div
+                        class="flex flex-col sm:flex-row gap-3 sm:gap-4 w-full"
+                    >
                         <button
                             @click="joinMeeting"
                             :disabled="
                                 joining ||
-                                (!authStore.isAuthenticated && (!guestName.trim() || !guestEmail.trim() || !!guestEmailError)) ||
+                                (!authStore.isAuthenticated &&
+                                    (!guestName.trim() ||
+                                        !guestEmail.trim() ||
+                                        !!guestEmailError)) ||
                                 (meeting?.has_password &&
                                     !isHost &&
                                     !password.trim())
@@ -199,7 +248,10 @@
                             @click="joinAndPresent"
                             :disabled="
                                 joining ||
-                                (!authStore.isAuthenticated && (!guestName.trim() || !guestEmail.trim() || !!guestEmailError)) ||
+                                (!authStore.isAuthenticated &&
+                                    (!guestName.trim() ||
+                                        !guestEmail.trim() ||
+                                        !!guestEmailError)) ||
                                 (meeting?.has_password &&
                                     !isHost &&
                                     !password.trim())
@@ -207,13 +259,33 @@
                             class="flex-1 bg-transparent hover:bg-slate-800 text-blue-400 px-6 py-3 rounded-full font-medium transition-colors border border-slate-700 min-h-[48px] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center text-sm sm:text-base"
                             title="Join meeting and start presenting"
                         >
-                            <Icon name="monitor-up" size="18" class="inline mr-2" />
+                            <Icon
+                                name="monitor-up"
+                                size="18"
+                                class="inline mr-2"
+                            />
                             Present
                         </button>
                     </div>
 
-                    <div class="mt-8 text-sm text-slate-500">
-                        <p>Other joining options (audio only)</p>
+                    <div class="mt-8 pt-8 border-t border-slate-800/50 w-full">
+                        <p class="text-[10px] uppercase tracking-widest text-slate-600 font-bold mb-4">Diagnostics</p>
+                        <button 
+                            @click="showLogs = true"
+                            class="w-full group flex items-center justify-between p-3 bg-slate-800/30 hover:bg-slate-800/60 border border-slate-700/30 rounded-xl text-slate-400 hover:text-white transition-all text-xs"
+                        >
+                            <div class="flex items-center gap-3">
+                                <div class="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-400 group-hover:scale-110 transition-transform">
+                                    <Icon name="terminal" size="16" />
+                                </div>
+                                <span>System Logs</span>
+                            </div>
+                            <Icon name="chevron-right" size="14" class="opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </button>
+                    </div>
+
+                    <div class="mt-6 text-xs text-slate-600">
+                        <p>Having trouble joining? Open logs to see technical details.</p>
                     </div>
                 </template>
             </div>
@@ -224,6 +296,7 @@
             v-model:open="showSettings"
             @close="showSettings = false"
         />
+        <RemoteLogModal v-model:open="showLogs" />
     </div>
 </template>
 
@@ -238,6 +311,8 @@ import { useBackgroundBlur } from "@/composables/useBackgroundBlur";
 import DeviceSettingsModal from "./components/DeviceSettingsModal.vue";
 import { Icon } from "@/components/ui";
 import { toast } from "vue-sonner";
+import { logManager } from "@/utils/LogManager";
+import RemoteLogModal from "./components/RemoteLogModal.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -249,7 +324,7 @@ const meetingId = route.params.id as string;
 const meeting = ref<Meeting | null>(null);
 const loading = ref(true);
 const joining = ref(false);
-const isEndedQuery = computed(() => route.query.ended === '1');
+const isEndedQuery = computed(() => route.query.ended === "1");
 
 const localVideo = ref<HTMLVideoElement | null>(null);
 const localStream = ref<MediaStream | null>(null);
@@ -261,6 +336,10 @@ const guestEmail = ref("");
 const guestEmailError = ref("");
 const password = ref("");
 const showSettings = ref(false);
+const showLogs = ref(false);
+
+// Initialize remote logging
+logManager.init();
 
 // Host detection: compare user public_id (string) to meeting host public_id.
 // Avoids number/string type-mismatch issues with user_id comparisons.
@@ -279,8 +358,10 @@ onMounted(async () => {
         meeting.value = await meetingService.getMeeting(meetingId);
         // Do NOT acquire camera/mic here — we only do it on explicit toggle.
         // This prevents the camera indicator light from turning on immediately.
-        
-        const savedPwd = localStorage.getItem(`worksphere_meeting_pwd_${meetingId}`);
+
+        const savedPwd = localStorage.getItem(
+            `worksphere_meeting_pwd_${meetingId}`,
+        );
         if (savedPwd) {
             password.value = savedPwd;
         }
@@ -453,7 +534,11 @@ watch(
         () => videoCallStore.autoFraming,
     ],
     async ([effect, bgImage, framing]) => {
-        if (!isCameraOn.value || !meetingStore.originalVideoTrack || !localStream.value)
+        if (
+            !isCameraOn.value ||
+            !meetingStore.originalVideoTrack ||
+            !localStream.value
+        )
             return;
 
         try {
@@ -586,14 +671,29 @@ const joinMeeting = async () => {
             query: { participant: res.participant.public_id },
         });
     } catch (e: any) {
-        console.error("Failed to join meeting", e);
+        console.error("[LOBBY-TRACE] Join failure diagnostic:", {
+            error: e.message,
+            status: e?.response?.status,
+            data: e?.response?.data,
+            userAgent: navigator.userAgent,
+            stack: e.stack,
+        });
         if (e?.response?.status === 403) {
-            const msg = e?.response?.data?.message || 'Incorrect meeting password.';
+            const msg =
+                e?.response?.data?.message || "Incorrect meeting password.";
             toast.error(msg);
         } else if (e?.response?.status === 401) {
             toast.error("You are not authorized to join this meeting.");
         } else {
-            toast.error("An error occurred while joining the meeting.");
+            const status = e?.response?.status ? ` (${e.response.status})` : "";
+            const detail = e?.response?.data?.message || e.message || "Unknown error";
+            toast.error(`Failed to join${status}: ${detail}`, {
+                duration: 6000,
+                action: {
+                    label: "View Logs",
+                    onClick: () => (showLogs.value = true),
+                },
+            });
         }
         joining.value = false;
     }
@@ -628,17 +728,25 @@ const joinAndPresent = async () => {
         router.push({
             name: "meeting-room",
             params: { id: meetingId },
-            query: { participant: res.participant.public_id, present: '1' },
+            query: { participant: res.participant.public_id, present: "1" },
         });
     } catch (e: any) {
         console.error("Failed to join meeting", e);
         if (e?.response?.status === 403) {
-            const msg = e?.response?.data?.message || 'Access denied.';
+            const msg = e?.response?.data?.message || "Access denied.";
             toast.error(msg);
         } else if (e?.response?.status === 401) {
             toast.error("You are not authorized to join this meeting.");
         } else {
-            toast.error("An error occurred while joining the meeting.");
+            const status = e?.response?.status ? ` (${e.response.status})` : "";
+            const detail = e?.response?.data?.message || e.message || "Unknown error";
+            toast.error(`Failed to join${status}: ${detail}`, {
+                duration: 6000,
+                action: {
+                    label: "View Logs",
+                    onClick: () => (showLogs.value = true),
+                },
+            });
         }
         joining.value = false;
     }

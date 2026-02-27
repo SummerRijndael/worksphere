@@ -211,17 +211,21 @@ export function createStreamManager(
             sender_participant_public_id: localParticipantRef.value.public_id,
             signal_type: 'signal',
             signal_data: {
+                type: 'sfu-media-ready', // CRITICAL: Added type so receiver recognizes this signal
                 current_room_id: currentRoomIdRef.value,
                 sessionId: sfuSessionId.value,
                 audioMid,
                 videoMid,
-                screenMid // Ensure screenMid is also shared
+                screenMid
             },
             target_participant_public_id: joinerPublicId,
         }).catch(() => {});
 
         // Also notify about active screen share explicitly if it exists
         if (screenMid) {
+            // Ensure local presence state is synced for the UI
+            (window as any).meetingPresence?.toggleScreenShareState(localParticipantRef.value.public_id, true);
+            
             meetingService.sendSignal(meetingRef.value!.public_id, {
                 sender_participant_public_id: localParticipantRef.value.public_id,
                 signal_type: 'screen-share-toggle',
@@ -681,69 +685,96 @@ export function createStreamManager(
     async function publishScreenTrack(screenStream: MediaStream): Promise<{ mid: string } | null> {
         if (!sfuPc || !sfuSessionId.value) return null;
 
-        log('MEDIA', `Publishing screen share track`);
+        log('MEDIA', `Publishing screen share track (Queued)`);
 
-        let screenTc = sfuPc.getTransceivers().find(t => sfuTransceiverMap.get(t)?.trackName === 'screen' && sfuTransceiverMap.get(t)?.participantId === (localParticipantRef.value?.public_id || 'self'));
-        
-        const videoTrack = screenStream.getVideoTracks()[0];
-        
-        if (!screenTc) {
-            log('MEDIA', `Creating new transceiver for screen share`);
-            screenTc = sfuPc.addTransceiver(videoTrack, {
-                direction: 'sendonly',
-                streams: [screenStream],
-                sendEncodings: [
-                    { rid: "h", active: true, maxBitrate: 2500000, scaleResolutionDownBy: 1 }
-                ]
-            });
-            sfuTransceiverMap.set(screenTc, { participantId: localParticipantRef.value?.public_id || 'self', trackName: 'screen' });
+        return runInSFUQueue(async () => {
+            if (!sfuPc || !sfuSessionId.value) return null;
+
+            let screenTc = sfuPc.getTransceivers().find(t => 
+                sfuTransceiverMap.get(t)?.trackName === 'screen' && 
+                sfuTransceiverMap.get(t)?.participantId === (localParticipantRef.value?.public_id || 'self')
+            );
             
-            // Renegotiate with SFU for NEW transceiver
-            const offer = await sfuPc.createOffer();
-            await sfuPc.setLocalDescription(offer);
+            const videoTrack = screenStream.getVideoTracks()[0];
+            const maxRetries = 5;
+            let attempt = 0;
 
-            try {
-                const res = await meetingService.sfuSessionTracks(
-                    meetingRef.value!.public_id,
-                    sfuSessionId.value!,
-                    [{ location: "local", mid: screenTc.mid, trackName: "screen" }],
-                    mungeSdp(sfuPc.localDescription!.sdp)
-                );
-                await sfuPc.setRemoteDescription(toSdpAnswer(res.sessionDescription));
-                broadcastMediaMids();
-                return { mid: screenTc.mid || '' };
-            } catch (error: any) {
-                if (error?.response?.status === 406) {
-                    log('ERROR', '406 Not Acceptable during publish screen track. Rescuing.');
-                    await handleSFU406Rescue();
-                } else {
-                    log('ERROR', 'Failed to publish screen track', error);
+            const executePublish = async (): Promise<{ mid: string } | null> => {
+                attempt++;
+                try {
+                    if (!screenTc) {
+                        log('MEDIA', `Creating new transceiver for screen share (Attempt ${attempt})`);
+                        screenTc = sfuPc!.addTransceiver(videoTrack, {
+                            direction: 'sendonly',
+                            streams: [screenStream],
+                            sendEncodings: [
+                                { rid: "h", active: true, maxBitrate: 2500000, scaleResolutionDownBy: 1 }
+                            ]
+                        });
+                        sfuTransceiverMap.set(screenTc, { participantId: localParticipantRef.value?.public_id || 'self', trackName: 'screen' });
+                        
+                        // Renegotiate with SFU for NEW transceiver
+                        const offer = await sfuPc!.createOffer();
+                        await sfuPc!.setLocalDescription(offer);
+
+                        const res = await meetingService.sfuSessionTracks(
+                            meetingRef.value!.public_id,
+                            sfuSessionId.value!,
+                            [{ location: "local", mid: screenTc.mid, trackName: "screen" }],
+                            mungeSdp(sfuPc!.localDescription!.sdp)
+                        );
+                        await sfuPc!.setRemoteDescription(toSdpAnswer(res.sessionDescription));
+                        broadcastMediaMids();
+                        return { mid: screenTc.mid || '' };
+                    } else {
+                        log('MEDIA', `Reusing inactive screen transceiver (Attempt ${attempt})`);
+                        await screenTc.sender.replaceTrack(videoTrack);
+                        broadcastMediaMids();
+                        return { mid: screenTc.mid || '' };
+                    }
+                } catch (error: any) {
+                    const isTooEarly = error?.response?.status === 425 || error?.message?.includes('425');
+                    
+                    if (isTooEarly && attempt < maxRetries) {
+                        const delay = 500 * attempt;
+                        log('SFU', `Backend reported 425 (Too Early) on publish attempt ${attempt}. Retrying in ${delay}ms...`);
+                        await new Promise(r => setTimeout(r, delay));
+                        return executePublish();
+                    }
+
+                    if (error?.response?.status === 406) {
+                        log('ERROR', '406 Not Acceptable during publish screen track. Rescuing.');
+                        await handleSFU406Rescue();
+                    } else {
+                        log('ERROR', `Failed to publish screen track after ${attempt} attempts`, error);
+                    }
+                    return null;
                 }
-                return null;
-            }
-        } else {
-            log('MEDIA', `Reusing inactive screen transceiver`);
-            // We consciously avoided setting direction to 'inactive' in unpublishScreenTrack,
-            // so it should already be 'sendonly'. We just need to inject the new track.
-            await screenTc.sender.replaceTrack(videoTrack);
-            
-            // Because the track is just a hot-swap on an existing sendonly transceiver,
-            // we DO NOT need to renegotiate SDP or call sfuSessionTracks.
-            broadcastMediaMids();
-            return { mid: screenTc.mid || '' };
-        }
+            };
+
+            return executePublish();
+        });
     }
 
     async function unpublishScreenTrack() {
         if (!sfuPc || !sfuSessionId.value) return;
 
-        const screenTc = sfuPc.getTransceivers().find(t => sfuTransceiverMap.get(t)?.trackName === 'screen' && sfuTransceiverMap.get(t)?.participantId === (localParticipantRef.value?.public_id || 'self'));
-        
-        if (screenTc) {
-            log('MEDIA', 'Unpublishing screen track natively');
-            await screenTc.sender.replaceTrack(null);
-            // We consciously avoid re-negotiating transceivers to INACTIVE here to prevent Cloudflare 406 errors.
-        }
+        log('MEDIA', 'Unpublishing screen track (Queued)');
+
+        return runInSFUQueue(async () => {
+            if (!sfuPc || !sfuSessionId.value) return;
+
+            const screenTc = sfuPc.getTransceivers().find(t => 
+                sfuTransceiverMap.get(t)?.trackName === 'screen' && 
+                sfuTransceiverMap.get(t)?.participantId === (localParticipantRef.value?.public_id || 'self')
+            );
+            
+            if (screenTc) {
+                log('MEDIA', 'Unpublishing screen track natively');
+                await screenTc.sender.replaceTrack(null);
+                // We avoid re-negotiating to INACTIVE to prevent 406 errors
+            }
+        });
     }
 
     async function handleSFU406Rescue() {

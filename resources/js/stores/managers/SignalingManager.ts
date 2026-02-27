@@ -488,12 +488,18 @@ export function createSignalingManager(
         });
     }
 
+    function broadcastRequestMediaInfo() {
+        log('SIGNAL', 'Broadcasting proactive media info request to all participants');
+        sendSignal('request-media-info', {});
+    }
+
     return {
         setupSignaling,
         leaveSignaling,
         sendSignal,
         broadcastHandState,
         broadcastScreenShareState,
-        broadcastSfuMediaReady
+        broadcastSfuMediaReady,
+        broadcastRequestMediaInfo
     };
 }

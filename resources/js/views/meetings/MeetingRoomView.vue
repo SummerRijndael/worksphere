@@ -2206,7 +2206,7 @@ onBeforeUnmount(() => {
     flex: 1;
     display: flex;
     flex-direction: column;
-    padding: 16px 16px 90px 16px; /* Extra padding at bottom for absolute floating controls */
+    padding: 16px 16px 24px 16px; /* Reduced buffer: keeps content centered while allowing PiP overlap */
     gap: 8px;
     position: relative;
     min-width: 0;

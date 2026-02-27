@@ -102,6 +102,10 @@ export const useMeetingStore = defineStore('meeting', () => {
         async () => {
             // onAdmitted callback: initialize WebRTC when host lets them in
             stream.initSFU(stream.localStream.value);
+            
+            // Proactively ask everyone to re-send their media info to us
+            signaling.broadcastRequestMediaInfo();
+
             // Fetch any polls that were already created before we joined
             if (meeting.value?.public_id) {
                 try {
