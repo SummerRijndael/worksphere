@@ -133,10 +133,19 @@ class EmailAccountService
             return;
         }
 
+        $blockedRanges = [
+            '::ffff:0:0/96', // IPv4-mapped IPv6
+            '64:ff9b::/96', // NAT64
+        ];
+
         // 1. Check if it's an IP address
         if (filter_var($host, FILTER_VALIDATE_IP)) {
             if (! filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
                 throw new \Exception('Access to private IP addresses is not allowed.');
+            }
+
+            if (\Symfony\Component\HttpFoundation\IpUtils::checkIp($host, $blockedRanges)) {
+                throw new \Exception('Access to blocked IP ranges is not allowed.');
             }
 
             return;
@@ -157,6 +166,9 @@ class EmailAccountService
         foreach ($ips as $ip) {
             if (! filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
                 throw new \Exception('Host resolves to a private IP address. Access denied.');
+            }
+            if (\Symfony\Component\HttpFoundation\IpUtils::checkIp($ip, $blockedRanges)) {
+                throw new \Exception('Host resolves to a blocked IP address. Access denied.');
             }
         }
     }
