@@ -125,9 +125,10 @@ const isLocal = computed(() => {
 });
 
 const streamIdLookup = computed(() => {
+    const pid = props.participant.public_id?.toLowerCase() || '';
     return props.isScreenShare
-        ? `${props.participant.public_id}:screen`
-        : props.participant.public_id;
+        ? `${pid}:screen`
+        : pid;
 });
 
 const activeStream = computed(() => {

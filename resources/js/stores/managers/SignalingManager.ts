@@ -117,8 +117,10 @@ export function createSignalingManager(
 
     async function handleSignal(senderId: string, type: string, data: any) {
         const normalizedSenderId = senderId.toLowerCase();
-        if (!localParticipantRef.value || normalizedSenderId === localParticipantRef.value.public_id) {
-            // Ignore own signals
+        const myId = localParticipantRef.value?.public_id?.toLowerCase();
+        
+        // Ignore own signals (by ID or if it's our current SFU session)
+        if (!localParticipantRef.value || normalizedSenderId === myId || (data?.sessionId === streamManager.sfuSessionId.value)) {
             return;
         }
         
@@ -319,8 +321,9 @@ export function createSignalingManager(
             const { useMeetingStore } = await import('@/stores/meeting');
             const meetingStore = useMeetingStore();
             // senderId comes from the outer MeetingSignal envelope — always correct
+            // Use normalized ID for consistency
             meetingStore.receiveReaction({
-                publicId: senderId,
+                publicId: normalizedSenderId,
                 emoji: data.emoji
             });
             return;
@@ -332,7 +335,7 @@ export function createSignalingManager(
 
             const { useMeetingStore } = await import('@/stores/meeting');
             useMeetingStore().handleLaserMove({
-                participant_id: senderId,
+                participant_id: normalizedSenderId,
                 target_participant_id: data.target_participant_id,
                 x: data.x,
                 y: data.y,
@@ -418,22 +421,36 @@ export function createSignalingManager(
                 return;
             }
 
+            const oldSessionId = streamManager.remoteSfuSessions.get(normalizedSenderId);
             streamManager.remoteSfuSessions.set(normalizedSenderId, sessionId);
             
-            // Persist MIDs for reconnection resilience (from CallApp.vue L1428-1432)
-            if (audioMid || videoMid) {
-                streamManager.remoteSfuTracks.set(normalizedSenderId, {
-                    audioMid,
-                    videoMid,
-                });
+            // Merge MIDs for reconnection resilience
+            // CRITICAL: If the sessionId changed, existing MIDs are for a dead session. Clear them.
+            let existingTracks = streamManager.remoteSfuTracks.get(normalizedSenderId) || {};
+            if (oldSessionId && oldSessionId !== sessionId) {
+                log('SIGNAL', `Session ID changed for ${normalizedSenderId} (${oldSessionId} -> ${sessionId}). Clearing stale MIDs.`);
+                existingTracks = {};
             }
+
+            const updatedTracks = {
+                ...existingTracks,
+                ...(audioMid !== undefined ? { audioMid } : {}),
+                ...(videoMid !== undefined ? { videoMid } : {}),
+                ...(screenMid !== undefined ? { screenMid } : {}),
+            };
+            streamManager.remoteSfuTracks.set(normalizedSenderId, updatedTracks);
             
             // Late joiner sync for screenshares
-            if (screenMid) {
+            if (screenMid || updatedTracks.screenMid) {
                  presenceManager.toggleScreenShareState(normalizedSenderId, true);
             }
             
-            streamManager.pullParticipantTracks(normalizedSenderId, sessionId, audioMid, videoMid, screenMid);
+            // ONLY pull if we actually have something to pull
+            if (audioMid || videoMid || screenMid || updatedTracks.audioMid || updatedTracks.videoMid || updatedTracks.screenMid) {
+                streamManager.pullParticipantTracks(normalizedSenderId, sessionId, audioMid, videoMid, screenMid);
+            } else {
+                log('SIGNAL', `Ignoring media-ready from ${normalizedSenderId}: no track MIDs provided yet.`);
+            }
         }
     }
 
@@ -488,12 +505,18 @@ export function createSignalingManager(
         });
     }
 
+    function broadcastRequestMediaInfo() {
+        log('SIGNAL', 'Broadcasting proactive media info request to all participants');
+        sendSignal('request-media-info', {});
+    }
+
     return {
         setupSignaling,
         leaveSignaling,
         sendSignal,
         broadcastHandState,
         broadcastScreenShareState,
-        broadcastSfuMediaReady
+        broadcastSfuMediaReady,
+        broadcastRequestMediaInfo
     };
 }

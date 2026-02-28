@@ -869,11 +869,11 @@
 
                 <button
                     class="ctrl-btn"
-                    :class="{ 'ctrl-btn--active': isScreenSharing }"
+                    :class="{ 'ctrl-btn--sharing': isScreenSharing }"
                     @click="toggleScreenShare"
                     :title="screenShareToggleTitle"
                 >
-                    <Icon name="monitor" size="20" />
+                    <Icon :name="isScreenSharing ? 'monitor' : 'monitor'" size="20" />
                 </button>
                 <!-- Annotation (Presenter only) -->
                 <button
@@ -948,6 +948,18 @@
                     <Icon name="message-square" size="20" />
                 </button>
 
+                <button
+                    v-if="meetingStore.isHost"
+                    class="ctrl-btn lock-btn-wrap"
+                    :class="{ 'ctrl-btn--lock-active': meetingStore.isLocked }"
+                    @click="meetingStore.toggleLock()"
+                    :title="meetingStore.isLocked ? 'Unlock Meeting' : 'Lock Meeting'"
+                >
+                    <Transition name="icon-morph" mode="out-in">
+                        <Icon :key="meetingStore.isLocked ? 'lock' : 'unlock'" :name="meetingStore.isLocked ? 'lock' : 'unlock'" size="20" />
+                    </Transition>
+                </button>
+
                 <Menu as="div" class="activities-dropdown-wrap">
                     <MenuButton 
                         class="ctrl-btn" 
@@ -1003,18 +1015,6 @@
                                         >
                                             <Icon name="layout-grid" size="18" class="mr-3 text-[#9aa0a6]" />
                                             <span>Breakout Rooms</span>
-                                        </button>
-                                    </MenuItem>
-                                    <MenuItem v-slot="{ active }">
-                                        <button
-                                            @click="meetingStore.toggleLock()"
-                                            :class="[
-                                                active ? 'bg-[#3c4043] text-white' : 'text-[#e8eaed]',
-                                                'menu-action-item'
-                                            ]"
-                                        >
-                                            <Icon :name="meetingStore.isLocked ? 'lock' : 'unlock'" size="18" class="mr-3 text-[#9aa0a6]" />
-                                            <span>{{ meetingStore.isLocked ? 'Unlock Meeting' : 'Lock Meeting' }}</span>
                                         </button>
                                     </MenuItem>
                                 </template>
@@ -2091,6 +2091,16 @@ onBeforeUnmount(() => {
     color: #8ab4f8;
 }
 
+.ctrl-btn--sharing {
+    background: #1e8e3e !important;
+    color: white !important;
+    box-shadow: 0 0 12px rgba(30, 142, 62, 0.4);
+}
+
+.ctrl-btn--sharing:hover {
+    background: #137333 !important;
+}
+
 .ctrl-btn--hangup {
     background: #ea4335;
     color: white;
@@ -2173,6 +2183,24 @@ onBeforeUnmount(() => {
     background: rgba(234, 67, 53, 0.15);
 }
 
+.menu-action-item--active {
+    background: rgba(234, 67, 53, 0.1) !important;
+    border-left: 3px solid #ea4335;
+}
+
+.locked-status-badge {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    background: rgba(234, 67, 53, 0.15);
+    color: #f28b82;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    border: 1px solid rgba(234, 67, 53, 0.3);
+}
+
 .badge-count {
     position: absolute;
     top: 4px;
@@ -2206,7 +2234,7 @@ onBeforeUnmount(() => {
     flex: 1;
     display: flex;
     flex-direction: column;
-    padding: 16px 16px 90px 16px; /* Extra padding at bottom for absolute floating controls */
+    padding: 16px 16px 24px 16px; /* Reduced buffer: keeps content centered while allowing PiP overlap */
     gap: 8px;
     position: relative;
     min-width: 0;
