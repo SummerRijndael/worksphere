@@ -21,6 +21,7 @@ export const useMeetingStore = defineStore('meeting', () => {
     const chatMessages = ref<any[]>([]);
     const isLocked = ref(false);
     const originalVideoTrack = ref<MediaStreamTrack | null>(null);
+    let lockHeartbeatInterval: any = null;
 
     // ── Polls ──────────────────────────────────────────────────────────────────
     interface Poll {
@@ -172,6 +173,11 @@ export const useMeetingStore = defineStore('meeting', () => {
              signaling.setupSignaling(meetingId);
              presence.setupEcho(meetingId);
              
+             // Start lock heartbeat if meeting is already locked and we are host
+             if (isLocked.value && presence.isHost.value) {
+                 startLockHeartbeat();
+             }
+
              // Note: We do NOT call initSFU here. MeetingRoomView.vue will call
              // addLocalStream() next, which triggers resetSFUSession → initSFU with
              // the actual local stream. Calling it here would cause a double-init.
@@ -238,6 +244,7 @@ export const useMeetingStore = defineStore('meeting', () => {
 
     function cleanup() {
          log('SYS', 'Cleaning up meeting store');
+         stopLockHeartbeat();
          signaling.leaveSignaling();
          presence.leaveEcho();
          stream.cleanup();
@@ -408,16 +415,42 @@ export const useMeetingStore = defineStore('meeting', () => {
             if (isLocked.value) {
                 await meetingService.unlockMeeting(meeting.value.public_id);
                 isLocked.value = false;
+                stopLockHeartbeat();
                 toast.success('🔓 Meeting unlocked', { description: 'New participants can join.' });
             } else {
                 await meetingService.lockMeeting(meeting.value.public_id);
                 isLocked.value = true;
+                startLockHeartbeat();
                 toast.success('🔒 Meeting locked', { description: 'No new participants can join.' });
             }
         } catch (e) {
             log('ERROR', 'Failed to toggle meeting lock', e);
             const { toast } = await import('vue-sonner');
             toast.error('Failed to toggle meeting lock');
+        }
+    }
+
+    function startLockHeartbeat() {
+        stopLockHeartbeat();
+        log('SYS', 'Starting meeting lock lease heartbeat (2m)');
+        lockHeartbeatInterval = setInterval(async () => {
+            if (!meeting.value || !isLocked.value) {
+                stopLockHeartbeat();
+                return;
+            }
+            try {
+                await meetingService.renewLock(meeting.value.public_id);
+            } catch (e) {
+                log('ERROR', 'Failed to renew meeting lock lease', e);
+            }
+        }, 120000); // 2 minutes
+    }
+
+    function stopLockHeartbeat() {
+        if (lockHeartbeatInterval) {
+            log('SYS', 'Stopping meeting lock lease heartbeat');
+            clearInterval(lockHeartbeatInterval);
+            lockHeartbeatInterval = null;
         }
     }
 
@@ -843,6 +876,12 @@ export const useMeetingStore = defineStore('meeting', () => {
             // Deterministic SFU reset AFTER state update
             await stream.resetSFUSession(stream.localStream.value);
 
+            // --- PROACTIVE MEDIA INFO REFRESH ---
+            // After reset, ask everyone in the new room to re-send their media info.
+            // This ensures we get fresh MIDs for people who were already in the room.
+            log('BREAKOUT', 'Proactively requesting media info for the new room context');
+            signaling.broadcastRequestMediaInfo();
+
             const occupants = presence.allParticipants.value.map(p => ({
                 id: p.public_id,
                 name: p.user?.name || p.metadata?.guest_name || 'Unknown',
@@ -940,6 +979,7 @@ export const useMeetingStore = defineStore('meeting', () => {
         // State
         meeting,
         localParticipant,
+        isLocked,
         originalVideoTrack,
         isDevMode,
         

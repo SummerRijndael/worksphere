@@ -13,6 +13,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Pusher\Pusher;
 
@@ -98,7 +99,8 @@ class MeetingService implements MeetingServiceContract
         }
 
         // 4. Meeting Lock check
-        if ($meeting->is_locked && ($meeting->user_id !== ($user ? $user->id : null))) {
+        $isLocked = Cache::has("meeting:lock:{$meeting->public_id}");
+        if ($isLocked && ($meeting->user_id !== ($user ? $user->id : null))) {
             $isAlreadyIn = MeetingParticipant::where('meeting_id', $meeting->id)
                 ->where('status', 'admitted')
                 ->where(function ($q) use ($user, $participantSessionId) {
@@ -186,6 +188,13 @@ class MeetingService implements MeetingServiceContract
             ));
         }
 
+        Log::channel('videocall')->info('[PARTICIPANT] Join attempt', [
+            'meeting' => $meeting->public_id,
+            'is_guest' => $isGuest,
+            'status' => $status,
+            'participant' => $participant->public_id
+        ]);
+
         return [
             'meeting' => $meeting->load(['host', 'participants.user', 'activeBreakoutSession']), 
             'participant' => $participant
@@ -195,6 +204,11 @@ class MeetingService implements MeetingServiceContract
     public function admitParticipant(Meeting $meeting, MeetingParticipant $participant): MeetingParticipant
     {
         $participant->update(['status' => 'admitted']);
+
+        Log::channel('videocall')->info('[PARTICIPANT] Admitted', [
+            'meeting' => $meeting->public_id,
+            'participant' => $participant->public_id
+        ]);
 
         broadcast(new MeetingParticipantAdmitted($meeting, $participant));
         broadcast(new MeetingSignal(
@@ -211,6 +225,12 @@ class MeetingService implements MeetingServiceContract
     public function rejectParticipant(Meeting $meeting, MeetingParticipant $participant): void
     {
         $participant->update(['status' => 'rejected']);
+
+        Log::channel('videocall')->info('[PARTICIPANT] Rejected', [
+            'meeting' => $meeting->public_id,
+            'participant' => $participant->public_id
+        ]);
+
         broadcast(new MeetingSignal(
             $meeting,
             'system',

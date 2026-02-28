@@ -1,13 +1,27 @@
 <template>
     <div
         v-if="meetingStore.activeBreakoutSession && meetingStore.isHost"
-        class="fixed right-6 bottom-24 z-100 w-[400px]"
+        class="fixed z-100 w-[400px] select-none"
+        :style="{ 
+            right: !hasBeenDragged ? '24px' : 'auto',
+            bottom: !hasBeenDragged ? '96px' : 'auto',
+            left: hasBeenDragged ? `${position.x}px` : 'auto',
+            top: hasBeenDragged ? `${position.y}px` : 'auto'
+        }"
     >
         <div class="bg-(--surface-primary)/85 backdrop-blur-2xl border border-(--border-muted) rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.3)] flex flex-col overflow-visible max-h-[600px] transition-all duration-300">
             <!-- Header -->
             <div
-                class="p-4 border-b border-(--border-muted) flex items-center justify-between bg-(--surface-tertiary)/50"
+                class="p-4 border-b border-(--border-muted) flex items-center justify-between bg-(--surface-tertiary)/50 cursor-move"
+                @pointerdown="startDragging"
             >
+                <!-- Drag Grip Handle -->
+                <div class="absolute top-1 left-1/2 -translate-x-1/2 flex gap-1 opacity-20 group-hover:opacity-100 transition-opacity">
+                    <div class="w-1 h-1 rounded-full bg-(--text-muted)"></div>
+                    <div class="w-1 h-1 rounded-full bg-(--text-muted)"></div>
+                    <div class="w-1 h-1 rounded-full bg-(--text-muted)"></div>
+                </div>
+
                 <div class="flex items-center gap-2">
                     <div class="flex h-2 w-2 relative">
                         <span
@@ -57,10 +71,17 @@
                     <button
                         v-if="meetingStore.isInBreakout"
                         @click="returnToMain"
-                        class="p-1 px-2 flex items-center gap-1.5 bg-(--color-primary-600)/10 hover:bg-(--color-primary-600) text-(--color-primary-600) hover:text-white border border-(--color-primary-500)/20 rounded-lg text-[10px] font-bold transition-all"
+                        :disabled="meetingStore.isTransitioningRoom"
+                        class="p-1 px-2 flex items-center gap-1.5 border border-(--color-primary-500)/20 rounded-lg text-[10px] font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        :class="[
+                            meetingStore.isTransitioningRoom 
+                                ? 'bg-(--surface-muted) text-(--text-muted)' 
+                                : 'bg-(--color-primary-600)/10 hover:bg-(--color-primary-600) text-(--color-primary-600) hover:text-white'
+                        ]"
                         title="Leave breakout and return to main meeting"
                     >
-                        <Icon name="log-out" size="12" />
+                        <Icon v-if="meetingStore.isTransitioningRoom" name="loader" size="12" class="animate-spin" />
+                        <Icon v-else name="log-out" size="12" />
                         Main Room
                     </button>
                     <button
@@ -217,13 +238,20 @@
                         >
                             <button
                                 @click="joinRoom(room)"
-                                class="flex-1 h-8 flex items-center justify-center gap-2 bg-(--color-primary-600) hover:bg-(--color-primary-500) text-white text-[10px] font-bold rounded-lg transition-all"
+                                :disabled="meetingStore.isTransitioningRoom"
+                                class="flex-1 h-8 flex items-center justify-center gap-2 text-[10px] font-bold rounded-lg transition-all"
+                                :class="[
+                                    String(meetingStore.currentRoomId) === String(room.id)
+                                        ? 'bg-green-500/10 text-green-500 border border-green-500/20 cursor-default'
+                                        : 'bg-(--color-primary-600) hover:bg-(--color-primary-500) text-white'
+                                ]"
                             >
-                                <Icon name="log-in" size="12" />
+                                <Icon v-if="meetingStore.isTransitioningRoom" name="loader" size="12" class="animate-spin" />
+                                <Icon v-else :name="String(meetingStore.currentRoomId) === String(room.id) ? 'check' : 'log-in'" size="12" />
                                 {{
-                                    meetingStore.isInBreakout
-                                        ? "Move Here"
-                                        : "Join Room"
+                                    String(meetingStore.currentRoomId) === String(room.id)
+                                        ? "Currently Here"
+                                        : (meetingStore.isInBreakout ? "Move Here" : "Join Room")
                                 }}
                             </button>
                             <button
@@ -276,6 +304,44 @@ const meetingStore = useMeetingStore();
 const isMinimized = ref(false);
 const showBroadcastModal = ref(false);
 const targetBroadcastRoom = ref<any>(null);
+
+// --- Draggable Logic ---
+const isDragging = ref(false);
+const hasBeenDragged = ref(false);
+const position = ref({ x: 0, y: 0 });
+let startPos = { x: 0, y: 0 };
+
+function startDragging(e: PointerEvent) {
+    if ((e.target as HTMLElement).closest('button')) return;
+    
+    isDragging.value = true;
+    hasBeenDragged.value = true;
+    const rect = (e.currentTarget as HTMLElement).closest('.fixed')?.getBoundingClientRect();
+    if (rect) {
+        position.value = { x: rect.left, y: rect.top };
+        startPos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    }
+
+    window.addEventListener('pointermove', onDragging);
+    window.addEventListener('pointerup', stopDragging);
+    
+    // Set pointer capture to ensure we get events even if mouse leaves the element
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+}
+
+function onDragging(e: PointerEvent) {
+    if (!isDragging.value) return;
+    position.value = {
+        x: e.clientX - startPos.x,
+        y: e.clientY - startPos.y
+    };
+}
+
+function stopDragging() {
+    isDragging.value = false;
+    window.removeEventListener('pointermove', onDragging);
+    window.removeEventListener('pointerup', stopDragging);
+}
 
 const unassignedParticipants = computed(() => {
     if (!meetingStore.activeBreakoutSession) return [];

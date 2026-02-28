@@ -179,6 +179,14 @@ class MeetingController extends Controller
             return response()->json(['message' => 'Unauthorized or not admitted'], 403);
         }
 
+        Log::channel('videocall')->debug('[SIGNAL] Broadcasting signal', [
+            'meeting' => $meeting->public_id,
+            'type' => $request->signal_type,
+            'sender' => $sender->public_id,
+            'target' => $request->target_participant_public_id,
+            'data_type' => $request->signal_data['type'] ?? 'none'
+        ]);
+
         broadcast(new MeetingSignal(
             $meeting,
             $sender->public_id,
@@ -260,6 +268,11 @@ class MeetingController extends Controller
         $cfPayload = $request->only(['sessionDescription', 'tracks']);
 
         try {
+            Log::channel('videocall')->info('[SFU] Creating new session', [
+                'meeting' => $meeting->public_id,
+                'tracks_count' => count($request->input('tracks', []))
+            ]);
+
             $response = Http::withToken($secret)
                 ->timeout(60)
                 ->post("https://rtc.live.cloudflare.com/v1/apps/{$appId}/sessions/new", $cfPayload);
@@ -281,6 +294,12 @@ class MeetingController extends Controller
     {
         $appId = config('services.cloudflare.app_id');
         $secret = config('services.cloudflare.app_secret');
+
+        Log::channel('videocall')->info('[SFU] Pulling tracks', [
+            'meeting' => $meeting->public_id,
+            'sessionId' => $sessionId,
+            'tracks' => $request->input('tracks')
+        ]);
 
         try {
             $response = Http::withToken($secret)
@@ -315,6 +334,12 @@ class MeetingController extends Controller
             $data['sessionDescription']['sdp'] === null) {
             $data['sessionDescription']['sdp'] = '';
         }
+
+        Log::channel('videocall')->info('[SFU] Renegotiating session', [
+            'meeting' => $meeting->public_id,
+            'sessionId' => $sessionId,
+            'method' => $method
+        ]);
 
         try {
             $response = Http::withToken($secret)
@@ -461,7 +486,8 @@ class MeetingController extends Controller
     {
         $this->authorize('update', $meeting); // Only host
 
-        $meeting->update(['is_locked' => true]);
+        Cache::put("meeting:lock:{$meeting->public_id}", true, 180); // 3 mins TTL
+        
         $hostParticipant = $meeting->participants()->where('user_id', Auth::id())->first();
 
         broadcast(new MeetingSignal(
@@ -478,7 +504,8 @@ class MeetingController extends Controller
     {
         $this->authorize('update', $meeting); // Only host
 
-        $meeting->update(['is_locked' => false]);
+        Cache::forget("meeting:lock:{$meeting->public_id}");
+        
         $hostParticipant = $meeting->participants()->where('user_id', Auth::id())->first();
 
         broadcast(new MeetingSignal(
@@ -489,6 +516,24 @@ class MeetingController extends Controller
         ));
 
         return response()->json(['message' => 'Meeting unlocked.']);
+    }
+
+    public function renewLock(Request $request, Meeting $meeting): JsonResponse
+    {
+        $this->authorize('update', $meeting); // Only host
+
+        Cache::put("meeting:lock:{$meeting->public_id}", true, 180); // 3 mins TTL
+        
+        $hostParticipant = $meeting->participants()->where('user_id', Auth::id())->first();
+
+        broadcast(new MeetingSignal(
+            $meeting,
+            $hostParticipant ? $hostParticipant->public_id : 'system',
+            'meeting-locked',
+            ['is_locked' => true]
+        ));
+
+        return response()->json(['message' => 'Meeting lock renewed.']);
     }
 
     public function end(Request $request, Meeting $meeting): JsonResponse

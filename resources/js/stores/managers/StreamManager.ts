@@ -16,6 +16,7 @@ export function createStreamManager(
 ) {
     // Media State
     const localStream = ref<MediaStream | null>(null);
+    const localScreenStream = ref<MediaStream | null>(null);
     const remoteStreams = ref<Map<string, MediaStream>>(new Map());
     const remoteSfuSessions = new Map<string, string>();
     const remoteSfuTracks = new Map<string, { audioMid?: string; videoMid?: string }>();
@@ -31,8 +32,6 @@ export function createStreamManager(
     // SFU API specific maps (ported from CallApp.vue)
     const sfuTransceiverMap = new Map<RTCRtpTransceiver, { participantId: string, trackName: string }>();
     const midToParticipantMap = new Map<string, string>();
-    const requestedRemoteTracks = new Set<string>();
-    const participantTransceivers = new Map<string, { audioMid?: string; videoMid?: string }>();
     const participantPullAttempts = new Map<string, number>();
     const pendingTrackEvents: { track: MediaStreamTrack, mid: string, transceiver: RTCRtpTransceiver, streams: readonly MediaStream[] }[] = [];
     // Queue for signals that arrive before SFU session is established
@@ -87,32 +86,39 @@ export function createStreamManager(
                 const assoc = sfuTransceiverMap.get(evt.transceiver);
                 if (assoc) {
                     participantId = assoc.participantId;
+                    // If it's a screen track, append ':screen' to the participantId for unique identification
                     if (assoc.trackName === 'screen') participantId += ':screen';
                 }
             }
 
             if (participantId) {
-                log('TRACK', `Resolved buffered track ${evt.track.kind} (${evt.mid}) for ${participantId}`);
+                // Ensure participantId is lowercased for consistent map access
+                const normalizedParticipantId = participantId.toLowerCase();
+                log('TRACK', `Resolved buffered track ${evt.track.kind} (${evt.mid}) for ${normalizedParticipantId}`);
                 let s = evt.streams[0] || new MediaStream([evt.track]);
                 
                 const handleActive = () => {
-                    const pid = participantId!;
+                    const pid = normalizedParticipantId;
                     const existingStream = remoteStreams.value.get(pid);
                     if (existingStream) {
                         if (!existingStream.getTracks().find(t => t.id === evt.track.id)) {
                             existingStream.addTrack(evt.track);
                         }
                     } else {
+                        // Create a new stream map to trigger reactivity
                         const newMap = new Map(remoteStreams.value);
                         newMap.set(pid, s);
                         remoteStreams.value = newMap;
-                        if (!pid.endsWith(':screen')) {
+                        // Only start audio analysis for non-screen audio tracks
+                        if (evt.track.kind === 'audio' && !pid.endsWith(':screen')) {
                             startAudioAnalysis(pid, s);
                         }
                     }
                 };
                 
+                // Attach handler for when the track becomes unmuted (active)
                 evt.track.onunmute = handleActive;
+                // If the track is already unmuted, call the handler immediately
                 if (!evt.track.muted) handleActive();
             } else {
                 stillPending.push(evt);
@@ -171,7 +177,7 @@ export function createStreamManager(
 
     function getLocalTrackMids() {
         if (!sfuPc) return { audioMid: undefined, videoMid: undefined, screenMid: undefined };
-        const localId = localParticipantRef.value?.public_id || 'self';
+        const localId = 'self'; // Always use 'self' for local track identification internally
         // Only include MIDs for transceivers that have an ACTIVE sender track
         // Prevents broadcasting empty placeholder MIDs that can't be pulled
         let audioMid: string | undefined;
@@ -248,7 +254,6 @@ export function createStreamManager(
 
     function startHealthCheck() {
         if (healthCheckInterval) return;
-        
         log('HEALTH', 'Starting SFU Desync Guard (60s check)');
         healthCheckInterval = window.setInterval(async () => {
             if (!sfuPc || !sfuSessionId.value || !meetingRef.value) return;
@@ -263,6 +268,21 @@ export function createStreamManager(
                 const stream = remoteStreams.value.get(pid);
                 const sessionId = remoteSfuSessions.get(pid);
                 
+                // --- ROOM FILTERING ---
+                // Only "repair" participants who are in the same room as us.
+                // This prevents pulling tracks for people in different breakout rooms.
+                const pRoomId = p.current_room_id ? String(p.current_room_id) : null;
+                const myRoomId = currentRoomIdRef.value ? String(currentRoomIdRef.value) : null;
+
+                if (pRoomId !== myRoomId) {
+                    // If they are in a different room but we still have their stream, clean it up
+                    if (stream) {
+                        log('HEALTH', `Cleaning up out-of-room stream for ${pid} (${pRoomId} vs ${myRoomId})`);
+                        removeParticipantStreams(pid);
+                    }
+                    continue;
+                }
+
                 // Case 1: No session info yet (missed sfu-media-ready)
                 if (!sessionId) {
                     log('HEALTH', `No session for ${pid}. Requesting media info.`);
@@ -288,17 +308,28 @@ export function createStreamManager(
 
     async function initSFU(stream: MediaStream | null) {
         if (!meetingRef.value || !localParticipantRef.value) return;
-        if (isInitializingSFU.value) {
-            log('SFU', 'SFU initialization already in progress, skipping');
-            return;
-        }
+        return runInSFUQueue(async () => {
+            if (!meetingRef.value || !localParticipantRef.value) return;
+            
+            // Optimization: If session already exists and is healthy, don't restart it
+            if (sfuPc && sfuSessionId.value && (sfuConnectionState.value === 'connected' || sfuConnectionState.value === 'connecting')) {
+                log('SFU', 'SFU already healthy, skipping redundant initSFU');
+                if (stream) {
+                    // Just update tracks if provided
+                    for (const track of stream.getTracks()) {
+                        await replaceTrack(track.kind as 'audio' | 'video', track);
+                    }
+                }
+                return;
+            }
 
-        isInitializingSFU.value = true;
-        try {
-            await doInitSFU(stream);
-        } finally {
-            isInitializingSFU.value = false;
-        }
+            isInitializingSFU.value = true;
+            try {
+                await doInitSFU(stream);
+            } finally {
+                isInitializingSFU.value = false;
+            }
+        });
     }
 
     async function doInitSFU(stream: MediaStream | null) {
@@ -307,31 +338,39 @@ export function createStreamManager(
         log('SFU', 'Initializing RTCPeerConnection (Cold Start)', { hasStream: !!stream });
         sfuPc = new RTCPeerConnection({
             iceServers: iceServersRef.value.length > 0 ? iceServersRef.value : [{ urls: 'stun:stun.cloudflare.com:3478' }],
-            bundlePolicy: 'max-bundle',
+            bundlePolicy: 'balanced', // More resilient than max-bundle
         });
 
-        const iceConnectedPromise = new Promise((resolve) => {
-            const checkState = () => {
-                if (sfuPc!.iceConnectionState === "connected" || sfuPc!.iceConnectionState === "completed") {
-                    resolve(true);
-                }
-            };
-            sfuPc!.oniceconnectionstatechange = () => {
-                sfuIceState.value = sfuPc!.iceConnectionState;
-                log('SFU', `ICE Connection State: ${sfuIceState.value}`);
+        const iceConnectedPromise = Promise.race([
+            new Promise((resolve) => {
+                const checkState = () => {
+                    if (sfuPc!.iceConnectionState === "connected" || sfuPc!.iceConnectionState === "completed") {
+                        resolve(true);
+                    }
+                };
+                sfuPc!.oniceconnectionstatechange = () => {
+                    sfuIceState.value = sfuPc!.iceConnectionState;
+                    log('SFU', `ICE Connection State: ${sfuIceState.value}`);
+                    checkState();
+                };
+                sfuPc!.onconnectionstatechange = () => {
+                    sfuConnectionState.value = sfuPc!.connectionState;
+                    log('SFU', `Connection State: ${sfuConnectionState.value}`);
+                };
                 checkState();
-            };
-            sfuPc!.onconnectionstatechange = () => {
-                sfuConnectionState.value = sfuPc!.connectionState;
-                log('SFU', `Connection State: ${sfuConnectionState.value}`);
-            };
-            checkState();
-        });
+            }),
+            new Promise((resolve) => setTimeout(() => {
+                log('SFU', 'ICE Connection wait timed out (10s), proceeding with signaling...');
+                resolve(true);
+            }, 10000))
+        ]);
 
         sfuPc.ontrack = (event) => {
             const track = event.track;
             const mid = event.transceiver.mid;
             if (!mid) return;
+            
+            log("TRACK", `ontrack Event: kind=${track.kind}, mid=${mid}`);
 
             let participantId = midToParticipantMap.get(mid);
             if (!participantId) {
@@ -339,24 +378,38 @@ export function createStreamManager(
                 if (assoc) {
                     participantId = assoc.participantId;
                     if (assoc.trackName === 'screen') participantId += ':screen';
+                    log("TRACK", `Resolved ${mid} via transceiver association to ${participantId}`);
                 }
+            } else {
+                log("TRACK", `Resolved ${mid} via MID map to ${participantId}`);
             }
 
             if (participantId) {
-                log("TRACK", `Active: ${track.kind} (${mid}) for ${participantId}`);
+                const pid = participantId.toLowerCase();
+                log("TRACK", `Final Match: ${track.kind} (${mid}) for ${pid}`);
                 let s = event.streams[0] || new MediaStream([track]);
                 
                 const handleActive = () => {
-                    const pid = participantId!;
                     const existingStream = remoteStreams.value.get(pid);
                     if (existingStream) {
+                        // Prune dead tracks of same kind to avoid UI freezes/zombie tiles
+                        // Only remove tracks of the same kind that ARE NOT the new track
+                        existingStream.getTracks()
+                            .filter(t => t.kind === track.kind && t.id !== track.id)
+                            .forEach(t => {
+                                log('TRACK', `Pruning old ${t.kind} track ${t.id} for ${pid}`);
+                                existingStream.removeTrack(t);
+                            });
+
                         if (!existingStream.getTracks().find(t => t.id === track.id)) {
                             existingStream.addTrack(track);
+                            log('TRACK', `Linked ${track.kind} track ${track.id} to existing stream for ${pid}`);
                         }
                     } else {
                         const newMap = new Map(remoteStreams.value);
                         newMap.set(pid, s);
                         remoteStreams.value = newMap;
+                        log('TRACK', `Created new stream for ${pid} with ${track.kind} track ${track.id}`);
                         if (!pid.endsWith(':screen')) {
                             startAudioAnalysis(pid, s);
                         }
@@ -373,6 +426,8 @@ export function createStreamManager(
             }
         };
 
+        // ALWAYS add placeholder transceivers for Cold Start/Double Tap prep.
+        // This ensures we have BUNDLE-able media sections even if the stream is initially empty.
         log('SFU', 'Adding placeholder transceivers for Cold Start/Double Tap prep');
         const atc = sfuPc!.addTransceiver("audio", { direction: "sendonly" });
         const vtc = sfuPc!.addTransceiver("video", {
@@ -383,17 +438,18 @@ export function createStreamManager(
                 { rid: "h", active: true, maxBitrate: 1500000, scaleResolutionDownBy: 1 },
             ],
         });
-        sfuTransceiverMap.set(atc, { participantId: localParticipantRef.value?.public_id || 'self', trackName: 'audio' });
-        sfuTransceiverMap.set(vtc, { participantId: localParticipantRef.value?.public_id || 'self', trackName: 'video' });
+        sfuTransceiverMap.set(atc, { participantId: 'self', trackName: 'audio' });
+        sfuTransceiverMap.set(vtc, { participantId: 'self', trackName: 'video' });
 
         if (stream) {
+            log('SFU', 'Applying initial stream tracks to transceivers');
             stream.getTracks().forEach((track) => {
                 let tc = sfuPc!.getTransceivers().find(
-                    (t) => t.receiver.track.kind === track.kind && t.direction === "sendonly" && !t.sender.track
+                    (t) => t.receiver.track.kind === track.kind && t.direction === "sendonly"
                 );
 
                 if (tc) {
-                    log('SFU', `Reserving placeholder transceiver for local ${track.kind}`);
+                    log('SFU', `Assigning local ${track.kind} track to transceiver`);
                     tc.sender.replaceTrack(track);
                     try {
                         const params = tc.sender.getParameters();
@@ -403,8 +459,9 @@ export function createStreamManager(
                         }
                     } catch (e) {}
                 } else {
+                    // Fallback for unexpected track kinds (like screen if it was somehow in the main stream)
                     const ntc = sfuPc!.addTransceiver(track, { direction: "sendonly", streams: [stream] });
-                    sfuTransceiverMap.set(ntc, { participantId: localParticipantRef.value?.public_id || 'self', trackName: track.kind });
+                    sfuTransceiverMap.set(ntc, { participantId: 'self', trackName: track.kind });
                 }
             });
         }
@@ -432,6 +489,29 @@ export function createStreamManager(
             if (sessionRes.sessionId) {
                 sfuSessionId.value = sessionRes.sessionId;
                 log('SFU', 'Session Established', sessionRes.sessionId);
+
+                // CRITICAL: Complete the initial handshake
+                if (sessionRes.sessionDescription) {
+                    log('SFU', 'Processing initial server answer');
+                    await sfuPc.setRemoteDescription(new RTCSessionDescription(sessionRes.sessionDescription));
+                }
+
+                // 2. DOUBLE TAP: Explicitly register tracks via sfuSessionTracks (from CallApp.vue L2293)
+                log('SFU', 'Double Tap: Explicitly registering tracks to ensure activation');
+                try {
+                    const tracksRes = await meetingService.sfuSessionTracks(
+                        meetingRef.value!.public_id,
+                        sfuSessionId.value!,
+                        trackObjects, // Pass trackObjects here for the double tap
+                        undefined
+                    );
+                    if (tracksRes.sessionDescription) {
+                        log('SFU', 'Applying Double Tap SDP Answer');
+                        await sfuPc.setRemoteDescription(new RTCSessionDescription(tracksRes.sessionDescription));
+                    }
+                } catch (e) {
+                    log('ERROR', 'Double Tap track registration warning:', e);
+                }
 
                 await iceConnectedPromise;
                 
@@ -466,45 +546,47 @@ export function createStreamManager(
             return;
         }
 
-        // Resolve sessionId and MIDs from state if not provided (Rescue Path)
-        const targetSessionId = remoteSessionId || remoteSfuSessions.get(participantPublicId);
-        const persistedTracks = remoteSfuTracks.get(participantPublicId);
-        const actualAudioMid = audioMid || persistedTracks?.audioMid;
-        const actualVideoMid = videoMid || persistedTracks?.videoMid;
-
+        const normalizedId = participantPublicId.toLowerCase();
+        const targetSessionId = remoteSessionId || remoteSfuSessions.get(normalizedId);
         if (!targetSessionId) {
-            log('ERROR', `Cannot pull tracks for ${participantPublicId}: session ID unknown yet`);
+            log('SFU', `No session ID for ${participantPublicId}, cannot pull tracks.`);
             return;
         }
 
-        // DEDUP: Only skip if we already have camera transceivers AND no new screen track
-        // (Allow re-pulling when screen share starts even if camera was already pulled)
-        const existingTc = participantTransceivers.get(participantPublicId);
-        if (existingTc && !screenMid) {
-            log('SFU', `Already have transceivers for ${participantPublicId}, skipping redundant pull`);
-            return;
+        const knownTracks = remoteSfuTracks.get(normalizedId);
+        const actualAudioMid = audioMid || knownTracks?.audioMid;
+        const actualVideoMid = videoMid || knownTracks?.videoMid;
+        const actualScreenMid = screenMid || knownTracks?.screenMid;
+
+        if (audioMid || videoMid || screenMid) {
+            remoteSfuTracks.set(normalizedId, {
+                audioMid: actualAudioMid,
+                videoMid: actualVideoMid,
+                screenMid: actualScreenMid
+            });
         }
 
         // Retry logic with backoff (from CallApp.vue L2799-2812)
-        const currentAttempts = (participantPullAttempts.get(participantPublicId) || 0) + 1;
-        participantPullAttempts.set(participantPublicId, currentAttempts);
+        const currentAttempts = (participantPullAttempts.get(normalizedId) || 0) + 1;
+        participantPullAttempts.set(normalizedId, currentAttempts);
         const retryDelays = [1000, 1500, 2000, 3000, 5000];
         if (currentAttempts > retryDelays.length) {
-            log('ERROR', `Failed to pull tracks for ${participantPublicId} after ${retryDelays.length} attempts. Giving up.`);
-            participantPullAttempts.delete(participantPublicId);
+            log('ERROR', `Failed to pull tracks for ${normalizedId} after ${retryDelays.length} attempts. Giving up.`);
+            participantPullAttempts.delete(normalizedId);
             return;
         }
 
-        // Build track requests (from CallApp.vue L2814-2836)
+        // Case-specific track requests:
+        const existingStream = remoteStreams.value.get(normalizedId);
+        const needsAudio = !existingStream || existingStream.getAudioTracks().length === 0 || !!audioMid;
+        const needsVideo = !existingStream || existingStream.getVideoTracks().length === 0 || !!videoMid;
+        const needsScreen = !existingStream || !remoteStreams.value.has(`${normalizedId}:screen`) || !!screenMid;
+
         const trackReqs: any[] = [];
-        if (actualAudioMid || currentAttempts === 1) {
-            trackReqs.push({ location: "remote", sessionId: targetSessionId, trackName: "audio" });
-        }
-        if (actualVideoMid || currentAttempts === 1) {
-            trackReqs.push({ location: "remote", sessionId: targetSessionId, trackName: "video" });
-        }
-        if (screenMid) {
-            trackReqs.push({ location: "remote", sessionId: targetSessionId, trackName: "screen" });
+        if (needsAudio) trackReqs.push({ location: "remote", sessionId: targetSessionId, trackName: "audio" });
+        if (needsVideo) trackReqs.push({ location: "remote", sessionId: targetSessionId, trackName: "video" });
+        if (needsScreen || (currentAttempts === 1 && participantPublicId.includes(':screen'))) {
+             trackReqs.push({ location: "remote", sessionId: targetSessionId, trackName: "screen" });
         }
 
         if (trackReqs.length === 0) {
@@ -517,47 +599,56 @@ export function createStreamManager(
             if (!sfuPc || !sfuSessionId.value) return;
 
             try {
-                log('SFU', `Attempt ${currentAttempts}: Pulling tracks for ${participantPublicId}...`);
-
-                // Pre-create recvonly transceivers per participant (from CallApp.vue L2848-2884)
+                // Ensure transceivers exist before mapping MIDs
                 let audioTransceiver = sfuPc.getTransceivers().find(t =>
                     t.direction === "recvonly" &&
-                    sfuTransceiverMap.get(t)?.participantId === participantPublicId &&
+                    sfuTransceiverMap.get(t)?.participantId === participantPublicId.toLowerCase() &&
                     sfuTransceiverMap.get(t)?.trackName === "audio"
                 );
                 let videoTransceiver = sfuPc.getTransceivers().find(t =>
                     t.direction === "recvonly" &&
-                    sfuTransceiverMap.get(t)?.participantId === participantPublicId &&
+                    sfuTransceiverMap.get(t)?.participantId === participantPublicId.toLowerCase() &&
                     sfuTransceiverMap.get(t)?.trackName === "video"
+                );
+                let screenTransceiver = sfuPc.getTransceivers().find(t =>
+                    t.direction === "recvonly" &&
+                    sfuTransceiverMap.get(t)?.participantId === participantPublicId.toLowerCase() &&
+                    sfuTransceiverMap.get(t)?.trackName === "screen"
                 );
 
                 if (!audioTransceiver && trackReqs.some(r => r.trackName === 'audio')) {
                     audioTransceiver = sfuPc.addTransceiver("audio", { direction: "recvonly" });
-                    sfuTransceiverMap.set(audioTransceiver, { participantId: participantPublicId, trackName: "audio" });
+                    sfuTransceiverMap.set(audioTransceiver, { participantId: participantPublicId.toLowerCase(), trackName: "audio" });
                 }
                 if (!videoTransceiver && trackReqs.some(r => r.trackName === 'video')) {
                     videoTransceiver = sfuPc.addTransceiver("video", { direction: "recvonly" });
-                    sfuTransceiverMap.set(videoTransceiver, { participantId: participantPublicId, trackName: "video" });
+                    sfuTransceiverMap.set(videoTransceiver, { participantId: participantPublicId.toLowerCase(), trackName: "video" });
                 }
-                if (trackReqs.some(r => r.trackName === 'screen')) {
-                    let screenTc = sfuPc.getTransceivers().find(t =>
-                        t.direction === "recvonly" &&
-                        sfuTransceiverMap.get(t)?.participantId === participantPublicId &&
-                        sfuTransceiverMap.get(t)?.trackName === "screen"
-                    );
-                    if (!screenTc) {
-                        screenTc = sfuPc.addTransceiver("video", { direction: "recvonly" });
-                        sfuTransceiverMap.set(screenTc, { participantId: participantPublicId, trackName: "screen" });
-                    }
+                if (!screenTransceiver && trackReqs.some(r => r.trackName === 'screen')) {
+                    screenTransceiver = sfuPc.addTransceiver("video", { direction: "recvonly" });
+                    sfuTransceiverMap.set(screenTransceiver, { participantId: participantPublicId.toLowerCase(), trackName: "screen" });
                 }
 
+                // Proactive MID Assignment: Map local transceiver MIDs to the request
+                const trackReqsWithMid = trackReqs.map(req => {
+                    const t = req.trackName === 'audio' ? audioTransceiver : 
+                              req.trackName === 'video' ? videoTransceiver : 
+                              req.trackName === 'screen' ? screenTransceiver : null;
+                    
+                    // CRITICAL: Cloudflare needs the local MID to know which transceiver to associate the track with!
+                    if (t?.mid) {
+                        return { ...req, mid: t.mid };
+                    }
+                    return req;
+                });
+
+                log('SFU', `Attempt ${currentAttempts}: Pulling tracks for ${participantPublicId} [Audio: ${audioTransceiver?.mid || 'None'}, Video: ${videoTransceiver?.mid || 'None'}, Screen: ${screenTransceiver?.mid || 'None'}] using session ${sfuSessionId.value}...`);
+
                 // SERVER-INITIATED OFFER FLOW (from CallApp.vue L2895-2955)
-                // Key difference from old code: NO client offer SDP sent.
-                // Cloudflare returns a server offer, we create an answer.
                 const res = await meetingService.sfuSessionTracks(
                     meetingRef.value!.public_id,
                     sfuSessionId.value!,
-                    trackReqs,
+                    trackReqsWithMid,
                     undefined  // No client offer — server-initiated flow
                 );
 
@@ -567,14 +658,19 @@ export function createStreamManager(
                     log('SFU', `Track pull success on attempt ${currentAttempts} for ${participantPublicId}`);
                     participantPullAttempts.delete(participantPublicId);
 
+                    // Normalizing ID for consistency in internal maps
+                    const normalizedId = participantPublicId.toLowerCase();
+
                     // Map MIDs to participant
                     if (Array.isArray(res.tracks)) {
                         res.tracks.forEach((track: any) => {
                             if (track.mid) {
-                                midToParticipantMap.set(track.mid, track.trackName === 'screen' ? `${participantPublicId}:screen` : participantPublicId);
+                                const mapKey = track.trackName === 'screen' ? `${normalizedId}:screen` : normalizedId;
+                                midToParticipantMap.set(track.mid, mapKey);
+                                
                                 const t = sfuPc!.getTransceivers().find(tr => tr.mid === track.mid);
                                 if (t) {
-                                    sfuTransceiverMap.set(t, { participantId: participantPublicId, trackName: track.trackName });
+                                    sfuTransceiverMap.set(t, { participantId: normalizedId, trackName: track.trackName });
                                 }
                             }
                         });
@@ -585,6 +681,23 @@ export function createStreamManager(
                     // Server Offer → Client Answer flow (from CallApp.vue L2942-2955)
                     log('SFU', `Processing Server Offer for tracks from ${participantPublicId}`);
                     await sfuPc!.setRemoteDescription(toSdpAnswer(res.sessionDescription));
+
+                    // Map MIDs to participant AFTER setRemoteDescription so tr.mid is available
+                    if (Array.isArray(res.tracks)) {
+                        res.tracks.forEach((track: any) => {
+                            if (track.mid) {
+                                const mapKey = track.trackName === 'screen' ? `${normalizedId}:screen` : normalizedId;
+                                midToParticipantMap.set(track.mid, mapKey);
+                                
+                                const t = sfuPc!.getTransceivers().find(tr => tr.mid === track.mid);
+                                if (t) {
+                                    sfuTransceiverMap.set(t, { participantId: normalizedId, trackName: track.trackName });
+                                }
+                            }
+                        });
+                    }
+
+                    flushPendingTracks();
 
                     const answer = await sfuPc!.createAnswer();
                     await sfuPc!.setLocalDescription(answer);
@@ -598,9 +711,10 @@ export function createStreamManager(
                     );
 
                     // Record transceivers for dedup (from CallApp.vue L2957-2966)
-                    participantTransceivers.set(participantPublicId, {
+                    participantTransceivers.set(normalizedId, {
                         audioMid: res.tracks?.find((t: any) => t.trackName === 'audio')?.mid || '',
                         videoMid: res.tracks?.find((t: any) => t.trackName === 'video')?.mid || '',
+                        screenMid: res.tracks?.find((t: any) => t.trackName === 'screen')?.mid || ''
                     });
                 } else {
                     // Retry with backoff (from CallApp.vue L2968-2985)
@@ -635,7 +749,10 @@ export function createStreamManager(
         return runInSFUQueue(async () => {
             if (!sfuPc || !sfuSessionId.value) return;
 
-            const tc = sfuPc.getTransceivers().find(t => sfuTransceiverMap.get(t)?.trackName === kind && sfuTransceiverMap.get(t)?.participantId === (localParticipantRef.value?.public_id || 'self'));
+            const tc = sfuPc.getTransceivers().find(t => 
+                sfuTransceiverMap.get(t)?.trackName === kind && 
+                sfuTransceiverMap.get(t)?.participantId === 'self'
+            );
             
             if (tc) {
                 // Only renegotiate when enabling for the first time (inactive → sendonly)
@@ -656,14 +773,23 @@ export function createStreamManager(
                     const offer = await sfuPc.createOffer();
                     await sfuPc.setLocalDescription(offer);
 
+                    const trackObjects = sfuPc.getTransceivers()
+                        .filter(t => t.mid !== null && (t.receiver.track.kind === 'audio' || t.receiver.track.kind === 'video'))
+                        .map(t => ({
+                            location: "local",
+                            mid: t.mid,
+                            trackName: t.receiver.track.kind
+                        }));
+
                     try {
                         const res = await meetingService.sfuSessionTracks(
                             meetingRef.value!.public_id,
                             sfuSessionId.value!,
-                            [],
+                            trackObjects, // Pass trackObjects here for the renegotiation
                             mungeSdp(sfuPc.localDescription!.sdp)
                         );
                         await sfuPc.setRemoteDescription(toSdpAnswer(res.sessionDescription));
+                        broadcastMediaMids(); // Broadcast after successful renegotiation
                     } catch (error: any) {
                         if (error?.response?.status === 406) {
                             log('ERROR', '406 Not Acceptable caught during replaceTrack renegotiation. Triggering Rescue state.');
@@ -685,6 +811,7 @@ export function createStreamManager(
     async function publishScreenTrack(screenStream: MediaStream): Promise<{ mid: string } | null> {
         if (!sfuPc || !sfuSessionId.value) return null;
 
+        localScreenStream.value = screenStream;
         log('MEDIA', `Publishing screen share track (Queued)`);
 
         return runInSFUQueue(async () => {
@@ -692,7 +819,7 @@ export function createStreamManager(
 
             let screenTc = sfuPc.getTransceivers().find(t => 
                 sfuTransceiverMap.get(t)?.trackName === 'screen' && 
-                sfuTransceiverMap.get(t)?.participantId === (localParticipantRef.value?.public_id || 'self')
+                sfuTransceiverMap.get(t)?.participantId === 'self'
             );
             
             const videoTrack = screenStream.getVideoTracks()[0];
@@ -711,16 +838,24 @@ export function createStreamManager(
                                 { rid: "h", active: true, maxBitrate: 2500000, scaleResolutionDownBy: 1 }
                             ]
                         });
-                        sfuTransceiverMap.set(screenTc, { participantId: localParticipantRef.value?.public_id || 'self', trackName: 'screen' });
+                        sfuTransceiverMap.set(screenTc, { participantId: 'self', trackName: 'screen' });
                         
                         // Renegotiate with SFU for NEW transceiver
                         const offer = await sfuPc!.createOffer();
                         await sfuPc!.setLocalDescription(offer);
 
+                        const trackObjects = sfuPc!.getTransceivers()
+                            .filter(t => t.mid !== null && (t.receiver.track.kind === 'audio' || t.receiver.track.kind === 'video'))
+                            .map(t => ({
+                                location: "local",
+                                mid: t.mid,
+                                trackName: sfuTransceiverMap.get(t)?.trackName || t.receiver.track.kind
+                            }));
+
                         const res = await meetingService.sfuSessionTracks(
                             meetingRef.value!.public_id,
                             sfuSessionId.value!,
-                            [{ location: "local", mid: screenTc.mid, trackName: "screen" }],
+                            trackObjects,
                             mungeSdp(sfuPc!.localDescription!.sdp)
                         );
                         await sfuPc!.setRemoteDescription(toSdpAnswer(res.sessionDescription));
@@ -759,6 +894,7 @@ export function createStreamManager(
     async function unpublishScreenTrack() {
         if (!sfuPc || !sfuSessionId.value) return;
 
+        localScreenStream.value = null;
         log('MEDIA', 'Unpublishing screen track (Queued)');
 
         return runInSFUQueue(async () => {
@@ -766,7 +902,7 @@ export function createStreamManager(
 
             const screenTc = sfuPc.getTransceivers().find(t => 
                 sfuTransceiverMap.get(t)?.trackName === 'screen' && 
-                sfuTransceiverMap.get(t)?.participantId === (localParticipantRef.value?.public_id || 'self')
+                sfuTransceiverMap.get(t)?.participantId === 'self'
             );
             
             if (screenTc) {
@@ -784,32 +920,59 @@ export function createStreamManager(
     }
 
     async function resetSFUSession(activeLocalStream: MediaStream | null) {
-        if (isInitializingSFU.value) {
-            log('SFU', 'Reset requested while already initializing, skipping');
-            return;
-        }
+        return runInSFUQueue(async () => {
+            log('SFU', 'Tearing down SFU State completely...');
+            cleanup();
+            
+            if (sfuPc) {
+                sfuPc.onicecandidate = null;
+                sfuPc.ontrack = null;
+                sfuPc.oniceconnectionstatechange = null;
+                sfuPc.onconnectionstatechange = null;
+                sfuPc.close();
+                sfuPc = null;
+            }
 
-        log('SFU', 'Tearing down SFU State completely...');
-        cleanup();
-        
-        if (sfuPc) {
-            sfuPc.onicecandidate = null;
-            sfuPc.ontrack = null;
-            sfuPc.oniceconnectionstatechange = null;
-            sfuPc.onconnectionstatechange = null;
-            sfuPc.close();
-            sfuPc = null;
-        }
+            sfuSessionId.value = null;
 
-        sfuSessionId.value = null;
-
-        log('SFU', 'Rebuilding SFU State...');
-        await initSFU(activeLocalStream);
+            log('SFU', 'Rebuilding SFU State...');
+            // Need to run doInitSFU directly here since we are already in the queue
+            isInitializingSFU.value = true;
+            try {
+                await doInitSFU(activeLocalStream);
+                
+                // --- RE-PUBLISH SCREEN SHARE ---
+                // If we were sharing before the reset (e.g. jumping rooms), 
+                // we should automatically restart the share in the new session.
+                if (localScreenStream.value && localScreenStream.value.getTracks().some(t => t.readyState === 'live')) {
+                    log('SFU', 'Auto-restoring persistent screen share after reset');
+                    // We call publishScreenTrack which will queue itself behind this reset
+                    // but we don't await it here to avoid deadlocks (it's already in the queue)
+                    publishScreenTrack(localScreenStream.value);
+                }
+            } finally {
+                isInitializingSFU.value = false;
+            }
+        });
     }
 
     function addLocalStream(stream: MediaStream | null) {
         localStream.value = stream;
-        resetSFUSession(stream);
+        
+        if (sfuSessionId.value && sfuPc) {
+            log('SFU', 'Session already active, updating tracks via replaceTrack');
+            if (stream) {
+                stream.getTracks().forEach(track => {
+                    replaceTrack(track.kind as 'audio' | 'video', track);
+                });
+            } else {
+                replaceTrack('audio', null);
+                replaceTrack('video', null);
+            }
+        } else {
+            log('SFU', 'No session, initializing SFU');
+            initSFU(stream);
+        }
     }
 
     function setLocalStream(stream: MediaStream | null) {
@@ -831,6 +994,13 @@ export function createStreamManager(
         }
         if (sfuPc) sfuPc.close();
         remoteStreams.value.clear();
+        remoteSfuSessions.clear();
+        remoteSfuTracks.clear();
+        sfuTransceiverMap.clear();
+        midToParticipantMap.clear();
+        participantPullAttempts.clear();
+        pendingTrackEvents.length = 0;
+        pendingPullSignals.length = 0;
         audioAnalysers.forEach(x => {
             window.clearInterval(x.interval);
             x.context.close().catch(()=>{});

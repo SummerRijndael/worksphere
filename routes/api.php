@@ -1012,6 +1012,7 @@ Route::middleware(['throttle:meetings'])->prefix('meetings')->group(function () 
         ->middleware('throttle:signaling');
     Route::post('/{meeting}/lock', [\App\Http\Controllers\Api\MeetingController::class, 'lock']);
     Route::post('/{meeting}/unlock', [\App\Http\Controllers\Api\MeetingController::class, 'unlock']);
+    Route::post('/{meeting}/lock/renew', [\App\Http\Controllers\Api\MeetingController::class, 'renewLock']);
     Route::patch('/{meeting}/settings', [\App\Http\Controllers\Api\MeetingController::class, 'updateSettings']);
     Route::post('/{meeting}/end', [\App\Http\Controllers\Api\MeetingController::class, 'end']);
 

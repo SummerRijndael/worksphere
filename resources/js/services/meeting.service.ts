@@ -9,6 +9,7 @@ export interface Meeting {
     start_time: string;
     end_time: string | null;
     status: 'scheduled' | 'live' | 'ended';
+    is_locked?: boolean;
     settings: {
         lobby_enabled: boolean;
         guest_access: boolean;
@@ -147,6 +148,10 @@ class MeetingService extends BaseService {
 
     async unlockMeeting(id: string) {
         return this.post(`/api/meetings/${id}/unlock`, {});
+    }
+
+    async renewLock(id: string) {
+        return this.post(`/api/meetings/${id}/lock/renew`, {});
     }
 
     // --- Breakout Rooms ---
