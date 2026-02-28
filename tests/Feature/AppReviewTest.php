@@ -15,29 +15,30 @@ class AppReviewTest extends TestCase
     use RefreshDatabase;
 
     protected User $admin;
+
     protected User $user;
 
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         // Reset cached roles and permissions
         $this->app->make(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
 
         // Create the administrator role
         $adminRole = Role::firstOrCreate(['name' => 'administrator', 'guard_name' => 'web']);
-        
+
         // Create permissions
         $pModerate = Permission::firstOrCreate(['name' => 'reviews.moderate', 'guard_name' => 'web']);
         $pCreate = Permission::firstOrCreate(['name' => 'reviews.create', 'guard_name' => 'web']);
-        
+
         // Give permissions to the role
         $adminRole->givePermissionTo($pModerate);
-        
+
         // Create admin user and assign role
         $this->admin = User::factory()->create();
         $this->admin->assignRole($adminRole);
-        
+
         // Create regular user and give direct permission
         $this->user = User::factory()->create();
         $this->user->givePermissionTo($pCreate);
@@ -67,7 +68,7 @@ class AppReviewTest extends TestCase
         ]);
 
         $response->assertStatus(201);
-        
+
         $review = AppReview::first();
         $this->assertEquals(5, $review->rating);
         $this->assertFalse($review->is_published);

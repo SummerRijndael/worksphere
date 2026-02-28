@@ -1,4 +1,10 @@
+<?php
+
+namespace App\Services;
+
 use App\Contracts\AppReviewServiceContract;
+
+
 use App\Models\AuditLog;
 use App\Models\Team;
 use App\Models\User;

@@ -5,10 +5,8 @@ namespace Tests\Feature;
 use App\Models\Client;
 use App\Models\Team;
 use App\Models\User;
-use App\Models\TeamRole;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
-use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
 
@@ -19,7 +17,7 @@ class TeamRolePermissionsTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         // Setup permissions needed for InvoicePolicy (which uses PermissionService)
         Permission::firstOrCreate(['name' => 'invoices.create', 'guard_name' => 'web']);
         Permission::firstOrCreate(['name' => 'clients.create', 'guard_name' => 'web']);
@@ -29,7 +27,7 @@ class TeamRolePermissionsTest extends TestCase
     {
         $user = User::factory()->create();
         $team = Team::factory()->create(); // User NOT the owner_id
-        
+
         // Add as team_lead
         $team->addMember($user, 'team_lead');
 
@@ -43,7 +41,7 @@ class TeamRolePermissionsTest extends TestCase
     {
         $user = User::factory()->create();
         $team = Team::factory()->create();
-        
+
         // Add as operator
         $team->addMember($user, 'operator');
 
@@ -56,7 +54,7 @@ class TeamRolePermissionsTest extends TestCase
     {
         $user = User::factory()->create();
         $team = Team::factory()->create();
-        
+
         // Add as team_lead - this should grant 'invoices.create' via PermissionService
         $team->addMember($user, 'team_lead');
 
@@ -70,7 +68,7 @@ class TeamRolePermissionsTest extends TestCase
     {
         $user = User::factory()->create();
         $team = Team::factory()->create();
-        
+
         // Add as operator
         $team->addMember($user, 'operator');
 

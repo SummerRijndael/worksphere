@@ -100,6 +100,7 @@ return [
         \App\Models\EmailSignature::class => \App\Support\MediaLibrary\PrivatePathGenerator::class,
         \App\Models\Email::class => \App\Support\MediaLibrary\EmailPathGenerator::class,
         \App\Models\User::class => \App\Support\MediaLibrary\UserAvatarPathGenerator::class,
+        \App\Models\Team::class => \App\Support\MediaLibrary\TeamPathGenerator::class,
     ],
 
     /*

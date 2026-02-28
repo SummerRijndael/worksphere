@@ -112,7 +112,7 @@ class MaintenanceService
     {
         try {
             $activeUsers = $this->presenceService->getActiveUsers();
-            
+
             return [
                 'total' => $activeUsers->count(),
                 'administrators' => $activeUsers->filter(fn ($user) => $user->hasRole('administrator'))->count(),
@@ -120,6 +120,7 @@ class MaintenanceService
             ];
         } catch (Throwable $e) {
             Log::warning('Failed to get online user stats', ['error' => $e->getMessage()]);
+
             return [
                 'total' => 0,
                 'administrators' => 0,
@@ -1060,11 +1061,104 @@ class MaintenanceService
         DB::table($table)->truncate();
     }
 
-    private function clearRedisSessions(): void
+    public function clearRedisSessions(): void
     {
         $connection = config('session.connection');
         Redis::connection($connection)->flushdb();
     }
+
+    /**
+     * Flush all Redis data.
+     */
+    public function flushRedis(): array
+    {
+        try {
+            Redis::flushall();
+            Log::warning('Redis flushed');
+
+            return [
+                'success' => true,
+                'message' => 'Redis database flushed successfully',
+            ];
+        } catch (Throwable $e) {
+            Log::error('Failed to flush Redis', ['error' => $e->getMessage()]);
+
+            return [
+                'success' => false,
+                'message' => 'Failed to flush Redis: '.$e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Restart queue workers.
+     */
+    public function restartQueue(): array
+    {
+        try {
+            Artisan::call('queue:restart');
+            Log::info('Queue workers restart signal sent');
+
+            return [
+                'success' => true,
+                'message' => 'Queue workers restart signal sent successfully',
+            ];
+        } catch (Throwable $e) {
+            Log::error('Failed to restart queue workers', ['error' => $e->getMessage()]);
+
+            return [
+                'success' => false,
+                'message' => 'Failed to restart queue workers: '.$e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Restart Horizon.
+     */
+    public function restartHorizon(): array
+    {
+        try {
+            Artisan::call('horizon:terminate');
+            Log::info('Horizon termination signal sent');
+
+            return [
+                'success' => true,
+                'message' => 'Horizon termination signal sent successfully',
+            ];
+        } catch (Throwable $e) {
+            Log::error('Failed to restart Horizon', ['error' => $e->getMessage()]);
+
+            return [
+                'success' => false,
+                'message' => 'Failed to restart Horizon: '.$e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Restart Reverb.
+     */
+    public function restartReverb(): array
+    {
+        try {
+            Artisan::call('reverb:restart');
+            Log::info('Reverb restart signal sent');
+
+            return [
+                'success' => true,
+                'message' => 'Reverb restart signal sent successfully',
+            ];
+        } catch (Throwable $e) {
+            Log::error('Failed to restart Reverb', ['error' => $e->getMessage()]);
+
+            return [
+                'success' => false,
+                'message' => 'Failed to restart Reverb: '.$e->getMessage(),
+            ];
+        }
+    }
+
 
     // =========================================================================
     // Log Operations
@@ -1075,7 +1169,7 @@ class MaintenanceService
      */
     public function clearOldLogs(int $daysOld = 30): array
     {
-        $logsPath = storage_path('logs');
+        $logsPath = storage_path('app/private/sys/logs');
         $deletedCount = 0;
         $errors = [];
 
@@ -1110,18 +1204,18 @@ class MaintenanceService
         }
 
         Log::info('Old logs cleared', [
-            'deleted_count' => $deletedCount, 
+            'deleted_count' => $deletedCount,
             'days_old' => $daysOld,
-            'errors' => $errors
+            'errors' => $errors,
         ]);
 
         return [
             'success' => count($errors) === 0,
-            'message' => count($errors) === 0 
-                ? "Cleared {$deletedCount} log file(s)" 
+            'message' => count($errors) === 0
+                ? "Cleared {$deletedCount} log file(s)"
                 : "Cleared {$deletedCount} files with some errors.",
             'deleted_count' => $deletedCount,
-            'errors' => $errors
+            'errors' => $errors,
         ];
     }
 
@@ -1194,6 +1288,11 @@ class MaintenanceService
                 'name' => 'teams:check-health',
                 'description' => 'Team Health Check (Dormant/Deletion)',
                 'schedule' => 'Daily at 2:00 AM',
+            ],
+            [
+                'name' => 'audit:prune',
+                'description' => 'Prune Audit Logs (30 days)',
+                'schedule' => 'Daily at 2:30 AM',
             ],
         ];
 
@@ -1281,6 +1380,7 @@ class MaintenanceService
                 'server-monitor:run-checks' => $this->runArtisanCommand('server-monitor:run-checks'),
                 'email:sync-incremental' => $this->runArtisanCommand('email:sync-incremental'),
                 'teams:check-health' => $this->runArtisanCommand('teams:check-health'),
+                'audit:prune' => $this->runArtisanCommand('audit:prune', ['--days' => 30]),
                 default => throw new \Exception("Unknown task: {$taskName}"),
             };
 
@@ -1322,9 +1422,9 @@ class MaintenanceService
         return true;
     }
 
-    private function runArtisanCommand(string $command): bool
+    private function runArtisanCommand(string $command, array $params = []): bool
     {
-        Artisan::call($command);
+        Artisan::call($command, $params);
 
         return true;
     }
@@ -1462,7 +1562,7 @@ class MaintenanceService
      */
     public function getLogs(int $lines = 100): array
     {
-        $logFile = storage_path('logs/laravel.log');
+        $logFile = storage_path('app/private/sys/logs/laravel.log');
 
         if (! File::exists($logFile)) {
             return [
@@ -1557,7 +1657,7 @@ class MaintenanceService
      */
     public function getBackups(int $page = 1, int $perPage = 20): array
     {
-        $diskName = config('backup.backup.destination.disks')[0] ?? 'local';
+        $diskName = config('backup.backup.destination.disks')[0] ?? config('filesystems.default');
         $disk = Storage::disk($diskName);
         $name = config('backup.backup.name');
 
@@ -1618,7 +1718,7 @@ class MaintenanceService
      */
     public function deleteBackup(string $path): bool
     {
-        $diskName = config('backup.backup.destination.disks')[0] ?? 'local';
+        $diskName = config('backup.backup.destination.disks')[0] ?? config('filesystems.default');
 
         return Storage::disk($diskName)->delete($path);
     }
@@ -1628,7 +1728,7 @@ class MaintenanceService
      */
     public function bulkDeleteBackups(array $paths): array
     {
-        $diskName = config('backup.backup.destination.disks')[0] ?? 'local';
+        $diskName = config('backup.backup.destination.disks')[0] ?? config('filesystems.default');
         $deleted = 0;
         foreach ($paths as $path) {
             if (Storage::disk($diskName)->exists($path)) {
@@ -1661,7 +1761,7 @@ class MaintenanceService
      */
     public function downloadBackup(string $path)
     {
-        $diskName = config('backup.backup.destination.disks')[0] ?? 'local';
+        $diskName = config('backup.backup.destination.disks')[0] ?? config('filesystems.default');
 
         return Storage::disk($diskName)->download($path);
     }

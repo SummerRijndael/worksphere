@@ -7,16 +7,15 @@ use App\Events\Meetings\MeetingSignal;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\MeetingResource;
 use App\Models\Meeting;
-use App\Models\MeetingParticipant;
 use App\Models\MeetingMessage;
+use App\Models\MeetingParticipant;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class MeetingController extends Controller
@@ -33,9 +32,9 @@ class MeetingController extends Controller
                     $query->where('user_id', Auth::id());
                 });
         })
-        ->with(['host', 'participants.user'])
-        ->orderBy('start_time', 'asc')
-        ->get();
+            ->with(['host', 'participants.user'])
+            ->orderBy('start_time', 'asc')
+            ->get();
 
         return MeetingResource::collection($meetings);
     }
@@ -58,7 +57,7 @@ class MeetingController extends Controller
                     if (($request->input('settings.guest_access') ?? false) && empty($value)) {
                         $fail('A password is required when guest access is enabled.');
                     }
-                }
+                },
             ],
             'auto_generate_password' => 'nullable|boolean',
         ]);
@@ -89,6 +88,7 @@ class MeetingController extends Controller
     public function show(Meeting $meeting): MeetingResource
     {
         $this->authorize('view', $meeting);
+
         return new MeetingResource($meeting->load(['host', 'participants.user']));
     }
 
@@ -100,7 +100,7 @@ class MeetingController extends Controller
 
         try {
             $result = $this->meetingService->joinMeeting(
-                $meeting, 
+                $meeting,
                 $request->user(),
                 $request->input('name', 'Guest'),
                 $request->input('email'),
@@ -108,7 +108,7 @@ class MeetingController extends Controller
                 $participantSessionId
             );
 
-            if (!$request->user()) {
+            if (! $request->user()) {
                 session(['meeting_participant_id' => $result['participant']->public_id]);
             }
 
@@ -116,15 +116,16 @@ class MeetingController extends Controller
                 'data' => [
                     'meeting' => new MeetingResource($result['meeting']),
                     'participant' => $result['participant'],
-                ]
+                ],
             ]);
         } catch (\Exception $e) {
             if (str_contains($e->getMessage(), 'REQUIRES_PASSWORD')) {
                 return response()->json([
                     'message' => 'Invalid meeting password.',
-                    'requires_password' => true
+                    'requires_password' => true,
                 ], 403);
             }
+
             return response()->json(['message' => $e->getMessage()], 403);
         }
     }
@@ -139,21 +140,23 @@ class MeetingController extends Controller
         $channelName = $request->input('channel_name');
         $actualChannel = str_starts_with($channelName, 'presence-') ? substr($channelName, 9) : $channelName;
 
-        if (!preg_match('/^meeting\.([a-zA-Z0-9_-]+)$/', $actualChannel, $matches)) {
+        if (! preg_match('/^meeting\.([a-zA-Z0-9_-]+)$/', $actualChannel, $matches)) {
             return response()->json(['message' => 'Invalid meeting channel'], 403);
         }
 
         $meeting = Meeting::where('public_id', $matches[1])->first();
-        if (!$meeting) return response()->json(['message' => 'Meeting not found'], 404);
+        if (! $meeting) {
+            return response()->json(['message' => 'Meeting not found'], 404);
+        }
 
         $participantSessionId = $request->header('X-Participant-ID') ?: (session('meeting_participant_id') ?: session('participant_id'));
 
         try {
             return $this->meetingService->authenticateBroadcasting(
-                $meeting, 
-                $request->user(), 
-                $channelName, 
-                $request->input('socket_id'), 
+                $meeting,
+                $request->user(),
+                $channelName,
+                $request->input('socket_id'),
                 $participantSessionId
             );
         } catch (\Exception $e) {
@@ -182,14 +185,14 @@ class MeetingController extends Controller
         if ($user) {
             $senderQuery->where('user_id', $user->id);
         } else {
-            if (!$participantSessionId || strtolower($participantSessionId) !== $senderPublicId) {
+            if (! $participantSessionId || strtolower($participantSessionId) !== $senderPublicId) {
                 return response()->json(['message' => 'Mismatched signal session'], 403);
             }
         }
 
         $sender = $senderQuery->first();
 
-        if (!$sender) {
+        if (! $sender) {
             return response()->json(['message' => 'Unauthorized or invalid sender session'], 403);
         }
 
@@ -198,7 +201,7 @@ class MeetingController extends Controller
             'type' => $request->signal_type,
             'sender' => $sender->public_id,
             'target' => $request->target_participant_public_id,
-            'data_type' => $request->signal_data['type'] ?? 'none'
+            'data_type' => $request->signal_data['type'] ?? 'none',
         ]);
 
         broadcast(new MeetingSignal(
@@ -208,7 +211,7 @@ class MeetingController extends Controller
             $request->signal_data,
             $request->target_participant_public_id
         ))->toOthers();
-        
+
         return response()->json(['status' => 'ok']);
     }
 
@@ -257,6 +260,7 @@ class MeetingController extends Controller
     {
         $this->authorize('delete', $meeting);
         $this->meetingService->deleteMeeting($meeting);
+
         return response()->json(['message' => 'Meeting cancelled successfully']);
     }
 
@@ -284,7 +288,7 @@ class MeetingController extends Controller
         try {
             Log::channel('videocall')->info('[SFU] Creating new session', [
                 'meeting' => $meeting->public_id,
-                'tracks_count' => count($request->input('tracks', []))
+                'tracks_count' => count($request->input('tracks', [])),
             ]);
 
             $response = Http::withToken($secret)
@@ -312,7 +316,7 @@ class MeetingController extends Controller
         Log::channel('videocall')->info('[SFU] Pulling tracks', [
             'meeting' => $meeting->public_id,
             'sessionId' => $sessionId,
-            'tracks' => $request->input('tracks')
+            'tracks' => $request->input('tracks'),
         ]);
 
         try {
@@ -324,10 +328,11 @@ class MeetingController extends Controller
             if (! $response->successful()) {
                 Log::channel('videocall')->error('[SFU] Meeting Cloudflare tracks/new error', [
                     'status' => $response->status(),
-                    'body'   => $response->body(),
+                    'body' => $response->body(),
                     'sessionId' => $sessionId,
                 ]);
             }
+
             return response()->json($responseData, $response->status());
         } catch (\Exception $e) {
             return response()->json(['error' => 'SFU Track Pull Error', 'details' => $e->getMessage()], 500);
@@ -352,7 +357,7 @@ class MeetingController extends Controller
         Log::channel('videocall')->info('[SFU] Renegotiating session', [
             'meeting' => $meeting->public_id,
             'sessionId' => $sessionId,
-            'method' => $method
+            'method' => $method,
         ]);
 
         try {
@@ -363,8 +368,10 @@ class MeetingController extends Controller
                 ]);
 
             $responseData = $response->json();
-            if (! $response->successful()) return response()->json(['error' => 'Renegotiation Error'], $response->status());
-            
+            if (! $response->successful()) {
+                return response()->json(['error' => 'Renegotiation Error'], $response->status());
+            }
+
             return response()->json($responseData, $response->status());
         } catch (\Exception $e) {
             return response()->json(['error' => 'SFU Renegotiation Exception', 'details' => $e->getMessage()], 500);
@@ -380,6 +387,7 @@ class MeetingController extends Controller
         }
 
         $participant = $this->meetingService->admitParticipant($meeting, $participant);
+
         return response()->json(['message' => 'Participant admitted.', 'participant' => $participant]);
     }
 
@@ -387,78 +395,103 @@ class MeetingController extends Controller
     {
         $this->authorize('moderate', $meeting);
 
-        if ($participant->meeting_id !== $meeting->id) return response()->json(['message' => 'Not found'], 404);
+        if ($participant->meeting_id !== $meeting->id) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
 
         $this->meetingService->rejectParticipant($meeting, $participant);
+
         return response()->json(['message' => 'Participant rejected.']);
     }
 
     public function mute(Request $request, Meeting $meeting, MeetingParticipant $participant): JsonResponse
     {
         $this->authorize('moderate', $meeting);
-        if ($participant->meeting_id !== $meeting->id) return response()->json(['message' => 'Not found'], 404);
-        
+        if ($participant->meeting_id !== $meeting->id) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+
         $participant->update(['is_muted_by_host' => true]);
+
         return response()->json(['message' => 'Participant muted.']);
     }
 
     public function unmute(Request $request, Meeting $meeting, MeetingParticipant $participant): JsonResponse
     {
         $this->authorize('moderate', $meeting);
-        if ($participant->meeting_id !== $meeting->id) return response()->json(['message' => 'Not found'], 404);
-        
+        if ($participant->meeting_id !== $meeting->id) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+
         $participant->update(['is_muted_by_host' => false]);
+
         return response()->json(['message' => 'Participant can unmute.']);
     }
 
     public function cameraOff(Request $request, Meeting $meeting, MeetingParticipant $participant): JsonResponse
     {
         $this->authorize('moderate', $meeting);
-        if ($participant->meeting_id !== $meeting->id) return response()->json(['message' => 'Not found'], 404);
+        if ($participant->meeting_id !== $meeting->id) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
 
         $participant->update(['is_camera_disabled_by_host' => true]);
+
         return response()->json(['message' => 'Participant camera disabled.']);
     }
 
     public function cameraAllow(Request $request, Meeting $meeting, MeetingParticipant $participant): JsonResponse
     {
         $this->authorize('moderate', $meeting);
-        if ($participant->meeting_id !== $meeting->id) return response()->json(['message' => 'Not found'], 404);
+        if ($participant->meeting_id !== $meeting->id) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
 
         $participant->update(['is_camera_disabled_by_host' => false]);
+
         return response()->json(['message' => 'Participant camera allowed.']);
     }
 
     public function kick(Request $request, Meeting $meeting, MeetingParticipant $participant): JsonResponse
     {
         $this->authorize('moderate', $meeting);
-        if ($participant->meeting_id !== $meeting->id) return response()->json(['message' => 'Not found'], 404);
+        if ($participant->meeting_id !== $meeting->id) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
 
         $participant->update(['status' => 'rejected']);
+
         return response()->json(['message' => 'Participant kicked.']);
     }
 
     public function promote(Request $request, Meeting $meeting, MeetingParticipant $participant): JsonResponse
     {
         $this->authorize('update', $meeting); // Only host
-        if ($participant->meeting_id !== $meeting->id) return response()->json(['message' => 'Not found'], 404);
+        if ($participant->meeting_id !== $meeting->id) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
 
         $participant = $this->meetingService->promoteParticipant($meeting, $participant);
+
         return response()->json(['message' => 'Participant promoted to co-host.', 'participant' => $participant]);
     }
 
     public function demote(Request $request, Meeting $meeting, MeetingParticipant $participant): JsonResponse
     {
         $this->authorize('update', $meeting); // Only host
-        if ($participant->meeting_id !== $meeting->id) return response()->json(['message' => 'Not found'], 404);
+        if ($participant->meeting_id !== $meeting->id) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
 
         $participant = $this->meetingService->demoteParticipant($meeting, $participant);
+
         return response()->json(['message' => 'Participant demoted.', 'participant' => $participant]);
     }
 
     public function getMessages(Request $request, Meeting $meeting): AnonymousResourceCollection
     {
         $messages = MeetingMessage::where('meeting_id', $meeting->id)->orderBy('created_at', 'asc')->get();
+
         return \App\Http\Resources\MeetingMessageResource::collection($messages);
     }
 
@@ -469,10 +502,12 @@ class MeetingController extends Controller
             'body' => 'required|string|max:2000',
         ]);
 
-        $key = "meeting_chat_" . strtolower($request->participant_public_id);
+        $key = 'meeting_chat_'.strtolower($request->participant_public_id);
         $count = (int) Cache::get($key, 0);
 
-        if ($count >= 20) return response()->json(['message' => 'Too many messages.'], 429);
+        if ($count >= 20) {
+            return response()->json(['message' => 'Too many messages.'], 429);
+        }
         Cache::put($key, $count + 1, 60);
 
         $message = MeetingMessage::create([
@@ -501,7 +536,7 @@ class MeetingController extends Controller
         $this->authorize('update', $meeting); // Only host
 
         Cache::put("meeting:lock:{$meeting->public_id}", true, 180); // 3 mins TTL
-        
+
         $hostParticipant = $meeting->participants()->where('user_id', Auth::id())->first();
 
         broadcast(new MeetingSignal(
@@ -519,7 +554,7 @@ class MeetingController extends Controller
         $this->authorize('update', $meeting); // Only host
 
         Cache::forget("meeting:lock:{$meeting->public_id}");
-        
+
         $hostParticipant = $meeting->participants()->where('user_id', Auth::id())->first();
 
         broadcast(new MeetingSignal(
@@ -537,7 +572,7 @@ class MeetingController extends Controller
         $this->authorize('update', $meeting); // Only host
 
         Cache::put("meeting:lock:{$meeting->public_id}", true, 180); // 3 mins TTL
-        
+
         $hostParticipant = $meeting->participants()->where('user_id', Auth::id())->first();
 
         broadcast(new MeetingSignal(
@@ -578,7 +613,7 @@ class MeetingController extends Controller
 
         $validated = $request->validate([
             'question' => 'required|string|max:500',
-            'options'  => 'required|array|min:2|max:6',
+            'options' => 'required|array|min:2|max:6',
             'options.*' => 'required|string|max:200',
             'allow_multiple' => 'boolean',
             'allow_change_vote' => 'boolean',
@@ -586,10 +621,10 @@ class MeetingController extends Controller
         ]);
 
         $poll = \App\Models\MeetingPoll::create([
-            'meeting_id'  => $meeting->id,
-            'created_by'  => $participant->id,
-            'question'    => $validated['question'],
-            'options'     => array_values($validated['options']),
+            'meeting_id' => $meeting->id,
+            'created_by' => $participant->id,
+            'question' => $validated['question'],
+            'options' => array_values($validated['options']),
             'allow_multiple' => $validated['allow_multiple'] ?? false,
             'allow_change_vote' => $validated['allow_change_vote'] ?? false,
             'anonymous' => $validated['anonymous'] ?? false,
@@ -598,14 +633,14 @@ class MeetingController extends Controller
         broadcast(new \App\Events\Meetings\MeetingPollCreated($meeting, $poll));
 
         return response()->json(['data' => [
-            'public_id'   => $poll->public_id,
-            'question'    => $poll->question,
-            'options'     => $poll->options,
+            'public_id' => $poll->public_id,
+            'question' => $poll->question,
+            'options' => $poll->options,
             'vote_counts' => array_fill(0, count($poll->options), 0),
             'allow_multiple' => $poll->allow_multiple,
             'allow_change_vote' => $poll->allow_change_vote,
             'anonymous' => $poll->anonymous,
-            'is_active'   => true,
+            'is_active' => true,
         ]], 201);
     }
 
@@ -622,7 +657,7 @@ class MeetingController extends Controller
 
         $validated = $request->validate([
             'question' => 'required|string|max:500',
-            'options'  => 'required|array|min:2|max:6',
+            'options' => 'required|array|min:2|max:6',
             'options.*' => 'required|string|max:200',
             'allow_multiple' => 'boolean',
             'allow_change_vote' => 'boolean',
@@ -674,11 +709,11 @@ class MeetingController extends Controller
 
         $validated = $request->validate([
             'option_indexes' => 'required|array|min:1',
-            'option_indexes.*' => 'required|integer|min:0'
+            'option_indexes.*' => 'required|integer|min:0',
         ]);
 
         $indexes = array_unique($validated['option_indexes']);
-        
+
         // Validate all indexes are within range
         foreach ($indexes as $idx) {
             if ($idx >= count($poll->options)) {
@@ -686,11 +721,11 @@ class MeetingController extends Controller
             }
         }
 
-        if (!$poll->allow_multiple && count($indexes) > 1) {
+        if (! $poll->allow_multiple && count($indexes) > 1) {
             return response()->json(['message' => 'Multiple select is not allowed for this poll.'], 422);
         }
 
-        \DB::transaction(function() use ($poll, $participant, $indexes) {
+        \DB::transaction(function () use ($poll, $participant, $indexes) {
             if ($poll->allow_change_vote) {
                 // Remove existing votes before applying new ones
                 $poll->votes()->where('participant_id', $participant->id)->delete();
@@ -699,14 +734,14 @@ class MeetingController extends Controller
             foreach ($indexes as $idx) {
                 try {
                     \App\Models\MeetingPollVote::create([
-                        'poll_id'       => $poll->id,
+                        'poll_id' => $poll->id,
                         'participant_id' => $participant->id,
-                        'option_index'  => $idx,
+                        'option_index' => $idx,
                     ]);
                 } catch (\Illuminate\Database\QueryException $e) {
                     // Unique constraint: already voted for this option
                     // If allow_change_vote is false, this will block re-voting
-                    if (!$poll->allow_change_vote) {
+                    if (! $poll->allow_change_vote) {
                         throw $e;
                     }
                 }
@@ -738,11 +773,11 @@ class MeetingController extends Controller
             ->orderByDesc('created_at')
             ->take(10)
             ->get()
-            ->map(fn($p) => [
-                'public_id'   => $p->public_id,
-                'question'    => $p->question,
-                'options'     => $p->options,
-                'is_active'   => $p->is_active,
+            ->map(fn ($p) => [
+                'public_id' => $p->public_id,
+                'question' => $p->question,
+                'options' => $p->options,
+                'is_active' => $p->is_active,
                 'vote_counts' => $p->getVoteCounts(),
             ]);
 
@@ -820,17 +855,21 @@ class MeetingController extends Controller
     public function joinBreakoutRoom(Request $request, Meeting $meeting, string $roomId): JsonResponse
     {
         $participant = $this->resolveParticipant($request, $meeting);
-        if (!$participant) return response()->json(['message' => 'Unauthorized'], 403);
+        if (! $participant) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
 
         $this->meetingService->joinBreakoutRoom($meeting, $participant, $roomId);
-        
+
         return response()->json(['message' => 'Joined room.']);
     }
 
     public function requestBreakoutHelp(Request $request, Meeting $meeting, string $roomId): JsonResponse
     {
         $participant = $this->resolveParticipant($request, $meeting);
-        if (!$participant) return response()->json(['message' => 'Unauthorized'], 403);
+        if (! $participant) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
 
         $this->meetingService->requestBreakoutHelp($meeting, $roomId);
 
@@ -871,7 +910,9 @@ class MeetingController extends Controller
     public function notifyBreakoutActivity(Request $request, Meeting $meeting): JsonResponse
     {
         $participant = $this->resolveParticipant($request, $meeting);
-        if (!$participant) return response()->json(['message' => 'Unauthorized'], 403);
+        if (! $participant) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
 
         $validated = $request->validate([
             'message' => 'required|string|max:255',
@@ -904,6 +945,7 @@ class MeetingController extends Controller
                 ->whereRaw('LOWER(public_id) = ?', [strtolower($pid)])
                 ->first();
         }
+
         return null;
     }
 }

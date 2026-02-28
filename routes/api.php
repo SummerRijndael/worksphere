@@ -184,7 +184,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
     Route::put('/notifications/{id}/read', [App\Http\Controllers\Api\NotificationController::class, 'markAsRead']);
     Route::delete('/notifications/{id}', [App\Http\Controllers\Api\NotificationController::class, 'destroy']);
     Route::delete('/notifications', [App\Http\Controllers\Api\NotificationController::class, 'destroyAll']);
- 
+
     // User Reviews
     Route::post('/user/reviews', [\App\Http\Controllers\Api\ReviewController::class, 'store']);
 
@@ -598,6 +598,10 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
         Route::post('/cache/clear', [\App\Http\Controllers\Api\MaintenanceController::class, 'clearCache']);
         Route::post('/views/clear', [\App\Http\Controllers\Api\MaintenanceController::class, 'clearViews']);
         Route::post('/sessions/clear', [\App\Http\Controllers\Api\MaintenanceController::class, 'clearSessions']);
+        Route::post('/redis/flush', [\App\Http\Controllers\Api\MaintenanceController::class, 'flushRedis']);
+        Route::post('/queue/restart', [\App\Http\Controllers\Api\MaintenanceController::class, 'restartQueue']);
+        Route::post('/horizon/restart', [\App\Http\Controllers\Api\MaintenanceController::class, 'restartHorizon']);
+        Route::post('/reverb/restart', [\App\Http\Controllers\Api\MaintenanceController::class, 'restartReverb']);
         Route::post('/logs/clear', [\App\Http\Controllers\Api\MaintenanceController::class, 'clearLogs']);
         Route::get('/scheduled-tasks', [\App\Http\Controllers\Api\MaintenanceController::class, 'scheduledTasks']);
         Route::post('/scheduled-tasks/{task}/run', [\App\Http\Controllers\Api\MaintenanceController::class, 'runTask']);
@@ -633,7 +637,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
             Route::get('/sources', [\App\Http\Controllers\Api\AnalyticsController::class, 'sources']);
             Route::get('/demographics', [\App\Http\Controllers\Api\AnalyticsController::class, 'demographics']);
             Route::get('/geo-stats', [\App\Http\Controllers\Api\AnalyticsController::class, 'geoStats']);
-            
+
             // Sentiment & Engagement Dashboard
             Route::get('/sentiment', [\App\Http\Controllers\Api\EngagementController::class, 'sentiment']);
             Route::get('/engagement', [\App\Http\Controllers\Api\EngagementController::class, 'engagement']);
@@ -755,7 +759,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
         Route::get('/versions/{version}', [\App\Http\Controllers\Api\FaqArticleVersionController::class, 'show']);
         Route::post('/versions/{version}/restore', [\App\Http\Controllers\Api\FaqArticleVersionController::class, 'restore']);
     });
- 
+
     // Review Management (Admin)
     Route::middleware('permission:reviews.moderate')->prefix('admin/reviews')->group(function () {
         Route::get('/', [\App\Http\Controllers\Api\ReviewController::class, 'adminIndex']);

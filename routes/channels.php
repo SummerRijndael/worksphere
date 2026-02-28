@@ -125,31 +125,34 @@ Broadcast::channel('projects.{projectId}.tasks', ChannelAuthLogger::wrap('projec
 // Allows both registered users and guest participants
 Broadcast::channel('meeting.{meetingId}', ChannelAuthLogger::wrap('meeting.{meetingId}', function ($user, $meetingId) {
     $meeting = \App\Models\Meeting::where('public_id', $meetingId)->first();
-    if (!$meeting) return false;
+    if (! $meeting) {
+        return false;
+    }
 
     // 1. If host: Always allow — but return their PARTICIPANT public_id, not user public_id
     if ($user && $meeting->user_id === $user->id) {
         $hostParticipant = \App\Models\MeetingParticipant::where('meeting_id', $meeting->id)
             ->where('user_id', $user->id)
             ->first();
+
         return [
             'public_id' => $hostParticipant ? $hostParticipant->public_id : $user->public_id,
             'name' => $user->name,
             'avatar' => $user->avatar_url,
             'role' => 'host',
-            'status' => 'admitted'
+            'status' => 'admitted',
         ];
     }
 
     // 2. Check participant record (works for both guests and registered users)
     // We check either the authenticated user's ID or the participant ID from the session/request
     $participantId = request()->header('X-Participant-ID') ?: (session('meeting_participant_id') ?: session('participant_id'));
-    
+
     $participantQuery = \App\Models\MeetingParticipant::where('meeting_id', $meeting->id);
-    
+
     if ($user) {
         $participantQuery->where('user_id', $user->id);
-    } else if ($participantId) {
+    } elseif ($participantId) {
         $participantQuery->where('public_id', $participantId);
     } else {
         return false;
@@ -163,7 +166,7 @@ Broadcast::channel('meeting.{meetingId}', ChannelAuthLogger::wrap('meeting.{meet
             'name' => $participant->user?->name ?: ($participant->metadata['guest_name'] ?? 'Guest'),
             'avatar' => $participant->user?->avatar_url,
             'role' => $participant->role,
-            'status' => $participant->status
+            'status' => $participant->status,
         ];
     }
 

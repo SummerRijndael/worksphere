@@ -15,6 +15,7 @@ class ReviewController extends Controller
     public function __construct(
         protected AppReviewServiceContract $reviewService
     ) {}
+
     /**
      * Display a listing of published reviews.
      */

@@ -15,16 +15,17 @@ class MeetingPollCreated implements ShouldBroadcastNow
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
     public string $meetingPublicId;
+
     public array $poll;
 
     public function __construct(Meeting $meeting, MeetingPoll $poll)
     {
         $this->meetingPublicId = $meeting->public_id;
         $this->poll = [
-            'public_id'  => $poll->public_id,
-            'question'   => $poll->question,
-            'options'    => $poll->options,
-            'is_active'  => true,
+            'public_id' => $poll->public_id,
+            'question' => $poll->question,
+            'options' => $poll->options,
+            'is_active' => true,
             'vote_counts' => array_fill(0, count($poll->options), 0),
         ];
     }

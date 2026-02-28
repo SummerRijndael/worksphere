@@ -82,7 +82,7 @@ class SettingsController extends Controller
                 if ($this->settingsService->isCritical($key)) {
                     $criticalChanges[] = $key;
                 }
-                
+
                 // Capture old value
                 $oldValues[$key] = $currentValue;
                 $newValues[$key] = $value;

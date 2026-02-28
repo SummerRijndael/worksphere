@@ -2,11 +2,10 @@
 
 namespace App\Events\Meetings;
 
+use App\Http\Resources\MeetingParticipantResource;
 use App\Models\Meeting;
 use App\Models\MeetingParticipant;
-use App\Http\Resources\MeetingParticipantResource;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
@@ -16,6 +15,7 @@ class MeetingParticipantJoined implements ShouldBroadcastNow
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
     public string $meetingPublicId;
+
     public $participant;
 
     /**

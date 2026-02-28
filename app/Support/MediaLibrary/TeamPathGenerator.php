@@ -5,7 +5,7 @@ namespace App\Support\MediaLibrary;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 use Spatie\MediaLibrary\Support\PathGenerator\PathGenerator;
 
-class UserAvatarPathGenerator implements PathGenerator
+class TeamPathGenerator implements PathGenerator
 {
     /*
      * Get the path for the given media, relative to the root storage path.
@@ -31,17 +31,17 @@ class UserAvatarPathGenerator implements PathGenerator
         return $this->getBasePath($media).'/responsive-images/';
     }
 
-    /*
-     * Get the base path for the media.
-     * Structure: avatar/{user_uuid}/{media_id}
-     */
     protected function getBasePath(Media $media): string
     {
         $model = $media->model;
 
-        // Use public_id (UUID) if available, otherwise fallback to ID or 'unknown'
-        $userUuid = $model && isset($model->public_id) ? $model->public_id : ($model->id ?? 'unknown');
+        // Use public_id (UUID) if available, otherwise fallback to ID
+        $teamUuid = $model && isset($model->public_id) ? $model->public_id : ($model->id ?? 'unknown');
 
-        return "avatar/{$userUuid}/{$media->id}";
+        if ($media->collection_name === 'avatars') {
+            return "avatar/{$teamUuid}/{$media->id}";
+        }
+
+        return "private/{$teamUuid}/team_files/{$media->id}";
     }
 }

@@ -26,17 +26,27 @@
                         v-for="layout in layouts"
                         :key="layout.id"
                         class="layout-option"
-                        :class="{ 'layout-option--active': meetingStore.preferredLayout === layout.id }"
+                        :class="{
+                            'layout-option--active':
+                                meetingStore.preferredLayout === layout.id,
+                        }"
                         @click="selectLayout(layout.id)"
                     >
                         <div class="layout-option-icon">
                             <Icon :name="layout.icon" size="20" />
                         </div>
                         <div class="layout-option-info">
-                            <div class="layout-option-label">{{ layout.label }}</div>
-                            <div class="layout-option-desc">{{ layout.desc }}</div>
+                            <div class="layout-option-label">
+                                {{ layout.label }}
+                            </div>
+                            <div class="layout-option-desc">
+                                {{ layout.desc }}
+                            </div>
                         </div>
-                        <div v-if="meetingStore.preferredLayout === layout.id" class="layout-option-check">
+                        <div
+                            v-if="meetingStore.preferredLayout === layout.id"
+                            class="layout-option-check"
+                        >
                             <Icon name="check" size="16" />
                         </div>
                     </button>
@@ -47,10 +57,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import { onClickOutside } from '@vueuse/core';
-import { useMeetingStore } from '@/stores/meeting';
-import { Icon } from '@/components/ui';
+import { ref, computed } from "vue";
+import { onClickOutside } from "@vueuse/core";
+import { useMeetingStore } from "@/stores/meeting";
+import { Icon } from "@/components/ui";
 
 const meetingStore = useMeetingStore();
 const showMenu = ref(false);
@@ -61,34 +71,37 @@ onClickOutside(menuRef, () => {
 });
 
 const layouts = [
-    { 
-        id: 'auto', 
-        label: 'Auto', 
-        icon: 'sparkles', 
-        desc: 'Choose the best layout for you' 
+    {
+        id: "auto",
+        label: "Auto",
+        icon: "sparkles",
+        desc: "Choose the best layout for you",
     },
-    { 
-        id: 'tiled', 
-        label: 'Tiled', 
-        icon: 'layout-grid', 
-        desc: 'See everyone at once' 
+    {
+        id: "tiled",
+        label: "Tiled",
+        icon: "layout-grid",
+        desc: "See everyone at once",
     },
-    { 
-        id: 'spotlight', 
-        label: 'Spotlight', 
-        icon: 'maximize', 
-        desc: 'Focus on the main speaker' 
+    {
+        id: "spotlight",
+        label: "Spotlight",
+        icon: "maximize",
+        desc: "Focus on the main speaker",
     },
-    { 
-        id: 'sidebar', 
-        label: 'Sidebar', 
-        icon: 'layout', 
-        desc: 'Main speaker with others in sidebar' 
-    }
+    {
+        id: "sidebar",
+        label: "Sidebar",
+        icon: "layout",
+        desc: "Main speaker with others in sidebar",
+    },
 ];
 
 const currentLayoutIcon = computed(() => {
-    return layouts.find(l => l.id === meetingStore.preferredLayout)?.icon || 'sparkles';
+    return (
+        layouts.find((l) => l.id === meetingStore.preferredLayout)?.icon ||
+        "sparkles"
+    );
 });
 
 function selectLayout(id: any) {
@@ -111,9 +124,9 @@ function selectLayout(id: any) {
     width: 44px;
     height: 44px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.1);
-    color: white;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: var(--surface-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-subtle);
     cursor: pointer;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
@@ -121,8 +134,8 @@ function selectLayout(id: any) {
 }
 
 .layout-selector :deep(.ctrl-btn:hover) {
-    background: rgba(255, 255, 255, 0.2);
-    border-color: rgba(255, 255, 255, 0.2);
+    background: var(--surface-secondary);
+    border-color: var(--border-default);
 }
 
 .layout-selector :deep(.ctrl-btn--active) {
@@ -136,9 +149,9 @@ function selectLayout(id: any) {
     bottom: calc(100% + 12px);
     right: 0;
     width: 280px;
-    background: rgba(32, 33, 36, 0.98);
+    background: var(--surface-elevated);
     backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--border-default);
     border-radius: 16px;
     overflow: hidden;
     z-index: 1000;
@@ -148,8 +161,8 @@ function selectLayout(id: any) {
     padding: 16px;
     font-size: 14px;
     font-weight: 500;
-    color: #e8eaed;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--border-subtle);
 }
 
 .layout-options {
@@ -168,12 +181,12 @@ function selectLayout(id: any) {
     cursor: pointer;
     text-align: left;
     transition: all 0.2s;
-    color: #bdc1c6;
+    color: var(--text-secondary);
 }
 
 .layout-option:hover {
-    background: rgba(255, 255, 255, 0.06);
-    color: #ffffff;
+    background: var(--surface-tertiary);
+    color: var(--text-primary);
 }
 
 .layout-option--active {
@@ -187,7 +200,7 @@ function selectLayout(id: any) {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--surface-secondary);
     border-radius: 10px;
     flex-shrink: 0;
 }

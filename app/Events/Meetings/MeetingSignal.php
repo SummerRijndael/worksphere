@@ -4,7 +4,6 @@ namespace App\Events\Meetings;
 
 use App\Models\Meeting;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Broadcasting\Channel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;

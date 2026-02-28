@@ -23,7 +23,7 @@ $meeting = \App\Models\Meeting::create([
     'user_id' => $user->id,
     'status' => 'scheduled',
     'password' => 'secret123',
-    'settings' => ['invited_only' => true, 'guest_access' => true]
+    'settings' => ['invited_only' => true, 'guest_access' => true],
 ]);
 
 $event = \App\Models\Event::create([
@@ -33,7 +33,7 @@ $event = \App\Models\Event::create([
     'end_time' => now()->addHour(),
     'user_id' => $user->id,
     'meeting_id' => $meeting->id,
-    'external_attendees' => ['guest@example.com']
+    'external_attendees' => ['guest@example.com'],
 ]);
 
 echo "--- Running MeetingService Security Tests ---\n";
@@ -46,7 +46,7 @@ try {
     if (str_contains($e->getMessage(), 'REQUIRES_PASSWORD') || str_contains($e->getMessage(), 'Incorrect meeting password')) {
         echo "✅ PASSED: password required\n";
     } else {
-         echo "❌ FAILED: unexpected error without password - " . $e->getMessage() . "\n";
+        echo '❌ FAILED: unexpected error without password - '.$e->getMessage()."\n";
     }
 }
 
@@ -56,10 +56,10 @@ try {
     if ($res['participant']->status === 'admitted') {
         echo "✅ PASSED: guest admitted immediately\n";
     } else {
-        echo "❌ FAILED: guest not admitted immediately, status: " . $res['participant']->status . "\n";
+        echo '❌ FAILED: guest not admitted immediately, status: '.$res['participant']->status."\n";
     }
 } catch (\Exception $e) {
-    echo "❌ FAILED: unexpected error with password - " . $e->getMessage() . "\n";
+    echo '❌ FAILED: unexpected error with password - '.$e->getMessage()."\n";
 }
 
 // Join as guest with password but UNINVITED email -> Should fail
@@ -70,7 +70,7 @@ try {
     if (str_contains($e->getMessage(), 'This meeting is restricted to invited participants')) {
         echo "✅ PASSED: uninvited guest blocked\n";
     } else {
-        echo "❌ FAILED: expected ACL block but got: " . $e->getMessage() . "\n";
+        echo '❌ FAILED: expected ACL block but got: '.$e->getMessage()."\n";
     }
 }
 
@@ -83,9 +83,8 @@ try {
     if (str_contains($e->getMessage(), 'This meeting is restricted to invited participants')) {
         echo "✅ PASSED: uninvited user blocked\n";
     } else {
-        echo "❌ FAILED: expected ACL block for user but got: " . $e->getMessage() . "\n";
+        echo '❌ FAILED: expected ACL block for user but got: '.$e->getMessage()."\n";
     }
 }
 
 echo "--- Tests Complete ---\n";
-

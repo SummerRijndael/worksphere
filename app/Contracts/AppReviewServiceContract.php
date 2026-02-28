@@ -22,7 +22,7 @@ interface AppReviewServiceContract
     /**
      * Submit a new review.
      *
-     * @param array<string, mixed> $data
+     * @param  array<string, mixed>  $data
      */
     public function submit(User $user, array $data): AppReview;
 

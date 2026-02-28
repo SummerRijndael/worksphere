@@ -195,6 +195,88 @@ class MaintenanceController extends Controller
     }
 
     /**
+     * Flush all Redis data.
+     */
+    public function flushRedis(Request $request): JsonResponse
+    {
+        // Require password confirmation and reason for this critical action
+        $validated = $request->validate([
+            'password' => 'required|string',
+            'reason' => 'required|string|min:10',
+        ]);
+
+        $user = $request->user();
+        if (! Hash::check($validated['password'], $user->password)) {
+            throw ValidationException::withMessages([
+                'password' => ['The provided password is incorrect.'],
+            ]);
+        }
+
+        $result = $this->maintenanceService->flushRedis();
+
+        $this->auditService->log(
+            action: AuditAction::RedisFlushed,
+            category: AuditCategory::Security,
+            user: $user,
+            context: [
+                'reason' => $validated['reason'],
+                'risk_acknowledged' => true,
+            ]
+        );
+
+        return response()->json($result);
+    }
+
+    /**
+     * Restart queue workers.
+     */
+    public function restartQueue(Request $request): JsonResponse
+    {
+        $result = $this->maintenanceService->restartQueue();
+
+        $this->auditService->log(
+            action: AuditAction::QueueRestarted,
+            category: AuditCategory::Security,
+            user: $request->user()
+        );
+
+        return response()->json($result);
+    }
+
+    /**
+     * Restart Horizon.
+     */
+    public function restartHorizon(Request $request): JsonResponse
+    {
+        $result = $this->maintenanceService->restartHorizon();
+
+        $this->auditService->log(
+            action: AuditAction::HorizonRestarted,
+            category: AuditCategory::Security,
+            user: $request->user()
+        );
+
+        return response()->json($result);
+    }
+
+    /**
+     * Restart Reverb Server.
+     */
+    public function restartReverb(Request $request): JsonResponse
+    {
+        $result = $this->maintenanceService->restartReverb();
+
+        $this->auditService->log(
+            action: AuditAction::ReverbRestarted,
+            category: AuditCategory::Security,
+            user: $request->user()
+        );
+
+        return response()->json($result);
+    }
+
+
+    /**
      * Clear old log files.
      */
     public function clearLogs(Request $request): JsonResponse

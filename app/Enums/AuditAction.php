@@ -96,6 +96,11 @@ enum AuditAction: string
     case AccountSuspended = 'account_suspended';
     case AccountBanned = 'account_banned';
     case SystemError = 'system_error';
+    case RedisFlushed = 'redis_flushed';
+    case QueueRestarted = 'queue_restarted';
+    case HorizonRestarted = 'horizon_restarted';
+    case ReverbRestarted = 'reverb_restarted';
+
 
     /**
      * Get the human-readable label for the action.
@@ -170,6 +175,10 @@ enum AuditAction: string
             self::ChatDeleted => 'Chat Deleted',
             self::ChatMarkedForDeletion => 'Chat Marked for Deletion',
             self::ChatDeletionCancelled => 'Chat Deletion Cancelled',
+            self::RedisFlushed => 'Redis Data Flushed',
+            self::QueueRestarted => 'Queue Workers Restarted',
+            self::HorizonRestarted => 'Horizon Restarted',
+            self::ReverbRestarted => 'Reverb Server Restarted',
         };
     }
 
@@ -233,6 +242,10 @@ enum AuditAction: string
             self::ChatDeleted => 'trash-2',
             self::ChatMarkedForDeletion => 'alert-triangle',
             self::ChatDeletionCancelled => 'rotate-ccw',
+            self::RedisFlushed => 'database-zap',
+            self::QueueRestarted => 'refresh-cw',
+            self::HorizonRestarted => 'activity',
+            self::ReverbRestarted => 'zap',
         };
     }
 

@@ -17,7 +17,7 @@ return new class extends Migration
             $table->string('participant_public_id', 26);
             $table->text('body');
             $table->timestamps();
-            
+
             $table->index(['meeting_id', 'created_at']);
         });
     }

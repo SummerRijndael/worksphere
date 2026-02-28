@@ -113,6 +113,7 @@ class User extends Authenticatable implements HasMedia, MustVerifyEmail, WebAuth
         'two_factor_secret',
         'two_factor_recovery_codes',
         'two_factor_confirmed_at',
+        'media',
     ];
 
     /**
@@ -262,20 +263,20 @@ class User extends Authenticatable implements HasMedia, MustVerifyEmail, WebAuth
         $baseUsername = Str::limit($baseUsername, 40, '');
 
         // Find conflicts efficiently
-        $conflicts = self::where('username', 'like', $baseUsername . '%')
+        $conflicts = self::where('username', 'like', $baseUsername.'%')
             ->pluck('username')
             ->toArray();
 
-        if (empty($conflicts) || !in_array($baseUsername, $conflicts)) {
+        if (empty($conflicts) || ! in_array($baseUsername, $conflicts)) {
             return $baseUsername;
         }
 
         $counter = 1;
-        $username = $baseUsername . '_' . $counter;
-        
+        $username = $baseUsername.'_'.$counter;
+
         while (in_array($username, $conflicts)) {
             $counter++;
-            $username = $baseUsername . '_' . $counter;
+            $username = $baseUsername.'_'.$counter;
         }
 
         return $username;
@@ -569,8 +570,8 @@ class User extends Authenticatable implements HasMedia, MustVerifyEmail, WebAuth
         $hasTOTP = $this->two_factor_secret && $this->two_factor_confirmed_at;
         $hasSMS = $this->two_factor_sms_enabled && $this->phone;
         $hasEmail = $this->two_factor_email_enabled;
-        $hasPasskey = $this->relationLoaded('webauthnCredentials') 
-            ? $this->webauthnCredentials->isNotEmpty() 
+        $hasPasskey = $this->relationLoaded('webauthnCredentials')
+            ? $this->webauthnCredentials->isNotEmpty()
             : $this->webauthnCredentials()->exists();
 
         if ($methods === null) {

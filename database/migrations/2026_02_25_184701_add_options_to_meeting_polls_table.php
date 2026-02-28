@@ -8,7 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasColumn('meeting_polls', 'allow_multiple')) {
+        if (! Schema::hasColumn('meeting_polls', 'allow_multiple')) {
             Schema::table('meeting_polls', function (Blueprint $table) {
                 $table->boolean('allow_multiple')->default(false)->after('is_active');
                 $table->boolean('allow_change_vote')->default(false)->after('allow_multiple');

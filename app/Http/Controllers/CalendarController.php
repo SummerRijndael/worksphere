@@ -100,8 +100,8 @@ class CalendarController extends Controller
 
             // Handle Meeting Creation
             if ($request->boolean('is_meeting')) {
-                $hasGuests = !empty($validated['external_emails']) || !empty($validated['attendees']);
-                
+                $hasGuests = ! empty($validated['external_emails']) || ! empty($validated['attendees']);
+
                 $meeting = \App\Models\Meeting::create([
                     'title' => $event->title,
                     'description' => $event->description,
@@ -114,7 +114,7 @@ class CalendarController extends Controller
                         'lobby_enabled' => true,
                         'guest_access' => true,
                         'invited_only' => $hasGuests,
-                    ]
+                    ],
                 ]);
                 $event->update(['meeting_id' => $meeting->id]);
             }
@@ -189,9 +189,9 @@ class CalendarController extends Controller
             // Sync Meeting
             if ($request->has('is_meeting')) {
                 if ($request->boolean('is_meeting')) {
-                    $hasGuests = !empty($validated['external_emails']) || !empty($validated['attendees']);
+                    $hasGuests = ! empty($validated['external_emails']) || ! empty($validated['attendees']);
 
-                    if (!$event->meeting_id) {
+                    if (! $event->meeting_id) {
                         $meeting = \App\Models\Meeting::create([
                             'title' => $event->title,
                             'description' => $event->description,
@@ -204,7 +204,7 @@ class CalendarController extends Controller
                                 'lobby_enabled' => true,
                                 'guest_access' => true,
                                 'invited_only' => $hasGuests,
-                            ]
+                            ],
                         ]);
                         $event->update(['meeting_id' => $meeting->id]);
                     } else {
@@ -216,7 +216,7 @@ class CalendarController extends Controller
                         ]);
                     }
                 } elseif ($event->meeting_id) {
-                    // Remove meeting if untoggled? 
+                    // Remove meeting if untoggled?
                     // Usually safer to keep it but unlink, or delete if it has no participants.
                     // For now, let's keep it but unlink to avoid data loss.
                     $event->update(['meeting_id' => null]);

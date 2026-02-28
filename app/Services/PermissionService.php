@@ -43,7 +43,7 @@ class PermissionService
         $globalPermissions = $user->getAllPermissions()->pluck('name');
 
         // 2. Team Permissions are lazily evaluated in the Persona class
-        
+
         // 3. Overrides
         $overrides = $this->getEffectivePermissions($user);
 
@@ -62,12 +62,13 @@ class PermissionService
             if ($user->relationLoaded('teams')) {
                 $team = $user->teams->firstWhere('id', $teamId);
             }
-            if (!$team) {
+            if (! $team) {
                 $team = \App\Models\Team::find($teamId);
             }
-            if (!$team) {
+            if (! $team) {
                 return collect();
             }
+
             return $this->getTeamPermissions($user, $team);
         });
 

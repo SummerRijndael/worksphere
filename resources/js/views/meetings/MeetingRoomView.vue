@@ -182,7 +182,7 @@
                         <div class="details-group">
                             <label>Joining Info</label>
                             <div class="link-box">
-                                <p class="text-xs text-[#9aa0a6] mb-2 truncate">
+                                <p class="text-xs text-secondary mb-2 truncate">
                                     {{ meetingStore.meetingLink }}
                                 </p>
                                 <button
@@ -204,10 +204,7 @@
             class="gmeet-body"
             :class="{
                 'has-panel':
-                    showParticipantsPanel ||
-                    showChatPanel ||
-                    showPollPanel ||
-                    showAdmissionPanel,
+                    showParticipantsPanel || showChatPanel || showPollPanel,
             }"
         >
             <div class="gmeet-stage" style="position: relative">
@@ -390,41 +387,39 @@
             >
                 <aside v-if="showParticipantsPanel" class="side-panel">
                     <div class="side-panel-header">
-                        <div class="flex items-center space-x-6">
-                            <h3
-                                class="cursor-pointer py-1 border-b-2 transition-all text-sm font-medium uppercase tracking-wider"
-                                :class="
-                                    activeParticipantTab === 'members'
-                                        ? 'border-blue-500 text-white'
-                                        : 'border-transparent text-gray-500 hover:text-gray-300'
-                                "
+                        <div class="participant-tabs">
+                            <div
+                                class="tab-item"
+                                :class="{
+                                    'tab-item--active':
+                                        activeParticipantTab === 'members',
+                                }"
                                 @click="activeParticipantTab = 'members'"
                             >
                                 Members ({{ participantCount }})
-                            </h3>
-                            <h3
+                            </div>
+                            <div
                                 v-if="meetingStore.isModerator"
-                                class="cursor-pointer py-1 border-b-2 transition-all text-sm font-medium uppercase tracking-wider relative"
-                                :class="
-                                    activeParticipantTab === 'waiting'
-                                        ? 'border-blue-500 text-white'
-                                        : 'border-transparent text-gray-500 hover:text-gray-300'
-                                "
+                                class="tab-item relative"
+                                :class="{
+                                    'tab-item--active':
+                                        activeParticipantTab === 'waiting',
+                                }"
                                 @click="activeParticipantTab = 'waiting'"
                             >
-                                Admissions
+                                Requests
                                 <span
                                     v-if="
                                         meetingStore.waitingParticipants
                                             .length > 0
                                     "
-                                    class="absolute -top-1 -right-4 flex h-4 w-4 items-center justify-center rounded-full bg-blue-600 text-[10px] text-white"
+                                    class="requests-badge"
                                 >
                                     {{
                                         meetingStore.waitingParticipants.length
                                     }}
                                 </span>
-                            </h3>
+                            </div>
                         </div>
                         <div class="flex items-center gap-2">
                             <button
@@ -434,14 +429,14 @@
                                     activeParticipantTab === 'members'
                                 "
                                 @click="lowerAllHands"
-                                class="text-xs px-3 py-1.5 bg-[#3c4043] hover:bg-[#4c4d50] text-[#e8eaed] rounded-full transition-colors border-none cursor-pointer whitespace-nowrap"
+                                class="text-xs px-3 py-1.5 bg-surface-tertiary hover:bg-border-strong text-primary rounded-full transition-colors border-none cursor-pointer whitespace-nowrap"
                                 title="Lower all raised hands"
                             >
                                 ✋ Lower all
                             </button>
                             <button
                                 @click="showParticipantsPanel = false"
-                                class="p-1 hover:bg-white/10 rounded-full transition-colors side-panel-close text-[#9aa0a6]"
+                                class="p-1 hover:bg-surface-tertiary rounded-full transition-colors side-panel-close text-secondary"
                             >
                                 <Icon name="x" size="20" />
                             </button>
@@ -539,7 +534,7 @@
                                         "
                                     >
                                         <MenuButton
-                                            class="p-1 hover:bg-[#3c4043] rounded-full text-[#9aa0a6]"
+                                            class="p-1 hover:bg-surface-tertiary rounded-full text-secondary"
                                         >
                                             <Icon
                                                 name="more-vertical"
@@ -555,7 +550,7 @@
                                             leave-to-class="transform opacity-0 scale-95"
                                         >
                                             <MenuItems
-                                                class="absolute right-0 mt-1 w-48 origin-top-right bg-[#28292c] rounded-md shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-50 py-1 border border-[#3c4043]"
+                                                class="absolute right-0 mt-1 w-48 origin-top-right bg-surface-elevated rounded-md shadow-lg focus:outline-none z-50 py-1 border border-default"
                                             >
                                                 <MenuItem v-slot="{ active }">
                                                     <button
@@ -570,8 +565,8 @@
                                                         "
                                                         :class="[
                                                             active
-                                                                ? 'bg-[#3c4043] text-white'
-                                                                : 'text-[#e8eaed]',
+                                                                ? 'bg-blue-500/10 text-blue-400'
+                                                                : 'text-primary',
                                                             'group flex items-center w-full px-4 py-2 text-sm',
                                                         ]"
                                                     >
@@ -582,7 +577,7 @@
                                                                     : 'mic-off'
                                                             "
                                                             size="16"
-                                                            class="mr-3 text-[#9aa0a6]"
+                                                            class="mr-3 text-secondary"
                                                         />
                                                         {{
                                                             p.is_muted_by_host
@@ -604,8 +599,8 @@
                                                         "
                                                         :class="[
                                                             active
-                                                                ? 'bg-[#3c4043] text-white'
-                                                                : 'text-[#e8eaed]',
+                                                                ? 'bg-blue-500/10 text-blue-400'
+                                                                : 'text-primary',
                                                             'group flex items-center w-full px-4 py-2 text-sm',
                                                         ]"
                                                     >
@@ -616,7 +611,7 @@
                                                                     : 'video-off'
                                                             "
                                                             size="16"
-                                                            class="mr-3 text-[#9aa0a6]"
+                                                            class="mr-3 text-secondary"
                                                         />
                                                         {{
                                                             p.is_camera_disabled_by_host
@@ -629,7 +624,7 @@
                                                     v-if="meetingStore.isHost"
                                                 >
                                                     <div
-                                                        class="my-1 border-t border-[#3c4043]"
+                                                        class="my-1 border-t border-default"
                                                     ></div>
                                                     <MenuItem
                                                         v-slot="{ active }"
@@ -647,8 +642,8 @@
                                                             "
                                                             :class="[
                                                                 active
-                                                                    ? 'bg-[#3c4043] text-white'
-                                                                    : 'text-[#e8eaed]',
+                                                                    ? 'bg-blue-500/10 text-blue-400'
+                                                                    : 'text-primary',
                                                                 'group flex items-center w-full px-4 py-2 text-sm',
                                                             ]"
                                                         >
@@ -660,7 +655,7 @@
                                                                         : 'shield-off'
                                                                 "
                                                                 size="16"
-                                                                class="mr-3 text-[#9aa0a6]"
+                                                                class="mr-3 text-secondary"
                                                             />
                                                             {{
                                                                 p.role ===
@@ -672,7 +667,7 @@
                                                     </MenuItem>
                                                 </template>
                                                 <div
-                                                    class="my-1 border-t border-[#3c4043]"
+                                                    class="my-1 border-t border-default"
                                                 ></div>
                                                 <MenuItem v-slot="{ active }">
                                                     <button
@@ -683,7 +678,7 @@
                                                         "
                                                         :class="[
                                                             active
-                                                                ? 'bg-[#3c4043] text-red-500'
+                                                                ? 'bg-red-500/20 text-red-500'
                                                                 : 'text-red-400',
                                                             'group flex items-center w-full px-4 py-2 text-sm',
                                                         ]"
@@ -703,7 +698,7 @@
                             </div>
                         </div>
 
-                        <!-- Admissions Tab -->
+                        <!-- Requests Tab -->
                         <div
                             v-else-if="activeParticipantTab === 'waiting'"
                             class="participant-list"
@@ -777,7 +772,7 @@
                                                 )
                                             "
                                             class="p-1.5 hover:bg-green-500/20 text-green-400 rounded-lg transition-colors"
-                                            title="Admit"
+                                            title="Approve"
                                         >
                                             <Icon name="check" size="16" />
                                         </button>
@@ -997,12 +992,12 @@
             <div class="bar-section bar-section--right">
                 <button
                     v-if="
-                        meetingStore.isHost &&
+                        meetingStore.isModerator &&
                         meetingStore.waitingParticipants.length > 0
                     "
                     class="ctrl-btn btn--alert"
-                    @click="showAdmissionPanel = !showAdmissionPanel"
-                    title="Waiting Room"
+                    @click="openRequestsPanel"
+                    title="Requests"
                 >
                     <Icon name="user-plus" size="20" />
                     <span class="badge-count">{{
@@ -1079,15 +1074,15 @@
                                         @click="togglePollPanel"
                                         :class="[
                                             active
-                                                ? 'bg-[#3c4043] text-white'
-                                                : 'text-[#e8eaed]',
+                                                ? 'bg-surface-tertiary text-primary'
+                                                : 'text-primary',
                                             'menu-action-item',
                                         ]"
                                     >
                                         <Icon
                                             name="bar-chart-2"
                                             size="18"
-                                            class="mr-3 text-[#9aa0a6]"
+                                            class="mr-3 text-secondary"
                                         />
                                         <span>Polls</span>
                                     </button>
@@ -1100,15 +1095,15 @@
                                         "
                                         :class="[
                                             active
-                                                ? 'bg-[#3c4043] text-white'
-                                                : 'text-[#e8eaed]',
+                                                ? 'bg-surface-tertiary text-primary'
+                                                : 'text-primary',
                                             'menu-action-item',
                                         ]"
                                     >
                                         <Icon
                                             name="edit-3"
                                             size="18"
-                                            class="mr-3 text-[#9aa0a6]"
+                                            class="mr-3 text-secondary"
                                         />
                                         <span>Whiteboard</span>
                                     </button>
@@ -1123,15 +1118,15 @@
                                             "
                                             :class="[
                                                 active
-                                                    ? 'bg-[#3c4043] text-white'
-                                                    : 'text-[#e8eaed]',
+                                                    ? 'bg-surface-tertiary text-primary'
+                                                    : 'text-primary',
                                                 'menu-action-item',
                                             ]"
                                         >
                                             <Icon
                                                 name="layout-grid"
                                                 size="18"
-                                                class="mr-3 text-[#9aa0a6]"
+                                                class="mr-3 text-secondary"
                                             />
                                             <span>Breakout Rooms</span>
                                         </button>
@@ -1196,6 +1191,7 @@ import { meetingService } from "@/services/meeting.service";
 import { useMeetingStore } from "@/stores/meeting";
 import { useVideoCallStore } from "@/stores/videocall";
 import { useWhiteboardStore } from "@/stores/whiteboard";
+import { useThemeStore } from "@/stores/theme";
 import { useBackgroundBlur } from "@/composables/useBackgroundBlur";
 import { Icon, Avatar } from "@/components/ui";
 import { toast } from "vue-sonner";
@@ -1237,6 +1233,7 @@ const router = useRouter();
 const meetingStore = useMeetingStore();
 const videoCallStore = useVideoCallStore();
 const whiteboardStore = useWhiteboardStore();
+const themeStore = useThemeStore();
 
 const meetingId = route.params.id as string;
 const participantId = route.query.participant as string;
@@ -1245,7 +1242,6 @@ const isCameraOn = ref(false);
 const isMicOn = ref(false);
 const backgroundBlur = useBackgroundBlur();
 const showSettings = ref(false);
-const showAdmissionPanel = ref(false);
 const showParticipantsPanel = ref(false);
 const showChatPanel = ref(false);
 const showPollPanel = ref(false);
@@ -1253,6 +1249,13 @@ const showReactionPicker = ref(false);
 const showMeetingDetails = ref(false);
 const showDevTool = ref(false);
 const activeParticipantTab = ref<"members" | "waiting">("members");
+
+function openRequestsPanel() {
+    showParticipantsPanel.value = true;
+    activeParticipantTab.value = "waiting";
+    showChatPanel.value = false;
+    showPollPanel.value = false;
+}
 
 function toggleParticipantsPanel() {
     showParticipantsPanel.value = !showParticipantsPanel.value;
@@ -2101,8 +2104,8 @@ onBeforeUnmount(() => {
     flex-direction: column;
     height: 100vh;
     height: 100dvh;
-    background: radial-gradient(circle at 50% 10%, #292a2d 0%, #111111 100%);
-    color: #e8eaed;
+    background: var(--surface-primary);
+    color: var(--text-primary);
     font-family:
         "Google Sans",
         "Roboto",
@@ -2122,8 +2125,8 @@ onBeforeUnmount(() => {
     align-items: center;
     justify-content: space-between;
     padding: 0 24px;
-    background: #202124;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--surface-elevated);
+    border-top: 1px solid var(--border-default);
     z-index: 100;
     flex-shrink: 0;
 }
@@ -2161,15 +2164,15 @@ onBeforeUnmount(() => {
 }
 
 .meeting-info-pill:hover {
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--surface-tertiary);
 }
 
 .info-pill--active {
-    background: rgba(138, 180, 248, 0.1) !important;
+    background: var(--surface-tertiary);
 }
 
 .info-time {
-    color: #ffffff;
+    color: var(--text-primary);
     font-size: 15px;
     font-weight: 500;
 }
@@ -2177,11 +2180,11 @@ onBeforeUnmount(() => {
 .info-divider {
     width: 1px;
     height: 16px;
-    background: rgba(255, 255, 255, 0.2);
+    background: var(--surface-secondary);
 }
 
 .info-code {
-    color: #e8eaed;
+    color: var(--text-secondary);
     font-size: 14px;
     font-weight: 400;
     letter-spacing: 0.5px;
@@ -2227,7 +2230,7 @@ onBeforeUnmount(() => {
     border-radius: 50%;
     border: none;
     background: transparent;
-    color: #e8eaed;
+    color: var(--text-primary);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2237,7 +2240,7 @@ onBeforeUnmount(() => {
 }
 
 .ctrl-btn:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--surface-tertiary);
 }
 
 .ctrl-btn--off {
@@ -2280,7 +2283,7 @@ onBeforeUnmount(() => {
 .reaction-group {
     display: flex;
     align-items: center;
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--surface-tertiary);
     border-radius: 24px;
     padding: 2px;
 }
@@ -2307,8 +2310,8 @@ onBeforeUnmount(() => {
     left: 50%;
     transform: translateX(-50%);
     margin-bottom: 16px;
-    background: #202124;
-    border: 1px solid #3c4043;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-default);
     border-radius: 12px;
     padding: 8px;
     width: 200px;
@@ -2326,7 +2329,7 @@ onBeforeUnmount(() => {
     padding: 10px 12px;
     background: transparent;
     border: none;
-    color: #e8eaed;
+    color: var(--text-primary);
     font-size: 14px;
     border-radius: 8px;
     cursor: pointer;
@@ -2335,7 +2338,7 @@ onBeforeUnmount(() => {
 }
 
 .menu-item:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--surface-tertiary);
 }
 
 .menu-item--danger {
@@ -2378,7 +2381,7 @@ onBeforeUnmount(() => {
     display: flex;
     align-items: center;
     justify-content: center;
-    border: 2px solid #202124;
+    border: 2px solid var(--surface-primary);
 }
 
 /* ─── Main Body ────────────────────────────────────────────────────────────── */
@@ -2531,14 +2534,14 @@ onBeforeUnmount(() => {
     max-width: 100%;
     margin: auto;
 
-    background: #303134;
+    background: var(--surface-secondary);
     border-radius: 12px;
     overflow: hidden;
     position: relative;
     display: flex;
     justify-content: center;
     align-items: center;
-    border: 1px solid rgba(255, 255, 255, 0.08); /* Premium outline */
+    border: 1px solid var(--border-default); /* Premium outline */
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25); /* Subtle lift */
     transition:
         transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
@@ -2554,8 +2557,8 @@ onBeforeUnmount(() => {
     height: 40px;
     border-radius: 50%;
     border: none;
-    background: rgba(32, 33, 36, 0.85);
-    color: #e8eaed;
+    background: var(--surface-overlay);
+    color: var(--text-inverse);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -2566,7 +2569,7 @@ onBeforeUnmount(() => {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 .grid-nav:hover {
-    background: rgba(60, 64, 67, 0.95);
+    background: var(--surface-secondary);
     transform: translateY(-50%) scale(1.08);
 }
 .grid-nav--left {
@@ -2605,10 +2608,10 @@ onBeforeUnmount(() => {
     width: 180px;
     flex-shrink: 0;
     aspect-ratio: 16/9;
-    background: #303134;
-    border-radius: 12px;
-    overflow: hidden;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--surface-secondary);
+    border-radius: 8px;
+    padding: 8px 12px;
+    border: 1px solid var(--border-default);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
@@ -2617,8 +2620,8 @@ onBeforeUnmount(() => {
     height: 28px;
     border-radius: 50%;
     border: none;
-    background: rgba(32, 33, 36, 0.9);
-    color: #e8eaed;
+    background: var(--surface-overlay);
+    color: var(--text-inverse);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -2627,7 +2630,7 @@ onBeforeUnmount(() => {
     z-index: 5;
 }
 .filmstrip-nav:hover {
-    background: #3c4043;
+    background: var(--surface-tertiary);
 }
 
 /* ─── PiP Self-View ────────────────────────────────────────────────────────── */
@@ -2640,7 +2643,7 @@ onBeforeUnmount(() => {
     border-radius: 8px;
     overflow: hidden;
     z-index: 35;
-    background: #3c4043;
+    background: var(--surface-tertiary);
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
     transition:
         transform 0.2s ease,
@@ -2656,10 +2659,10 @@ onBeforeUnmount(() => {
     width: 320px;
     height: 100%;
     flex-shrink: 0;
-    background: #292a2d;
+    background: var(--surface-secondary);
     display: flex;
     flex-direction: column;
-    border-left: 1px solid #3c4043;
+    border-left: 1px solid var(--border-default);
     z-index: 25;
 }
 
@@ -2673,10 +2676,10 @@ onBeforeUnmount(() => {
 
 .details-panel {
     width: 360px;
-    background: #202124;
+    background: var(--surface-elevated);
     border-radius: 12px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--border-default);
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -2687,20 +2690,20 @@ onBeforeUnmount(() => {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid var(--border-default);
 }
 
 .details-header h3 {
     margin: 0;
     font-size: 18px;
     font-weight: 500;
-    color: #e8eaed;
+    color: var(--text-primary);
 }
 
 .details-close {
     background: transparent;
     border: none;
-    color: #9aa0a6;
+    color: var(--text-secondary);
     cursor: pointer;
     padding: 4px;
     border-radius: 50%;
@@ -2710,8 +2713,8 @@ onBeforeUnmount(() => {
 }
 
 .details-close:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: #ffffff;
+    background: var(--surface-tertiary);
+    color: var(--text-primary);
 }
 
 .details-body {
@@ -2733,7 +2736,7 @@ onBeforeUnmount(() => {
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.8px;
-    color: #9aa0a6;
+    color: var(--text-secondary);
     font-weight: 700;
 }
 
@@ -2746,13 +2749,13 @@ onBeforeUnmount(() => {
 
 .detail-label {
     font-size: 13px;
-    color: #bdc1c6;
+    color: var(--text-secondary);
     flex-shrink: 0;
 }
 
 .detail-value {
     font-size: 11px;
-    color: #e8eaed;
+    color: var(--text-primary);
     text-align: right;
     word-break: break-all;
     flex: 1;
@@ -2775,10 +2778,10 @@ onBeforeUnmount(() => {
 }
 
 .link-box {
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--surface-tertiary);
     border-radius: 8px;
     padding: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border-default);
 }
 
 .copy-full-link-btn {
@@ -2819,15 +2822,68 @@ onBeforeUnmount(() => {
     align-items: center;
     justify-content: space-between;
     padding: 18px 20px;
-    border-bottom: 1px solid #3c4043;
+    border-bottom: 1px solid var(--border-subtle);
     flex-shrink: 0;
 }
 .side-panel-header h3 {
-    font-size: 16px;
+    font-size: 13px;
     font-weight: 600;
-    color: #e8eaed;
+    color: var(--text-primary);
     margin: 0;
-    letter-spacing: -0.01em;
+    letter-spacing: 0.05em;
+    padding-bottom: 8px;
+    margin-bottom: -19px; /* Align with header border */
+}
+
+/* Custom Tab Styling */
+.participant-tabs {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+    border-bottom: 1px solid var(--border-subtle);
+    margin-top: 12px;
+}
+
+.tab-item {
+    cursor: pointer;
+    padding: 2px 0;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s ease;
+    text-transform: uppercase;
+    flex: 1;
+    text-align: center;
+    padding: 8px 0;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--text-secondary);
+    user-select: none;
+    white-space: nowrap;
+}
+
+.tab-item:hover {
+    color: var(--text-primary);
+}
+
+.tab-item--active {
+    color: #8ab4f8;
+    border-bottom-color: #8ab4f8;
+}
+
+.requests-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #ea4335;
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    margin-left: 6px;
+    vertical-align: middle;
 }
 
 .side-panel-close {
@@ -2836,15 +2892,15 @@ onBeforeUnmount(() => {
     border-radius: 50%;
     border: none;
     background: transparent;
-    color: #9aa0a6;
+    color: var(--text-secondary);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 .side-panel-close:hover {
-    background: rgba(255, 255, 255, 0.08);
-    color: #e8eaed;
+    background: var(--surface-tertiary);
+    color: var(--text-primary);
 }
 
 .side-panel-body {
@@ -2860,9 +2916,9 @@ onBeforeUnmount(() => {
     width: 44px;
     height: 44px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.1);
-    color: white;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: var(--surface-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-default);
     cursor: pointer;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
@@ -2878,15 +2934,15 @@ onBeforeUnmount(() => {
     transition: background 0.12s;
 }
 .participant-row:hover {
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--surface-tertiary);
 }
 
 .participant-avatar {
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    background: #5f6368;
-    color: #e8eaed;
+    background: var(--surface-tertiary);
+    color: var(--text-secondary);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2902,7 +2958,7 @@ onBeforeUnmount(() => {
 
 .participant-name {
     font-size: 13px;
-    color: #e8eaed;
+    color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2913,8 +2969,8 @@ onBeforeUnmount(() => {
 
 .you-badge {
     font-size: 10px;
-    color: #8ab4f8;
-    background: rgba(138, 180, 248, 0.12);
+    color: var(--color-info-fg);
+    background: var(--color-info-bg);
     padding: 1px 6px;
     border-radius: 4px;
     font-weight: 500;
@@ -2932,42 +2988,42 @@ onBeforeUnmount(() => {
     align-items: center;
     gap: 8px;
     padding: 40px 0;
-    color: #9aa0a6;
+    color: var(--text-secondary);
     font-size: 13px;
 }
 
-.admission-card {
-    background: #3c4043;
+.request-card {
+    background: var(--surface-tertiary);
     border-radius: 12px;
     padding: 12px;
     margin-bottom: 8px;
 }
 
-.admission-info {
+.request-info {
     display: flex;
     align-items: center;
     gap: 10px;
     margin-bottom: 10px;
 }
 
-.admission-name {
+.request-name {
     font-size: 13px;
-    color: #e8eaed;
+    color: var(--text-primary);
     font-weight: 500;
     margin: 0;
 }
-.admission-sub {
+.request-sub {
     font-size: 11px;
-    color: #9aa0a6;
+    color: var(--text-secondary);
     margin: 0;
 }
 
-.admission-actions {
+.request-actions {
     display: flex;
     gap: 8px;
 }
 
-.admission-btn {
+.request-btn {
     flex: 1;
     padding: 6px 0;
     border-radius: 20px;
@@ -2978,20 +3034,20 @@ onBeforeUnmount(() => {
     transition: background 0.15s;
 }
 
-.admission-btn--admit {
+.request-btn--approve {
     background: #8ab4f8;
     color: #202124;
 }
-.admission-btn--admit:hover {
+.request-btn--approve:hover {
     background: #aecbfa;
 }
 
-.admission-btn--reject {
+.request-btn--reject {
     background: transparent;
     color: #e8eaed;
     border: 1px solid #5f6368;
 }
-.admission-btn--reject:hover {
+.request-btn--reject:hover {
     background: rgba(234, 67, 53, 0.15);
     color: #f28b82;
     border-color: #f28b82;
@@ -3027,8 +3083,8 @@ onBeforeUnmount(() => {
     position: absolute;
     bottom: calc(100% + 12px);
     right: 0;
-    background: #2d2e30;
-    border: 1px solid #3c4043;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-default);
     border-radius: 12px;
     padding: 8px 0;
     min-width: 220px;
@@ -3056,14 +3112,14 @@ onBeforeUnmount(() => {
     padding: 10px 16px;
     border: none;
     background: transparent;
-    color: #e8eaed;
+    color: var(--text-primary);
     font-size: 14px;
     cursor: pointer;
     transition: background-color 0.15s;
     text-align: left;
 }
 .menu-item:hover {
-    background: #3c4043;
+    background: var(--surface-tertiary);
 }
 .menu-item--danger {
     color: #f28b82;
@@ -3171,16 +3227,17 @@ onBeforeUnmount(() => {
 .reaction-split-wrap {
     display: flex;
     align-items: center;
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--surface-tertiary);
     border-radius: 24px;
     padding: 2px;
     height: 44px;
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-default);
     transition: all 0.2s ease;
 }
 
 .reaction-split-wrap:hover {
-    background: rgba(255, 255, 255, 0.12);
+    background: var(--surface-secondary);
+    border-color: var(--border-strong);
 }
 
 .reaction-quick-btn {
@@ -3196,7 +3253,7 @@ onBeforeUnmount(() => {
 }
 
 .reaction-quick-btn:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--surface-secondary);
 }
 
 .reaction-picker-trigger {
@@ -3209,9 +3266,9 @@ onBeforeUnmount(() => {
     background: transparent;
     border: none;
     cursor: pointer;
-    color: #9aa0a6;
+    color: var(--text-secondary);
     transition: all 0.15s;
-    border-left: 1px solid rgba(255, 255, 255, 0.1);
+    border-left: 1px solid var(--border-subtle);
 }
 
 .reaction-picker-trigger:hover {
@@ -3241,8 +3298,8 @@ onBeforeUnmount(() => {
     right: 0;
     margin-bottom: 16px;
     width: 220px;
-    background: #28292c;
-    border: 1px solid #3c4043;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-default);
     border-radius: 12px;
     box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
     z-index: 50;
@@ -3265,7 +3322,7 @@ onBeforeUnmount(() => {
 
 .menu-divider {
     height: 1px;
-    background: #3c4043;
+    background: var(--border-subtle);
     margin: 4px 8px;
 }
 
@@ -3284,15 +3341,15 @@ onBeforeUnmount(() => {
     align-items: center;
     justify-content: center;
     border-radius: 50%;
-    border: 2px solid #202124;
+    border: 2px solid var(--surface-primary);
     z-index: 10;
 }
 
 .badge-count--secondary {
-    background: rgba(255, 255, 255, 0.12) !important;
+    background: var(--surface-tertiary) !important;
     backdrop-filter: blur(8px);
-    border: 1px solid rgba(255, 255, 255, 0.12) !important;
-    color: #e8eaed !important;
+    border: 1px solid var(--border-default) !important;
+    color: var(--text-primary) !important;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
@@ -3573,7 +3630,7 @@ onBeforeUnmount(() => {
     width: 24px;
     height: 24px;
     border-radius: 50%;
-    background: #202124;
+    background: var(--surface-primary);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -3601,12 +3658,12 @@ onBeforeUnmount(() => {
 .waiting-title {
     font-size: 24px;
     font-weight: 400;
-    color: #e8eaed;
+    color: var(--text-primary);
     margin: 0 0 8px;
 }
 .waiting-desc {
     font-size: 14px;
-    color: #9aa0a6;
+    color: var(--text-secondary);
     margin: 0;
     line-height: 1.5;
 }
@@ -3624,10 +3681,10 @@ onBeforeUnmount(() => {
     align-items: center;
     gap: 8px;
     padding: 8px 16px;
-    background: #303134;
+    background: var(--surface-tertiary);
     border-radius: 20px;
     font-size: 13px;
-    color: #9aa0a6;
+    color: var(--text-secondary);
 }
 .waiting-host-avatar {
     width: 24px;

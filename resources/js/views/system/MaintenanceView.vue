@@ -37,6 +37,7 @@ import {
     ChevronLeft,
     ChevronRight,
     Users,
+    Zap,
 } from "lucide-vue-next";
 import { toast } from "vue-sonner";
 import axios from "axios";
@@ -188,6 +189,18 @@ const showSessionsModal = ref(false);
 const sessionsPassword = ref("");
 const sessionsPasswordError = ref("");
 const isClearingSessions = ref(false);
+
+// Redis Flush Modal
+const showRedisModal = ref(false);
+const redisForm = ref({ password: "", reason: "" });
+const redisFormErrors = ref({});
+const isFlushingRedis = ref(false);
+
+const isRestarting = ref({
+    queue: false,
+    horizon: false,
+    reverb: false,
+});
 
 // Fetch system info from API
 const fetchSystemInfo = async () => {
@@ -724,6 +737,51 @@ const clearSessionsWithPassword = async () => {
     }
 };
 
+// Flush Redis with password and reason
+const flushRedis = async () => {
+    redisFormErrors.value = {};
+    isFlushingRedis.value = true;
+
+    try {
+        const response = await axios.post(
+            "/api/maintenance/redis/flush",
+            redisForm.value,
+        );
+        showRedisModal.value = false;
+        toast.success(
+            response.data.message || "Redis database flushed successfully",
+        );
+        // Also refresh system info to see updated cache sizes if possible
+        await fetchSystemInfo();
+    } catch (error) {
+        if (error.response?.status === 422) {
+            redisFormErrors.value = error.response.data.errors || {};
+        } else {
+            toast.error("Failed to flush Redis");
+        }
+    } finally {
+        isFlushingRedis.value = false;
+    }
+};
+
+// Restart Services
+const restartService = async (service) => {
+    isRestarting.value[service] = true;
+    try {
+        const response = await axios.post(
+            `/api/maintenance/${service}/restart`,
+        );
+        toast.success(
+            response.data.message ||
+                `${service.charAt(0).toUpperCase() + service.slice(1)} restart initiated`,
+        );
+    } catch (error) {
+        toast.error(`Failed to restart ${service}`);
+    } finally {
+        isRestarting.value[service] = false;
+    }
+};
+
 // Run scheduled task
 const runTask = async (taskName) => {
     runningTask.value = taskName;
@@ -1251,27 +1309,53 @@ onUnmounted(() => {
                 </div>
                 <div class="p-4">
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div class="p-3 bg-[var(--surface-secondary)] rounded-lg">
+                        <div
+                            class="p-3 bg-[var(--surface-secondary)] rounded-lg"
+                        >
                             <div class="flex flex-col gap-1">
-                                <span class="text-xs text-[var(--text-secondary)]">Total Online</span>
-                                <span class="text-2xl font-bold text-[var(--text-primary)]">
+                                <span
+                                    class="text-xs text-[var(--text-secondary)]"
+                                    >Total Online</span
+                                >
+                                <span
+                                    class="text-2xl font-bold text-[var(--text-primary)]"
+                                >
                                     {{ systemInfo.online_stats?.total ?? 0 }}
                                 </span>
                             </div>
                         </div>
-                        <div class="p-3 bg-[var(--surface-secondary)] rounded-lg">
+                        <div
+                            class="p-3 bg-[var(--surface-secondary)] rounded-lg"
+                        >
                             <div class="flex flex-col gap-1">
-                                <span class="text-xs text-[var(--text-secondary)]">Administrators</span>
-                                <span class="text-2xl font-bold text-[var(--text-primary)]">
-                                    {{ systemInfo.online_stats?.administrators ?? 0 }}
+                                <span
+                                    class="text-xs text-[var(--text-secondary)]"
+                                    >Administrators</span
+                                >
+                                <span
+                                    class="text-2xl font-bold text-[var(--text-primary)]"
+                                >
+                                    {{
+                                        systemInfo.online_stats
+                                            ?.administrators ?? 0
+                                    }}
                                 </span>
                             </div>
                         </div>
-                        <div class="p-3 bg-[var(--surface-secondary)] rounded-lg">
+                        <div
+                            class="p-3 bg-[var(--surface-secondary)] rounded-lg"
+                        >
                             <div class="flex flex-col gap-1">
-                                <span class="text-xs text-[var(--text-secondary)]">IT Support</span>
-                                <span class="text-2xl font-bold text-[var(--text-primary)]">
-                                    {{ systemInfo.online_stats?.it_support ?? 0 }}
+                                <span
+                                    class="text-xs text-[var(--text-secondary)]"
+                                    >IT Support</span
+                                >
+                                <span
+                                    class="text-2xl font-bold text-[var(--text-primary)]"
+                                >
+                                    {{
+                                        systemInfo.online_stats?.it_support ?? 0
+                                    }}
                                 </span>
                             </div>
                         </div>
@@ -1760,6 +1844,119 @@ onUnmounted(() => {
                         >
                             <Trash2 class="w-4 h-4" />
                             Clear
+                        </Button>
+                    </div>
+                    <div
+                        class="flex items-center justify-between p-3 bg-[var(--surface-secondary)] rounded-lg"
+                    >
+                        <div>
+                            <p
+                                class="text-sm font-medium text-[var(--text-primary)]"
+                            >
+                                Redis Database
+                            </p>
+                            <p class="text-xs text-[var(--text-muted)]">
+                                Flush all keys from Redis (Highly Critical)
+                            </p>
+                        </div>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            class="text-[var(--color-error)] border-[var(--color-error)]"
+                            @click="showRedisModal = true"
+                        >
+                            <Trash2 class="w-4 h-4" />
+                            Flush All
+                        </Button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Service Management -->
+            <div
+                class="bg-[var(--surface-elevated)] rounded-xl border border-[var(--border-default)] overflow-hidden"
+            >
+                <div
+                    class="p-4 border-b border-[var(--border-default)] flex items-center gap-3"
+                >
+                    <div
+                        class="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center"
+                    >
+                        <RefreshCw class="w-4 h-4 text-indigo-600" />
+                    </div>
+                    <h3 class="font-medium text-[var(--text-primary)]">
+                        Service Management
+                    </h3>
+                </div>
+                <div class="p-4 space-y-4">
+                    <div
+                        class="flex items-center justify-between p-3 bg-[var(--surface-secondary)] rounded-lg"
+                    >
+                        <div>
+                            <p
+                                class="text-sm font-medium text-[var(--text-primary)]"
+                            >
+                                Queue Workers
+                            </p>
+                            <p class="text-xs text-[var(--text-muted)]">
+                                Restart all queue worker processes
+                            </p>
+                        </div>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            @click="restartService('queue')"
+                            :loading="isRestarting.queue"
+                        >
+                            <RefreshCw class="w-4 h-4" />
+                            Restart
+                        </Button>
+                    </div>
+                    <div
+                        class="flex items-center justify-between p-3 bg-[var(--surface-secondary)] rounded-lg"
+                    >
+                        <div>
+                            <p
+                                class="text-sm font-medium text-[var(--text-primary)]"
+                            >
+                                Laravel Horizon
+                            </p>
+                            <p class="text-xs text-[var(--text-muted)]">
+                                Terminate Horizon (will be restarted by
+                                Supervisor)
+                            </p>
+                        </div>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            @click="restartService('horizon')"
+                            :loading="isRestarting.horizon"
+                        >
+                            <Activity class="w-4 h-4" />
+                            Restart
+                        </Button>
+                    </div>
+                    <div
+                        class="flex items-center justify-between p-3 bg-[var(--surface-secondary)] rounded-lg"
+                    >
+                        <div>
+                            <p
+                                class="text-sm font-medium text-[var(--text-primary)]"
+                            >
+                                Reverb WebSocket
+                            </p>
+                            <p class="text-xs text-[var(--text-muted)]">
+                                Restart the Reverb server process
+                            </p>
+                        </div>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            @click="restartService('reverb')"
+                            :loading="isRestarting.reverb"
+                        >
+                            <Zap class="w-4 h-4" />
+                            Restart
                         </Button>
                     </div>
                 </div>
@@ -3676,6 +3873,71 @@ onUnmounted(() => {
                     :disabled="!sessionsPassword"
                 >
                     Clear All Sessions
+                </Button>
+            </template>
+        </Modal>
+
+        <!-- Redis Flush Modal -->
+        <Modal
+            :open="showRedisModal"
+            @update:open="showRedisModal = $event"
+            title="Flush Redis Data"
+            description="Highly critical action. This will clear ALL data from Redis, including sessions, queues, and cache."
+            size="md"
+        >
+            <div class="space-y-4">
+                <div
+                    class="flex items-center gap-2 p-3 bg-red-500/10 rounded-lg text-red-600"
+                >
+                    <AlertTriangle class="w-5 h-5 shrink-0" />
+                    <p class="text-xs font-medium">
+                        Warning: This will log out all users and delete all
+                        pending background jobs.
+                    </p>
+                </div>
+
+                <div class="space-y-3">
+                    <div class="space-y-1">
+                        <label
+                            class="text-sm font-medium text-[var(--text-primary)]"
+                        >
+                            Reason for Flushing
+                        </label>
+                        <Textarea
+                            v-model="redisForm.reason"
+                            placeholder="Describe why this action is necessary..."
+                            rows="2"
+                            :error="redisFormErrors.reason?.[0]"
+                        />
+                    </div>
+
+                    <div class="space-y-1">
+                        <label
+                            class="text-sm font-medium text-[var(--text-primary)]"
+                        >
+                            Confirm Password
+                        </label>
+                        <Input
+                            v-model="redisForm.password"
+                            type="password"
+                            placeholder="Enter your password"
+                            :error="redisFormErrors.password?.[0]"
+                        />
+                    </div>
+                </div>
+            </div>
+
+            <template #footer>
+                <Button variant="outline" @click="showRedisModal = false">
+                    Cancel
+                </Button>
+                <Button
+                    variant="primary"
+                    class="bg-red-600 border-red-600 hover:bg-red-700 hover:border-red-700 text-white"
+                    @click="flushRedis"
+                    :loading="isFlushingRedis"
+                >
+                    Flush Everything
                 </Button>
             </template>
         </Modal>
