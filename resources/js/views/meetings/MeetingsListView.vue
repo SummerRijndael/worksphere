@@ -1,6 +1,8 @@
 <template>
     <div class="p-3 sm:p-6">
-        <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-8 gap-4">
+        <div
+            class="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-8 gap-4"
+        >
             <div>
                 <h1 class="text-xl sm:text-2xl font-bold text-(--text-primary)">
                     Meetings
@@ -11,15 +13,21 @@
             </div>
             <div class="flex flex-col sm:flex-row gap-3 items-center">
                 <!-- Join by ID -->
-                <div class="flex items-center bg-(--surface-primary) border border-(--border-muted) rounded-lg px-2 py-1 focus-within:ring-2 focus-within:ring-(--color-primary-500) transition-all">
-                    <Icon name="hash" size="14" class="text-(--text-muted) ml-1" />
-                    <input 
+                <div
+                    class="flex items-center bg-(--surface-primary) border border-(--border-muted) rounded-lg px-2 py-1 focus-within:ring-2 focus-within:ring-(--color-primary-500) transition-all"
+                >
+                    <Icon
+                        name="hash"
+                        size="14"
+                        class="text-(--text-muted) ml-1"
+                    />
+                    <input
                         v-model="joinId"
                         placeholder="Enter Meeting ID"
                         class="bg-transparent border-none outline-none px-2 py-1 text-sm w-40 text-(--text-primary)"
                         @keyup.enter="handleJoinById"
                     />
-                    <button 
+                    <button
                         @click="handleJoinById"
                         :disabled="!joinId.trim()"
                         class="px-3 py-1 bg-(--color-primary-600) hover:bg-(--color-primary-700) text-white rounded text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -69,7 +77,9 @@
             >
                 <Icon name="video" size="28" class="sm:text-(--text-muted)" />
             </div>
-            <h3 class="text-lg sm:text-xl font-semibold mb-2">No meetings scheduled</h3>
+            <h3 class="text-lg sm:text-xl font-semibold mb-2">
+                No meetings scheduled
+            </h3>
             <p class="text-sm text-(--text-muted) mb-8 max-w-sm mx-auto">
                 Host a quick catch-up or schedule a formal discussion with your
                 team or external guests.
@@ -114,18 +124,36 @@
                                     class="text-[10px] text-blue-500 font-mono mt-1 flex items-center gap-1 bg-blue-500/5 px-2 py-0.5 rounded-full w-fit group/pw"
                                 >
                                     <Icon name="lock" size="10" />
-                                    <span v-if="revealedPasswords.has(meeting.id)">{{ meeting.password }}</span>
-                                    <span v-else>••••••••</span>
-                                    
-                                    <button 
-                                        @click.stop="togglePasswordReveal(meeting.id)"
-                                        class="p-0.5 hover:bg-blue-500/20 rounded transition-colors ml-1"
-                                        :title="revealedPasswords.has(meeting.id) ? 'Hide Password' : 'Show Password'"
+                                    <span
+                                        v-if="revealedPasswords.has(meeting.id)"
+                                        >{{ meeting.password }}</span
                                     >
-                                        <Icon :name="revealedPasswords.has(meeting.id) ? 'eye-off' : 'eye'" size="10" />
+                                    <span v-else>••••••••</span>
+
+                                    <button
+                                        @click.stop="
+                                            togglePasswordReveal(meeting.id)
+                                        "
+                                        class="p-0.5 hover:bg-blue-500/20 rounded transition-colors ml-1"
+                                        :title="
+                                            revealedPasswords.has(meeting.id)
+                                                ? 'Hide Password'
+                                                : 'Show Password'
+                                        "
+                                    >
+                                        <Icon
+                                            :name="
+                                                revealedPasswords.has(
+                                                    meeting.id,
+                                                )
+                                                    ? 'eye-off'
+                                                    : 'eye'
+                                            "
+                                            size="10"
+                                        />
                                     </button>
-                                    
-                                    <button 
+
+                                    <button
                                         @click.stop="copyPassword(meeting)"
                                         class="p-0.5 hover:bg-blue-500/20 rounded transition-colors"
                                         title="Copy Password"
@@ -243,38 +271,60 @@
         />
 
         <!-- Success Dialog -->
-        <div v-if="createdMeeting" class="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
-            <div class="bg-(--surface-primary) border border-(--border-muted) w-full max-w-md rounded-2xl shadow-2xl p-8 flex flex-col items-center text-center">
-                <div class="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center text-emerald-500 mb-6">
+        <div
+            v-if="createdMeeting"
+            class="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md"
+        >
+            <div
+                class="bg-(--surface-primary) border border-(--border-muted) w-full max-w-md rounded-2xl shadow-2xl p-8 flex flex-col items-center text-center"
+            >
+                <div
+                    class="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center text-emerald-500 mb-6"
+                >
                     <Icon name="check-circle" size="32" />
                 </div>
                 <h2 class="text-2xl font-bold mb-2">Meeting Created!</h2>
-                <p class="text-(--text-muted) mb-8">Your meeting is ready. Share the details below with your participants.</p>
-                
+                <p class="text-(--text-muted) mb-8">
+                    Your meeting is ready. Share the details below with your
+                    participants.
+                </p>
+
                 <div class="w-full space-y-4 mb-8">
                     <div class="text-left">
-                        <label class="text-[10px] uppercase tracking-wider font-bold text-(--text-tertiary) mb-1 block">Invitation Link</label>
+                        <label
+                            class="text-[10px] uppercase tracking-wider font-bold text-(--text-tertiary) mb-1 block"
+                            >Invitation Link</label
+                        >
                         <div class="flex gap-2">
-                            <input 
-                                readonly 
-                                :value="getMeetingUrl(createdMeeting)" 
+                            <input
+                                readonly
+                                :value="getMeetingUrl(createdMeeting)"
                                 class="flex-1 bg-(--surface-tertiary) border border-(--border-muted) rounded-lg px-3 py-2 text-sm outline-none"
                             />
-                            <button @click="copyLink(createdMeeting)" class="p-2 bg-(--surface-tertiary) border border-(--border-muted) rounded-lg hover:bg-(--border-muted) transition-colors">
+                            <button
+                                @click="copyLink(createdMeeting)"
+                                class="p-2 bg-(--surface-tertiary) border border-(--border-muted) rounded-lg hover:bg-(--border-muted) transition-colors"
+                            >
                                 <Icon name="copy" size="18" />
                             </button>
                         </div>
                     </div>
 
                     <div v-if="createdMeeting.password" class="text-left">
-                        <label class="text-[10px] uppercase tracking-wider font-bold text-(--text-tertiary) mb-1 block">Meeting Password</label>
+                        <label
+                            class="text-[10px] uppercase tracking-wider font-bold text-(--text-tertiary) mb-1 block"
+                            >Meeting Password</label
+                        >
                         <div class="flex gap-2">
-                            <input 
-                                readonly 
-                                :value="createdMeeting.password" 
+                            <input
+                                readonly
+                                :value="createdMeeting.password"
                                 class="flex-1 bg-(--surface-tertiary) border border-(--border-muted) rounded-lg px-3 py-2 text-sm font-mono outline-none"
                             />
-                            <button @click="copyPassword(createdMeeting)" class="p-2 bg-(--surface-tertiary) border border-(--border-muted) rounded-lg hover:bg-(--border-muted) transition-colors">
+                            <button
+                                @click="copyPassword(createdMeeting)"
+                                class="p-2 bg-(--surface-tertiary) border border-(--border-muted) rounded-lg hover:bg-(--border-muted) transition-colors"
+                            >
                                 <Icon name="copy" size="18" />
                             </button>
                         </div>
@@ -282,10 +332,16 @@
                 </div>
 
                 <div class="flex flex-col w-full gap-3">
-                    <button @click="joinMeeting(createdMeeting)" class="w-full py-3 bg-(--color-primary-600) hover:bg-(--color-primary-700) text-white rounded-xl font-bold transition-all">
+                    <button
+                        @click="joinMeeting(createdMeeting)"
+                        class="w-full py-3 bg-(--color-primary-600) hover:bg-(--color-primary-700) text-white rounded-xl font-bold transition-all"
+                    >
                         Join Meeting Now
                     </button>
-                    <button @click="createdMeeting = null" class="w-full py-3 bg-(--surface-tertiary) hover:bg-(--border-muted) rounded-xl font-bold transition-all">
+                    <button
+                        @click="createdMeeting = null"
+                        class="w-full py-3 bg-(--surface-tertiary) hover:bg-(--border-muted) rounded-xl font-bold transition-all"
+                    >
                         Dismiss
                     </button>
                 </div>
@@ -403,10 +459,11 @@ const togglePasswordReveal = (meetingId: number) => {
     }
 };
 
-const isOwner = (meeting: Meeting) => {
+const isOwner = (meeting: any) => {
     if (!authStore.user) return false;
     if (authStore.isSuperAdmin) return true;
-    return String(meeting.user_id) === String(authStore.user.id);
+
+    return meeting.host_public_id === authStore.user.public_id;
 };
 
 const cancelMeeting = async (meeting: Meeting) => {

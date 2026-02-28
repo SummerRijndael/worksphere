@@ -170,13 +170,27 @@ class MeetingController extends Controller
             'sender_participant_public_id' => 'required|string',
         ]);
 
-        $sender = MeetingParticipant::where('meeting_id', $meeting->id)
-            ->whereRaw('LOWER(public_id) = ?', [strtolower($request->sender_participant_public_id)])
-            ->where('status', 'admitted')
-            ->first();
+        $participantSessionId = $request->header('X-Participant-ID') ?: (session('meeting_participant_id') ?: session('participant_id'));
+        $senderPublicId = strtolower($request->sender_participant_public_id);
+
+        $senderQuery = MeetingParticipant::where('meeting_id', $meeting->id)
+            ->whereRaw('LOWER(public_id) = ?', [$senderPublicId])
+            ->where('status', 'admitted');
+
+        // Security: Ensure requester owns this participant ID
+        $user = Auth::user();
+        if ($user) {
+            $senderQuery->where('user_id', $user->id);
+        } else {
+            if (!$participantSessionId || strtolower($participantSessionId) !== $senderPublicId) {
+                return response()->json(['message' => 'Mismatched signal session'], 403);
+            }
+        }
+
+        $sender = $senderQuery->first();
 
         if (!$sender) {
-            return response()->json(['message' => 'Unauthorized or not admitted'], 403);
+            return response()->json(['message' => 'Unauthorized or invalid sender session'], 403);
         }
 
         Log::channel('videocall')->debug('[SIGNAL] Broadcasting signal', [

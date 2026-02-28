@@ -60,10 +60,14 @@ class MeetingService implements MeetingServiceContract
 
     public function joinMeeting(Meeting $meeting, ?User $user, ?string $guestName, ?string $guestEmail, ?string $providedPassword, ?string $participantSessionId): array
     {
+        $start = microtime(true);
+        Log::channel('videocall')->info("[504_DEBUG] Join start", ['meeting' => $meeting->public_id]);
+
         // 1. Basic Meeting Status Checks
         if ($meeting->status === 'ended') {
             abort(403, 'This meeting has already ended.');
         }
+        Log::channel('videocall')->info("[504_DEBUG] Step 1: Status check done", ['time' => microtime(true) - $start]);
 
         $isGuest = !$user;
 
@@ -78,12 +82,14 @@ class MeetingService implements MeetingServiceContract
                 throw new \Exception('Invalid meeting password. REQUIRES_PASSWORD');
             }
         }
+        Log::channel('videocall')->info("[504_DEBUG] Step 2: Password check done", ['time' => microtime(true) - $start]);
 
         // 3. ACL & Smart Waiting Room logic
         $isInvitedOnly = $meeting->settings['invited_only'] ?? false;
         $isWhitelistMatch = false;
         
         $meeting->load('event');
+        Log::channel('videocall')->info("[504_DEBUG] Step 3a: Event loaded", ['time' => microtime(true) - $start]);
 
         // Check if user/guest is on the Calendar Event whitelist
         if ($meeting->event) {
@@ -93,10 +99,12 @@ class MeetingService implements MeetingServiceContract
                 $isWhitelistMatch = true;
             }
         }
+        Log::channel('videocall')->info("[504_DEBUG] Step 3b: Whitelist check done", ['time' => microtime(true) - $start]);
 
         if ($isInvitedOnly && !$isWhitelistMatch && $meeting->user_id !== ($user ? $user->id : null)) {
             abort(403, 'This meeting is restricted to invited participants only.');
         }
+        Log::channel('videocall')->info("[504_DEBUG] Step 3c: Invited only check done", ['time' => microtime(true) - $start]);
 
         // 4. Meeting Lock check
         $isLocked = Cache::has("meeting:lock:{$meeting->public_id}");
@@ -112,6 +120,7 @@ class MeetingService implements MeetingServiceContract
                 abort(403, 'This meeting is locked by the host.');
             }
         }
+        Log::channel('videocall')->info("[504_DEBUG] Step 4: Lock check done", ['time' => microtime(true) - $start]);
 
         // 5. Determine participant status
         // If whitelisted or host, bypass wait room. Otherwise check lobby_enabled
@@ -154,27 +163,39 @@ class MeetingService implements MeetingServiceContract
                     'metadata' => [
                         'guest_name' => $guestName ?? 'Guest',
                         'guest_email' => $guestEmail,
+                        'fingerprint' => [
+                            'ip' => request()->ip(),
+                            'ua' => request()->userAgent(),
+                        ],
                     ],
                 ]);
-            } else {
-                // Optional: potentially promote back to waiting if they hit weird state, 
-                // but generally just return the participant.
             }
         } else {
-            $participant = MeetingParticipant::firstOrCreate(
-                [
+            $participant = MeetingParticipant::where([
+                'meeting_id' => $meeting->id,
+                'user_id' => $user->id,
+            ])->first();
+
+            if (!$participant) {
+                $participant = MeetingParticipant::create([
                     'meeting_id' => $meeting->id,
                     'user_id' => $user->id,
-                ],
-                [
                     'role' => $meeting->user_id === $user->id ? 'host' : 'participant',
                     'status' => $status,
-                ]
-            );
+                    'metadata' => [
+                        'fingerprint' => [
+                            'ip' => request()->ip(),
+                            'ua' => request()->userAgent(),
+                        ],
+                    ],
+                ]);
+            }
         }
+        Log::channel('videocall')->info("[504_DEBUG] Step 6: Participant DB done", ['time' => microtime(true) - $start]);
 
         // 7. Broadcasts
         broadcast(new MeetingParticipantJoined($meeting, $participant));
+        Log::channel('videocall')->info("[504_DEBUG] Step 7a: Broadcast Join done", ['time' => microtime(true) - $start]);
 
         if ($participant->status === 'waiting') {
             broadcast(new MeetingSignal(
@@ -186,6 +207,7 @@ class MeetingService implements MeetingServiceContract
                     'display_name' => $participant->metadata['guest_name'] ?? ($participant->user?->name ?? 'Someone'),
                 ]
             ));
+            Log::channel('videocall')->info("[504_DEBUG] Step 7b: Broadcast Waiting done", ['time' => microtime(true) - $start]);
         }
 
         Log::channel('videocall')->info('[PARTICIPANT] Join attempt', [
@@ -274,13 +296,35 @@ class MeetingService implements MeetingServiceContract
     {
         $isPresence = str_starts_with($channelName, 'presence-');
 
-        // 1. If user is the host
+        // 1. If user is the host (Authenticated Owner)
         if ($user && $meeting->user_id === $user->id) {
             $hostParticipant = MeetingParticipant::where('meeting_id', $meeting->id)
                 ->where('user_id', $user->id)
                 ->first();
 
-            $participantId = $hostParticipant ? $hostParticipant->public_id : $user->public_id;
+            // Safety: Ensure host participant record exists
+            if (!$hostParticipant) {
+                $hostParticipant = MeetingParticipant::create([
+                    'meeting_id' => $meeting->id,
+                    'user_id' => $user->id,
+                    'role' => 'host',
+                    'status' => 'admitted'
+                ]);
+            }
+
+            $participantId = $hostParticipant->public_id;
+            
+            // SECURITY: If a participantSessionId was provided, it MUST match the host's record
+            // This prevents a host from accidentally (or maliciously) using a guest participant ID
+            if ($participantSessionId && strtolower($participantSessionId) !== strtolower($participantId)) {
+                Log::warning('[SECURITY] Host attempted to authenticate with mismatched participant ID', [
+                    'user' => $user->id,
+                    'expected' => $participantId,
+                    'provided' => $participantSessionId
+                ]);
+                abort(403, 'Mismatched participant session.');
+            }
+
             $userData = [
                 'public_id' => $participantId,
                 'name' => $user->name,
@@ -292,27 +336,60 @@ class MeetingService implements MeetingServiceContract
             return $this->generatePusherAuth($channelName, $socketId, $participantId, $userData, $isPresence);
         }
 
-        // 2. Participant check
-        $participantQuery = MeetingParticipant::where('meeting_id', $meeting->id);
+        // 2. Participant check (Guest or other Member)
+        if (!$participantSessionId) {
+            abort(403, 'Unauthorized. No participant session found.');
+        }
+
+        $participantQuery = MeetingParticipant::where('meeting_id', $meeting->id)
+            ->whereRaw('LOWER(public_id) = ?', [strtolower($participantSessionId)]);
 
         if ($user) {
-            $participantQuery->where(function($q) use ($user, $participantSessionId) {
-                $q->where('user_id', $user->id);
-                if ($participantSessionId) {
-                    $q->orWhere('public_id', $participantSessionId);
-                }
-            });
+            // For logged in users, ensure the participant record belongs to them
+            $participantQuery->where('user_id', $user->id);
         } else {
-            if (!$participantSessionId) {
-                abort(403, 'Unauthorized. No participant ID.');
+            // For guests, verify against the session to prevent hijacking via URL
+            $sessionPid = session('meeting_participant_id') ?: session('participant_id');
+            if (!$sessionPid || strtolower($sessionPid) !== strtolower($participantSessionId)) {
+                Log::warning('[SECURITY] Guest attempted to authenticate with mismatched session ID', [
+                    'session_pid' => $sessionPid,
+                    'provided_pid' => $participantSessionId
+                ]);
+                abort(403, 'Mismatched meeting session. Please refresh or re-join.');
             }
-            $participantQuery->where('public_id', $participantSessionId);
         }
 
         $participant = $participantQuery->first();
 
         if (!$participant) {
-            abort(403, 'Unauthorized. Participant not found in this meeting.');
+            abort(403, 'Unauthorized. Participant session invalid for this meeting.');
+        }
+
+        // 3. Optional: Fingerprint Check (Defense in Depth)
+        // Verify that the broadcasting request comes from the same device/IP that joined
+        $storedFingerprint = $participant->metadata['fingerprint'] ?? null;
+        if ($storedFingerprint) {
+            $currentIp = request()->ip();
+            $currentUa = request()->userAgent();
+
+            // We do a "soft" check on IP (might change on mobile) but strict on UA
+            if ($storedFingerprint['ua'] !== $currentUa) {
+                Log::warning('[SECURITY] Session Hijack Attempt: UA Mismatch', [
+                    'participant' => $participant->public_id,
+                    'expected_ua' => $storedFingerprint['ua'],
+                    'current_ua' => $currentUa
+                ]);
+                // For now, we only log UA mismatch to avoid false positives with browser updates,
+                // but we could abort(403) here for maximum security.
+            }
+            
+            if ($storedFingerprint['ip'] !== $currentIp) {
+                 Log::info('[SECURITY] Participant IP changed', [
+                    'participant' => $participant->public_id,
+                    'from' => $storedFingerprint['ip'],
+                    'to' => $currentIp
+                ]);
+            }
         }
 
         $pId = $participant->public_id;
