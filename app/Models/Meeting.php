@@ -74,7 +74,13 @@ class Meeting extends Model
             ->where(function ($query) {
                 // Return if NO duration is set (infinite) OR if duration + 1 min grace has not passed
                 $query->whereNull('duration_minutes')
-                    ->orWhereRaw('DATE_ADD(started_at, INTERVAL duration_minutes + 1 MINUTE) > ?', [now()]);
+                    ->orWhere(function ($q) {
+                        if (config('database.default') === 'sqlite') {
+                            $q->whereRaw("datetime(started_at, '+' || (duration_minutes + 1) || ' minutes') > ?", [now()]);
+                        } else {
+                            $q->whereRaw('DATE_ADD(started_at, INTERVAL duration_minutes + 1 MINUTE) > ?', [now()]);
+                        }
+                    });
             });
     }
 
@@ -84,6 +90,6 @@ class Meeting extends Model
     public function isHost(MeetingParticipant $participant): bool
     {
         return $participant->user_id !== null
-            && $participant->user_id === $this->user_id;
+            && $participant->user_id == $this->user_id;
     }
 }

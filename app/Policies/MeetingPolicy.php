@@ -30,12 +30,12 @@ class MeetingPolicy
 
     public function update(User $user, Meeting $meeting): bool
     {
-        return $meeting->user_id === $user->id;
+        return $meeting->user_id == $user->id;
     }
 
     public function delete(User $user, Meeting $meeting): bool
     {
-        return $meeting->user_id === $user->id;
+        return $meeting->user_id == $user->id;
     }
 
     /**
@@ -43,7 +43,7 @@ class MeetingPolicy
      */
     public function moderate(User $user, Meeting $meeting): bool
     {
-        return $meeting->user_id === $user->id || 
+        return $meeting->user_id == $user->id ||
                MeetingParticipant::where('meeting_id', $meeting->id)
                    ->where('user_id', $user->id)
                    ->whereIn('role', ['host', 'co-host'])

@@ -76,7 +76,7 @@ class MeetingService implements MeetingServiceContract
         }
 
         // 2. Password Check
-        if ($meeting->password && ($meeting->user_id !== ($user ? $user->id : null))) {
+        if ($meeting->password && ($meeting->user_id != ($user ? $user->id : null))) {
             if ($providedPassword !== $meeting->password) {
                 // Return structured error via exception or handled response
                 throw new \Exception('Invalid meeting password. REQUIRES_PASSWORD');
@@ -101,14 +101,14 @@ class MeetingService implements MeetingServiceContract
         }
         Log::channel('videocall')->info("[504_DEBUG] Step 3b: Whitelist check done", ['time' => microtime(true) - $start]);
 
-        if ($isInvitedOnly && !$isWhitelistMatch && $meeting->user_id !== ($user ? $user->id : null)) {
+        if ($isInvitedOnly && !$isWhitelistMatch && $meeting->user_id != ($user ? $user->id : null)) {
             abort(403, 'This meeting is restricted to invited participants only.');
         }
         Log::channel('videocall')->info("[504_DEBUG] Step 3c: Invited only check done", ['time' => microtime(true) - $start]);
 
         // 4. Meeting Lock check
         $isLocked = Cache::has("meeting:lock:{$meeting->public_id}");
-        if ($isLocked && ($meeting->user_id !== ($user ? $user->id : null))) {
+        if ($isLocked && ($meeting->user_id != ($user ? $user->id : null))) {
             $isAlreadyIn = MeetingParticipant::where('meeting_id', $meeting->id)
                 ->where('status', 'admitted')
                 ->where(function ($q) use ($user, $participantSessionId) {
@@ -127,7 +127,7 @@ class MeetingService implements MeetingServiceContract
         $lobbyEnabled = $meeting->settings['lobby_enabled'] ?? true;
         $status = 'waiting';
         
-        if ($meeting->user_id === ($user ? $user->id : null) || $isWhitelistMatch || !$lobbyEnabled) {
+        if ($meeting->user_id == ($user ? $user->id : null) || $isWhitelistMatch || !$lobbyEnabled) {
             $status = 'admitted';
         }
 
@@ -180,7 +180,7 @@ class MeetingService implements MeetingServiceContract
                 $participant = MeetingParticipant::create([
                     'meeting_id' => $meeting->id,
                     'user_id' => $user->id,
-                    'role' => $meeting->user_id === $user->id ? 'host' : 'participant',
+                    'role' => $meeting->user_id == $user->id ? 'host' : 'participant',
                     'status' => $status,
                     'metadata' => [
                         'fingerprint' => [
@@ -297,7 +297,7 @@ class MeetingService implements MeetingServiceContract
         $isPresence = str_starts_with($channelName, 'presence-');
 
         // 1. If user is the host (Authenticated Owner)
-        if ($user && $meeting->user_id === $user->id) {
+        if ($user && $meeting->user_id == $user->id) {
             $hostParticipant = MeetingParticipant::where('meeting_id', $meeting->id)
                 ->where('user_id', $user->id)
                 ->first();
@@ -592,7 +592,7 @@ class MeetingService implements MeetingServiceContract
         $participant->refresh();
 
         // AUTHORIZATION: Only allow if host or if assigned to this room
-        $isHost = $meeting->user_id === $participant->user_id;
+        $isHost = $meeting->user_id == $participant->user_id;
         $isAssigned = (string)$participant->assigned_room_id === (string)$roomId;
 
         Log::info('Join breakout room attempt', [
