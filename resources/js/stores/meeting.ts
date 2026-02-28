@@ -155,13 +155,27 @@ export const useMeetingStore = defineStore('meeting', () => {
              const currentPublicId = authStore.user?.public_id || 'Guest';
              const recordUserPublicId = found?.user?.public_id || 'Guest';
 
-             if (found?.user_id && recordUserPublicId !== currentPublicId) {
-                 log('SECURITY', 'IDENTITY MISMATCH: Rejecting token.');
-                 localParticipant.value = null;
-                 throw new Error("Identity Mismatch");
-             } else {
-                 localParticipant.value = found;
+             if (found?.user_id) {
+                // Registered User Check
+                if (recordUserPublicId !== currentPublicId) {
+                    log('SECURITY', 'IDENTITY MISMATCH: Rejecting token.');
+                    meeting.value = null; // Clear state before throwing
+                    localParticipant.value = null;
+                    throw new Error("Identity Mismatch");
+                }
+             } else if (found) {
+                // Guest Check: Verify against localStorage token set during join/login
+                // This prevents hijacking a guest session by just pasting the URL
+                const storedToken = localStorage.getItem(`worksphere_meeting_token_${meetingId}`);
+                if (!storedToken || storedToken.toLowerCase() !== normalizedParticipantId) {
+                    log('SECURITY', 'GUEST SESSION MISMATCH: Rejecting URL-pasted token.');
+                    meeting.value = null; // Clear state before throwing
+                    localParticipant.value = null;
+                    throw new Error("Guest Session Mismatch");
+                }
              }
+             
+             localParticipant.value = found;
 
              presence.participants.value = participants;
 

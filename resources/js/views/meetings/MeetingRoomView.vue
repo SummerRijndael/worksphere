@@ -93,13 +93,21 @@
                             <div class="detail-row">
                                 <div class="detail-label">Created</div>
                                 <div class="detail-value">
-                                    {{ formatDate(meetingStore.meeting.created_at) }}
+                                    {{
+                                        formatDate(
+                                            meetingStore.meeting.created_at,
+                                        )
+                                    }}
                                 </div>
                             </div>
                             <div class="detail-row">
                                 <div class="detail-label">Last Updated</div>
                                 <div class="detail-value">
-                                    {{ formatDate(meetingStore.meeting.updated_at) }}
+                                    {{
+                                        formatDate(
+                                            meetingStore.meeting.updated_at,
+                                        )
+                                    }}
                                 </div>
                             </div>
                         </div>
@@ -183,68 +191,6 @@
                                 >
                                     <Icon name="copy" size="16" class="mr-2" />
                                     <span>Copy joining link</span>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </Transition>
-        </aside>
-
-        <!-- Admission Overlay (Moderator Only) -->
-        <aside v-if="meetingStore.isHost" class="admission-overlay">
-            <Transition name="panel">
-                <div
-                    v-if="showAdmissionPanel"
-                    class="admission-panel"
-                    v-click-outside="() => (showAdmissionPanel = false)"
-                >
-                    <div class="admission-header">
-                        <h3>Waiting Room</h3>
-                        <div class="badge-pill">
-                            {{ meetingStore.waitingParticipants.length }}
-                        </div>
-                    </div>
-                    <div class="admission-list">
-                        <div
-                            v-for="p in meetingStore.waitingParticipants"
-                            :key="p.public_id"
-                            class="admission-item"
-                        >
-                            <div class="admission-user">
-                                <Avatar
-                                    :user="p.user"
-                                    :fallback="p.metadata?.guest_name || 'G'"
-                                    size="32"
-                                />
-                                <div class="user-meta">
-                                    <span class="user-name">{{
-                                        p.user?.name ||
-                                        p.metadata?.guest_name ||
-                                        "Guest"
-                                    }}</span>
-                                </div>
-                            </div>
-                            <div class="admission-actions">
-                                <button
-                                    @click="
-                                        meetingStore.rejectParticipant(
-                                            p.public_id,
-                                        )
-                                    "
-                                    class="admission-btn admission-btn--reject"
-                                >
-                                    Deny
-                                </button>
-                                <button
-                                    @click="
-                                        meetingStore.admitParticipant(
-                                            p.public_id,
-                                        )
-                                    "
-                                    class="admission-btn admission-btn--admit"
-                                >
-                                    Admit
                                 </button>
                             </div>
                         </div>
@@ -401,7 +347,10 @@
                     leave-from-class="opacity-100 translateY-0"
                     leave-to-class="opacity-0 translateY-4"
                 >
-                    <div v-if="localCameraTile && shouldShowPiPSelfView" class="pip-self-view">
+                    <div
+                        v-if="localCameraTile && shouldShowPiPSelfView"
+                        class="pip-self-view"
+                    >
                         <ParticipantTile
                             :participant="localCameraTile.participant"
                             :is-screen-share="false"
@@ -426,7 +375,9 @@
             </div>
             <!-- Breakout Room Layer -->
             <BreakoutOverlay v-if="meetingStore.activeBreakoutSession" />
-            <BreakoutDashboard v-if="meetingStore.activeBreakoutSession && meetingStore.isHost" />
+            <BreakoutDashboard
+                v-if="meetingStore.activeBreakoutSession && meetingStore.isHost"
+            />
 
             <!-- Participants Side Panel -->
             <Transition
@@ -439,12 +390,48 @@
             >
                 <aside v-if="showParticipantsPanel" class="side-panel">
                     <div class="side-panel-header">
-                        <h3>People ({{ participantCount }})</h3>
+                        <div class="flex items-center space-x-6">
+                            <h3
+                                class="cursor-pointer py-1 border-b-2 transition-all text-sm font-medium uppercase tracking-wider"
+                                :class="
+                                    activeParticipantTab === 'members'
+                                        ? 'border-blue-500 text-white'
+                                        : 'border-transparent text-gray-500 hover:text-gray-300'
+                                "
+                                @click="activeParticipantTab = 'members'"
+                            >
+                                Members ({{ participantCount }})
+                            </h3>
+                            <h3
+                                v-if="meetingStore.isModerator"
+                                class="cursor-pointer py-1 border-b-2 transition-all text-sm font-medium uppercase tracking-wider relative"
+                                :class="
+                                    activeParticipantTab === 'waiting'
+                                        ? 'border-blue-500 text-white'
+                                        : 'border-transparent text-gray-500 hover:text-gray-300'
+                                "
+                                @click="activeParticipantTab = 'waiting'"
+                            >
+                                Admissions
+                                <span
+                                    v-if="
+                                        meetingStore.waitingParticipants
+                                            .length > 0
+                                    "
+                                    class="absolute -top-1 -right-4 flex h-4 w-4 items-center justify-center rounded-full bg-blue-600 text-[10px] text-white"
+                                >
+                                    {{
+                                        meetingStore.waitingParticipants.length
+                                    }}
+                                </span>
+                            </h3>
+                        </div>
                         <div class="flex items-center gap-2">
                             <button
                                 v-if="
                                     meetingStore.isHost &&
-                                    meetingStore.raisedHands.size > 0
+                                    meetingStore.raisedHands.size > 0 &&
+                                    activeParticipantTab === 'members'
                                 "
                                 @click="lowerAllHands"
                                 class="text-xs px-3 py-1.5 bg-[#3c4043] hover:bg-[#4c4d50] text-[#e8eaed] rounded-full transition-colors border-none cursor-pointer whitespace-nowrap"
@@ -454,100 +441,123 @@
                             </button>
                             <button
                                 @click="showParticipantsPanel = false"
-                                class="side-panel-close"
+                                class="p-1 hover:bg-white/10 rounded-full transition-colors side-panel-close text-[#9aa0a6]"
                             >
-                                <Icon name="x" size="18" />
+                                <Icon name="x" size="20" />
                             </button>
                         </div>
                     </div>
+
                     <div class="side-panel-body">
+                        <!-- Members Tab -->
                         <div
-                            v-for="p in meetingStore.allParticipants"
-                            :key="p.public_id"
-                            class="participant-row"
+                            v-if="activeParticipantTab === 'members'"
+                            class="participant-list"
                         >
-                            <div class="participant-avatar">
-                                {{ getParticipantInitial(p) }}
-                            </div>
-                            <div class="participant-info">
-                                <span class="participant-name">
-                                    {{ getParticipantName(p) }}
-                                    <span
-                                        v-if="
-                                            p.public_id ===
-                                            meetingStore.localParticipant
-                                                ?.public_id
-                                        "
-                                        class="you-badge"
-                                        >You</span
-                                    >
-                                    <span
-                                        v-if="p.role === 'host'"
-                                        class="ml-2 text-xs text-blue-400 bg-blue-400/10 px-1.5 py-0.5 rounded"
-                                        >Host</span
-                                    >
-                                    <span
-                                        v-if="p.role === 'co-host'"
-                                        class="ml-2 text-xs text-purple-400 bg-purple-400/10 px-1.5 py-0.5 rounded"
-                                        >Co-host</span
-                                    >
-                                </span>
-                            </div>
                             <div
-                                class="participant-status-icons flex items-center"
+                                v-for="p in meetingStore.allParticipants"
+                                :key="p.public_id"
+                                class="participant-row"
                             >
-                                <Icon
-                                    v-if="
-                                        meetingStore.raisedHands.has(
-                                            p.public_id,
-                                        )
-                                    "
-                                    name="hand"
-                                    size="14"
-                                    class="text-amber-400"
-                                />
-                                <Icon
-                                    v-if="p.is_muted_by_host"
-                                    name="mic-off"
-                                    size="14"
-                                    class="text-red-500 ml-1"
-                                />
-                                <Icon
-                                    v-if="p.is_camera_disabled_by_host"
-                                    name="video-off"
-                                    size="14"
-                                    class="text-red-500 ml-1"
-                                />
-                                <!-- Moderators can moderate participants, but only the true Host can promote/demote/kick other moderators/co-hosts. -->
-                                <Menu
-                                    as="div"
-                                    class="relative inline-block text-left ml-2"
-                                    v-if="
-                                        meetingStore.isModerator &&
-                                        p.public_id !==
-                                            meetingStore.localParticipant
-                                                ?.public_id &&
-                                        p.role !== 'host'
-                                    "
-                                >
-                                    <MenuButton
-                                        class="p-1 hover:bg-[#3c4043] rounded-full text-[#9aa0a6]"
-                                    >
-                                        <Icon name="more-vertical" size="16" />
-                                    </MenuButton>
-                                    <transition
-                                        enter-active-class="transition ease-out duration-100"
-                                        enter-from-class="transform opacity-0 scale-95"
-                                        enter-to-class="transform opacity-100 scale-100"
-                                        leave-active-class="transition ease-in duration-75"
-                                        leave-from-class="transform opacity-100 scale-100"
-                                        leave-to-class="transform opacity-0 scale-95"
-                                    >
-                                        <MenuItems
-                                            class="absolute right-0 mt-1 w-48 origin-top-right bg-[#28292c] rounded-md shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-50 py-1 border border-[#3c4043]"
+                                <div class="participant-avatar">
+                                    {{ getParticipantInitial(p) }}
+                                </div>
+                                <div class="participant-info">
+                                    <span class="participant-name">
+                                        {{ getParticipantName(p) }}
+                                        <span
+                                            v-if="
+                                                p.public_id ===
+                                                meetingStore.localParticipant
+                                                    ?.public_id
+                                            "
+                                            class="you-badge"
+                                            >You</span
                                         >
-                                            <MenuItem v-slot="{ active }">
-                                                <div>
+                                        <span
+                                            v-if="p.role === 'host'"
+                                            class="ml-2 text-[10px] text-blue-400 bg-blue-400/10 px-1.5 py-0.5 rounded border border-blue-400/20"
+                                            >HOST</span
+                                        >
+                                        <span
+                                            v-if="p.role === 'co-host'"
+                                            class="ml-2 text-[10px] text-purple-400 bg-purple-400/10 px-1.5 py-0.5 rounded border border-purple-400/20"
+                                            >CO-HOST</span
+                                        >
+                                    </span>
+                                </div>
+                                <div
+                                    class="participant-status-icons flex items-center space-x-2"
+                                >
+                                    <Icon
+                                        v-if="
+                                            meetingStore.raisedHands.has(
+                                                p.public_id,
+                                            )
+                                        "
+                                        name="hand"
+                                        size="14"
+                                        class="text-amber-400 animate-bounce"
+                                    />
+                                    <Icon
+                                        :name="
+                                            isParticipantMicOn(p)
+                                                ? 'mic'
+                                                : 'mic-off'
+                                        "
+                                        size="14"
+                                        :class="
+                                            isParticipantMicOn(p)
+                                                ? 'text-green-500'
+                                                : 'text-red-500'
+                                        "
+                                    />
+                                    <Icon
+                                        :name="
+                                            isParticipantVideoOn(p)
+                                                ? 'video'
+                                                : 'video-off'
+                                        "
+                                        size="14"
+                                        :class="
+                                            isParticipantVideoOn(p)
+                                                ? 'text-green-500'
+                                                : 'text-red-500'
+                                        "
+                                    />
+
+                                    <!-- Moderator Menu -->
+                                    <Menu
+                                        as="div"
+                                        class="relative inline-block text-left ml-2"
+                                        v-if="
+                                            meetingStore.isModerator &&
+                                            p.public_id !==
+                                                meetingStore.localParticipant
+                                                    ?.public_id &&
+                                            p.role !== 'host'
+                                        "
+                                    >
+                                        <MenuButton
+                                            class="p-1 hover:bg-[#3c4043] rounded-full text-[#9aa0a6]"
+                                        >
+                                            <Icon
+                                                name="more-vertical"
+                                                size="16"
+                                            />
+                                        </MenuButton>
+                                        <transition
+                                            enter-active-class="transition ease-out duration-100"
+                                            enter-from-class="transform opacity-0 scale-95"
+                                            enter-to-class="transform opacity-100 scale-100"
+                                            leave-active-class="transition ease-in duration-75"
+                                            leave-from-class="transform opacity-100 scale-100"
+                                            leave-to-class="transform opacity-0 scale-95"
+                                        >
+                                            <MenuItems
+                                                class="absolute right-0 mt-1 w-48 origin-top-right bg-[#28292c] rounded-md shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-50 py-1 border border-[#3c4043]"
+                                            >
+                                                <MenuItem v-slot="{ active }">
                                                     <button
                                                         @click="
                                                             p.is_muted_by_host
@@ -580,10 +590,8 @@
                                                                 : "Mute Microphone"
                                                         }}
                                                     </button>
-                                                </div>
-                                            </MenuItem>
-                                            <MenuItem v-slot="{ active }">
-                                                <div>
+                                                </MenuItem>
+                                                <MenuItem v-slot="{ active }">
                                                     <button
                                                         @click="
                                                             p.is_camera_disabled_by_host
@@ -616,82 +624,58 @@
                                                                 : "Turn Off Camera"
                                                         }}
                                                     </button>
-                                                </div>
-                                            </MenuItem>
-
-                                            <!-- Only True Host can promote/demote -->
-                                            <template
-                                                v-if="meetingStore.isHost"
-                                            >
+                                                </MenuItem>
+                                                <template
+                                                    v-if="meetingStore.isHost"
+                                                >
+                                                    <div
+                                                        class="my-1 border-t border-[#3c4043]"
+                                                    ></div>
+                                                    <MenuItem
+                                                        v-slot="{ active }"
+                                                    >
+                                                        <button
+                                                            @click="
+                                                                p.role ===
+                                                                'participant'
+                                                                    ? meetingStore.promoteParticipant(
+                                                                          p.public_id,
+                                                                      )
+                                                                    : meetingStore.demoteParticipant(
+                                                                          p.public_id,
+                                                                      )
+                                                            "
+                                                            :class="[
+                                                                active
+                                                                    ? 'bg-[#3c4043] text-white'
+                                                                    : 'text-[#e8eaed]',
+                                                                'group flex items-center w-full px-4 py-2 text-sm',
+                                                            ]"
+                                                        >
+                                                            <Icon
+                                                                :name="
+                                                                    p.role ===
+                                                                    'participant'
+                                                                        ? 'shield'
+                                                                        : 'shield-off'
+                                                                "
+                                                                size="16"
+                                                                class="mr-3 text-[#9aa0a6]"
+                                                            />
+                                                            {{
+                                                                p.role ===
+                                                                "participant"
+                                                                    ? "Make Co-host"
+                                                                    : "Remove Co-host"
+                                                            }}
+                                                        </button>
+                                                    </MenuItem>
+                                                </template>
                                                 <div
                                                     class="my-1 border-t border-[#3c4043]"
                                                 ></div>
                                                 <MenuItem v-slot="{ active }">
-                                                    <div>
-                                                        <button
-                                                            v-if="
-                                                                p.role ===
-                                                                'participant'
-                                                            "
-                                                            @click="
-                                                                meetingStore.promoteParticipant(
-                                                                    p.public_id,
-                                                                )
-                                                            "
-                                                            :class="[
-                                                                active
-                                                                    ? 'bg-[#3c4043] text-white'
-                                                                    : 'text-[#e8eaed]',
-                                                                'group flex items-center w-full px-4 py-2 text-sm',
-                                                            ]"
-                                                        >
-                                                            <Icon
-                                                                name="shield"
-                                                                size="16"
-                                                                class="mr-3 text-[#9aa0a6]"
-                                                            />
-                                                            Make Co-host
-                                                        </button>
-                                                        <button
-                                                            v-else-if="
-                                                                p.role ===
-                                                                'co-host'
-                                                            "
-                                                            @click="
-                                                                meetingStore.demoteParticipant(
-                                                                    p.public_id,
-                                                                )
-                                                            "
-                                                            :class="[
-                                                                active
-                                                                    ? 'bg-[#3c4043] text-white'
-                                                                    : 'text-[#e8eaed]',
-                                                                'group flex items-center w-full px-4 py-2 text-sm',
-                                                            ]"
-                                                        >
-                                                            <Icon
-                                                                name="shield-off"
-                                                                size="16"
-                                                                class="mr-3 text-[#9aa0a6]"
-                                                            />
-                                                            Remove Co-host
-                                                        </button>
-                                                    </div>
-                                                </MenuItem>
-                                            </template>
-
-                                            <div
-                                                class="my-1 border-t border-[#3c4043]"
-                                            ></div>
-                                            <MenuItem v-slot="{ active }">
-                                                <div>
-                                                    <!-- Co-hosts cannot kick other Co-hosts (enforced by backend, but hidden here for UX) -->
                                                     <button
-                                                        v-if="
-                                                            meetingStore.isHost ||
-                                                            p.role ===
-                                                                'participant'
-                                                        "
                                                         @click="
                                                             meetingStore.kickParticipant(
                                                                 p.public_id,
@@ -711,11 +695,94 @@
                                                         />
                                                         Remove from call
                                                     </button>
-                                                </div>
-                                            </MenuItem>
-                                        </MenuItems>
-                                    </transition>
-                                </Menu>
+                                                </MenuItem>
+                                            </MenuItems>
+                                        </transition>
+                                    </Menu>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Admissions Tab -->
+                        <div
+                            v-else-if="activeParticipantTab === 'waiting'"
+                            class="participant-list"
+                        >
+                            <div
+                                v-if="
+                                    meetingStore.waitingParticipants.length ===
+                                    0
+                                "
+                                class="py-10 text-center text-gray-500 text-sm"
+                            >
+                                <Icon
+                                    name="users"
+                                    size="32"
+                                    class="mx-auto mb-2 opacity-20"
+                                />
+                                No pending join requests
+                            </div>
+                            <div
+                                v-for="p in meetingStore.waitingParticipants"
+                                :key="p.public_id"
+                                class="participant-row"
+                            >
+                                <div
+                                    class="flex items-center justify-between w-full"
+                                >
+                                    <div class="flex items-center space-x-3">
+                                        <Avatar
+                                            :user="p.user"
+                                            :fallback="
+                                                p.metadata?.guest_name || 'G'
+                                            "
+                                            size="32"
+                                        />
+                                        <div class="user-meta overflow-hidden">
+                                            <div
+                                                class="user-name text-sm font-medium truncate w-32 text-white"
+                                            >
+                                                {{
+                                                    p.user?.name ||
+                                                    p.metadata?.guest_name ||
+                                                    "Guest"
+                                                }}
+                                            </div>
+                                            <div
+                                                class="text-[10px] text-gray-500 truncate"
+                                            >
+                                                {{
+                                                    p.metadata?.guest_email ||
+                                                    ""
+                                                }}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="flex space-x-1">
+                                        <button
+                                            @click="
+                                                meetingStore.rejectParticipant(
+                                                    p.public_id,
+                                                )
+                                            "
+                                            class="p-1.5 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors"
+                                            title="Deny"
+                                        >
+                                            <Icon name="x" size="16" />
+                                        </button>
+                                        <button
+                                            @click="
+                                                meetingStore.admitParticipant(
+                                                    p.public_id,
+                                                )
+                                            "
+                                            class="p-1.5 hover:bg-green-500/20 text-green-400 rounded-lg transition-colors"
+                                            title="Admit"
+                                        >
+                                            <Icon name="check" size="16" />
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -787,7 +854,9 @@
                     <span class="info-time">{{ currentTime }}</span>
                     <span class="info-divider"></span>
                     <span class="info-code">{{
-                        meetingStore.isInBreakout ? meetingStore.currentRoomName : (meetingStore.meeting?.title || meetingId)
+                        meetingStore.isInBreakout
+                            ? meetingStore.currentRoomName
+                            : meetingStore.meeting?.title || meetingId
                     }}</span>
                     <Transition name="fade">
                         <div
@@ -807,8 +876,8 @@
                     <span class="recording-dot"></span>
                     <span>REC</span>
                 </div>
-                
-                <NetworkHealthIndicator 
+
+                <NetworkHealthIndicator
                     v-if="meetingStore.sfuPc()"
                     v-bind="networkStats"
                     compact
@@ -854,7 +923,11 @@
                         :title="`Quick React: ${lastReactionEmoji}`"
                     >
                         <Transition name="pop" mode="out-in">
-                            <span :key="lastReactionEmoji" class="quick-emoji">{{ lastReactionEmoji }}</span>
+                            <span
+                                :key="lastReactionEmoji"
+                                class="quick-emoji"
+                                >{{ lastReactionEmoji }}</span
+                            >
                         </Transition>
                     </button>
                     <button
@@ -873,7 +946,10 @@
                     @click="toggleScreenShare"
                     :title="screenShareToggleTitle"
                 >
-                    <Icon :name="isScreenSharing ? 'monitor' : 'monitor'" size="20" />
+                    <Icon
+                        :name="isScreenSharing ? 'monitor' : 'monitor'"
+                        size="20"
+                    />
                 </button>
                 <!-- Annotation (Presenter only) -->
                 <button
@@ -920,13 +996,18 @@
             <!-- Right: Activity Toggles -->
             <div class="bar-section bar-section--right">
                 <button
-                    v-if="meetingStore.isHost && meetingStore.waitingParticipants.length > 0"
+                    v-if="
+                        meetingStore.isHost &&
+                        meetingStore.waitingParticipants.length > 0
+                    "
                     class="ctrl-btn btn--alert"
                     @click="showAdmissionPanel = !showAdmissionPanel"
                     title="Waiting Room"
                 >
                     <Icon name="user-plus" size="20" />
-                    <span class="badge-count">{{ meetingStore.waitingParticipants.length }}</span>
+                    <span class="badge-count">{{
+                        meetingStore.waitingParticipants.length
+                    }}</span>
                 </button>
 
                 <button
@@ -936,7 +1017,9 @@
                     title="Participants"
                 >
                     <Icon name="users" size="20" />
-                    <span class="badge-count badge-count--secondary">{{ meetingStore.allParticipants.length }}</span>
+                    <span class="badge-count badge-count--secondary">{{
+                        meetingStore.allParticipants.length
+                    }}</span>
                 </button>
 
                 <button
@@ -953,17 +1036,30 @@
                     class="ctrl-btn lock-btn-wrap"
                     :class="{ 'ctrl-btn--lock-active': meetingStore.isLocked }"
                     @click="meetingStore.toggleLock()"
-                    :title="meetingStore.isLocked ? 'Unlock Meeting' : 'Lock Meeting'"
+                    :title="
+                        meetingStore.isLocked
+                            ? 'Unlock Meeting'
+                            : 'Lock Meeting'
+                    "
                 >
                     <Transition name="icon-morph" mode="out-in">
-                        <Icon :key="meetingStore.isLocked ? 'lock' : 'unlock'" :name="meetingStore.isLocked ? 'lock' : 'unlock'" size="20" />
+                        <Icon
+                            :key="meetingStore.isLocked ? 'lock' : 'unlock'"
+                            :name="meetingStore.isLocked ? 'lock' : 'unlock'"
+                            size="20"
+                        />
                     </Transition>
                 </button>
 
                 <Menu as="div" class="activities-dropdown-wrap">
-                    <MenuButton 
-                        class="ctrl-btn" 
-                        :class="{ 'ctrl-btn--active': whiteboardStore.isVisible || showPollPanel || meetingStore.showBreakoutManager }"
+                    <MenuButton
+                        class="ctrl-btn"
+                        :class="{
+                            'ctrl-btn--active':
+                                whiteboardStore.isVisible ||
+                                showPollPanel ||
+                                meetingStore.showBreakoutManager,
+                        }"
                         title="Activities"
                     >
                         <Icon name="grid" size="20" />
@@ -982,38 +1078,61 @@
                                     <button
                                         @click="togglePollPanel"
                                         :class="[
-                                            active ? 'bg-[#3c4043] text-white' : 'text-[#e8eaed]',
-                                            'menu-action-item'
+                                            active
+                                                ? 'bg-[#3c4043] text-white'
+                                                : 'text-[#e8eaed]',
+                                            'menu-action-item',
                                         ]"
                                     >
-                                        <Icon name="bar-chart-2" size="18" class="mr-3 text-[#9aa0a6]" />
+                                        <Icon
+                                            name="bar-chart-2"
+                                            size="18"
+                                            class="mr-3 text-[#9aa0a6]"
+                                        />
                                         <span>Polls</span>
                                     </button>
                                 </MenuItem>
                                 <MenuItem v-slot="{ active }">
                                     <button
-                                        @click="whiteboardStore.isVisible = !whiteboardStore.isVisible"
+                                        @click="
+                                            whiteboardStore.isVisible =
+                                                !whiteboardStore.isVisible
+                                        "
                                         :class="[
-                                            active ? 'bg-[#3c4043] text-white' : 'text-[#e8eaed]',
-                                            'menu-action-item'
+                                            active
+                                                ? 'bg-[#3c4043] text-white'
+                                                : 'text-[#e8eaed]',
+                                            'menu-action-item',
                                         ]"
                                     >
-                                        <Icon name="edit-3" size="18" class="mr-3 text-[#9aa0a6]" />
+                                        <Icon
+                                            name="edit-3"
+                                            size="18"
+                                            class="mr-3 text-[#9aa0a6]"
+                                        />
                                         <span>Whiteboard</span>
                                     </button>
                                 </MenuItem>
-                                
+
                                 <template v-if="meetingStore.isHost">
                                     <div class="menu-divider"></div>
                                     <MenuItem v-slot="{ active }">
                                         <button
-                                            @click="meetingStore.showBreakoutManager = true"
+                                            @click="
+                                                meetingStore.showBreakoutManager = true
+                                            "
                                             :class="[
-                                                active ? 'bg-[#3c4043] text-white' : 'text-[#e8eaed]',
-                                                'menu-action-item'
+                                                active
+                                                    ? 'bg-[#3c4043] text-white'
+                                                    : 'text-[#e8eaed]',
+                                                'menu-action-item',
                                             ]"
                                         >
-                                            <Icon name="layout-grid" size="18" class="mr-3 text-[#9aa0a6]" />
+                                            <Icon
+                                                name="layout-grid"
+                                                size="18"
+                                                class="mr-3 text-[#9aa0a6]"
+                                            />
                                             <span>Breakout Rooms</span>
                                         </button>
                                     </MenuItem>
@@ -1053,9 +1172,9 @@
             v-model:open="showSettings"
             @close="showSettings = false"
         />
-        <BreakoutManagerModal 
-            v-if="meetingStore.showBreakoutManager" 
-            @close="meetingStore.showBreakoutManager = false" 
+        <BreakoutManagerModal
+            v-if="meetingStore.showBreakoutManager"
+            @close="meetingStore.showBreakoutManager = false"
         />
 
         <DevSimulationTool v-if="isDevMode" v-model:show="showDevTool" />
@@ -1063,7 +1182,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, onBeforeUnmount, watch } from "vue";
+import {
+    ref,
+    reactive,
+    computed,
+    onMounted,
+    onUnmounted,
+    onBeforeUnmount,
+    watch,
+} from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { meetingService } from "@/services/meeting.service";
 import { useMeetingStore } from "@/stores/meeting";
@@ -1078,7 +1205,7 @@ import { Menu, MenuButton, MenuItems, MenuItem } from "@headlessui/vue";
 import DeviceSettingsModal from "./components/DeviceSettingsModal.vue";
 import DevSimulationTool from "./components/DevSimulationTool.vue";
 import ParticipantTile from "./components/ParticipantTile.vue";
-import NetworkHealthIndicator from '../call/components/NetworkHealthIndicator.vue';
+import NetworkHealthIndicator from "../call/components/NetworkHealthIndicator.vue";
 import MeetingChatPanel from "./components/MeetingChatPanel.vue";
 import MeetingPollPanel from "./components/MeetingPollPanel.vue";
 import MeetingLayoutSelector from "./components/MeetingLayoutSelector.vue";
@@ -1087,8 +1214,8 @@ import ReactionVibeSummary from "./components/ReactionVibeSummary.vue";
 import WhiteboardView from "./components/WhiteboardView.vue";
 import BreakoutManagerModal from "./components/BreakoutManagerModal.vue";
 import BreakoutOverlay from "./components/BreakoutOverlay.vue";
-import BreakoutDashboard from './components/BreakoutDashboard.vue';
-import { usePresenceStore } from '@/stores/presence';
+import BreakoutDashboard from "./components/BreakoutDashboard.vue";
+import { usePresenceStore } from "@/stores/presence";
 
 // Custom v-click-outside directive
 const vClickOutside = {
@@ -1125,6 +1252,7 @@ const showPollPanel = ref(false);
 const showReactionPicker = ref(false);
 const showMeetingDetails = ref(false);
 const showDevTool = ref(false);
+const activeParticipantTab = ref<"members" | "waiting">("members");
 
 function toggleParticipantsPanel() {
     showParticipantsPanel.value = !showParticipantsPanel.value;
@@ -1223,7 +1351,10 @@ const meetingHostName = computed(
  * This prevents seeing ourselves twice when alone (main area shows self when alone).
  */
 const shouldShowPiPSelfView = computed(() => {
-    return isCameraOn.value && (isScreenSharing.value || participantCount.value > 1);
+    return (
+        isCameraOn.value &&
+        (isScreenSharing.value || participantCount.value > 1)
+    );
 });
 
 function getParticipantInitial(p: any) {
@@ -1235,6 +1366,32 @@ function getParticipantInitial(p: any) {
 function getParticipantName(p: any) {
     if (!p) return "You";
     return p.user?.name || p.metadata?.guest_name || "Guest";
+}
+
+function isParticipantMicOn(p: any) {
+    if (p.public_id === meetingStore.localParticipant?.public_id) {
+        return isMicOn.value;
+    }
+    const stream = meetingStore.remoteStreams.get(p.public_id);
+    return !!(
+        stream &&
+        stream
+            .getAudioTracks()
+            .some((t) => t.enabled && t.readyState === "live")
+    );
+}
+
+function isParticipantVideoOn(p: any) {
+    if (p.public_id === meetingStore.localParticipant?.public_id) {
+        return isCameraOn.value;
+    }
+    const stream = meetingStore.remoteStreams.get(p.public_id);
+    return !!(
+        stream &&
+        stream
+            .getVideoTracks()
+            .some((t) => t.enabled && t.readyState === "live")
+    );
 }
 
 // ─── Computed / Layout ──────────────────────────────────────────────────────
@@ -1437,7 +1594,8 @@ onMounted(async () => {
         }
     } catch (e) {
         console.error("[MeetingRoom] Failed to initialize:", e);
-        toast.error("Failed to initialize meeting room.");
+        toast.error("Security/Access failure — returning to lobby.");
+        router.push({ name: "meeting-lobby", params: { id: meetingId } });
     }
 });
 
@@ -1843,8 +2001,8 @@ function formatDate(dateString: string) {
     if (!dateString) return "N/A";
     try {
         return new Date(dateString).toLocaleString(undefined, {
-            dateStyle: 'medium',
-            timeStyle: 'short'
+            dateStyle: "medium",
+            timeStyle: "short",
         });
     } catch (e) {
         return dateString;
@@ -1888,7 +2046,10 @@ async function updateNetworkStats() {
 
         stats.forEach((report) => {
             // RTT from candidate-pair
-            if (report.type === "candidate-pair" && report.state === "succeeded") {
+            if (
+                report.type === "candidate-pair" &&
+                report.state === "succeeded"
+            ) {
                 networkStats.rtt = (report.currentRoundTripTime || 0) * 1000;
             }
             // Outbound bitrate (bytesSent) or Inbound (bytesReceived)
@@ -1904,19 +2065,21 @@ async function updateNetworkStats() {
         });
 
         if (lastBytes > 0 && delta > 0) {
-            networkStats.bitrate = ((currentBytes - lastBytes) * 8) / (delta * 1000); // kbps
+            networkStats.bitrate =
+                ((currentBytes - lastBytes) * 8) / (delta * 1000); // kbps
         }
         lastBytes = currentBytes;
 
         const totalPackets = totalPacketsLost + totalPacketsReceived;
-        const lossPercent = totalPackets > 0 ? (totalPacketsLost / totalPackets) * 100 : 0;
+        const lossPercent =
+            totalPackets > 0 ? (totalPacketsLost / totalPackets) * 100 : 0;
         networkStats.packetLoss = lossPercent;
 
         // Scoring (0=Good, 1=Fair, 2=Poor)
         if (lossPercent > 10 || networkStats.rtt > 400) networkStats.score = 2;
-        else if (lossPercent > 3 || networkStats.rtt > 200) networkStats.score = 1;
+        else if (lossPercent > 3 || networkStats.rtt > 200)
+            networkStats.score = 1;
         else networkStats.score = 0;
-
     } catch (e) {
         // Silent fail for stats
     }
@@ -3501,38 +3664,38 @@ onBeforeUnmount(() => {
         padding: 0 12px;
         height: 72px;
     }
-    
+
     .meeting-info-pill {
         display: none;
     }
-    
+
     .bar-section {
         gap: 6px;
     }
-    
+
     .ctrl-btn {
         width: 40px;
         height: 40px;
     }
-    
+
     .ctrl-btn--hangup {
         width: 48px;
     }
-    
+
     .reaction-split-wrap {
         height: 40px;
     }
-    
+
     .reaction-quick-btn {
         height: 36px;
         padding: 0 8px;
     }
-    
+
     .reaction-picker-trigger {
         width: 24px;
         height: 36px;
     }
-    
+
     .activities-menu-items {
         width: 180px;
     }
@@ -3559,35 +3722,35 @@ onBeforeUnmount(() => {
         height: 64px;
         padding: 0 8px;
     }
-    
+
     .bar-section--center {
         gap: 4px;
         flex: 2;
     }
-    
+
     .ctrl-btn {
         width: 36px;
         height: 36px;
     }
-    
+
     .ctrl-btn--hangup {
         width: 44px;
     }
-    
+
     .reaction-split-wrap {
         height: 36px;
     }
-    
+
     .reaction-quick-btn {
         height: 32px;
         padding: 0 6px;
     }
-    
+
     .reaction-picker-trigger {
         width: 20px;
         height: 32px;
     }
-    
+
     .bar-section--right {
         gap: 4px;
         flex: 1;

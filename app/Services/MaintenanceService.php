@@ -1077,6 +1077,7 @@ class MaintenanceService
     {
         $logsPath = storage_path('logs');
         $deletedCount = 0;
+        $errors = [];
 
         if (! File::isDirectory($logsPath)) {
             return [
@@ -1086,25 +1087,41 @@ class MaintenanceService
             ];
         }
 
-        $cutoffDate = Carbon::now()->subDays($daysOld);
+        $cutoffDate = $daysOld > 0 ? Carbon::now()->subDays($daysOld) : Carbon::now()->addMinute(); // If 0, include everything up to now
 
         foreach (File::files($logsPath) as $file) {
             if ($file->getExtension() === 'log') {
-                $modifiedAt = Carbon::createFromTimestamp($file->getMTime());
+                try {
+                    $modifiedAt = Carbon::createFromTimestamp($file->getMTime());
 
-                if ($modifiedAt->lt($cutoffDate)) {
-                    File::delete($file);
-                    $deletedCount++;
+                    if ($modifiedAt->lt($cutoffDate)) {
+                        // If it's the main laravel log, try to truncate instead of delete to avoid lock issues
+                        if ($file->getFilename() === 'laravel.log' || $file->getFilename() === 'browser.log') {
+                            File::put($file->getRealPath(), '');
+                        } else {
+                            File::delete($file);
+                        }
+                        $deletedCount++;
+                    }
+                } catch (\Throwable $e) {
+                    $errors[] = "Failed to clear {$file->getFilename()}: {$e->getMessage()}";
                 }
             }
         }
 
-        Log::info('Old logs cleared', ['deleted_count' => $deletedCount, 'days_old' => $daysOld]);
+        Log::info('Old logs cleared', [
+            'deleted_count' => $deletedCount, 
+            'days_old' => $daysOld,
+            'errors' => $errors
+        ]);
 
         return [
-            'success' => true,
-            'message' => "Deleted {$deletedCount} log file(s) older than {$daysOld} days",
+            'success' => count($errors) === 0,
+            'message' => count($errors) === 0 
+                ? "Cleared {$deletedCount} log file(s)" 
+                : "Cleared {$deletedCount} files with some errors.",
             'deleted_count' => $deletedCount,
+            'errors' => $errors
         ];
     }
 
