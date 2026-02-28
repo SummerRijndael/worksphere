@@ -74,7 +74,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // API middleware configuration
         $middleware->api(prepend: array_merge(
-            [ \App\Http\Middleware\SecurityHeaders::class ],
+            [\App\Http\Middleware\SecurityHeaders::class],
             ($_ENV['APP_ENV'] ?? '') === 'testing' ? [] : [
                 \Akaunting\Firewall\Middleware\Ip::class,
                 \Akaunting\Firewall\Middleware\Agent::class,
@@ -86,7 +86,7 @@ return Application::configure(basePath: dirname(__DIR__))
                 \Akaunting\Firewall\Middleware\Sqli::class,
                 \Akaunting\Firewall\Middleware\Xss::class,
             ],
-            [ \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class ]
+            [\Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class]
         ));
 
         $middleware->api(append: [

@@ -10,10 +10,10 @@ use App\Models\BreakoutSession;
 use App\Models\Meeting;
 use App\Models\MeetingParticipant;
 use App\Models\User;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Pusher\Pusher;
 
@@ -50,6 +50,7 @@ class MeetingService implements MeetingServiceContract
     public function updateMeeting(Meeting $meeting, array $data): Meeting
     {
         $meeting->update($data);
+
         return $meeting;
     }
 
@@ -61,17 +62,17 @@ class MeetingService implements MeetingServiceContract
     public function joinMeeting(Meeting $meeting, ?User $user, ?string $guestName, ?string $guestEmail, ?string $providedPassword, ?string $participantSessionId): array
     {
         $start = microtime(true);
-        Log::channel('videocall')->info("[504_DEBUG] Join start", ['meeting' => $meeting->public_id]);
+        Log::channel('videocall')->info('[504_DEBUG] Join start', ['meeting' => $meeting->public_id]);
 
         // 1. Basic Meeting Status Checks
         if ($meeting->status === 'ended') {
             abort(403, 'This meeting has already ended.');
         }
-        Log::channel('videocall')->info("[504_DEBUG] Step 1: Status check done", ['time' => microtime(true) - $start]);
+        Log::channel('videocall')->info('[504_DEBUG] Step 1: Status check done', ['time' => microtime(true) - $start]);
 
-        $isGuest = !$user;
+        $isGuest = ! $user;
 
-        if ($isGuest && !($meeting->settings['guest_access'] ?? false)) {
+        if ($isGuest && ! ($meeting->settings['guest_access'] ?? false)) {
             abort(403, 'Guest access disabled for this meeting.');
         }
 
@@ -82,14 +83,14 @@ class MeetingService implements MeetingServiceContract
                 throw new \Exception('Invalid meeting password. REQUIRES_PASSWORD');
             }
         }
-        Log::channel('videocall')->info("[504_DEBUG] Step 2: Password check done", ['time' => microtime(true) - $start]);
+        Log::channel('videocall')->info('[504_DEBUG] Step 2: Password check done', ['time' => microtime(true) - $start]);
 
         // 3. ACL & Smart Waiting Room logic
         $isInvitedOnly = $meeting->settings['invited_only'] ?? false;
         $isWhitelistMatch = false;
-        
+
         $meeting->load('event');
-        Log::channel('videocall')->info("[504_DEBUG] Step 3a: Event loaded", ['time' => microtime(true) - $start]);
+        Log::channel('videocall')->info('[504_DEBUG] Step 3a: Event loaded', ['time' => microtime(true) - $start]);
 
         // Check if user/guest is on the Calendar Event whitelist
         if ($meeting->event) {
@@ -99,12 +100,12 @@ class MeetingService implements MeetingServiceContract
                 $isWhitelistMatch = true;
             }
         }
-        Log::channel('videocall')->info("[504_DEBUG] Step 3b: Whitelist check done", ['time' => microtime(true) - $start]);
+        Log::channel('videocall')->info('[504_DEBUG] Step 3b: Whitelist check done', ['time' => microtime(true) - $start]);
 
-        if ($isInvitedOnly && !$isWhitelistMatch && $meeting->user_id !== ($user ? $user->id : null)) {
+        if ($isInvitedOnly && ! $isWhitelistMatch && $meeting->user_id !== ($user ? $user->id : null)) {
             abort(403, 'This meeting is restricted to invited participants only.');
         }
-        Log::channel('videocall')->info("[504_DEBUG] Step 3c: Invited only check done", ['time' => microtime(true) - $start]);
+        Log::channel('videocall')->info('[504_DEBUG] Step 3c: Invited only check done', ['time' => microtime(true) - $start]);
 
         // 4. Meeting Lock check
         $isLocked = Cache::has("meeting:lock:{$meeting->public_id}");
@@ -112,22 +113,25 @@ class MeetingService implements MeetingServiceContract
             $isAlreadyIn = MeetingParticipant::where('meeting_id', $meeting->id)
                 ->where('status', 'admitted')
                 ->where(function ($q) use ($user, $participantSessionId) {
-                    if ($user) $q->where('user_id', $user->id);
-                    else $q->where('public_id', $participantSessionId);
+                    if ($user) {
+                        $q->where('user_id', $user->id);
+                    } else {
+                        $q->where('public_id', $participantSessionId);
+                    }
                 })->exists();
 
-            if (!$isAlreadyIn) {
+            if (! $isAlreadyIn) {
                 abort(403, 'This meeting is locked by the host.');
             }
         }
-        Log::channel('videocall')->info("[504_DEBUG] Step 4: Lock check done", ['time' => microtime(true) - $start]);
+        Log::channel('videocall')->info('[504_DEBUG] Step 4: Lock check done', ['time' => microtime(true) - $start]);
 
         // 5. Determine participant status
         // If whitelisted or host, bypass wait room. Otherwise check lobby_enabled
         $lobbyEnabled = $meeting->settings['lobby_enabled'] ?? true;
         $status = 'waiting';
-        
-        if ($meeting->user_id === ($user ? $user->id : null) || $isWhitelistMatch || !$lobbyEnabled) {
+
+        if ($meeting->user_id === ($user ? $user->id : null) || $isWhitelistMatch || ! $lobbyEnabled) {
             $status = 'admitted';
         }
 
@@ -138,10 +142,10 @@ class MeetingService implements MeetingServiceContract
                 $status = 'admitted';
             }
         } elseif ($participantSessionId) {
-             $existing = MeetingParticipant::where('meeting_id', $meeting->id)->where('public_id', $participantSessionId)->first();
-             if ($existing && $existing->status === 'admitted') {
-                 $status = 'admitted';
-             }
+            $existing = MeetingParticipant::where('meeting_id', $meeting->id)->where('public_id', $participantSessionId)->first();
+            if ($existing && $existing->status === 'admitted') {
+                $status = 'admitted';
+            }
         }
 
         // 6. Create or Get Participant
@@ -154,7 +158,7 @@ class MeetingService implements MeetingServiceContract
                     ->first();
             }
 
-            if (!$participant) {
+            if (! $participant) {
                 $participant = MeetingParticipant::create([
                     'meeting_id' => $meeting->id,
                     'public_id' => (string) Str::ulid(),
@@ -176,7 +180,7 @@ class MeetingService implements MeetingServiceContract
                 'user_id' => $user->id,
             ])->first();
 
-            if (!$participant) {
+            if (! $participant) {
                 $participant = MeetingParticipant::create([
                     'meeting_id' => $meeting->id,
                     'user_id' => $user->id,
@@ -191,11 +195,11 @@ class MeetingService implements MeetingServiceContract
                 ]);
             }
         }
-        Log::channel('videocall')->info("[504_DEBUG] Step 6: Participant DB done", ['time' => microtime(true) - $start]);
+        Log::channel('videocall')->info('[504_DEBUG] Step 6: Participant DB done', ['time' => microtime(true) - $start]);
 
         // 7. Broadcasts
         broadcast(new MeetingParticipantJoined($meeting, $participant));
-        Log::channel('videocall')->info("[504_DEBUG] Step 7a: Broadcast Join done", ['time' => microtime(true) - $start]);
+        Log::channel('videocall')->info('[504_DEBUG] Step 7a: Broadcast Join done', ['time' => microtime(true) - $start]);
 
         if ($participant->status === 'waiting') {
             broadcast(new MeetingSignal(
@@ -207,19 +211,19 @@ class MeetingService implements MeetingServiceContract
                     'display_name' => $participant->metadata['guest_name'] ?? ($participant->user?->name ?? 'Someone'),
                 ]
             ));
-            Log::channel('videocall')->info("[504_DEBUG] Step 7b: Broadcast Waiting done", ['time' => microtime(true) - $start]);
+            Log::channel('videocall')->info('[504_DEBUG] Step 7b: Broadcast Waiting done', ['time' => microtime(true) - $start]);
         }
 
         Log::channel('videocall')->info('[PARTICIPANT] Join attempt', [
             'meeting' => $meeting->public_id,
             'is_guest' => $isGuest,
             'status' => $status,
-            'participant' => $participant->public_id
+            'participant' => $participant->public_id,
         ]);
 
         return [
-            'meeting' => $meeting->load(['host', 'participants.user', 'activeBreakoutSession']), 
-            'participant' => $participant
+            'meeting' => $meeting->load(['host', 'participants.user', 'activeBreakoutSession']),
+            'participant' => $participant,
         ];
     }
 
@@ -229,7 +233,7 @@ class MeetingService implements MeetingServiceContract
 
         Log::channel('videocall')->info('[PARTICIPANT] Admitted', [
             'meeting' => $meeting->public_id,
-            'participant' => $participant->public_id
+            'participant' => $participant->public_id,
         ]);
 
         broadcast(new MeetingParticipantAdmitted($meeting, $participant));
@@ -250,7 +254,7 @@ class MeetingService implements MeetingServiceContract
 
         Log::channel('videocall')->info('[PARTICIPANT] Rejected', [
             'meeting' => $meeting->public_id,
-            'participant' => $participant->public_id
+            'participant' => $participant->public_id,
         ]);
 
         broadcast(new MeetingSignal(
@@ -265,7 +269,7 @@ class MeetingService implements MeetingServiceContract
     public function promoteParticipant(Meeting $meeting, MeetingParticipant $participant): MeetingParticipant
     {
         $participant->update(['role' => 'co-host']);
-        
+
         $hostParticipant = $meeting->participants()->where('user_id', $meeting->user_id)->first();
         broadcast(new MeetingSignal(
             $meeting,
@@ -280,7 +284,7 @@ class MeetingService implements MeetingServiceContract
     public function demoteParticipant(Meeting $meeting, MeetingParticipant $participant): MeetingParticipant
     {
         $participant->update(['role' => 'participant']);
-        
+
         $hostParticipant = $meeting->participants()->where('user_id', $meeting->user_id)->first();
         broadcast(new MeetingSignal(
             $meeting,
@@ -303,24 +307,24 @@ class MeetingService implements MeetingServiceContract
                 ->first();
 
             // Safety: Ensure host participant record exists
-            if (!$hostParticipant) {
+            if (! $hostParticipant) {
                 $hostParticipant = MeetingParticipant::create([
                     'meeting_id' => $meeting->id,
                     'user_id' => $user->id,
                     'role' => 'host',
-                    'status' => 'admitted'
+                    'status' => 'admitted',
                 ]);
             }
 
             $participantId = $hostParticipant->public_id;
-            
+
             // SECURITY: If a participantSessionId was provided, it MUST match the host's record
             // This prevents a host from accidentally (or maliciously) using a guest participant ID
             if ($participantSessionId && strtolower($participantSessionId) !== strtolower($participantId)) {
                 Log::warning('[SECURITY] Host attempted to authenticate with mismatched participant ID', [
                     'user' => $user->id,
                     'expected' => $participantId,
-                    'provided' => $participantSessionId
+                    'provided' => $participantSessionId,
                 ]);
                 abort(403, 'Mismatched participant session.');
             }
@@ -330,14 +334,14 @@ class MeetingService implements MeetingServiceContract
                 'name' => $user->name,
                 'avatar' => $user->avatar_url,
                 'role' => 'host',
-                'status' => 'admitted'
+                'status' => 'admitted',
             ];
 
             return $this->generatePusherAuth($channelName, $socketId, $participantId, $userData, $isPresence);
         }
 
         // 2. Participant check (Guest or other Member)
-        if (!$participantSessionId) {
+        if (! $participantSessionId) {
             abort(403, 'Unauthorized. No participant session found.');
         }
 
@@ -350,10 +354,10 @@ class MeetingService implements MeetingServiceContract
         } else {
             // For guests, verify against the session to prevent hijacking via URL
             $sessionPid = session('meeting_participant_id') ?: session('participant_id');
-            if (!$sessionPid || strtolower($sessionPid) !== strtolower($participantSessionId)) {
+            if (! $sessionPid || strtolower($sessionPid) !== strtolower($participantSessionId)) {
                 Log::warning('[SECURITY] Guest attempted to authenticate with mismatched session ID', [
                     'session_pid' => $sessionPid,
-                    'provided_pid' => $participantSessionId
+                    'provided_pid' => $participantSessionId,
                 ]);
                 abort(403, 'Mismatched meeting session. Please refresh or re-join.');
             }
@@ -361,7 +365,7 @@ class MeetingService implements MeetingServiceContract
 
         $participant = $participantQuery->first();
 
-        if (!$participant) {
+        if (! $participant) {
             abort(403, 'Unauthorized. Participant session invalid for this meeting.');
         }
 
@@ -377,17 +381,17 @@ class MeetingService implements MeetingServiceContract
                 Log::warning('[SECURITY] Session Hijack Attempt: UA Mismatch', [
                     'participant' => $participant->public_id,
                     'expected_ua' => $storedFingerprint['ua'],
-                    'current_ua' => $currentUa
+                    'current_ua' => $currentUa,
                 ]);
                 // For now, we only log UA mismatch to avoid false positives with browser updates,
                 // but we could abort(403) here for maximum security.
             }
-            
+
             if ($storedFingerprint['ip'] !== $currentIp) {
-                 Log::info('[SECURITY] Participant IP changed', [
+                Log::info('[SECURITY] Participant IP changed', [
                     'participant' => $participant->public_id,
                     'from' => $storedFingerprint['ip'],
-                    'to' => $currentIp
+                    'to' => $currentIp,
                 ]);
             }
         }
@@ -418,10 +422,12 @@ class MeetingService implements MeetingServiceContract
 
         if ($isPresence) {
             $auth = $pusher->presence_auth($channelName, $socketId, $userId, $userData);
+
             return response($auth)->header('Content-Type', 'application/json');
         }
 
         $auth = $pusher->socket_auth($channelName, $socketId);
+
         return response($auth)->header('Content-Type', 'application/json');
     }
 
@@ -504,14 +510,14 @@ class MeetingService implements MeetingServiceContract
             if ($session) {
                 $session->update([
                     'status' => 'ended',
-                    'ended_at' => now()
+                    'ended_at' => now(),
                 ]);
             }
 
             // Clear assignments
             $meeting->participants()->update([
                 'assigned_room_id' => null,
-                'current_room_id' => null
+                'current_room_id' => null,
             ]);
 
             broadcast(new MeetingSignal(
@@ -529,7 +535,9 @@ class MeetingService implements MeetingServiceContract
         $session = $meeting->activeBreakoutSession;
         if ($session) {
             $room = collect($session->rooms_config)->firstWhere('id', $roomId);
-            if ($room) $roomName = $room['name'];
+            if ($room) {
+                $roomName = $room['name'];
+            }
         }
 
         broadcast(new MeetingSignal(
@@ -538,7 +546,7 @@ class MeetingService implements MeetingServiceContract
             'breakout-help-request',
             [
                 'room_id' => $roomId,
-                'room_name' => $roomName
+                'room_name' => $roomName,
             ]
         ));
     }
@@ -548,7 +556,7 @@ class MeetingService implements MeetingServiceContract
         Log::info('Move participant request', [
             'meeting' => $meeting->public_id,
             'participant' => $participantPublicId,
-            'target_room' => $targetRoomId
+            'target_room' => $targetRoomId,
         ]);
 
         $participant = $meeting->participants()
@@ -558,7 +566,7 @@ class MeetingService implements MeetingServiceContract
             $participant->update(['assigned_room_id' => $targetRoomId]);
             Log::info('Participant assigned_room_id updated', [
                 'participant' => $participant->public_id,
-                'new_assigned_room_id' => $targetRoomId
+                'new_assigned_room_id' => $targetRoomId,
             ]);
         }
 
@@ -593,7 +601,7 @@ class MeetingService implements MeetingServiceContract
 
         // AUTHORIZATION: Only allow if host or if assigned to this room
         $isHost = $meeting->user_id === $participant->user_id;
-        $isAssigned = (string)$participant->assigned_room_id === (string)$roomId;
+        $isAssigned = (string) $participant->assigned_room_id === (string) $roomId;
 
         Log::info('Join breakout room attempt', [
             'meeting' => $meeting->public_id,
@@ -601,10 +609,10 @@ class MeetingService implements MeetingServiceContract
             'room_id' => $roomId,
             'assigned_room_id' => $participant->assigned_room_id,
             'is_host' => $isHost,
-            'is_assigned' => $isAssigned
+            'is_assigned' => $isAssigned,
         ]);
 
-        if (!$isHost && !$isAssigned) {
+        if (! $isHost && ! $isAssigned) {
             abort(403, 'You are not assigned to this breakout room.');
         }
 
@@ -618,14 +626,14 @@ class MeetingService implements MeetingServiceContract
             'breakout-move',
             [
                 'target_id' => $participant->public_id,
-                'target_room_id' => $roomId
+                'target_room_id' => $roomId,
             ]
         ));
 
         // Broadcast join activity message
         $this->notifyBreakoutActivity(
             $meeting,
-            ($participant->metadata['guest_name'] ?? ($participant->user?->name ?? 'Someone')) . " joined the room",
+            ($participant->metadata['guest_name'] ?? ($participant->user?->name ?? 'Someone')).' joined the room',
             $roomId
         );
     }

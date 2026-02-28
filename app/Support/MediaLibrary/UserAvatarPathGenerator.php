@@ -38,7 +38,7 @@ class UserAvatarPathGenerator implements PathGenerator
     protected function getBasePath(Media $media): string
     {
         $model = $media->model;
-        
+
         // Use public_id (UUID) if available, otherwise fallback to ID or 'unknown'
         $userUuid = $model && isset($model->public_id) ? $model->public_id : ($model->id ?? 'unknown');
 

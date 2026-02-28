@@ -79,6 +79,17 @@ return [
             'visibility' => 'private',
         ],
 
+        'r2' => [
+            'driver' => 's3',
+            'key' => env('R2_ACCESS_KEY_ID'),
+            'secret' => env('R2_SECRET_ACCESS_KEY'),
+            'region' => env('R2_REGION', 'auto'),
+            'bucket' => env('R2_BUCKET'),
+            'endpoint' => env('R2_ENDPOINT'),
+            'use_path_style_endpoint' => false,
+            'throw' => false,
+        ],
+
         'public' => $cloudDisks['public'] ?? [
             'driver' => 'local',
             'root' => storage_path('app/public'),

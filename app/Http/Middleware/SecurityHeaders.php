@@ -26,11 +26,11 @@ class SecurityHeaders
         // Prevent Host Header Poisoning by ensuring the request matches our APP_URL domain
         $host = $request->getHost();
         $allowedHost = parse_url(config('app.url'), PHP_URL_HOST);
-        
+
         // Also allow the actual local IP if scanning via IP
         $allowedIps = ['127.0.0.1', 'localhost', '192.168.37.128'];
-        
-        if ($host !== $allowedHost && !in_array($host, $allowedIps)) {
+
+        if ($host !== $allowedHost && ! in_array($host, $allowedIps)) {
             // Block requests with malicious or unexpected Host headers
             return response()->json(['message' => 'Invalid Host header.'], 403);
         }
@@ -85,7 +85,7 @@ class SecurityHeaders
         if (app()->isLocal()) {
             $scriptSrc .= " 'unsafe-eval'";
             $imgSrc .= ' http: https:';
-            $fontSrc .= " http: https: http://localhost:* http://127.0.0.1:*"; // Fallback for various local dev IPs
+            $fontSrc .= ' http: https: http://localhost:* http://127.0.0.1:*'; // Fallback for various local dev IPs
 
             // Check if Vite is running (hot file exists)
             $hotFile = public_path('hot');
@@ -110,10 +110,10 @@ class SecurityHeaders
 
         $connectSrc .= " ws://{$reverbHost}:{$reverbPort} wss://{$reverbHost}:{$reverbPort}";
         $connectSrc .= " ws://localhost:{$reverbPort} ws://127.0.0.1:{$reverbPort}";
-        
+
         if ($envReverbPort != $reverbPort) {
-             $connectSrc .= " ws://{$reverbHost}:{$envReverbPort} wss://{$reverbHost}:{$envReverbPort}";
-             $connectSrc .= " ws://localhost:{$envReverbPort} ws://127.0.0.1:{$envReverbPort}";
+            $connectSrc .= " ws://{$reverbHost}:{$envReverbPort} wss://{$reverbHost}:{$envReverbPort}";
+            $connectSrc .= " ws://localhost:{$envReverbPort} ws://127.0.0.1:{$envReverbPort}";
         }
 
         // Definitions

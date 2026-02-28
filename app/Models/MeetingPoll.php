@@ -5,7 +5,6 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class MeetingPoll extends Model
@@ -64,7 +63,8 @@ class MeetingPoll extends Model
         $this->votes()->select('option_index', \DB::raw('count(*) as total'))
             ->groupBy('option_index')
             ->get()
-            ->each(fn($row) => $counts[(int)$row->option_index] = (int)$row->total);
+            ->each(fn ($row) => $counts[(int) $row->option_index] = (int) $row->total);
+
         return array_values($counts);
     }
 }

@@ -3,7 +3,6 @@
 namespace App\Events\Meetings;
 
 use App\Models\Meeting;
-use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PresenceChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;

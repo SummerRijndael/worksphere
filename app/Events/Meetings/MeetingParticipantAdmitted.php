@@ -15,6 +15,7 @@ class MeetingParticipantAdmitted implements ShouldBroadcastNow
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
     public string $meetingPublicId;
+
     public string $participantPublicId;
 
     /**

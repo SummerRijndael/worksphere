@@ -204,10 +204,7 @@
             class="gmeet-body"
             :class="{
                 'has-panel':
-                    showParticipantsPanel ||
-                    showChatPanel ||
-                    showPollPanel ||
-                    showAdmissionPanel,
+                    showParticipantsPanel || showChatPanel || showPollPanel,
             }"
         >
             <div class="gmeet-stage" style="position: relative">
@@ -390,41 +387,39 @@
             >
                 <aside v-if="showParticipantsPanel" class="side-panel">
                     <div class="side-panel-header">
-                        <div class="flex items-center space-x-6">
-                            <h3
-                                class="cursor-pointer py-1 border-b-2 transition-all text-sm font-medium uppercase tracking-wider"
-                                :class="
-                                    activeParticipantTab === 'members'
-                                        ? 'border-blue-500 text-white'
-                                        : 'border-transparent text-gray-500 hover:text-gray-300'
-                                "
+                        <div class="participant-tabs">
+                            <div
+                                class="tab-item"
+                                :class="{
+                                    'tab-item--active':
+                                        activeParticipantTab === 'members',
+                                }"
                                 @click="activeParticipantTab = 'members'"
                             >
                                 Members ({{ participantCount }})
-                            </h3>
-                            <h3
+                            </div>
+                            <div
                                 v-if="meetingStore.isModerator"
-                                class="cursor-pointer py-1 border-b-2 transition-all text-sm font-medium uppercase tracking-wider relative"
-                                :class="
-                                    activeParticipantTab === 'waiting'
-                                        ? 'border-blue-500 text-white'
-                                        : 'border-transparent text-gray-500 hover:text-gray-300'
-                                "
+                                class="tab-item relative"
+                                :class="{
+                                    'tab-item--active':
+                                        activeParticipantTab === 'waiting',
+                                }"
                                 @click="activeParticipantTab = 'waiting'"
                             >
-                                Admissions
+                                Requests
                                 <span
                                     v-if="
                                         meetingStore.waitingParticipants
                                             .length > 0
                                     "
-                                    class="absolute -top-1 -right-4 flex h-4 w-4 items-center justify-center rounded-full bg-blue-600 text-[10px] text-white"
+                                    class="requests-badge"
                                 >
                                     {{
                                         meetingStore.waitingParticipants.length
                                     }}
                                 </span>
-                            </h3>
+                            </div>
                         </div>
                         <div class="flex items-center gap-2">
                             <button
@@ -703,7 +698,7 @@
                             </div>
                         </div>
 
-                        <!-- Admissions Tab -->
+                        <!-- Requests Tab -->
                         <div
                             v-else-if="activeParticipantTab === 'waiting'"
                             class="participant-list"
@@ -997,11 +992,11 @@
             <div class="bar-section bar-section--right">
                 <button
                     v-if="
-                        meetingStore.isHost &&
+                        meetingStore.isModerator &&
                         meetingStore.waitingParticipants.length > 0
                     "
                     class="ctrl-btn btn--alert"
-                    @click="showAdmissionPanel = !showAdmissionPanel"
+                    @click="openRequestsPanel"
                     title="Waiting Room"
                 >
                     <Icon name="user-plus" size="20" />
@@ -1245,7 +1240,6 @@ const isCameraOn = ref(false);
 const isMicOn = ref(false);
 const backgroundBlur = useBackgroundBlur();
 const showSettings = ref(false);
-const showAdmissionPanel = ref(false);
 const showParticipantsPanel = ref(false);
 const showChatPanel = ref(false);
 const showPollPanel = ref(false);
@@ -1253,6 +1247,13 @@ const showReactionPicker = ref(false);
 const showMeetingDetails = ref(false);
 const showDevTool = ref(false);
 const activeParticipantTab = ref<"members" | "waiting">("members");
+
+function openRequestsPanel() {
+    showParticipantsPanel.value = true;
+    activeParticipantTab.value = "waiting";
+    showChatPanel.value = false;
+    showPollPanel.value = false;
+}
 
 function toggleParticipantsPanel() {
     showParticipantsPanel.value = !showParticipantsPanel.value;
@@ -2823,11 +2824,57 @@ onBeforeUnmount(() => {
     flex-shrink: 0;
 }
 .side-panel-header h3 {
-    font-size: 16px;
+    font-size: 13px;
     font-weight: 600;
-    color: #e8eaed;
     margin: 0;
-    letter-spacing: -0.01em;
+    letter-spacing: 0.05em;
+    padding-bottom: 8px;
+    margin-bottom: -19px; /* Align with header border */
+}
+
+/* Custom Tab Styling */
+.participant-tabs {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+}
+
+.tab-item {
+    cursor: pointer;
+    padding: 2px 0;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s ease;
+    text-transform: uppercase;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    color: #9aa0a6;
+    user-select: none;
+}
+
+.tab-item:hover {
+    color: #e8eaed;
+}
+
+.tab-item--active {
+    color: #8ab4f8;
+    border-bottom-color: #8ab4f8;
+}
+
+.requests-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #ea4335;
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    margin-left: 6px;
+    vertical-align: middle;
 }
 
 .side-panel-close {

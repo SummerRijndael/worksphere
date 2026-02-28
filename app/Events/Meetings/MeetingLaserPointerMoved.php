@@ -15,16 +15,16 @@ class MeetingLaserPointerMoved implements ShouldBroadcastNow
     public function __construct(
         public readonly string $meetingPublicId,
         public readonly string $participantPublicId,
-        public readonly float  $x,  // percentage 0–100 of viewport width
-        public readonly float  $y,  // percentage 0–100 of viewport height
+        public readonly float $x,  // percentage 0–100 of viewport width
+        public readonly float $y,  // percentage 0–100 of viewport height
     ) {}
 
     public function broadcastWith(): array
     {
         return [
             'participant_id' => $this->participantPublicId,
-            'x'  => $this->x,
-            'y'  => $this->y,
+            'x' => $this->x,
+            'y' => $this->y,
         ];
     }
 

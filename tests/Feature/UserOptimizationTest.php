@@ -2,8 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Models\User;
 use App\Models\Team;
+use App\Models\User;
 use App\Services\PermissionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -14,11 +14,11 @@ class UserOptimizationTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_requires2FASetup_generates_one_query_for_roles(): void
+    public function test_requires2_fa_setup_generates_one_query_for_roles(): void
     {
         // Setup user with multiple roles
         $user = User::factory()->create();
-        
+
         $role1 = Role::findOrCreate('role1', 'web');
         $role2 = Role::findOrCreate('role2', 'web');
         $role3 = Role::findOrCreate('role3', 'web');
@@ -51,7 +51,7 @@ class UserOptimizationTest extends TestCase
         DB::flushQueryLog();
 
         $username = User::generateUsername('J', 'first.last@example.com');
-        
+
         $this->assertEquals('first.last_3', $username);
 
         $queries = DB::getQueryLog();
@@ -89,7 +89,7 @@ class UserOptimizationTest extends TestCase
         $persona->hasTeamPermission($team1->id, 'some.team.permission');
 
         $queriesAfterTeamLookup = DB::getQueryLog();
-        
+
         // Checking it should increase total query count
         $this->assertGreaterThan($queryCountBefore, count($queriesAfterTeamLookup));
 

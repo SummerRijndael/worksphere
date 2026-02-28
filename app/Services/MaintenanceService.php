@@ -112,7 +112,7 @@ class MaintenanceService
     {
         try {
             $activeUsers = $this->presenceService->getActiveUsers();
-            
+
             return [
                 'total' => $activeUsers->count(),
                 'administrators' => $activeUsers->filter(fn ($user) => $user->hasRole('administrator'))->count(),
@@ -120,6 +120,7 @@ class MaintenanceService
             ];
         } catch (Throwable $e) {
             Log::warning('Failed to get online user stats', ['error' => $e->getMessage()]);
+
             return [
                 'total' => 0,
                 'administrators' => 0,
@@ -1110,18 +1111,18 @@ class MaintenanceService
         }
 
         Log::info('Old logs cleared', [
-            'deleted_count' => $deletedCount, 
+            'deleted_count' => $deletedCount,
             'days_old' => $daysOld,
-            'errors' => $errors
+            'errors' => $errors,
         ]);
 
         return [
             'success' => count($errors) === 0,
-            'message' => count($errors) === 0 
-                ? "Cleared {$deletedCount} log file(s)" 
+            'message' => count($errors) === 0
+                ? "Cleared {$deletedCount} log file(s)"
                 : "Cleared {$deletedCount} files with some errors.",
             'deleted_count' => $deletedCount,
-            'errors' => $errors
+            'errors' => $errors,
         ];
     }
 

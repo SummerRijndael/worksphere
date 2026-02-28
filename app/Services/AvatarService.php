@@ -40,7 +40,6 @@ class AvatarService implements AvatarContract
             );
         }
 
-
         // Handle Eloquent models
         if ($entity instanceof User) {
             return $this->resolveUser($entity, $variant);
@@ -86,7 +85,7 @@ class AvatarService implements AvatarContract
                 if (! file_exists(dirname($logPath))) {
                     mkdir(dirname($logPath), 0755, true);
                 }
-                
+
                 $logMessage = sprintf(
                     "[%s] Missing avatar file for User ID %s (UUID: %s). Expected path: %s\n",
                     date('Y-m-d H:i:s'),
@@ -94,7 +93,7 @@ class AvatarService implements AvatarContract
                     $user->public_id,
                     $path
                 );
-                
+
                 file_put_contents($logPath, $logMessage, FILE_APPEND);
             }
         }

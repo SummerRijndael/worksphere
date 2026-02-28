@@ -15,8 +15,11 @@ class MeetingPollVoted implements ShouldBroadcastNow
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
     public string $meetingPublicId;
+
     public string $pollPublicId;
+
     public array $voteCounts;
+
     public int $totalVotes;
 
     public function __construct(Meeting $meeting, MeetingPoll $poll)
@@ -30,7 +33,7 @@ class MeetingPollVoted implements ShouldBroadcastNow
     public function broadcastWith(): array
     {
         return [
-            'poll_id'     => $this->pollPublicId,
+            'poll_id' => $this->pollPublicId,
             'vote_counts' => $this->voteCounts,
             'total_votes' => $this->totalVotes,
         ];

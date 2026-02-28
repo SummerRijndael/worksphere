@@ -2,13 +2,13 @@
 
 namespace App\Jobs;
 
+use App\Events\Meetings\MeetingSignal;
+use App\Models\MeetingMessage;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
-use App\Models\MeetingMessage;
-use App\Events\Meetings\MeetingSignal;
 
 class ProcessMeetingMessage implements ShouldQueue
 {
@@ -33,14 +33,15 @@ class ProcessMeetingMessage implements ShouldQueue
     {
         $message = MeetingMessage::with(['meeting'])->find($this->messageId);
 
-        if (!$message) {
+        if (! $message) {
             Log::error('[ProcessMeetingMessage] Message not found', [
                 'message_id' => $this->messageId,
             ]);
+
             return;
         }
 
-        if (!$message->meeting) {
+        if (! $message->meeting) {
             return;
         }
 

@@ -35,6 +35,7 @@ class AuthorizationPersona
     public function setTeamPermissionResolver(\Closure $resolver): self
     {
         $this->teamPermissionResolver = $resolver;
+
         return $this;
     }
 

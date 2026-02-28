@@ -2,11 +2,11 @@
 
 namespace App\Http\Resources;
 
+use App\Models\MeetingParticipant;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Auth;
-use App\Models\MeetingParticipant;
+use Illuminate\Support\Facades\Cache;
 
 class MeetingResource extends JsonResource
 {
@@ -24,7 +24,7 @@ class MeetingResource extends JsonResource
             'status' => $this->status,
             'is_locked' => Cache::has("meeting:lock:{$this->public_id}"),
             'settings' => $this->settings,
-            'has_password' => !empty($this->password),
+            'has_password' => ! empty($this->password),
             'password' => $this->when(($this->user_id === Auth::id()), $this->password),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),

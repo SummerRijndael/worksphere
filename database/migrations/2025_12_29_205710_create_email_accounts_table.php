@@ -55,7 +55,7 @@ return new class extends Migration
             $table->unsignedBigInteger('last_synced_uid')->nullable();
             $table->json('sync_cursor')->nullable();
             $table->json('disabled_folders')->nullable();
-            
+
             // Dual sync cursors
             $table->unsignedBigInteger('forward_uid_cursor')->nullable();
             $table->timestamp('last_forward_sync_at')->nullable();

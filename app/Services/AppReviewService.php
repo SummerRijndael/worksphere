@@ -33,10 +33,10 @@ class AppReviewService implements AppReviewServiceContract
         if ($search) {
             $query->where(function ($q) use ($search) {
                 $q->where('comment', 'like', "%{$search}%")
-                  ->orWhereHas('user', function ($uq) use ($search) {
-                      $uq->where('name', 'like', "%{$search}%")
-                        ->orWhere('email', 'like', "%{$search}%");
-                  });
+                    ->orWhereHas('user', function ($uq) use ($search) {
+                        $uq->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%");
+                    });
             });
         }
 
@@ -82,11 +82,15 @@ class AppReviewService implements AppReviewServiceContract
         return Cache::remember('app_review_sentiment_stats', 3600, function () {
             $avg = AppReview::published()->avg('rating') ?: 0;
             $total = AppReview::published()->count();
-            
+
             $status = 'Mixed';
-            if ($avg >= 4.5) $status = 'Excellent';
-            elseif ($avg >= 3.5) $status = 'Positive';
-            elseif ($avg < 2.5 && $total > 0) $status = 'Needs Attention';
+            if ($avg >= 4.5) {
+                $status = 'Excellent';
+            } elseif ($avg >= 3.5) {
+                $status = 'Positive';
+            } elseif ($avg < 2.5 && $total > 0) {
+                $status = 'Needs Attention';
+            }
 
             return [
                 'average_rating' => round($avg, 1),
@@ -103,7 +107,7 @@ class AppReviewService implements AppReviewServiceContract
     {
         // Strip URLs to prevent spam
         $comment = preg_replace('/https?:\/\/\S+/i', '[URL Removed]', $comment);
-        
+
         // Trim and strip tags
         return strip_tags(trim($comment));
     }
