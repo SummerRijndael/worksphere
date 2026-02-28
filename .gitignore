@@ -24,6 +24,7 @@ zap-casa-config.conf
 /storage/*.key
 /storage/pail
 /vendor
+tmp
 Homestead.json
 Homestead.yaml
 Thumbs.db

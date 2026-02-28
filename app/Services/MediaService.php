@@ -18,10 +18,12 @@ class MediaService
 
         $fileAdder = $model->addMedia($file->getRealPath());
 
+        // Always obfuscate filenames with UUID if not explicitly provided
         if ($fileName) {
             $fileAdder->usingFileName($fileName);
         } else {
-            $fileAdder->usingFileName($file->getClientOriginalName());
+            $extension = $file->getClientOriginalExtension() ?: 'bin';
+            $fileAdder->usingFileName((string) \Illuminate\Support\Str::uuid() . '.' . $extension);
         }
 
         if ($friendName) {

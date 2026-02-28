@@ -1,6 +1,6 @@
 <template>
     <div
-        class="lobby-container bg-slate-900 min-h-screen flex items-center justify-center p-4"
+        class="lobby-container bg-surface-primary min-h-screen flex items-center justify-center p-4"
     >
         <div
             class="max-w-6xl w-full flex flex-col md:flex-row gap-8 items-center justify-center"
@@ -12,7 +12,7 @@
             >
                 <div
                     v-if="loading"
-                    class="absolute inset-0 flex items-center justify-center text-slate-400"
+                    class="absolute inset-0 flex items-center justify-center text-secondary"
                 >
                     <Icon name="loader" size="32" class="animate-spin" />
                 </div>
@@ -35,7 +35,7 @@
                     class="absolute inset-0 flex items-center justify-center"
                 >
                     <div
-                        class="w-32 h-32 rounded-full bg-slate-700 flex items-center justify-center text-4xl text-slate-300 shadow-lg"
+                        class="w-32 h-32 rounded-full bg-white/10 flex items-center justify-center text-4xl text-white shadow-lg backdrop-blur-sm"
                     >
                         {{
                             (authStore.user?.name ||
@@ -54,7 +54,8 @@
                         class="control-btn rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-105 active:scale-95"
                         :class="{
                             'bg-red-500 hover:bg-red-600': !isMicOn,
-                            'bg-slate-700 hover:bg-slate-600': isMicOn,
+                            'bg-surface-tertiary hover:bg-border-strong':
+                                isMicOn,
                         }"
                         :title="
                             isMicOn
@@ -73,7 +74,8 @@
                         class="control-btn rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-105 active:scale-95"
                         :class="{
                             'bg-red-500 hover:bg-red-600': !isCameraOn,
-                            'bg-slate-700 hover:bg-slate-600': isCameraOn,
+                            'bg-surface-tertiary hover:bg-border-strong':
+                                isCameraOn,
                         }"
                         :title="
                             isCameraOn ? 'Turn off camera' : 'Turn on camera'
@@ -88,7 +90,7 @@
                     <!-- Settings Button -->
                     <button
                         @click="showSettings = true"
-                        class="control-btn bg-slate-700 hover:bg-slate-600 rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-105 active:scale-95"
+                        class="control-btn bg-surface-tertiary hover:bg-border-strong rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-105 active:scale-95"
                         title="Device settings"
                     >
                         <Icon
@@ -107,10 +109,10 @@
                 <!-- Meeting Ended State -->
                 <template v-if="meeting?.status === 'ended' || isEndedQuery">
                     <div
-                        class="w-full mb-8 pt-6 pb-8 px-6 bg-slate-800/80 border border-slate-700/80 rounded-2xl flex flex-col items-center shadow-lg"
+                        class="w-full mb-8 pt-6 pb-8 px-6 bg-surface-elevated border border-(--border-default) rounded-2xl flex flex-col items-center shadow-lg"
                     >
                         <div
-                            class="w-16 h-16 bg-slate-700 text-slate-300 rounded-full flex items-center justify-center mb-6 shadow-inner cursor-not-allowed"
+                            class="w-16 h-16 bg-surface-tertiary text-secondary rounded-full flex items-center justify-center mb-6 shadow-inner cursor-not-allowed"
                         >
                             <Icon
                                 name="phone-off"
@@ -121,13 +123,13 @@
                         <h2 class="text-xl font-bold text-white mb-2">
                             Meeting has Ended
                         </h2>
-                        <p class="text-slate-400 text-sm">
+                        <p class="text-secondary text-sm">
                             The host has ended this meeting for everyone.
                         </p>
                     </div>
                     <router-link
                         to="/"
-                        class="w-full bg-slate-800 hover:bg-slate-700 text-white px-6 py-4 rounded-xl font-medium transition-colors flex items-center justify-center border border-slate-700"
+                        class="w-full bg-surface-secondary hover:bg-surface-tertiary text-primary px-6 py-4 rounded-xl font-medium transition-colors flex items-center justify-center border border-(--border-default)"
                     >
                         <Icon name="home" size="20" class="mr-2" />
                         Return to Home
@@ -137,24 +139,23 @@
                 <!-- Regular Join UI -->
                 <template v-else>
                     <h1
-                        class="text-2xl sm:text-3xl font-semibold mb-2 tracking-tight"
-                        style="color: #ffffff !important"
+                        class="text-2xl sm:text-3xl font-semibold mb-2 tracking-tight text-primary"
                     >
                         Ready to join?
                     </h1>
-                    <p class="text-sm sm:text-base text-slate-400 mb-6 sm:mb-8">
+                    <p class="text-sm sm:text-base text-secondary mb-6 sm:mb-8">
                         {{ meeting?.title || "Loading meeting details..." }}
                     </p>
 
                     <div
                         v-if="authStore.isAuthenticated"
-                        class="w-full mb-6 py-3 px-4 bg-slate-800/50 border border-slate-700/50 rounded-lg flex items-center justify-between text-left"
+                        class="w-full mb-6 py-3 px-4 bg-surface-elevated border border-(--border-default) rounded-lg flex items-center justify-between text-left"
                     >
                         <div class="flex items-center gap-3">
                             <img
                                 v-if="authStore.user?.avatar_url"
                                 :src="authStore.user.avatar_url"
-                                class="w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-slate-600"
+                                class="w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-border-default"
                             />
                             <div
                                 v-else
@@ -163,11 +164,11 @@
                                 {{ authStore.user?.name?.[0]?.toUpperCase() }}
                             </div>
                             <div>
-                                <p class="text-sm font-medium text-white">
+                                <p class="text-sm font-medium text-primary">
                                     {{ authStore.user?.name }}
                                 </p>
                                 <p
-                                    class="text-[11px] sm:text-xs text-slate-500"
+                                    class="text-[11px] sm:text-xs text-secondary"
                                 >
                                     Joining as yourself
                                 </p>
@@ -182,14 +183,14 @@
                         <input
                             v-model="guestName"
                             placeholder="Enter your name"
-                            class="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
+                            class="w-full px-4 py-3 bg-surface-elevated border border-(--border-default) rounded-lg text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
                             @keyup.enter="joinMeeting"
                         />
                         <input
                             v-model="guestEmail"
                             type="email"
                             placeholder="Enter your email address"
-                            class="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
+                            class="w-full px-4 py-3 bg-surface-elevated border border-(--border-default) rounded-lg text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
                             @keyup.enter="joinMeeting"
                         />
                         <p
@@ -206,14 +207,14 @@
                         class="w-full mb-6"
                     >
                         <label
-                            class="block text-xs text-slate-500 mb-1.5 text-left"
+                            class="block text-xs text-secondary mb-1.5 text-left"
                             >Meeting password</label
                         >
                         <input
                             v-model="password"
                             type="password"
                             placeholder="Enter meeting password"
-                            class="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
+                            class="w-full px-4 py-3 bg-surface-elevated border border-(--border-default) rounded-lg text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
                             @keyup.enter="joinMeeting"
                         />
                     </div>
@@ -256,7 +257,7 @@
                                     !isHost &&
                                     !password.trim())
                             "
-                            class="flex-1 bg-transparent hover:bg-slate-800 text-blue-400 px-6 py-3 rounded-full font-medium transition-colors border border-slate-700 min-h-[48px] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center text-sm sm:text-base"
+                            class="flex-1 bg-transparent hover:bg-surface-secondary text-blue-400 px-6 py-3 rounded-full font-medium transition-colors border border-(--border-default) min-h-[48px] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center text-sm sm:text-base"
                             title="Join meeting and start presenting"
                         >
                             <Icon
@@ -267,26 +268,6 @@
                             Present
                         </button>
                     </div>
-
-                    <div class="mt-8 pt-8 border-t border-slate-800/50 w-full">
-                        <p class="text-[10px] uppercase tracking-widest text-slate-600 font-bold mb-4">Diagnostics</p>
-                        <button 
-                            @click="showLogs = true"
-                            class="w-full group flex items-center justify-between p-3 bg-slate-800/30 hover:bg-slate-800/60 border border-slate-700/30 rounded-xl text-slate-400 hover:text-white transition-all text-xs"
-                        >
-                            <div class="flex items-center gap-3">
-                                <div class="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-400 group-hover:scale-110 transition-transform">
-                                    <Icon name="terminal" size="16" />
-                                </div>
-                                <span>System Logs</span>
-                            </div>
-                            <Icon name="chevron-right" size="14" class="opacity-0 group-hover:opacity-100 transition-opacity" />
-                        </button>
-                    </div>
-
-                    <div class="mt-6 text-xs text-slate-600">
-                        <p>Having trouble joining? Open logs to see technical details.</p>
-                    </div>
                 </template>
             </div>
         </div>
@@ -296,7 +277,6 @@
             v-model:open="showSettings"
             @close="showSettings = false"
         />
-        <RemoteLogModal v-model:open="showLogs" />
     </div>
 </template>
 
@@ -308,15 +288,16 @@ import { useAuthStore } from "@/stores/auth";
 import { useMeetingStore } from "@/stores/meeting";
 import { useVideoCallStore } from "@/stores/videocall";
 import { useBackgroundBlur } from "@/composables/useBackgroundBlur";
+import { useThemeStore } from "@/stores/theme";
 import DeviceSettingsModal from "./components/DeviceSettingsModal.vue";
 import { Icon } from "@/components/ui";
 import { toast } from "vue-sonner";
 import { logManager } from "@/utils/LogManager";
-import RemoteLogModal from "./components/RemoteLogModal.vue";
 
 const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
+const themeStore = useThemeStore();
 const meetingStore = useMeetingStore();
 const videoCallStore = useVideoCallStore();
 
@@ -336,7 +317,6 @@ const guestEmail = ref("");
 const guestEmailError = ref("");
 const password = ref("");
 const showSettings = ref(false);
-const showLogs = ref(false);
 
 // Initialize remote logging
 logManager.init();
@@ -686,7 +666,8 @@ const joinMeeting = async () => {
             toast.error("You are not authorized to join this meeting.");
         } else {
             const status = e?.response?.status ? ` (${e.response.status})` : "";
-            const detail = e?.response?.data?.message || e.message || "Unknown error";
+            const detail =
+                e?.response?.data?.message || e.message || "Unknown error";
             toast.error(`Failed to join${status}: ${detail}`, {
                 duration: 6000,
                 action: {
@@ -739,7 +720,8 @@ const joinAndPresent = async () => {
             toast.error("You are not authorized to join this meeting.");
         } else {
             const status = e?.response?.status ? ` (${e.response.status})` : "";
-            const detail = e?.response?.data?.message || e.message || "Unknown error";
+            const detail =
+                e?.response?.data?.message || e.message || "Unknown error";
             toast.error(`Failed to join${status}: ${detail}`, {
                 duration: 6000,
                 action: {

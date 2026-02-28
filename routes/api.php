@@ -598,6 +598,10 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
         Route::post('/cache/clear', [\App\Http\Controllers\Api\MaintenanceController::class, 'clearCache']);
         Route::post('/views/clear', [\App\Http\Controllers\Api\MaintenanceController::class, 'clearViews']);
         Route::post('/sessions/clear', [\App\Http\Controllers\Api\MaintenanceController::class, 'clearSessions']);
+        Route::post('/redis/flush', [\App\Http\Controllers\Api\MaintenanceController::class, 'flushRedis']);
+        Route::post('/queue/restart', [\App\Http\Controllers\Api\MaintenanceController::class, 'restartQueue']);
+        Route::post('/horizon/restart', [\App\Http\Controllers\Api\MaintenanceController::class, 'restartHorizon']);
+        Route::post('/reverb/restart', [\App\Http\Controllers\Api\MaintenanceController::class, 'restartReverb']);
         Route::post('/logs/clear', [\App\Http\Controllers\Api\MaintenanceController::class, 'clearLogs']);
         Route::get('/scheduled-tasks', [\App\Http\Controllers\Api\MaintenanceController::class, 'scheduledTasks']);
         Route::post('/scheduled-tasks/{task}/run', [\App\Http\Controllers\Api\MaintenanceController::class, 'runTask']);

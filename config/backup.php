@@ -26,6 +26,9 @@ return [
                 'exclude' => [
                     base_path('vendor'),
                     base_path('node_modules'),
+                    base_path('storage'),
+                    base_path('public/storage'),
+                    base_path('.git'),
                 ],
 
                 /*
