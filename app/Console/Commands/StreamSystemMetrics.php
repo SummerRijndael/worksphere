@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Events\SystemMetricsUpdated;
+use App\Services\MaintenanceService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
@@ -21,6 +22,20 @@ class StreamSystemMetrics extends Command
      * @var string
      */
     protected $description = 'Stream system metrics to frontend via WebSockets';
+
+    /**
+     * @var MaintenanceService
+     */
+    protected $maintenanceService;
+
+    /**
+     * Create a new command instance.
+     */
+    public function __construct(MaintenanceService $maintenanceService)
+    {
+        parent::__construct();
+        $this->maintenanceService = $maintenanceService;
+    }
 
     /**
      * Execute the console command.
@@ -60,8 +75,25 @@ class StreamSystemMetrics extends Command
             'cpu_load' => $cpuStats['total'],
             'cpu_cores' => $cpuStats['cores'],
             'memory' => $this->getMemoryUsage(),
+            'reverb' => $this->getReverbMetrics(),
             'timestamp' => now()->toIso8601String(),
         ];
+    }
+
+    /**
+     * Get Reverb metrics for real-time stream.
+     */
+    protected function getReverbMetrics(): array
+    {
+        try {
+            $stats = $this->maintenanceService->getReverbStats(1); // Get last 1h to be safe/fast
+
+            return [
+                'connections' => $stats['current_connections'] ?? 0,
+            ];
+        } catch (\Exception $e) {
+            return ['connections' => 0];
+        }
     }
 
     /**

@@ -6,6 +6,10 @@ const props = defineProps({
     src: String,
     alt: String,
     fallback: String,
+    color: { // Added this to fix the missing 'color' variable error
+        type: String,
+        default: "gray"
+    },
     size: {
         type: String,
         default: "md",
@@ -25,7 +29,6 @@ const props = defineProps({
 
 const hasError = ref(false);
 
-// Reset error state when src changes so new images can load
 watch(() => props.src, () => {
     hasError.value = false;
 });
@@ -60,7 +63,6 @@ const containerClasses = computed(() =>
         "relative inline-flex shrink-0",
         props.variant === "square" ? "rounded-lg" : "rounded-full",
         sizeClasses.value,
-        // Ring variant styles
         props.variant === "ring" && props.status ? "border-2 transition-colors duration-300 flex items-center justify-center overflow-hidden" : "",
         props.variant === "ring" && props.status === "online" && "border-[var(--status-online)]",
         props.variant === "ring" && props.status === "offline" && "border-[var(--status-offline)]",
@@ -82,8 +84,6 @@ const innerClasses = computed(() =>
 const statusClasses = computed(() =>
     cn(
         "absolute bottom-0 right-0 rounded-full border-2 border-[var(--surface-elevated)]",
-
-        // Size variants
         {
             "h-2 w-2": props.size === "xs" || props.size === "sm",
             "h-2.5 w-2.5": props.size === "md",
@@ -92,8 +92,6 @@ const statusClasses = computed(() =>
             "h-5 w-5": props.size === "3xl",
             "h-6 w-6": props.size === "4xl" || props.size === "5xl",
         },
-
-        // Status colors
         {
             "bg-[var(--status-online)]": props.status === "online",
             "bg-[var(--status-offline)]": props.status === "offline",
@@ -106,22 +104,29 @@ const statusClasses = computed(() =>
 function handleError() {
     hasError.value = true;
 }
+
+function handleLoad(e) {
+    const img = e.target;
+    if (img.naturalWidth <= 1 || img.naturalHeight <= 1) {
+        hasError.value = true;
+    }
+}
 </script>
 
 <template>
     <div :class="containerClasses">
-        <div :class="innerClasses">
+        <div :class="innerClasses" :style="{ backgroundColor: !src || hasError ? color : undefined }">
             <img
                 v-if="src && !hasError"
                 :src="src"
                 :alt="alt"
                 class="h-full w-full object-cover"
                 @error="handleError"
+                @load="handleLoad"
             />
-            <span v-else>{{ initials }}</span>
+            <span v-else class="text-white">{{ initials }}</span>
         </div>
 
-        <!-- Status indicator (dot style only) -->
         <span v-if="status && variant === 'dot'" :class="statusClasses" />
     </div>
 </template>

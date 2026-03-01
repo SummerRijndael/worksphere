@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
 import { RouterLink } from "vue-router";
-import { Card, PageLoader } from "@/components/ui";
+import { Button, Card, PageLoader } from "@/components/ui";
 import PublicLayout from "@/layouts/PublicLayout.vue";
 import { animate, stagger } from "animejs";
 import {
@@ -9,19 +9,17 @@ import {
     Users,
     BarChart3,
     ShieldCheck,
-    
     ArrowRight,
     Play,
     CheckCircle2,
     Globe,
-    
     Star,
 } from "lucide-vue-next";
 import { appConfig } from "@/config/app";
 import ReviewModal from "@/components/public/ReviewModal.vue";
 import axios from "axios";
 import { useAuthStore } from "@/stores/auth";
- 
+
 const authStore = useAuthStore();
 const isLoading = ref(true);
 
@@ -300,7 +298,6 @@ onMounted(() => {
         }
     }, 800);
 });
-
 </script>
 
 <template>
@@ -646,7 +643,10 @@ onMounted(() => {
                     >
                         Share your thoughts and join the conversation.
                     </p>
-                    <div v-if="authStore.isAuthenticated" class="flex justify-center">
+                    <div
+                        v-if="authStore.isAuthenticated"
+                        class="flex justify-center"
+                    >
                         <Button
                             variant="primary"
                             class="bg-[var(--color-landing-primary)] hover:bg-violet-700 text-white px-6 py-2 rounded-xl"
@@ -669,7 +669,9 @@ onMounted(() => {
                                 :key="i"
                                 :class="[
                                     'w-5 h-5',
-                                    i <= review.rating ? 'fill-current' : 'text-gray-300 dark:text-gray-600'
+                                    i <= review.rating
+                                        ? 'fill-current'
+                                        : 'text-gray-300 dark:text-gray-600',
                                 ]"
                             />
                         </div>
@@ -691,7 +693,12 @@ onMounted(() => {
                                     {{ review.user.name }}
                                 </div>
                                 <div class="text-sm text-[var(--text-muted)]">
-                                    Member since {{ new Date(review.created_at).toLocaleDateString() }}
+                                    Member since
+                                    {{
+                                        new Date(
+                                            review.created_at,
+                                        ).toLocaleDateString()
+                                    }}
                                 </div>
                             </div>
                         </div>
@@ -701,10 +708,7 @@ onMounted(() => {
         </section>
 
         <!-- Review Modal -->
-        <ReviewModal
-            v-model:open="showReviewModal"
-            @submitted="fetchReviews"
-        />
+        <ReviewModal v-model:open="showReviewModal" @submitted="fetchReviews" />
 
         <!-- Global Scale Section -->
         <section

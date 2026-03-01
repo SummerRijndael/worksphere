@@ -188,11 +188,13 @@ class AppSettingsService
      */
     public function getAllCached(): array
     {
-        return Cache::remember(self::CACHE_KEY, self::CACHE_TTL, function () {
+        $settings = Cache::remember(self::CACHE_KEY, self::CACHE_TTL, function () {
             return Setting::all()
                 ->pluck('value', 'key')
                 ->toArray();
         });
+
+        return is_array($settings) ? $settings : [];
     }
 
     /**
