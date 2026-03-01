@@ -602,6 +602,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
         Route::post('/queue/restart', [\App\Http\Controllers\Api\MaintenanceController::class, 'restartQueue']);
         Route::post('/horizon/restart', [\App\Http\Controllers\Api\MaintenanceController::class, 'restartHorizon']);
         Route::post('/reverb/restart', [\App\Http\Controllers\Api\MaintenanceController::class, 'restartReverb']);
+        Route::get('/reverb/stats', [\App\Http\Controllers\Api\MaintenanceController::class, 'reverbStats']);
         Route::post('/logs/clear', [\App\Http\Controllers\Api\MaintenanceController::class, 'clearLogs']);
         Route::get('/scheduled-tasks', [\App\Http\Controllers\Api\MaintenanceController::class, 'scheduledTasks']);
         Route::post('/scheduled-tasks/{task}/run', [\App\Http\Controllers\Api\MaintenanceController::class, 'runTask']);

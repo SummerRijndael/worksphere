@@ -30,9 +30,9 @@ import {
     Settings,
     Pin,
     PinOff,
-    
-    
     ChevronDown,
+    ChevronLeft,
+    ChevronRight,
     LogOut,
     User,
     MoreVertical,
@@ -166,7 +166,7 @@ function openDialerPopup() {
     window.open(
         "/dialer",
         "WorkSphereDialer",
-        `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=no,status=no,location=no,toolbar=no,menubar=no`
+        `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=no,status=no,location=no,toolbar=no,menubar=no`,
     );
 }
 
@@ -233,6 +233,26 @@ onMounted(() => {
                     </span>
                 </div>
             </a>
+
+            <!-- Collapse Toggle -->
+            <button
+                @click="navStore.toggleSidebar()"
+                :class="
+                    cn(
+                        'hidden lg:flex items-center justify-center rounded-lg border border-[var(--border-muted)] bg-[var(--surface-secondary)] text-[var(--text-muted)] hover:bg-[var(--surface-tertiary)] hover:text-[var(--text-primary)] transition-all duration-200',
+                        showExpanded
+                            ? 'h-8 w-8'
+                            : 'h-6 w-6 border-none bg-transparent hover:bg-[var(--surface-tertiary)]',
+                    )
+                "
+            >
+                <component
+                    :is="
+                        navStore.isSidebarCollapsed ? ChevronRight : ChevronLeft
+                    "
+                    :class="showExpanded ? 'h-4 w-4' : 'h-3.5 w-3.5'"
+                />
+            </button>
         </div>
 
         <!-- Navigation -->
@@ -648,23 +668,35 @@ onMounted(() => {
                 :side-offset="10"
                 content-class="font-medium bg-[var(--text-primary)] text-[var(--text-inverse)] border-none shadow-md px-3 py-1.5 text-xs rounded-lg"
             >
-                <button 
+                <button
                     @click="openDialerPopup"
-                    :class="cn(
-                        'group flex items-center rounded-lg transition-all duration-300 border cursor-pointer',
-                        'bg-emerald-500/5 border-emerald-500/10 hover:border-emerald-500/30 hover:bg-emerald-500/10',
-                        'text-emerald-600 dark:text-emerald-400',
-                        !showExpanded ? 'justify-center p-2 w-[2.5rem] h-[2.5rem] mx-auto' : 'w-full px-3 py-2 gap-3'
-                    )"
+                    :class="
+                        cn(
+                            'group flex items-center rounded-lg transition-all duration-300 border cursor-pointer',
+                            'bg-emerald-500/5 border-emerald-500/10 hover:border-emerald-500/30 hover:bg-emerald-500/10',
+                            'text-emerald-600 dark:text-emerald-400',
+                            !showExpanded
+                                ? 'justify-center p-2 w-[2.5rem] h-[2.5rem] mx-auto'
+                                : 'w-full px-3 py-2 gap-3',
+                        )
+                    "
                 >
-                    <Phone class="h-[1.2rem] w-[1.2rem] shrink-0" stroke-width="2.5" />
-                    <span 
-                        :class="cn(
-                            'text-[13px] font-semibold truncate transition-all duration-300',
-                            !showExpanded ? 'max-w-0 opacity-0' : 'max-w-[200px] opacity-100'
-                        )"
+                    <Phone
+                        class="h-[1.2rem] w-[1.2rem] shrink-0"
+                        stroke-width="2.5"
+                    />
+                    <span
+                        :class="
+                            cn(
+                                'text-[13px] font-semibold truncate transition-all duration-300',
+                                !showExpanded
+                                    ? 'max-w-0 opacity-0'
+                                    : 'max-w-[200px] opacity-100',
+                            )
+                        "
                     >
-                        Dialer <span class="text-[10px] opacity-70 ml-1">DEMO</span>
+                        Dialer
+                        <span class="text-[10px] opacity-70 ml-1">DEMO</span>
                     </span>
                 </button>
             </Tooltip>

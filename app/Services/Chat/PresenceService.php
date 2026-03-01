@@ -70,10 +70,18 @@ class PresenceService
         // 2. Status actually changed (online -> away, busy -> online, etc.)
         if (! $wasOnline) {
             // User just came online, broadcast their current status
-            UserPresenceChanged::dispatch($userModel, $newStatus);
+            try {
+                UserPresenceChanged::dispatch($userModel, $newStatus);
+            } catch (\Throwable $e) {
+                Log::warning('Presence broadcast failed: ' . $e->getMessage());
+            }
         } elseif ($previousStatus !== null && $previousStatus !== $newStatus) {
             // Status changed, broadcast the new status
-            UserPresenceChanged::dispatch($userModel, $newStatus);
+            try {
+                UserPresenceChanged::dispatch($userModel, $newStatus);
+            } catch (\Throwable $e) {
+                Log::warning('Presence broadcast failed: ' . $e->getMessage());
+            }
         }
         // If status is the same, no broadcast needed
     }

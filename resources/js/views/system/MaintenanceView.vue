@@ -202,6 +202,18 @@ const isRestarting = ref({
     reverb: false,
 });
 
+// Reverb Monitoring
+const reverbStats = ref({
+    current_connections: 0,
+    history: {
+        messages_received: [],
+        messages_sent: [],
+        connections: [],
+    },
+});
+const isLoadingReverb = ref(false);
+let reverbInterval = null;
+
 // Fetch system info from API
 const fetchSystemInfo = async () => {
     try {
@@ -210,6 +222,20 @@ const fetchSystemInfo = async () => {
     } catch (error) {
         console.error("Failed to fetch system info:", error);
         toast.error("Failed to load system information");
+    }
+};
+
+const fetchReverbStats = async (hours = 24) => {
+    isLoadingReverb.value = true;
+    try {
+        const response = await axios.get(
+            `/api/maintenance/reverb/stats?hours=${hours}`,
+        );
+        reverbStats.value = response.data.data;
+    } catch (error) {
+        console.error("Failed to fetch reverb stats:", error);
+    } finally {
+        isLoadingReverb.value = false;
     }
 };
 
@@ -593,12 +619,19 @@ onMounted(async () => {
             fetchDatabaseHealth(),
             fetchBackups(),
             fetchExternalServices(),
+            fetchReverbStats(),
         ]);
 
         setupRealtimeMetrics();
         setupRealtimeScheduledTasks();
         setupRealtimeQueueStats();
         setupRealtimeCacheStats();
+
+        // Setup polling for Reverb and External Services (failsafe for Echo)
+        reverbInterval = setInterval(() => {
+            fetchReverbStats();
+            fetchExternalServices();
+        }, 30000);
     } finally {
         isLoading.value = false;
     }
@@ -615,6 +648,7 @@ const refreshSystemInfo = async () => {
         fetchBackups(backupPagination.value.current_page),
         fetchExternalServices(),
         fetchStorageStats(),
+        fetchReverbStats(),
     ]);
     isLoading.value = false;
     toast.success("System information refreshed");
@@ -802,6 +836,12 @@ const runTask = async (taskName) => {
     }
 };
 
+// Refresh backups
+const refreshBackups = async () => {
+    await fetchBackups(1);
+    toast.success("Backup list refreshed");
+};
+
 // Format last run time
 const formatLastRun = (isoString) => {
     if (!isoString) return "Never";
@@ -886,6 +926,10 @@ const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
     animation: { duration: 0 },
+    interaction: {
+        mode: "index",
+        intersect: false,
+    },
     scales: {
         y: {
             beginAtZero: true,
@@ -900,6 +944,16 @@ const chartOptions = {
     plugins: {
         legend: {
             labels: { color: "rgba(156, 163, 175, 1)" },
+        },
+        tooltip: {
+            enabled: true,
+            backgroundColor: "rgba(30, 41, 59, 0.9)",
+            titleColor: "#fff",
+            bodyColor: "#ccc",
+            borderColor: "rgba(255, 255, 255, 0.1)",
+            borderWidth: 1,
+            padding: 10,
+            displayColors: true,
         },
     },
 };
@@ -928,10 +982,40 @@ const setupRealtimeMetrics = () => {
                 memory: metrics.memory,
             };
 
+            // Update Reverb connections if available in metrics
+            if (metrics.reverb) {
+                reverbStats.value.current_connections =
+                    metrics.reverb.connections;
+
+                // Also append to history for a more "live" feel
+                const now = Math.floor(Date.now() / 1000);
+                const lastIdx =
+                    reverbStats.value.history.connections.length - 1;
+                const lastPoint =
+                    reverbStats.value.history.connections[lastIdx];
+
+                // Append if it's been at least 5 seconds since the last point
+                if (!lastPoint || now - lastPoint.timestamp >= 4) {
+                    reverbStats.value.history.connections.push({
+                        timestamp: now,
+                        value: metrics.reverb.connections,
+                    });
+
+                    // Keep history manageable (e.g. 500 points)
+                    if (reverbStats.value.history.connections.length > 500) {
+                        reverbStats.value.history.connections.shift();
+                    }
+                }
+            }
+
             const numCores = metrics.cpu_cores ? metrics.cpu_cores.length : 0;
             const newLabels = [
                 ...chartData.value.labels.slice(1),
-                new Date().toLocaleTimeString(),
+                new Date().toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                }),
             ];
 
             // Re-construct datasets if structure mismatches (e.g. initial load or mode switch)
@@ -980,9 +1064,11 @@ const setupRealtimeMetrics = () => {
             } else {
                 // Cores Mode
                 for (let i = 0; i < numCores; i++) {
-                    const coreLabel = `Core ${i}`;
-                    const prevDataset = chartData.value.datasets.find(
-                        (d) => d.label === coreLabel,
+                    const corePercentage = metrics.cpu_cores[i];
+                    const coreLabel = `Core ${i} (${corePercentage}%)`;
+                    // Find by Core {i} prefix to maintain continuity across updates
+                    const prevDataset = chartData.value.datasets.find((d) =>
+                        d.label.startsWith(`Core ${i}`),
                     );
                     const prevData = prevDataset
                         ? prevDataset.data.slice(1)
@@ -992,7 +1078,7 @@ const setupRealtimeMetrics = () => {
                         label: coreLabel,
                         borderColor: getCoreColor(i, numCores),
                         backgroundColor: "transparent",
-                        data: [...prevData, metrics.cpu_cores[i]],
+                        data: [...prevData, corePercentage],
                         fill: false,
                         tension: 0.4,
                         borderWidth: 1,
@@ -1093,6 +1179,9 @@ onUnmounted(() => {
         window.Echo.leave("scheduled-tasks");
         window.Echo.leave("queue-stats");
         window.Echo.leave("cache-stats");
+    }
+    if (reverbInterval) {
+        clearInterval(reverbInterval);
     }
 });
 </script>
@@ -1364,7 +1453,177 @@ onUnmounted(() => {
             </div>
         </div>
 
-        <!-- System Resources (Moved to Server Information) -->
+        <!-- Reverb Monitor -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <div
+                class="bg-[var(--surface-elevated)] rounded-xl border border-[var(--border-default)] overflow-hidden lg:col-span-2"
+            >
+                <div
+                    class="p-4 border-b border-[var(--border-default)] flex items-center justify-between"
+                >
+                    <div class="flex items-center gap-3">
+                        <div
+                            class="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center"
+                        >
+                            <Zap class="w-4 h-4 text-orange-600" />
+                        </div>
+                        <h3 class="font-medium text-[var(--text-primary)]">
+                            Reverb Monitor
+                        </h3>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <Badge variant="outline" class="font-normal text-xs">
+                            {{ reverbStats.current_connections }} Active
+                            Connections
+                        </Badge>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            @click="fetchReverbStats()"
+                            :disabled="isLoadingReverb"
+                        >
+                            <RefreshCw
+                                class="w-4 h-4"
+                                :class="{ 'animate-spin': isLoadingReverb }"
+                            />
+                        </Button>
+                    </div>
+                </div>
+                <div class="p-4 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Connections Chart -->
+                    <div class="space-y-4">
+                        <div class="flex items-center justify-between">
+                            <h4
+                                class="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wide"
+                            >
+                                Connections (Last 24h)
+                            </h4>
+                        </div>
+                        <div class="h-[200px] w-full">
+                            <Line
+                                v-if="!isLoadingReverb"
+                                :data="{
+                                    labels: reverbStats.history.connections.map(
+                                        (d) =>
+                                            new Date(
+                                                d.timestamp * 1000,
+                                            ).toLocaleTimeString([], {
+                                                hour: '2-digit',
+                                                minute: '2-digit',
+                                                second: '2-digit',
+                                            }),
+                                    ),
+                                    datasets: [
+                                        {
+                                            label: 'Connections',
+                                            borderColor: 'rgb(249, 115, 22)',
+                                            backgroundColor:
+                                                'rgba(249, 115, 22, 0.1)',
+                                            data: reverbStats.history.connections.map(
+                                                (d) => d.value,
+                                            ),
+                                            fill: true,
+                                            tension: 0.4,
+                                            pointRadius: 0,
+                                        },
+                                    ],
+                                }"
+                                :options="{
+                                    ...chartOptions,
+                                    scales: {
+                                        ...chartOptions.scales,
+                                        y: {
+                                            ...chartOptions.scales.y,
+                                            max: undefined,
+                                        },
+                                    },
+                                }"
+                            />
+                            <div
+                                v-else
+                                class="h-full flex items-center justify-center"
+                            >
+                                <Loader2
+                                    class="w-6 h-6 animate-spin text-[var(--text-muted)]"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Messages Chart -->
+                    <div class="space-y-4">
+                        <div class="flex items-center justify-between">
+                            <h4
+                                class="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wide"
+                            >
+                                Message Throughput (Last 24h)
+                            </h4>
+                        </div>
+                        <div class="h-[200px] w-full">
+                            <Line
+                                v-if="!isLoadingReverb"
+                                :data="{
+                                    labels: reverbStats.history.messages_received.map(
+                                        (d) =>
+                                            new Date(
+                                                d.timestamp * 1000,
+                                            ).toLocaleTimeString([], {
+                                                hour: '2-digit',
+                                                minute: '2-digit',
+                                                second: '2-digit',
+                                            }),
+                                    ),
+                                    datasets: [
+                                        {
+                                            label: 'Received',
+                                            borderColor: 'rgb(59, 130, 246)',
+                                            backgroundColor:
+                                                'rgba(59, 130, 246, 0.1)',
+                                            data: reverbStats.history.messages_received.map(
+                                                (d) => d.value,
+                                            ),
+                                            fill: true,
+                                            tension: 0.4,
+                                            pointRadius: 0,
+                                        },
+                                        {
+                                            label: 'Sent',
+                                            borderColor: 'rgb(16, 185, 129)',
+                                            backgroundColor:
+                                                'rgba(16, 185, 129, 0.1)',
+                                            data: reverbStats.history.messages_sent.map(
+                                                (d) => d.value,
+                                            ),
+                                            fill: true,
+                                            tension: 0.4,
+                                            pointRadius: 0,
+                                        },
+                                    ],
+                                }"
+                                :options="{
+                                    ...chartOptions,
+                                    scales: {
+                                        ...chartOptions.scales,
+                                        y: {
+                                            ...chartOptions.scales.y,
+                                            max: undefined,
+                                        },
+                                    },
+                                }"
+                            />
+                            <div
+                                v-else
+                                class="h-full flex items-center justify-center"
+                            >
+                                <Loader2
+                                    class="w-6 h-6 animate-spin text-[var(--text-muted)]"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- Maintenance Actions -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -2109,7 +2368,7 @@ onUnmounted(() => {
                                     >
                                     <span
                                         v-if="
-                                            externalServices.recaptcha.message
+                                            externalServices.recaptcha?.message
                                         "
                                         class="text-xs text-[var(--color-error)]"
                                         >{{
@@ -2120,7 +2379,7 @@ onUnmounted(() => {
                             </div>
                             <div class="flex items-center gap-3">
                                 <span
-                                    v-if="externalServices.recaptcha.latency"
+                                    v-if="externalServices.recaptcha?.latency"
                                     class="text-xs text-[var(--text-muted)]"
                                     >{{
                                         externalServices.recaptcha.latency
@@ -2131,18 +2390,18 @@ onUnmounted(() => {
                                     :class="{
                                         'bg-green-500/10 text-green-500':
                                             externalServices.recaptcha
-                                                .status === 'Operational',
+                                                ?.status === 'Operational',
                                         'bg-red-500/10 text-red-500':
                                             externalServices.recaptcha
-                                                .status === 'Error' ||
+                                                ?.status === 'Error' ||
                                             externalServices.recaptcha
-                                                .status === 'Unreachable',
+                                                ?.status === 'Unreachable',
                                         'bg-yellow-500/10 text-yellow-500':
                                             externalServices.recaptcha
-                                                .status === 'Not Configured',
+                                                ?.status === 'Not Configured',
                                     }"
                                 >
-                                    {{ externalServices.recaptcha.status }}
+                                    {{ externalServices.recaptcha?.status }}
                                 </span>
                             </div>
                         </div>
@@ -2161,7 +2420,7 @@ onUnmounted(() => {
                                         >Twilio</span
                                     >
                                     <span
-                                        v-if="externalServices.twilio.message"
+                                        v-if="externalServices.twilio?.message"
                                         class="text-xs text-[var(--color-error)]"
                                         >{{
                                             externalServices.twilio.message
@@ -2171,7 +2430,7 @@ onUnmounted(() => {
                             </div>
                             <div class="flex items-center gap-3">
                                 <span
-                                    v-if="externalServices.twilio.latency"
+                                    v-if="externalServices.twilio?.latency"
                                     class="text-xs text-[var(--text-muted)]"
                                     >{{
                                         externalServices.twilio.latency
@@ -2181,22 +2440,22 @@ onUnmounted(() => {
                                     class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
                                     :class="{
                                         'bg-green-500/10 text-green-500':
-                                            externalServices.twilio.status ===
+                                            externalServices.twilio?.status ===
                                             'Operational',
                                         'bg-red-500/10 text-red-500':
-                                            externalServices.twilio.status.includes(
+                                            externalServices.twilio?.status?.includes(
                                                 'Error',
                                             ) ||
-                                            externalServices.twilio.status ===
+                                            externalServices.twilio?.status ===
                                                 'Unreachable' ||
-                                            externalServices.twilio.status ===
+                                            externalServices.twilio?.status ===
                                                 'Invalid Credentials',
                                         'bg-yellow-500/10 text-yellow-500':
-                                            externalServices.twilio.status ===
+                                            externalServices.twilio?.status ===
                                             'Not Configured',
                                     }"
                                 >
-                                    {{ externalServices.twilio.status }}
+                                    {{ externalServices.twilio?.status }}
                                 </span>
                             </div>
                         </div>
@@ -2215,7 +2474,7 @@ onUnmounted(() => {
                                         >Cloudflare</span
                                     >
                                     <span
-                                        v-if="externalServices.cloudflare.info"
+                                        v-if="externalServices.cloudflare?.info"
                                         class="text-xs text-[var(--text-muted)]"
                                         >{{
                                             externalServices.cloudflare.info
@@ -2225,7 +2484,7 @@ onUnmounted(() => {
                             </div>
                             <div class="flex items-center gap-3">
                                 <span
-                                    v-if="externalServices.cloudflare.latency"
+                                    v-if="externalServices.cloudflare?.latency"
                                     class="text-xs text-[var(--text-muted)]"
                                     >{{
                                         externalServices.cloudflare.latency
@@ -2236,18 +2495,254 @@ onUnmounted(() => {
                                     :class="{
                                         'bg-green-500/10 text-green-500':
                                             externalServices.cloudflare
-                                                .status === 'Operational',
+                                                ?.status === 'Operational',
                                         'bg-red-500/10 text-red-500':
                                             externalServices.cloudflare
-                                                .status === 'Error' ||
+                                                ?.status === 'Error' ||
                                             externalServices.cloudflare
-                                                .status === 'Unreachable',
+                                                ?.status === 'Unreachable',
                                         'bg-gray-500/10 text-gray-500':
                                             externalServices.cloudflare
-                                                .status === 'Unknown',
+                                                ?.status === 'Unknown',
                                     }"
                                 >
-                                    {{ externalServices.cloudflare.status }}
+                                    {{ externalServices.cloudflare?.status }}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="h-px bg-[var(--border-default)]"></div>
+
+                        <!-- Cloudflare STUN -->
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <Activity
+                                    class="w-4 h-4 text-[var(--text-muted)]"
+                                />
+                                <div class="flex flex-col">
+                                    <span
+                                        class="text-sm font-medium text-[var(--text-primary)]"
+                                        >Cloudflare STUN</span
+                                    >
+                                    <span
+                                        v-if="
+                                            externalServices.cloudflare_stun
+                                                ?.message
+                                        "
+                                        class="text-xs text-[var(--text-muted)]"
+                                        >{{
+                                            externalServices.cloudflare_stun
+                                                .message
+                                        }}</span
+                                    >
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span
+                                    v-if="
+                                        externalServices.cloudflare_stun
+                                            ?.latency
+                                    "
+                                    class="text-xs text-[var(--text-muted)]"
+                                    >{{
+                                        externalServices.cloudflare_stun
+                                            .latency
+                                    }}ms</span
+                                >
+                                <span
+                                    class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+                                    :class="{
+                                        'bg-green-500/10 text-green-500':
+                                            externalServices.cloudflare_stun
+                                                ?.status === 'Operational',
+                                        'bg-red-500/10 text-red-500':
+                                            externalServices.cloudflare_stun
+                                                ?.status === 'Error' ||
+                                            externalServices.cloudflare_stun
+                                                ?.status === 'Unreachable',
+                                        'bg-gray-500/10 text-gray-500':
+                                            externalServices.cloudflare_stun
+                                                ?.status === 'Unknown',
+                                    }"
+                                >
+                                    {{
+                                        externalServices.cloudflare_stun?.status
+                                    }}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="h-px bg-[var(--border-default)]"></div>
+
+                        <!-- Cloudflare TURN -->
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <Lock
+                                    class="w-4 h-4 text-[var(--text-muted)]"
+                                />
+                                <div class="flex flex-col">
+                                    <span
+                                        class="text-sm font-medium text-[var(--text-primary)]"
+                                        >Cloudflare TURN</span
+                                    >
+                                    <span
+                                        v-if="
+                                            externalServices.cloudflare_turn
+                                                ?.message
+                                        "
+                                        class="text-xs text-[var(--text-muted)]"
+                                        >{{
+                                            externalServices.cloudflare_turn
+                                                .message
+                                        }}</span
+                                    >
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span
+                                    v-if="
+                                        externalServices.cloudflare_turn
+                                            ?.latency
+                                    "
+                                    class="text-xs text-[var(--text-muted)]"
+                                    >{{
+                                        externalServices.cloudflare_turn
+                                            .latency
+                                    }}ms</span
+                                >
+                                <span
+                                    class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+                                    :class="{
+                                        'bg-green-500/10 text-green-500':
+                                            externalServices.cloudflare_turn
+                                                ?.status === 'Operational',
+                                        'bg-red-500/10 text-red-500':
+                                            externalServices.cloudflare_turn
+                                                ?.status === 'Error' ||
+                                            externalServices.cloudflare_turn
+                                                ?.status === 'Unreachable',
+                                        'bg-gray-500/10 text-gray-500':
+                                            externalServices.cloudflare_turn
+                                                ?.status === 'Unknown',
+                                    }"
+                                >
+                                    {{
+                                        externalServices.cloudflare_turn?.status
+                                    }}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="h-px bg-[var(--border-default)]"></div>
+
+                        <!-- Cloudflare SFU -->
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <Server
+                                    class="w-4 h-4 text-[var(--text-muted)]"
+                                />
+                                <div class="flex flex-col">
+                                    <span
+                                        class="text-sm font-medium text-[var(--text-primary)]"
+                                        >Cloudflare SFU</span
+                                    >
+                                    <span
+                                        v-if="
+                                            externalServices.cloudflare_sfu
+                                                ?.message
+                                        "
+                                        class="text-xs text-[var(--text-muted)]"
+                                        >{{
+                                            externalServices.cloudflare_sfu
+                                                .message
+                                        }}</span
+                                    >
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span
+                                    v-if="
+                                        externalServices.cloudflare_sfu?.latency
+                                    "
+                                    class="text-xs text-[var(--text-muted)]"
+                                    >{{
+                                        externalServices.cloudflare_sfu.latency
+                                    }}ms</span
+                                >
+                                <span
+                                    class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+                                    :class="{
+                                        'bg-green-500/10 text-green-500':
+                                            externalServices.cloudflare_sfu
+                                                ?.status === 'Operational',
+                                        'bg-red-500/10 text-red-500':
+                                            externalServices.cloudflare_sfu
+                                                ?.status === 'Error' ||
+                                            externalServices.cloudflare_sfu
+                                                ?.status === 'Unreachable',
+                                        'bg-gray-500/10 text-gray-500':
+                                            externalServices.cloudflare_sfu
+                                                ?.status === 'Unknown',
+                                    }"
+                                >
+                                    {{
+                                        externalServices.cloudflare_sfu?.status
+                                    }}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="h-px bg-[var(--border-default)]"></div>
+
+                        <!-- Reverb Node -->
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <Zap class="w-4 h-4 text-[var(--text-muted)]" />
+                                <div class="flex flex-col">
+                                    <span
+                                        class="text-sm font-medium text-[var(--text-primary)]"
+                                        >Reverb Node</span
+                                    >
+                                    <span
+                                        v-if="
+                                            externalServices.reverb_server
+                                                ?.message
+                                        "
+                                        class="text-xs text-[var(--text-muted)]"
+                                        >{{
+                                            externalServices.reverb_server
+                                                .message
+                                        }}</span
+                                    >
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span
+                                    v-if="
+                                        externalServices.reverb_server?.latency
+                                    "
+                                    class="text-xs text-[var(--text-muted)]"
+                                    >{{
+                                        externalServices.reverb_server.latency
+                                    }}ms</span
+                                >
+                                <span
+                                    class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+                                    :class="{
+                                        'bg-green-500/10 text-green-500':
+                                            externalServices.reverb_server
+                                                ?.status === 'Operational',
+                                        'bg-red-500/10 text-red-500':
+                                            externalServices.reverb_server
+                                                ?.status === 'Error' ||
+                                            externalServices.reverb_server
+                                                ?.status === 'Unreachable',
+                                        'bg-gray-500/10 text-gray-500':
+                                            externalServices.reverb_server
+                                                ?.status === 'Unknown',
+                                    }"
+                                >
+                                    {{ externalServices.reverb_server?.status }}
                                 </span>
                             </div>
                         </div>
@@ -2548,6 +3043,15 @@ onUnmounted(() => {
                                 <LayoutGrid class="w-3.5 h-3.5" />
                             </button>
                         </div>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            @click="refreshBackups"
+                            class="h-8 w-8 p-0 ml-1"
+                            title="Refresh List"
+                        >
+                            <RefreshCw class="w-3.5 h-3.5" />
+                        </Button>
                     </div>
 
                     <div

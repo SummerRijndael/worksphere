@@ -496,6 +496,18 @@ class MaintenanceController extends Controller
     }
 
     /**
+     * Get Reverb statistics.
+     */
+    public function reverbStats(Request $request): JsonResponse
+    {
+        $hours = $request->get('hours', 24);
+
+        return response()->json([
+            'data' => $this->maintenanceService->getReverbStats((int) $hours),
+        ]);
+    }
+
+    /**
      * Get External Services status.
      */
     public function externalServices(): JsonResponse

@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -461,8 +462,13 @@ class MaintenanceService
                 'useTLS' => $scheme === 'https',
             ]);
 
-            // Fetch user channels to get active user count
-            // This is more accurate than total channels for "Online Users"
+            // Get total connections count from Reverb API
+            $response = $pusher->get('/connections');
+            if ($response && isset($response->connections)) {
+                return (int) $response->connections;
+            }
+
+            // Fetch user channels to get active user count as fallback
             $channels = $pusher->get_channels(['filter_by_prefix' => 'private-user.']);
 
             $count = 0;
@@ -1096,8 +1102,9 @@ class MaintenanceService
     public function restartQueue(): array
     {
         try {
-            Artisan::call('queue:restart');
-            Log::info('Queue workers restart signal sent');
+            // Run artisan via a new process to ensure command registration (web doesn't have console commands)
+            $process = Process::path(base_path())->run(PHP_BINARY.' artisan queue:restart');
+            Log::info('Queue workers restart signal sent via Process', ['output' => $process->output()]);
 
             return [
                 'success' => true,
@@ -1119,8 +1126,9 @@ class MaintenanceService
     public function restartHorizon(): array
     {
         try {
-            Artisan::call('horizon:terminate');
-            Log::info('Horizon termination signal sent');
+            // Run artisan via a new process to ensure command registration (web doesn't have console commands)
+            $process = Process::path(base_path())->run(PHP_BINARY.' artisan horizon:terminate');
+            Log::info('Horizon termination signal sent via Process', ['output' => $process->output()]);
 
             return [
                 'success' => true,
@@ -1142,8 +1150,9 @@ class MaintenanceService
     public function restartReverb(): array
     {
         try {
-            Artisan::call('reverb:restart');
-            Log::info('Reverb restart signal sent');
+            // Run artisan via a new process to ensure command registration (web doesn't have console commands)
+            $process = Process::path(base_path())->run(PHP_BINARY.' artisan reverb:restart');
+            Log::info('Reverb restart signal sent via Process', ['output' => $process->output()]);
 
             return [
                 'success' => true,
@@ -1661,7 +1670,10 @@ class MaintenanceService
         $disk = Storage::disk($diskName);
         $name = config('backup.backup.name');
 
+        Log::debug('Fetching backups', ['disk' => $diskName, 'name' => $name, 'root' => config("filesystems.disks.$diskName.root")]);
+
         $files = $disk->allFiles($name);
+        Log::debug('Backups found', ['count' => count($files)]);
 
         $backups = [];
         foreach ($files as $file) {
@@ -1767,6 +1779,78 @@ class MaintenanceService
     }
 
     /**
+     * Get Reverb statistics from Pulse aggregates.
+     */
+    public function getReverbStats(int $hours = 24): array
+    {
+        try {
+            $period = 10080; // Default to 7d for historical data
+
+            // 1. Get current connections
+            $connections = DB::table('pulse_values')
+                ->where('type', 'reverb_connections')
+                ->latest('timestamp')
+                ->first();
+
+            $currentConnections = $connections ? (int) $connections->value : $this->getReverbConnectionCount();
+
+            // 2. Get message stats (Aggregates)
+            $messageReceived = DB::table('pulse_aggregates')
+                ->where('type', 'reverb_message:received')
+                ->where('period', $period)
+                ->orderBy('bucket', 'desc')
+                ->limit($hours * 60)
+                ->get()
+                ->map(fn($row) => [
+                    'timestamp' => $row->bucket,
+                    'value' => (float) $row->value,
+                ]);
+
+            $messageSent = DB::table('pulse_aggregates')
+                ->where('type', 'reverb_message:sent')
+                ->where('period', $period)
+                ->orderBy('bucket', 'desc')
+                ->limit($hours * 60)
+                ->get()
+                ->map(fn($row) => [
+                    'timestamp' => $row->bucket,
+                    'value' => (float) $row->value,
+                ]);
+
+            // 3. Get connection history
+            $connectionHistory = DB::table('pulse_aggregates')
+                ->where('type', 'reverb_connections')
+                ->where('period', $period)
+                ->orderBy('bucket', 'desc')
+                ->limit($hours * 60)
+                ->get()
+                ->map(fn($row) => [
+                    'timestamp' => $row->bucket,
+                    'value' => (float) $row->value,
+                ]);
+
+            return [
+                'current_connections' => $currentConnections,
+                'history' => [
+                    'messages_received' => $messageReceived->reverse()->values()->all(),
+                    'messages_sent' => $messageSent->reverse()->values()->all(),
+                    'connections' => $connectionHistory->reverse()->values()->all(),
+                ],
+            ];
+        } catch (Throwable $e) {
+            Log::warning('Failed to get Reverb stats from Pulse', ['error' => $e->getMessage()]);
+            return [
+                'current_connections' => 0,
+                'history' => [
+                    'messages_received' => [],
+                    'messages_sent' => [],
+                    'connections' => [],
+                ],
+            ];
+        }
+    }
+
+    /**
      * Get External Services Status.
      */
     public function getExternalServicesStatus(): array
@@ -1864,6 +1948,96 @@ class MaintenanceService
             }
         } catch (Throwable $e) {
             $results['cloudflare']['status'] = 'Unreachable';
+        }
+
+        // 4. Cloudflare STUN
+        $results['cloudflare_stun'] = [
+            'name' => 'Cloudflare STUN',
+            'status' => 'Unknown',
+            'latency' => null,
+            'message' => null,
+        ];
+        $stunStart = microtime(true);
+        try {
+            // Check reachability via Cloudflare's edge
+            $response = Http::timeout(3)->get('https://www.cloudflare.com/cdn-cgi/trace');
+            if ($response->successful()) {
+                $results['cloudflare_stun']['status'] = 'Operational';
+                $results['cloudflare_stun']['latency'] = round((microtime(true) - $stunStart) * 1000);
+            } else {
+                $results['cloudflare_stun']['status'] = 'Error';
+            }
+        } catch (Throwable $e) {
+            $results['cloudflare_stun']['status'] = 'Unreachable';
+            $results['cloudflare_stun']['message'] = $e->getMessage();
+        }
+
+        // 5. Cloudflare TURN
+        $results['cloudflare_turn'] = [
+            'name' => 'Cloudflare TURN',
+            'status' => 'Unknown',
+            'latency' => null,
+            'message' => null,
+        ];
+        $turnStart = microtime(true);
+        try {
+            // Check reachability via Cloudflare API
+            $response = Http::timeout(3)->get('https://api.cloudflare.com/client/v4/ips');
+            if ($response->successful()) {
+                $results['cloudflare_turn']['status'] = 'Operational';
+                $results['cloudflare_turn']['latency'] = round((microtime(true) - $turnStart) * 1000);
+            } else {
+                $results['cloudflare_turn']['status'] = 'Error';
+            }
+        } catch (Throwable $e) {
+            $results['cloudflare_turn']['status'] = 'Unreachable';
+            $results['cloudflare_turn']['message'] = $e->getMessage();
+        }
+
+        // 6. Cloudflare SFU (Calls Signaling)
+        $results['cloudflare_sfu'] = [
+            'name' => 'Cloudflare SFU',
+            'status' => 'Unknown',
+            'latency' => null,
+            'message' => null,
+        ];
+        $sfuStart = microtime(true);
+        try {
+            // Use another edge check for SFU
+            $response = Http::timeout(3)->get('https://1.1.1.1/cdn-cgi/trace');
+            if ($response->successful()) {
+                $results['cloudflare_sfu']['status'] = 'Operational';
+                $results['cloudflare_sfu']['latency'] = round((microtime(true) - $sfuStart) * 1000);
+            } else {
+                $results['cloudflare_sfu']['status'] = 'Error';
+            }
+        } catch (Throwable $e) {
+            $results['cloudflare_sfu']['status'] = 'Unreachable';
+            $results['cloudflare_sfu']['message'] = $e->getMessage();
+        }
+
+        // 7. Local Reverb Server
+        $results['reverb_server'] = [
+            'name' => 'Reverb Server',
+            'status' => 'Unknown',
+            'latency' => null,
+            'message' => null,
+        ];
+        $reverbStart = microtime(true);
+        try {
+            $port = config('reverb.servers.reverb.options.port', 9000);
+            $connection = @fsockopen('127.0.0.1', $port, $errno, $errstr, 1);
+            if ($connection) {
+                fclose($connection);
+                $results['reverb_server']['status'] = 'Operational';
+                $results['reverb_server']['latency'] = round((microtime(true) - $reverbStart) * 1000);
+            } else {
+                $results['reverb_server']['status'] = 'Unreachable';
+                $results['reverb_server']['message'] = "Port $port closed or Reverb down";
+            }
+        } catch (Throwable $e) {
+            $results['reverb_server']['status'] = 'Error';
+            $results['reverb_server']['message'] = $e->getMessage();
         }
 
         return $results;
