@@ -119,7 +119,7 @@ class MeetingService implements MeetingServiceContract
         $meeting->delete();
     }
 
-    public function joinMeeting(Meeting $meeting, ?User $user, ?string $guestName, ?string $guestEmail, ?string $providedPassword, ?string $participantSessionId): array
+    public function joinMeeting(Meeting $meeting, ?User $user, ?string $guestName, ?string $guestEmail, ?string $providedPassword, ?string $participantSessionId, bool $isCompanion = false): array
     {
         $start = microtime(true);
         Log::channel('videocall')->info('[504_DEBUG] Join start', ['meeting' => $meeting->public_id]);
@@ -196,15 +196,18 @@ class MeetingService implements MeetingServiceContract
         }
 
         // Re-joining? Retain 'admitted' status if previously admitted
-        if ($user) {
-            $existing = MeetingParticipant::where('meeting_id', $meeting->id)->where('user_id', $user->id)->first();
-            if ($existing && $existing->status === 'admitted') {
-                $status = 'admitted';
-            }
-        } elseif ($participantSessionId) {
-            $existing = MeetingParticipant::where('meeting_id', $meeting->id)->where('public_id', $participantSessionId)->first();
-            if ($existing && $existing->status === 'admitted') {
-                $status = 'admitted';
+        // If it's a companion device, we always want a fresh record.
+        if (! $isCompanion) {
+            if ($user) {
+                $existing = MeetingParticipant::where('meeting_id', $meeting->id)->where('user_id', $user->id)->first();
+                if ($existing && $existing->status === 'admitted') {
+                    $status = 'admitted';
+                }
+            } elseif ($participantSessionId) {
+                $existing = MeetingParticipant::where('meeting_id', $meeting->id)->where('public_id', $participantSessionId)->first();
+                if ($existing && $existing->status === 'admitted') {
+                    $status = 'admitted';
+                }
             }
         }
 
@@ -212,21 +215,27 @@ class MeetingService implements MeetingServiceContract
         if ($isGuest) {
             // Recover guest session if exists, otherwise create new
             $participant = null;
-            if ($participantSessionId) {
+            if ($participantSessionId && ! $isCompanion) {
                 $participant = MeetingParticipant::where('meeting_id', $meeting->id)
                     ->where('public_id', $participantSessionId)
                     ->first();
             }
 
             if (! $participant) {
+                $name = $guestName ?? 'Guest';
+                if ($isCompanion) {
+                    $name .= ' (Presentation)';
+                }
+
                 $participant = MeetingParticipant::create([
                     'meeting_id' => $meeting->id,
                     'public_id' => (string) Str::ulid(),
                     'role' => 'participant',
                     'status' => $status,
                     'metadata' => [
-                        'guest_name' => $guestName ?? 'Guest',
+                        'guest_name' => $name,
                         'guest_email' => $guestEmail,
+                        'is_companion' => $isCompanion,
                         'fingerprint' => [
                             'ip' => request()->ip(),
                             'ua' => request()->userAgent(),
@@ -235,10 +244,13 @@ class MeetingService implements MeetingServiceContract
                 ]);
             }
         } else {
-            $participant = MeetingParticipant::where([
-                'meeting_id' => $meeting->id,
-                'user_id' => $user->id,
-            ])->first();
+            $participant = null;
+            if (! $isCompanion) {
+                $participant = MeetingParticipant::where([
+                    'meeting_id' => $meeting->id,
+                    'user_id' => $user->id,
+                ])->first();
+            }
 
             if (! $participant) {
                 $participant = MeetingParticipant::create([
@@ -247,6 +259,8 @@ class MeetingService implements MeetingServiceContract
                     'role' => $meeting->user_id === $user->id ? 'host' : 'participant',
                     'status' => $status,
                     'metadata' => [
+                        'is_companion' => $isCompanion,
+                        'display_name_override' => $isCompanion ? $user->name . ' (Presentation)' : null,
                         'fingerprint' => [
                             'ip' => request()->ip(),
                             'ua' => request()->userAgent(),

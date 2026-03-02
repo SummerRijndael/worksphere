@@ -892,7 +892,7 @@
                 <div
                     v-if="isRecording"
                     class="recording-badge"
-                    :title="`Recording in progress (${formattedDuration})`"
+                    :title="isRecording ? `Recording in progress (${formattedDuration})` : ''"
                 >
                     <span class="recording-dot"></span>
                     <span>REC</span>
@@ -1640,6 +1640,7 @@ onMounted(async () => {
 
         // Auto-start screen share if joined via "Present" button
         if (route.query.present === "1") {
+            toast.info("Joined in Companion Mode. Audio and video are disabled.", { duration: 5000 });
             setTimeout(() => {
                 toggleScreenShare();
             }, 2000); // Wait for SFU connection to establish
@@ -1700,8 +1701,15 @@ async function toggleScreenShare() {
                 }
             }
         } catch (err) {
-            toast.error("Failed to share screen");
-            console.error(err);
+            console.error("Screen share failed:", err);
+            
+            // Smart Fallback for Mobile/Tablets
+            if (route.query.present === "1") {
+                toast.warning("Screen sharing restricted on this device. Opening Whiteboard instead!");
+                whiteboardStore.isVisible = true;
+            } else {
+                toast.error("Failed to share screen");
+            }
         }
     }
 }
@@ -1724,9 +1732,12 @@ const toggleCamera = async () => {
     if (!isCameraOn.value) {
         try {
             const newStream = await navigator.mediaDevices.getUserMedia({
-                video: videoCallStore.selectedVideoDeviceId
-                    ? { deviceId: videoCallStore.selectedVideoDeviceId }
-                    : true,
+                video: {
+                    deviceId: videoCallStore.selectedVideoDeviceId || undefined,
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    frameRate: { ideal: 30 }
+                },
             });
             const videoTrack = newStream.getVideoTracks()[0];
             meetingStore.originalVideoTrack = videoTrack;
@@ -1742,6 +1753,9 @@ const toggleCamera = async () => {
                     videoCallStore.videoEffect,
                     videoCallStore.backgroundImage || undefined,
                     videoCallStore.autoFraming,
+                    videoCallStore.hasPhysicalGreenScreen,
+                    videoCallStore.greenScreenColor,
+                    videoCallStore.greenScreenThreshold
                 );
             }
 
@@ -1787,9 +1801,12 @@ const toggleMic = async () => {
     if (!isMicOn.value) {
         try {
             const newStream = await navigator.mediaDevices.getUserMedia({
-                audio: videoCallStore.selectedAudioDeviceId
-                    ? { deviceId: videoCallStore.selectedAudioDeviceId }
-                    : true,
+                audio: {
+                    deviceId: videoCallStore.selectedAudioDeviceId || undefined,
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true,
+                },
             });
             const audioTrack = newStream.getAudioTracks()[0];
             const updatedStream = new MediaStream([
@@ -1819,8 +1836,11 @@ watch(
         () => videoCallStore.videoEffect,
         () => videoCallStore.backgroundImage,
         () => videoCallStore.autoFraming,
+        () => videoCallStore.hasPhysicalGreenScreen,
+        () => videoCallStore.greenScreenColor,
+        () => videoCallStore.greenScreenThreshold,
     ],
-    async ([effect, bgImage, framing]) => {
+    async ([effect, bgImage, framing, hasGreenScreen, greenColor, threshold]) => {
         if (
             !isCameraOn.value ||
             !meetingStore.originalVideoTrack ||
@@ -1836,6 +1856,9 @@ watch(
                     effect,
                     bgImage || undefined,
                     framing,
+                    hasGreenScreen,
+                    greenColor,
+                    threshold
                 );
             } else {
                 backgroundBlur.stopProcessing();
@@ -1845,16 +1868,19 @@ watch(
             const stream = meetingStore.localStream;
             const oldTrack = stream.getVideoTracks()[0];
 
-            if (oldTrack && oldTrack.id !== newTrack.id) {
-                stream.removeTrack(oldTrack);
-                stream.addTrack(newTrack);
+            if (oldTrack) {
+                if (oldTrack.id !== newTrack.id) {
+                    stream.removeTrack(oldTrack);
+                    stream.addTrack(newTrack);
+                    // Keep enabled state synced
+                    newTrack.enabled = oldTrack.enabled;
+                }
 
-                // Keep enabled state synced
-                newTrack.enabled = oldTrack.enabled;
-
+                // ALWAYS call replaceTrack when effect changes to ensure sync,
+                // even if the underlying canvas track ID is recycled.
                 meetingStore.replaceTrack("video", newTrack);
                 console.info(
-                    `[MeetingRoom] Swapped camera track from ${oldTrack.id} to ${newTrack.id}`,
+                    `[MeetingRoom] Applied effect: ${effect}, track: ${newTrack.id}`,
                 );
             }
         } catch (e) {
@@ -1879,7 +1905,12 @@ watch(
             });
             try {
                 const newS = await navigator.mediaDevices.getUserMedia({
-                    audio: newAudio ? { deviceId: newAudio } : true,
+                    audio: {
+                        deviceId: newAudio || undefined,
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    },
                 });
                 const track = newS.getAudioTracks()[0];
                 stream.addTrack(track);
@@ -1898,7 +1929,11 @@ watch(
 
             try {
                 const newS = await navigator.mediaDevices.getUserMedia({
-                    video: newVideo ? { deviceId: newVideo } : true,
+                    video: {
+                        deviceId: newVideo || undefined,
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
                 });
                 const videoTrack = newS.getVideoTracks()[0];
                 meetingStore.originalVideoTrack = videoTrack;
@@ -1914,6 +1949,9 @@ watch(
                         videoCallStore.videoEffect,
                         videoCallStore.backgroundImage || undefined,
                         videoCallStore.autoFraming,
+                        videoCallStore.hasPhysicalGreenScreen,
+                        videoCallStore.greenScreenColor,
+                        videoCallStore.greenScreenThreshold
                     );
                 }
 

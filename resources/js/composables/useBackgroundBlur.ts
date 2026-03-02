@@ -11,6 +11,8 @@ export function useBackgroundBlur() {
     const isLoading = ref(false);
     const error = ref<string | null>(null);
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const cpuCores = navigator.hardwareConcurrency || 4;
+    const isLowEnd = cpuCores < 4 || (isMobile && cpuCores < 8);
 
 
     // Canvas for processing
@@ -18,6 +20,8 @@ export function useBackgroundBlur() {
     let ctx: CanvasRenderingContext2D | null = null;
     let animationFrameId: number | null = null;
     let currentRunningMode: 'VIDEO' | 'IMAGE' = 'VIDEO';
+    let processedStream: MediaStream | null = null;
+    let outputTrack: MediaStreamTrack | null = null;
     
     // Offscreen canvases for performance
     let blurCanvas: HTMLCanvasElement | null = null;
@@ -34,7 +38,8 @@ export function useBackgroundBlur() {
         zoom: 1.0,
         targetCenterX: 0.5,
         targetCenterY: 0.5,
-        targetZoom: 1.0
+        targetZoom: 1.0,
+        deadZone: 0.15 // 15% Dead zone to prevent jitter
     };
     
     // Internal refs to keep tracks alive
@@ -44,6 +49,9 @@ export function useBackgroundBlur() {
     let currentEffect: 'blur' | 'image' | 'none' = 'none';
     let currentImageUrl: string | undefined = undefined;
     let isAutoFramingEnabled = false;
+    let useChromaKey = false;
+    let chromaKeyColor = { r: 0, g: 255, b: 0 };
+    let chromaKeyThreshold = 0.12;
     
     async function loadModel() {
         if (isLoaded.value || isLoading.value) return;
@@ -52,10 +60,15 @@ export function useBackgroundBlur() {
              const vision = await FilesetResolver.forVisionTasks(
                 "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.32/wasm"
             );
+            
+            // Device-aware model selection: Landscape (Lite) for mobile/weak CPUs, Full for Desktop
+            const modelPath = isLowEnd 
+                ? "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter_landscape/float16/latest/selfie_segmenter_landscape.tflite"
+                : "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite";
+
             segmenter.value = await ImageSegmenter.createFromOptions(vision, {
                 baseOptions: {
-                    modelAssetPath:
-                        "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite",
+                    modelAssetPath: modelPath,
                     delegate: "GPU",
                 },
                 runningMode: "VIDEO" as const,
@@ -71,10 +84,14 @@ export function useBackgroundBlur() {
                     const vision = await FilesetResolver.forVisionTasks(
                         "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.32/wasm"
                     );
+                    // Fallback to CPU + int8 quantized model for absolute potato devices
+                    const modelPath = isLowEnd 
+                        ? "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter_landscape/float16/latest/selfie_segmenter_landscape.tflite" // MediaPipe doesn't have public direct int8 URLs easily, sticking to landscape float16 as safest.
+                        : "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite";
+
                     segmenter.value = await ImageSegmenter.createFromOptions(vision, {
                         baseOptions: {
-                            modelAssetPath:
-                                "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite",
+                            modelAssetPath: modelPath,
                             delegate: "CPU",
                         },
                         runningMode: "VIDEO" as const,
@@ -97,10 +114,28 @@ export function useBackgroundBlur() {
         rawTrack: MediaStreamTrack,
         effect: 'blur' | 'image' = 'blur',
         imageUrl?: string,
-        autoFraming: boolean = false
+        autoFraming: boolean = false,
+        hasGreenScreen: boolean = false,
+        greenScreenColor: string = '#00FF00',
+        greenScreenThreshold: number = 0.12
     ): Promise<MediaStreamTrack> {
         isAutoFramingEnabled = autoFraming;
-        if (!isLoaded.value) {
+        useChromaKey = hasGreenScreen;
+        chromaKeyThreshold = greenScreenThreshold;
+        
+        // Convert hex to RGB
+        const hex = greenScreenColor.replace('#', '');
+        chromaKeyColor = {
+            r: parseInt(hex.substring(0, 2), 16),
+            g: parseInt(hex.substring(2, 4), 16),
+            b: parseInt(hex.substring(4, 6), 16)
+        };
+
+        if (useChromaKey) {
+            console.log("[BackgroundBlur] Chroma Key Enabled:", greenScreenColor, "Threshold:", greenScreenThreshold);
+        }
+
+        if (!isLoaded.value && !useChromaKey) {
             await loadModel();
         }
         if (!segmenter.value) {
@@ -117,8 +152,15 @@ export function useBackgroundBlur() {
                 await updateBackgroundImage(imageUrl, sourceVideo.videoWidth, sourceVideo.videoHeight);
             }
             if (!canvas) return rawTrack;
-            const processedStream = canvas.captureStream(30);
-            return processedStream.getVideoTracks()[0];
+            
+            if (outputTrack) {
+                console.log("[BackgroundBlur] Reusing existing output track for updated effect");
+                return outputTrack;
+            }
+            
+            processedStream = canvas.captureStream(30);
+            outputTrack = processedStream.getVideoTracks()[0];
+            return outputTrack;
         }
 
         stopProcessing(); // Clean up any existing loop
@@ -146,22 +188,20 @@ export function useBackgroundBlur() {
             ctx = canvas.getContext("2d");
         }
         
-        // Resolution Capping for Mobile (S10 fix)
-        // Limit max dimension to 360p to reduce segmentation load further
+        // Resolution Strategy: True 720p for recording, 360p fallback for true potatoes
         let targetWidth = video.videoWidth;
         let targetHeight = video.videoHeight;
         
-        if (isMobile) {
-            const MAX_DIMENSION = 360; // Reduced from 480 for better stability
-            if (targetWidth > MAX_DIMENSION || targetHeight > MAX_DIMENSION) {
-                const ratio = targetWidth / targetHeight;
-                if (targetWidth > targetHeight) {
-                     targetWidth = MAX_DIMENSION;
-                     targetHeight = Math.round(MAX_DIMENSION / ratio);
-                } else {
-                     targetHeight = MAX_DIMENSION;
-                     targetWidth = Math.round(MAX_DIMENSION * ratio);
-                }
+        const MAX_DIMENSION = isLowEnd ? 360 : 720; 
+        
+        if (targetWidth > MAX_DIMENSION || targetHeight > MAX_DIMENSION) {
+            const ratio = targetWidth / targetHeight;
+            if (targetWidth > targetHeight) {
+                 targetWidth = MAX_DIMENSION;
+                 targetHeight = Math.round(MAX_DIMENSION / ratio);
+            } else {
+                 targetHeight = MAX_DIMENSION;
+                 targetWidth = Math.round(MAX_DIMENSION * ratio);
             }
         }
         
@@ -219,17 +259,17 @@ export function useBackgroundBlur() {
                 let newTargetHeight = video.videoHeight;
                 
                 if (isMobile) {
-                    const MAX_DIMENSION = 360;
-                    if (newTargetWidth > MAX_DIMENSION || newTargetHeight > MAX_DIMENSION) {
-                        const ratio = newTargetWidth / newTargetHeight;
-                        if (newTargetWidth > newTargetHeight) {
-                             newTargetWidth = MAX_DIMENSION;
-                             newTargetHeight = Math.round(MAX_DIMENSION / ratio);
-                        } else {
-                             newTargetHeight = MAX_DIMENSION;
-                             newTargetWidth = Math.round(MAX_DIMENSION * ratio);
-                        }
+                const MAX_DIMENSION = isLowEnd ? 360 : 720;
+                if (newTargetWidth > MAX_DIMENSION || newTargetHeight > MAX_DIMENSION) {
+                    const ratio = newTargetWidth / newTargetHeight;
+                    if (newTargetWidth > newTargetHeight) {
+                         newTargetWidth = MAX_DIMENSION;
+                         newTargetHeight = Math.round(MAX_DIMENSION / ratio);
+                    } else {
+                         newTargetHeight = MAX_DIMENSION;
+                         newTargetWidth = Math.round(MAX_DIMENSION * ratio);
                     }
+                }
                 }
                 
                 if (canvas.width !== newTargetWidth || canvas.height !== newTargetHeight) {
@@ -275,12 +315,22 @@ export function useBackgroundBlur() {
                     return;
                 }
 
-                if (currentRunningMode === 'IMAGE') {
-                    const result = segmenter.value.segment(video);
-                    renderResult(result);
+                if (useChromaKey) {
+                    // Manual Chroma Key Path
+                    const maskData = processChromaKey(video);
+                    renderChromaKeyResult(maskData, canvas.width, canvas.height);
+                } else if (segmenter.value) {
+                    if (currentRunningMode === 'IMAGE') {
+                        const result = segmenter.value.segment(video);
+                        renderResult(result);
+                    } else {
+                        const startTime = performance.now();
+                        segmenter.value.segmentForVideo(video, startTime, renderResult);
+                    }
                 } else {
-                    const startTime = performance.now();
-                    segmenter.value.segmentForVideo(video, startTime, renderResult);
+                    // No segmenter and no chroma key? Just draw raw
+                    if (ctx) ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    animationFrameId = requestAnimationFrame(draw);
                 }
             } catch (e) {
                 console.error("Segmentation error:", e);
@@ -292,10 +342,65 @@ export function useBackgroundBlur() {
             }
         };
 
-        // Reusable ImageData for mask rendering (avoids per-frame allocation)
-        let maskImageData: ImageData | null = null;
-        let maskImageDataWidth = 0;
-        let maskImageDataHeight = 0;
+        const processChromaKey = (video: HTMLVideoElement): Float32Array => {
+            if (!personCtx || !personCanvas) return new Float32Array(0);
+            
+            // Draw video to personCanvas to get pixel data
+            personCtx.drawImage(video, 0, 0, personCanvas.width, personCanvas.height);
+            const imageData = personCtx.getImageData(0, 0, personCanvas.width, personCanvas.height);
+            const data = imageData.data;
+            const mask = new Float32Array(data.length / 4);
+            
+            const targetR = chromaKeyColor.r;
+            const targetG = chromaKeyColor.g;
+            const targetB = chromaKeyColor.b;
+            const thresholdSq = Math.pow(chromaKeyThreshold * 255, 2) * 3; // 3D distance threshold
+
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+                
+                // Euclidean distance in RGB space
+                const distSq = Math.pow(r - targetR, 2) + Math.pow(g - targetG, 2) + Math.pow(b - targetB, 2);
+                
+                // If distance is large, it's a person (not the key color)
+                mask[i / 4] = distSq > thresholdSq ? 1.0 : 0.0;
+            }
+            
+            return mask;
+        };
+
+        const renderChromaKeyResult = (maskData: Float32Array, width: number, height: number) => {
+            lastSuccessfulFrameTime = performance.now();
+            
+            if (!maskImageData || maskImageDataWidth !== width || maskImageDataHeight !== height) {
+                maskImageData = new ImageData(width, height);
+                maskImageDataWidth = width;
+                maskImageDataHeight = height;
+            }
+            
+            const data = maskImageData.data;
+            for (let i = 0; i < maskData.length; i++) {
+                const alpha = Math.round(maskData[i] * 255);
+                const j = i * 4;
+                data[j] = 255;
+                data[j + 1] = 255;
+                data[j + 2] = 255;
+                data[j + 3] = alpha;
+            }
+
+            if (isAutoFramingEnabled) {
+                updateFraming(maskData, width, height);
+            }
+
+            createImageBitmap(maskImageData).then(bmp => {
+                drawComposition(bmp, true);
+            }).catch(() => {
+                if (ctx && canvas) ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                animationFrameId = requestAnimationFrame(draw);
+            });
+        };
 
         let frameCount = 0;
         const renderResult = (result: ImageSegmenterResult) => {
@@ -405,11 +510,19 @@ export function useBackgroundBlur() {
              const w = canvas.width;
              const h = canvas.height;
 
-              // Update smooth framing
+              // Update smooth framing with Cinematic Dead Zone
               if (isAutoFramingEnabled) {
-                  const lerpFactor = 0.08; // Slightly faster but still smooth
-                  framing.centerX += (framing.targetCenterX - framing.centerX) * lerpFactor;
-                  framing.centerY += (framing.targetCenterY - framing.centerY) * lerpFactor;
+                  const lerpFactor = 0.05; // Slower, more cinematic movement
+                  
+                  // Only update targets if movement exceeds dead zone (15%)
+                  const dx = Math.abs(framing.targetCenterX - framing.centerX);
+                  const dy = Math.abs(framing.targetCenterY - framing.centerY);
+                  
+                  if (dx > framing.deadZone || dy > framing.deadZone) {
+                      framing.centerX += (framing.targetCenterX - framing.centerX) * lerpFactor;
+                      framing.centerY += (framing.targetCenterY - framing.centerY) * lerpFactor;
+                  }
+                  
                   framing.zoom += (framing.targetZoom - framing.zoom) * lerpFactor;
               } else {
                  framing.centerX = 0.5;
@@ -442,28 +555,46 @@ export function useBackgroundBlur() {
              blurCtx.filter = 'blur(4px)'; // Reduced from 6px
              drawOptimized(blurCtx, video, blurCanvas.width, blurCanvas.height);
              blurCtx.filter = 'none';
-             
-             // 2. Prepare person (on person canvas)
-             personCtx.clearRect(0, 0, w, h);
-             personCtx.save();
-             personCtx.filter = 'blur(2px)'; // Reduced from 3px
-             drawOptimized(personCtx, mask, w, h);
-             personCtx.restore();
-             
-             personCtx.globalCompositeOperation = 'source-in';
-             drawOptimized(personCtx, video, w, h);
-             personCtx.globalCompositeOperation = 'source-over';
+                          // 2. Prepare person with MASK FEATHERING (Blur trick)
+              personCtx.clearRect(0, 0, w, h);
+              personCtx.save();
+              
+              // Draw mask first
+              personCtx.drawImage(mask, 0, 0, w, h);
+              
+              // Source-in to cut person out
+              personCtx.globalCompositeOperation = 'source-in';
+              drawOptimized(personCtx, video, w, h);
+              personCtx.restore();
+
+              // Apply subtle feathering to the edges (8px blur on the cutout)
+              // We do this by drawing the person on the main canvas with a slight blur first
+              // but actually a better way for "crisp but feathered" is to blur the mask itself
+              // which we already did by drawOptimized(personCtx, mask, w, h) with filter.
+              // Wait, I see lines 458-459 in original code did this. Let's refine it.
+              
+              /* Refined Feathering Logic */
+              personCtx.clearRect(0, 0, w, h);
+              personCtx.save();
+              // Blur the mask for feathering (8px for premium feel)
+              personCtx.filter = 'blur(8px)'; 
+              drawOptimized(personCtx, mask, w, h);
+              personCtx.restore();
+              
+              personCtx.globalCompositeOperation = 'source-in';
+              drawOptimized(personCtx, video, w, h);
+              personCtx.globalCompositeOperation = 'source-over';
 
              // 3. Final composition on main canvas
              ctx.imageSmoothingEnabled = true;
-             ctx.imageSmoothingQuality = isMobile ? 'low' : 'medium'; 
+             ctx.imageSmoothingQuality = 'high'; // Premium scaling
              ctx.clearRect(0, 0, w, h);
 
               if (currentEffect === 'image' && cachedBgCanvas) {
                  drawOptimized(ctx, cachedBgCanvas, w, h);
               } else {
                  ctx.drawImage(blurCanvas, 0, 0, w, h);
-              }
+             }
              
              ctx.drawImage(personCanvas, 0, 0, w, h);
              
@@ -517,8 +648,8 @@ export function useBackgroundBlur() {
 
         // Throttle FPS on mobile to prevent overheating/freezing
         const captureFps = isMobile ? 15 : 30;
-        const processedStream = canvas.captureStream(captureFps); 
-        const outputTrack = processedStream.getVideoTracks()[0];
+        processedStream = canvas.captureStream(captureFps); 
+        outputTrack = processedStream.getVideoTracks()[0];
         console.log('[BackgroundBlur] Returning canvas track:', outputTrack?.id, 'enabled:', outputTrack?.enabled);
         return outputTrack;
     }
@@ -563,6 +694,8 @@ export function useBackgroundBlur() {
             sourceVideo = null;
         }
         currentTrackId = null;
+        processedStream = null;
+        outputTrack = null;
     }
 
     function destroy() {
@@ -586,11 +719,55 @@ export function useBackgroundBlur() {
         destroy();
     });
 
+    async function autoDetectGreenScreenColor(videoTrack: MediaStreamTrack): Promise<string> {
+        const video = document.createElement('video');
+        video.srcObject = new MediaStream([videoTrack]);
+        video.muted = true;
+        await video.play();
+
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return '#00FF00';
+
+        ctx.drawImage(video, 0, 0);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+
+        // Sample corners (often where the green screen is most visible)
+        const samples = [
+            getPixel(imageData, 10, 10, canvas.width),
+            getPixel(imageData, canvas.width - 10, 10, canvas.width),
+            getPixel(imageData, 10, canvas.height - 10, canvas.width),
+            getPixel(imageData, canvas.width - 10, canvas.height - 10, canvas.width),
+        ];
+
+        // Pick the most common or average "greenish" color? 
+        // For simplicity, let's just average the corners.
+        const avg = samples.reduce((acc, curr) => ({
+            r: acc.r + curr.r / 4,
+            g: acc.g + curr.g / 4,
+            b: acc.b + curr.b / 4
+        }), { r: 0, g: 0, b: 0 });
+
+        video.pause();
+        video.srcObject = null;
+
+        const toHex = (c: number) => Math.round(c).toString(16).padStart(2, '0');
+        return `#${toHex(avg.r)}${toHex(avg.g)}${toHex(avg.b)}`.toUpperCase();
+    }
+
+    function getPixel(data: Uint8ClampedArray, x: number, y: number, width: number) {
+        const i = (y * width + x) * 4;
+        return { r: data[i], g: data[i + 1], b: data[i + 2] };
+    }
+
     return {
         loadModel,
         startVideoEffect,
         stopProcessing,
         destroy,
+        autoDetectGreenScreenColor,
         isLoaded,
         isLoading,
         error

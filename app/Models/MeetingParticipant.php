@@ -25,6 +25,19 @@ class MeetingParticipant extends Model
         'is_camera_disabled_by_host' => 'boolean',
     ];
 
+    public function getDisplayNameAttribute()
+    {
+        if (! empty($this->metadata['display_name_override'])) {
+            return $this->metadata['display_name_override'];
+        }
+
+        if ($this->user_id) {
+            return $this->user?->name ?? 'User';
+        }
+
+        return $this->metadata['guest_name'] ?? 'Guest';
+    }
+
     protected static function boot()
     {
         parent::boot();
