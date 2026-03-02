@@ -1046,6 +1046,15 @@ Route::middleware(['throttle:meetings'])->prefix('meetings')->group(function () 
     Route::post('/{meeting}/breakout-timer-update', [\App\Http\Controllers\Api\MeetingController::class, 'updateBreakoutTimer']);
     Route::post('/{meeting}/breakout-activity-notify', [\App\Http\Controllers\Api\MeetingController::class, 'notifyBreakoutActivity']);
 
+    // PRO Meeting Recording (gated by MEETING_RECORDING_ENABLED env toggle)
+    // Token endpoint used to get the RealtimeKit auth_token for the frontend SDK.
+    // Start/stop/list require the caller to be the meeting host (enforced in controller).
+    Route::post('/{meeting}/recording/token', [\App\Http\Controllers\Api\MeetingRecordingController::class, 'token']);
+    Route::post('/{meeting}/recording/start', [\App\Http\Controllers\Api\MeetingRecordingController::class, 'start']);
+    Route::post('/{meeting}/recording/stop', [\App\Http\Controllers\Api\MeetingRecordingController::class, 'stop']);
+    Route::post('/{meeting}/recording/force-stop', [\App\Http\Controllers\Api\MeetingRecordingController::class, 'forceStop']);
+    Route::get('/{meeting}/recordings', [\App\Http\Controllers\Api\MeetingRecordingController::class, 'index']);
+
     // SFU Proxy Routes — exclude content-scanning firewall middleware
     // SDP and WebRTC data triggers false positives in XSS/SQLi/LFI detectors
     Route::withoutMiddleware([
@@ -1060,6 +1069,12 @@ Route::middleware(['throttle:meetings'])->prefix('meetings')->group(function () 
         Route::put('/{meeting}/sfu/sessions/{sessionId}/renegotiate', [\App\Http\Controllers\Api\MeetingController::class, 'sfuSessionRenegotiate']);
     });
 });
+
+// Cloudflare RealtimeKit webhook — called when a recording status changes (completed/failed).
+// Configure the URL in: dash.realtime.cloudflare.com → Your App → Webhooks
+Route::post('/webhooks/cloudflare/recording', [\App\Http\Controllers\Api\MeetingRecordingController::class, 'webhook'])
+    ->middleware('throttle:60,1');
+
 
 // Two-Factor Challenge routes (no auth required, but rate limited)
 Route::middleware(['throttle:sensitive'])->group(function () {

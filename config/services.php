@@ -108,10 +108,38 @@ return [
     */
 
     'cloudflare' => [
-        'turn_key_id' => env('TURN_KEY_ID'),
+        'turn_key_id'    => env('TURN_KEY_ID'),
         'turn_api_token' => env('TURN_KEY_API_TOKEN'),
-        'app_id' => env('CLOUDFLARE_APP_ID_SFU'),
-        'app_secret' => env('CLOUDFLARE_APP_SECRET_SFU'),
+        'app_id'         => env('CLOUDFLARE_APP_ID_SFU'),
+        'app_secret'     => env('CLOUDFLARE_APP_SECRET_SFU'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cloudflare RealtimeKit (PRO Meeting Recording)
+    |--------------------------------------------------------------------------
+    |
+    | Used for server-side meeting recordings via Cloudflare RealtimeKit v2.
+    |
+    | Get credentials from: dash.realtime.cloudflare.com → API Keys
+    |   - org_id  → "Organization ID" on the API Keys page
+    |   - api_key → API Key value
+    |   - app_id  → App ID after creating a RealtimeKit App
+    |
+    | MEETING_RECORDING_ENABLED=true acts as the dev toggle (no real
+    | subscription check yet — replace with billing gate later).
+    |
+    */
+    'cloudflare_realtime' => [
+        'account_id'         => env('CLOUDFLARE_REALTIME_ACCOUNT_ID'),
+        'api_token'          => env('CLOUDFLARE_REALTIME_API_TOKEN'),
+        'app_id'             => env('CLOUDFLARE_REALTIME_APP_ID'),
+        'recording_enabled'  => env('MEETING_RECORDING_ENABLED', false),
+        'watermark_url'      => env('RECORDING_WATERMARK_URL', env('APP_URL') . '/static/images/brands/logo.svg'),
+        'watermark_position' => env('RECORDING_WATERMARK_POSITION', 'right bottom'),
+        'watermark_height'   => (int) env('RECORDING_WATERMARK_HEIGHT', 40),
+        'watermark_width'    => (int) env('RECORDING_WATERMARK_WIDTH', 160),
     ],
 
 ];
+

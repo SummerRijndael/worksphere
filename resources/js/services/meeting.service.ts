@@ -228,6 +228,38 @@ class MeetingService extends BaseService {
         return response.data;
     }
 
+    // ─── PRO Recording (Cloudflare RealtimeKit) ───────────────────────────────
+
+    /**
+     * Get a RealtimeKit auth_token for the frontend SDK.
+     * Also creates the RealtimeKit meeting on the backend if it doesn't exist yet.
+     * Only called when MEETING_RECORDING_ENABLED=true.
+     */
+    async getRecordingToken(meetingId: string): Promise<{ cf_meeting_id: string; auth_token: string }> {
+        const response = await this.api.post(`/api/meetings/${meetingId}/recording/token`);
+        return response.data;
+    }
+
+    async startRecording(meetingId: string): Promise<{ recording_id: string; cf_recording_id: string; status: string }> {
+        const response = await this.api.post(`/api/meetings/${meetingId}/recording/start`);
+        return response.data;
+    }
+
+    async stopRecording(meetingId: string): Promise<{ recording_id: string; status: string }> {
+        const response = await this.api.post(`/api/meetings/${meetingId}/recording/stop`);
+        return response.data;
+    }
+
+    async forceStopRecording(meetingId: string): Promise<{ status: string }> {
+        const response = await this.api.post(`/api/meetings/${meetingId}/recording/force-stop`);
+        return response.data;
+    }
+
+    async listRecordings(meetingId: string): Promise<any[]> {
+        const response = await this.api.get(`/api/meetings/${meetingId}/recordings`);
+        return response.data?.data ?? [];
+    }
+
     // Helper wrappers since BaseService doesn't provide them directly
     protected async get<T>(url: string, params?: any): Promise<T> {
         return this.api.get<ApiResponse<T>>(url, { params }).then(this.extractData);

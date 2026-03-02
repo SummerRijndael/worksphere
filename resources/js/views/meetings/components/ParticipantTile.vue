@@ -60,8 +60,10 @@
 
         <!-- Avatar Fallback (Initials) -->
         <div v-if="!actualHasVideo" class="tile-avatar-wrap">
-            <div class="tile-avatar">
-                {{ initials }}
+            <div class="tile-avatar-content">
+                <div class="tile-avatar">
+                    {{ initials }}
+                </div>
             </div>
         </div>
 
@@ -258,11 +260,13 @@ watch(
     () => [
         localVideo.value,
         meetingStore.localStream,
+        props.isScreenShare,
+        props.localStreamOverride,
     ],
-    ([videoEl, camStream]) => {
+    ([videoEl, camStream, isScreen, overrideStream]) => {
         const stream =
-            props.isScreenShare && props.localStreamOverride
-                ? props.localStreamOverride
+            isScreen && overrideStream
+                ? overrideStream
                 : camStream;
         if (videoEl && stream) {
             const el = videoEl as HTMLVideoElement;
@@ -408,6 +412,26 @@ watch(() => meetingStore.lastAnnotationSignal, (data) => {
     z-index: 1;
 }
 
+.tile-avatar-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+}
+
+.tile-avatar-name {
+    color: #e8eaed;
+    font-size: 16px;
+    font-weight: 500;
+    font-family: "Google Sans", "Roboto", sans-serif;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+    max-width: 90%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .tile-avatar {
     width: 72px;
     height: 72px;
@@ -426,14 +450,18 @@ watch(() => meetingStore.lastAnnotationSignal, (data) => {
 /* Name Bar */
 .tile-name-bar {
     position: absolute;
-    bottom: 0;
-    left: 0;
+    bottom: 8px;
+    left: 8px;
     display: flex;
     align-items: center;
-    gap: 4px;
-    padding: 6px 10px;
+    gap: 6px;
+    padding: 2px 8px;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(4px);
+    border-radius: 4px;
     z-index: 5;
     pointer-events: none;
+    max-width: calc(100% - 16px);
 }
 
 .tile-mic-muted {
@@ -441,14 +469,12 @@ watch(() => meetingStore.lastAnnotationSignal, (data) => {
 }
 
 .tile-name-text {
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 500;
     color: #e8eaed;
-    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 180px;
 }
 
 /* Pin Button */

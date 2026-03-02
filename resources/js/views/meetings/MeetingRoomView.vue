@@ -48,6 +48,26 @@
             </div>
         </Transition>
 
+        <!-- Initializing Overlay -->
+        <Transition
+            enter-active-class="transition duration-300 ease-out"
+            enter-from-class="opacity-0"
+            enter-to-class="opacity-100"
+            leave-active-class="transition duration-500 ease-in"
+            leave-from-class="opacity-100"
+            leave-to-class="opacity-0"
+        >
+            <div v-if="initializing" class="initializing-overlay">
+                <div class="initializing-content">
+                    <div class="loading-ring"></div>
+                    <h2 class="initializing-title">Entering Room...</h2>
+                    <p class="initializing-subtitle">
+                        Setting up secure media session
+                    </p>
+                </div>
+            </div>
+        </Transition>
+
         <!-- Meeting Details Overlay -->
         <aside v-if="meetingStore?.meeting" class="meeting-details-overlay">
             <Transition name="panel">
@@ -218,7 +238,9 @@
                             :is-screen-share="spotlightTile.isScreen"
                             :local-camera-on="isCameraOn"
                             :local-mic-on="isMicOn"
-                            :local-stream-override="screenStream"
+                            :local-stream-override="
+                                spotlightTile.isScreen ? screenStream : null
+                            "
                         />
                     </div>
                     <div class="filmstrip" v-if="paginatedTiles.length > 0">
@@ -240,7 +262,9 @@
                                     :is-screen-share="tile.isScreen"
                                     :local-camera-on="isCameraOn"
                                     :local-mic-on="isMicOn"
-                                    :local-stream-override="screenStream"
+                                    :local-stream-override="
+                                        tile.isScreen ? screenStream : null
+                                    "
                                 />
                             </div>
                         </div>
@@ -267,7 +291,9 @@
                                 :is-screen-share="tile.isScreen"
                                 :local-camera-on="isCameraOn"
                                 :local-mic-on="isMicOn"
-                                :local-stream-override="screenStream"
+                                :local-stream-override="
+                                    tile.isScreen ? screenStream : null
+                                "
                             />
                         </div>
                     </div>
@@ -731,7 +757,7 @@
                                             :fallback="
                                                 p.metadata?.guest_name || 'G'
                                             "
-                                            size="32"
+                                            size="sm"
                                         />
                                         <div class="user-meta overflow-hidden">
                                             <div
@@ -866,10 +892,14 @@
                 <div
                     v-if="isRecording"
                     class="recording-badge"
-                    title="Recording in progress"
+                    :title="`Recording in progress (${formattedDuration})`"
                 >
                     <span class="recording-dot"></span>
                     <span>REC</span>
+                    <span
+                        class="recording-timer ml-1 font-mono text-xs opacity-90"
+                        >{{ formattedDuration }}</span
+                    >
                 </div>
 
                 <NetworkHealthIndicator
@@ -882,14 +912,25 @@
 
             <!-- Center: Media Controls -->
             <div class="bar-section bar-section--center">
-                <button
-                    class="ctrl-btn"
-                    :class="{ 'ctrl-btn--off': !isMicOn }"
-                    @click="toggleMic"
-                    :title="micToggleTitle"
-                >
-                    <Icon :name="isMicOn ? 'mic' : 'mic-off'" size="20" />
-                </button>
+                <div style="position: relative; display: flex;">
+                    <div 
+                        v-if="isMicOn"
+                        class="mic-volume-ring"
+                        :style="{
+                            transform: `scale(${1 + Math.min(meetingStore.localVolume / 40, 0.7)})`,
+                            opacity: meetingStore.localVolume > 2 ? 1 : 0
+                        }"
+                    ></div>
+                    <button
+                        class="ctrl-btn"
+                        style="z-index: 1;"
+                        :class="{ 'ctrl-btn--off': !isMicOn }"
+                        @click="toggleMic"
+                        :title="micToggleTitle"
+                    >
+                        <Icon :name="isMicOn ? 'mic' : 'mic-off'" size="20" />
+                    </button>
+                </div>
                 <button
                     class="ctrl-btn"
                     :class="{ 'ctrl-btn--off': !isCameraOn }"
@@ -1148,16 +1189,23 @@
                 </button>
 
                 <button
-                    v-if="meetingStore.isHost"
+                    v-if="meetingStore.isHost && recordingEnabled"
                     class="ctrl-btn"
                     :class="{ 'ctrl-btn--recording': isRecording }"
+                    :disabled="isRecordingStarting || isRecordingStopping"
                     @click="toggleRecording"
                     :title="isRecording ? 'Stop Recording' : 'Start Recording'"
                 >
                     <Icon
+                        v-if="!isRecordingStarting && !isRecordingStopping"
                         :name="isRecording ? 'circle-stop' : 'circle-dot'"
                         size="20"
                     />
+                    <div v-else class="flex items-center justify-center">
+                        <div
+                            class="recording-loading-spinner animate-pulse bg-red-500 w-3 h-3 rounded-full"
+                        ></div>
+                    </div>
                 </button>
             </div>
         </footer>
@@ -1212,6 +1260,7 @@ import BreakoutManagerModal from "./components/BreakoutManagerModal.vue";
 import BreakoutOverlay from "./components/BreakoutOverlay.vue";
 import BreakoutDashboard from "./components/BreakoutDashboard.vue";
 import { usePresenceStore } from "@/stores/presence";
+import { useRecording as useRecordingComposable } from "@/composables/useRecording";
 
 // Custom v-click-outside directive
 const vClickOutside = {
@@ -1248,6 +1297,7 @@ const showPollPanel = ref(false);
 const showReactionPicker = ref(false);
 const showMeetingDetails = ref(false);
 const showDevTool = ref(false);
+const initializing = ref(true);
 const activeParticipantTab = ref<"members" | "waiting">("members");
 
 function openRequestsPanel() {
@@ -1494,8 +1544,6 @@ watch(totalFilmstripPages, (pages) => {
 });
 
 const paginatedTiles = computed(() => {
-    if (meetingStore.preferredLayout === "spotlight") return [];
-
     if (isSpotlightMode.value) {
         const start = filmstripPage.value * FILMSTRIP_PAGE_SIZE;
         return unspotlightedTiles.value.slice(
@@ -1552,6 +1600,7 @@ onMounted(async () => {
     }
 
     try {
+        initializing.value = true;
         await meetingStore.initializeMeeting(meetingId, participantId);
 
         const stream = meetingStore.localStream;
@@ -1597,8 +1646,10 @@ onMounted(async () => {
         }
     } catch (e) {
         console.error("[MeetingRoom] Failed to initialize:", e);
-        toast.error("Security/Access failure — returning to lobby.");
+        toast.error("Something went wrong. Please rejoin from the lobby.");
         router.push({ name: "meeting-lobby", params: { id: meetingId } });
+    } finally {
+        initializing.value = false;
     }
 });
 
@@ -1626,31 +1677,28 @@ const screenStream = ref<MediaStream | null>(null);
 
 async function toggleScreenShare() {
     if (isScreenSharing.value) {
-        if (screenStream.value) {
-            screenStream.value.getTracks().forEach((t) => t.stop());
-            screenStream.value = null;
-        }
         isScreenSharing.value = false;
-
+        screenStream.value = null; // Track stops internally by SDK or onended
         await meetingStore.unpublishScreenTrack();
         meetingStore.clearSpotlight();
     } else {
         try {
-            const stream = await navigator.mediaDevices.getDisplayMedia({
-                video: true,
-                audio: false,
-            });
-            screenStream.value = stream;
-            isScreenSharing.value = true;
+            // Let the SDK handle the prompt to avoid "double prompt" issue
+            const result = await meetingStore.publishScreenTrack();
+            if (result && result.stream) {
+                screenStream.value = result.stream;
+                isScreenSharing.value = true;
+                meetingStore.setSpotlight(
+                    meetingStore.localParticipant!.public_id,
+                );
 
-            await meetingStore.publishScreenTrack(stream);
-
-            meetingStore.setSpotlight(meetingStore.localParticipant!.public_id);
-
-            const screenTrack = stream.getVideoTracks()[0];
-            screenTrack.onended = () => {
-                if (isScreenSharing.value) toggleScreenShare();
-            };
+                const screenTrack = result.stream.getVideoTracks()[0];
+                if (screenTrack) {
+                    screenTrack.onended = () => {
+                        if (isScreenSharing.value) toggleScreenShare();
+                    };
+                }
+            }
         } catch (err) {
             toast.error("Failed to share screen");
             console.error(err);
@@ -1912,24 +1960,32 @@ watch(
 
 const showHangupMenu = ref(false);
 const lastReactionEmoji = ref("👍");
-const isRecording = ref(false);
 
-watch(isRecording, (val) => {
-    if (val) {
-        toast.success("Meeting is being recorded", {
-            description:
-                "By staying in the meeting, you consent to being recorded. Please review our privacy policy.",
-            duration: 6000,
-        });
+// ─── PRO Recording ──────────────────────────────────────────────────────────
+// isRecording is sourced from the store (set via SignalingManager signals) so
+// ALL participants see the REC badge when the host starts/stops recording.
+const isRecording = computed(() => meetingStore.isRecording);
+
+// Dev toggle: only show the record button when MEETING_RECORDING_ENABLED=true.
+// Once real subscriptions exist, replace this with a billing check.
+const recordingEnabled = computed(
+    () => !!(meetingStore.meeting as any)?.recording_enabled,
+);
+
+const {
+    startRecording,
+    stopRecording,
+    isStarting: isRecordingStarting,
+    isStopping: isRecordingStopping,
+    formattedDuration,
+} = useRecordingComposable(meetingId, () => !!meetingStore.isHost);
+
+async function toggleRecording() {
+    if (isRecording.value) {
+        await stopRecording();
     } else {
-        toast.info("Recording has stopped", {
-            duration: 4000,
-        });
+        await startRecording();
     }
-});
-
-function toggleRecording() {
-    isRecording.value = !isRecording.value;
 }
 
 function sendQuickReaction() {
@@ -2194,21 +2250,29 @@ onBeforeUnmount(() => {
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 4px 10px;
-    background: rgba(234, 67, 53, 0.15);
-    color: #f28b82;
-    border-radius: 6px;
+    padding: 2px 10px;
+    background: #ea4335;
+    color: #ffffff;
+    border-radius: 4px;
     font-size: 11px;
     font-weight: 700;
-    margin-left: 8px;
+    margin-left: 12px;
+    box-shadow: 0 0 12px rgba(234, 67, 53, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    height: 24px;
 }
 
 .recording-dot {
-    width: 8px;
-    height: 8px;
-    background: #ea4335;
+    width: 6px;
+    height: 6px;
+    background: #ffffff;
     border-radius: 50%;
-    animation: pulse-red 2s infinite;
+    animation: flash 1.5s infinite;
+}
+
+@keyframes flash {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
 }
 
 @keyframes pulse-red {
@@ -2255,6 +2319,19 @@ onBeforeUnmount(() => {
 .ctrl-btn--active {
     background: rgba(138, 180, 248, 0.15);
     color: #8ab4f8;
+}
+
+.mic-volume-ring {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-radius: 50%;
+    background: rgba(138, 180, 248, 0.4);
+    pointer-events: none;
+    transition: transform 0.05s linear, opacity 0.1s ease-out;
+    z-index: 0;
 }
 
 .ctrl-btn--sharing {
@@ -3817,6 +3894,51 @@ onBeforeUnmount(() => {
     /* Hide less critical items on very small screens to avoid overlap */
     .bar-section--right .MeetingLayoutSelector {
         display: none;
+    }
+}
+.initializing-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: var(--surface-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
+.initializing-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+.loading-ring {
+    width: 64px;
+    height: 64px;
+    border: 4px solid var(--surface-tertiary);
+    border-top-color: var(--indigo-500);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+.initializing-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.initializing-subtitle {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
     }
 }
 </style>

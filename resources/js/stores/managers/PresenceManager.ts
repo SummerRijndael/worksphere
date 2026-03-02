@@ -254,7 +254,13 @@ export function createPresenceManager(
                 const effectiveMyRoom = myRoomId || myAssignedRoomId;
                 
                 const pRoomId = (p.current_room_id !== undefined && p.current_room_id !== null) ? String(p.current_room_id) : null;
-                return pRoomId === effectiveMyRoom;
+                const matches = pRoomId === (effectiveMyRoom || null);
+                
+                if (!matches) {
+                    log('DEBUG', `Filtered out ${p.public_id}: Room mismatch (P:${pRoomId} vs My:${effectiveMyRoom})`);
+                }
+                
+                return matches;
             }), 
             ...mockParticipants.value
         ];

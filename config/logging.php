@@ -174,6 +174,13 @@ return [
             'replace_placeholders' => true,
         ],
 
+        'cloudflare_realtime' => [
+            'driver' => 'single',
+            'path' => storage_path('app/private/sys/logs/cloudflare_realtime.log'),
+            'level' => 'debug',
+            'replace_placeholders' => true,
+        ],
+
     ],
 
 ];

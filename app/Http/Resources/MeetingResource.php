@@ -39,6 +39,9 @@ class MeetingResource extends JsonResource
                 return MeetingParticipantResource::collection($this->whenLoaded('participants'));
             }),
             'active_breakout_session' => $this->activeBreakoutSession,
+            // PRO recording: true when MEETING_RECORDING_ENABLED=true (dev toggle).
+            // Replace with subscription/billing check when real pro users exist.
+            'recording_enabled' => config('services.cloudflare_realtime.recording_enabled', false),
         ];
     }
 }

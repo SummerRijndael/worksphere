@@ -6,7 +6,9 @@ use App\Contracts\MeetingServiceContract;
 use App\Events\Meetings\MeetingParticipantAdmitted;
 use App\Events\Meetings\MeetingParticipantJoined;
 use App\Events\Meetings\MeetingSignal;
+use App\Mail\EventInvitation;
 use App\Models\BreakoutSession;
+use App\Models\Event;
 use App\Models\Meeting;
 use App\Models\MeetingParticipant;
 use App\Models\User;
@@ -14,14 +16,29 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Pusher\Pusher;
 
 class MeetingService implements MeetingServiceContract
 {
     public function createMeeting(User $user, array $data): Meeting
     {
-        return DB::transaction(function () use ($user, $data) {
+        $participants = $data['participants'] ?? [];
+        $internalParticipants = collect($participants)->filter(fn ($p) => ($p['type'] ?? 'user') === 'user');
+        $externalParticipants = collect($participants)->filter(fn ($p) => ($p['type'] ?? 'user') === 'email');
+
+        $guestAccessEnabled = $data['settings']['guest_access'] ?? false;
+
+        // Smart external guest validation
+        if ($externalParticipants->isNotEmpty() && ! $guestAccessEnabled) {
+            throw ValidationException::withMessages([
+                'participants' => 'External guest emails cannot be added when "Allow external guests" is disabled.',
+            ]);
+        }
+
+        return DB::transaction(function () use ($user, $data, $internalParticipants, $externalParticipants) {
             $meeting = Meeting::create([
                 'public_id' => (string) Str::ulid(),
                 'user_id' => $user->id,
@@ -42,6 +59,49 @@ class MeetingService implements MeetingServiceContract
                 'role' => 'host',
                 'status' => 'admitted',
             ]);
+
+            // Save to calendar if requested
+            if ($data['save_to_calendar'] ?? false) {
+                $externalEmails = $externalParticipants->pluck('email')->filter()->values()->toArray();
+                $internalIds = $internalParticipants->pluck('id')->filter()->values()->toArray();
+
+                $startTime = \Illuminate\Support\Carbon::parse($meeting->start_time);
+                $endTime = $meeting->end_time ? \Illuminate\Support\Carbon::parse($meeting->end_time) : $startTime->copy()->addHour();
+
+                $event = Event::create([
+                    'user_id' => $user->id,
+                    'title' => $meeting->title,
+                    'description' => $meeting->description,
+                    'start_time' => $startTime,
+                    'end_time' => $endTime,
+                    'is_all_day' => false,
+                    'external_attendees' => $externalEmails,
+                    'meeting_id' => $meeting->id,
+                ]);
+
+                // Attach internal attendees (resolve public_ids to internal ids if needed)
+                if (! empty($internalIds)) {
+                    $userIds = User::whereIn('public_id', $internalIds)->pluck('id');
+                    if ($userIds->isEmpty()) {
+                        // Try by integer id directly
+                        $userIds = collect($internalIds);
+                    }
+                    $event->attendees()->attach($userIds);
+                }
+
+                // Send invitations if requested
+                if ($data['send_invite'] ?? false) {
+                    $attendeeUsers = $event->attendees;
+                    foreach ($attendeeUsers as $attendee) {
+                        if ($attendee->id !== $user->id) {
+                            Mail::to($attendee)->queue(new EventInvitation($event));
+                        }
+                    }
+                    foreach ($externalEmails as $email) {
+                        Mail::to($email)->queue(new EventInvitation($event));
+                    }
+                }
+            }
 
             return $meeting;
         });

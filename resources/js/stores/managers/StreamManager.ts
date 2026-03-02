@@ -808,7 +808,7 @@ export function createStreamManager(
         });
     }
 
-    async function publishScreenTrack(screenStream: MediaStream): Promise<{ mid: string } | null> {
+    async function publishScreenTrack(screenStream: MediaStream): Promise<{ mid: string, stream: MediaStream } | null> {
         if (!sfuPc || !sfuSessionId.value) return null;
 
         localScreenStream.value = screenStream;
@@ -826,7 +826,7 @@ export function createStreamManager(
             const maxRetries = 5;
             let attempt = 0;
 
-            const executePublish = async (): Promise<{ mid: string } | null> => {
+            const executePublish = async (): Promise<{ mid: string, stream: MediaStream } | null> => {
                 attempt++;
                 try {
                     if (!screenTc) {
@@ -860,12 +860,12 @@ export function createStreamManager(
                         );
                         await sfuPc!.setRemoteDescription(toSdpAnswer(res.sessionDescription));
                         broadcastMediaMids();
-                        return { mid: screenTc.mid || '' };
+                        return { mid: screenTc.mid || '', stream: screenStream };
                     } else {
                         log('MEDIA', `Reusing inactive screen transceiver (Attempt ${attempt})`);
                         await screenTc.sender.replaceTrack(videoTrack);
                         broadcastMediaMids();
-                        return { mid: screenTc.mid || '' };
+                        return { mid: screenTc.mid || '', stream: screenStream };
                     }
                 } catch (error: any) {
                     const isTooEarly = error?.response?.status === 425 || error?.message?.includes('425');

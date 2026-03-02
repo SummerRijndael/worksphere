@@ -18,6 +18,8 @@ class Meeting extends Model
         'password',
         'is_locked',
         'app_id',
+        // RealtimeKit meeting ID (set when a PRO recording session is initialised)
+        'cf_meeting_id',
     ];
 
     protected $casts = [
@@ -76,6 +78,27 @@ class Meeting extends Model
                 $query->whereNull('duration_minutes')
                     ->orWhereRaw('DATE_ADD(started_at, INTERVAL duration_minutes + 1 MINUTE) > ?', [now()]);
             });
+    }
+
+    public function recordings(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(MeetingRecording::class);
+    }
+
+    public function activeRecording(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(MeetingRecording::class)
+            ->whereIn('status', ['pending', 'recording'])
+            ->latestOfMany();
+    }
+
+    /**
+     * Whether this meeting has met the criteria for recording (PRO dev toggle).
+     * Replace with billing check when subscriptions are live.
+     */
+    public function recordingEnabled(): bool
+    {
+        return config('services.cloudflare_realtime.recording_enabled', false);
     }
 
     /**

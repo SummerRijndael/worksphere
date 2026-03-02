@@ -6,7 +6,7 @@ import { createLogger } from './managers/logger';
 import { useAuthStore } from '@/stores/auth';
 
 import { createPresenceManager } from './managers/PresenceManager';
-import { createStreamManager } from './managers/StreamManager';
+import { createUnifiedMediaManager } from './managers/UnifiedMediaManager';
 import { createSignalingManager } from './managers/SignalingManager';
 import { createLayoutManager } from './managers/LayoutManager';
 
@@ -73,12 +73,68 @@ export const useMeetingStore = defineStore('meeting', () => {
     const showBreakoutManager = ref(false);
     let timerInterval: any = null;
 
+    // ── PRO Recording ──────────────────────────────────────────────────────────
+    // Reactive recording state. Set via signal handlers so ALL participants see
+    // the REC badge — not just the host who called start/stop.
+    const isRecording = ref(false);
+    const activeRecordingId = ref<string | null>(null);
+    const recordingDuration = ref(0);
+    const recordingTimerInterval = ref<number | null>(null);
+
+    const formattedRecordingDuration = computed(() => {
+        const mins = Math.floor(recordingDuration.value / 60);
+        const secs = recordingDuration.value % 60;
+        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    });
+
+    function startRecordingTimer(initialDuration = 0) {
+        if (recordingTimerInterval.value) clearInterval(recordingTimerInterval.value);
+        recordingDuration.value = initialDuration;
+        recordingTimerInterval.value = window.setInterval(() => {
+            recordingDuration.value++;
+        }, 1000);
+    }
+
+    function stopRecordingTimer() {
+        if (recordingTimerInterval.value) {
+            clearInterval(recordingTimerInterval.value);
+            recordingTimerInterval.value = null;
+        }
+    }
+
+    async function handleRecordingStarted(data: { recording_id: string; started_by: string; duration?: number }) {
+        isRecording.value = true;
+        activeRecordingId.value = data.recording_id;
+        startRecordingTimer(data.duration || 0);
+
+        // Notify all participants with a prominent privacy notice
+        const { toast } = await import('vue-sonner');
+        toast('Recording started', {
+            description: 'This meeting is being recorded. By continuing to participate, you consent to being recorded.',
+            duration: 10000,
+            icon: '🔴',
+        });
+    }
+
+    async function handleRecordingStopped(_data: { recording_id: string }) {
+        isRecording.value = false;
+        activeRecordingId.value = null;
+        stopRecordingTimer();
+
+        const { toast } = await import('vue-sonner');
+        toast('Recording stopped', {
+            description: 'The recording will be available in the meeting history once processed.',
+            duration: 5000,
+            icon: '⏹️',
+        });
+    }
+
     // 2. Initialize Sub-Managers
     const layout = createLayoutManager(meeting, localParticipant);
     
     const presence = createPresenceManager(meeting, localParticipant, currentRoomId);
     
-    const stream = createStreamManager(
+    const stream = createUnifiedMediaManager(
         meeting, 
         localParticipant, 
         iceServers,
@@ -87,11 +143,14 @@ export const useMeetingStore = defineStore('meeting', () => {
             presence.setTalking(id, isTalking);
             if (isTalking) layout.setActiveSpeaker(id);
         },
+        (id, isSharing) => {
+            presence.toggleScreenShareState(id, isSharing);
+        },
         (audioMid, videoMid, screenMid) => {
             signaling.broadcastSfuMediaReady(audioMid, videoMid, screenMid, currentRoomId.value);
         },
         (err) => {
-            log('ERROR', 'SFU Error encountered', err);
+            log('ERROR', 'Media Engine Error encountered', err);
         }
     );
 
@@ -101,12 +160,9 @@ export const useMeetingStore = defineStore('meeting', () => {
         presence, 
         stream,
         async () => {
-            // onAdmitted callback: initialize WebRTC when host lets them in
-            stream.initSFU(stream.localStream.value);
+            log('SYS', 'onAdmittedCallback triggered - initializing media engine');
+            await initMediaEngine();
             
-            // Proactively ask everyone to re-send their media info to us
-            signaling.broadcastRequestMediaInfo();
-
             // Fetch any polls that were already created before we joined
             if (meeting.value?.public_id) {
                 try {
@@ -135,32 +191,26 @@ export const useMeetingStore = defineStore('meeting', () => {
          try {
              log('SYS', `Initializing meeting ${meetingId} for participant ${participantPublicId}`);
              const data = await meetingService.getMeeting(meetingId) as any;
-             // MeetingResource has $wrap = null, so the response IS the meeting object
-             // with participants nested inside it.
-             const participants = data.participants || [];
-             meeting.value = data;
-             isLocked.value = !!data.is_locked;
-             laserPointerMode.value = data.settings?.laser_pointer_mode || 'off';
              
-             // Normalize all incoming participant IDs
+             // Extract participants and normalize
+             const participants = data.participants || [];
              participants.forEach((p: any) => {
                  p.public_id = p.public_id.toLowerCase();
              });
 
-             // Find local participant
+             // Find local participant in the fetched data
              const normalizedParticipantId = participantPublicId.toLowerCase();
              const found = participants.find((p: any) => p.public_id === normalizedParticipantId) || null;
              
+             // --- SECURITY GUARD: PRE-COMMIT VALIDATION ---
              const authStore = useAuthStore();
              const currentPublicId = authStore.user?.public_id || 'Guest';
              const recordUserPublicId = found?.user?.public_id || 'Guest';
 
              if (found?.user_id) {
-                // Registered User Check
+                // Registered User Check: Must be logged in as THE user this participant record belongs to
                 if (recordUserPublicId !== currentPublicId) {
                     log('SECURITY', 'IDENTITY MISMATCH: Rejecting token.');
-                    meeting.value = null; // Clear state before throwing
-                    localParticipant.value = null;
                     throw new Error("Identity Mismatch");
                 }
              } else if (found) {
@@ -169,14 +219,20 @@ export const useMeetingStore = defineStore('meeting', () => {
                 const storedToken = localStorage.getItem(`worksphere_meeting_token_${meetingId}`);
                 if (!storedToken || storedToken.toLowerCase() !== normalizedParticipantId) {
                     log('SECURITY', 'GUEST SESSION MISMATCH: Rejecting URL-pasted token.');
-                    meeting.value = null; // Clear state before throwing
-                    localParticipant.value = null;
                     throw new Error("Guest Session Mismatch");
                 }
+             } else {
+                 // Participant ID not found in meeting at all
+                 log('SECURITY', 'PARTICIPANT NOT FOUND: Rejecting session.');
+                 throw new Error("Invalid Participant");
              }
-             
-             localParticipant.value = found;
 
+             // --- COMMIT PHASE: Checks passed, set global state ---
+             log('SYS', `Committing state: Local PID=${found.public_id}, Name=${found.user?.name || found.metadata?.guest_name}`);
+             meeting.value = data;
+             isLocked.value = !!data.is_locked;
+             laserPointerMode.value = data.settings?.laser_pointer_mode || 'off';
+             localParticipant.value = found;
              presence.participants.value = participants;
 
              // Fetch ICE Servers separately since getMeeting doesn't return them
@@ -193,11 +249,11 @@ export const useMeetingStore = defineStore('meeting', () => {
              }
 
              // Note: We do NOT call initSFU here. MeetingRoomView.vue will call
-             // addLocalStream() next, which triggers resetSFUSession → initSFU with
-             // the actual local stream. Calling it here would cause a double-init.
+             // addLocalStream() next, which triggers initialization.
              if (localParticipant.value?.status === 'admitted') {
-                 log('SYS', 'Participant admitted, SFU will start when addLocalStream is called');
-                 
+                 log('SYS', 'Participant admitted, initializing media engine');
+                 await initMediaEngine();
+
                  // --- BREAKOUT RECOVERY ---
                  const activeSession = data.active_breakout_session;
                  if (activeSession) {
@@ -262,10 +318,65 @@ export const useMeetingStore = defineStore('meeting', () => {
          signaling.leaveSignaling();
          presence.leaveEcho();
          stream.cleanup();
+         stopLocalAudioAnalysis();
          layout.clearSpotlight();
          meeting.value = null;
          localParticipant.value = null;
          remotePointers.clear();
+    }
+
+    const localVolume = ref(0);
+    let localAudioAnalyser: { context: any, source: any, analyser: any, interval: number } | null = null;
+    
+    function startLocalAudioAnalysis(s: MediaStream) {
+        stopLocalAudioAnalysis(); // cleanup first
+        const pId = localParticipant.value?.public_id;
+        if (!pId || !s.getAudioTracks().length) return;
+
+        try {
+            const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
+            const context = new AudioContextClass();
+            const source = context.createMediaStreamSource(s);
+            const analyser = context.createAnalyser();
+            analyser.fftSize = 256;
+            analyser.smoothingTimeConstant = 0.8;
+            source.connect(analyser);
+
+            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+            const interval = window.setInterval(() => {
+                analyser.getByteFrequencyData(dataArray);
+                let volume = 0;
+                for (let i = 0; i < dataArray.length; i++) {
+                    volume += dataArray[i];
+                }
+                const average = volume / dataArray.length;
+                localVolume.value = average;
+
+                if (average > 15) {
+                    presence.setTalking(pId, true);
+                } else {
+                    presence.setTalking(pId, false);
+                }
+            }, 100);
+
+            localAudioAnalyser = { context, source, analyser, interval };
+        } catch (e) {
+            log('ERROR', 'Local audio analysis failed', e);
+        }
+    }
+
+    function stopLocalAudioAnalysis() {
+        if (localAudioAnalyser) {
+            window.clearInterval(localAudioAnalyser.interval);
+            localAudioAnalyser.context.close().catch(() => {});
+            localAudioAnalyser = null;
+        }
+        const pId = localParticipant.value?.public_id;
+        if (pId) {
+            presence.setTalking(pId, false);
+        }
+        localVolume.value = 0;
     }
 
     function toggleHand() {
@@ -276,12 +387,29 @@ export const useMeetingStore = defineStore('meeting', () => {
         signaling.broadcastHandState(isRaised);
     }
 
-    async function publishScreenTrack(s: MediaStream) {
-        const result = await stream.publishScreenTrack(s);
+    async function publishScreenTrack(s?: MediaStream) {
+        let streamToPublish = s;
+
+        // Legacy SFU REQUIRES a stream (it doesn't have a built-in prompt like the SDK)
+        if (!meeting.value?.recording_enabled && !streamToPublish) {
+            log('SYS', 'Legacy SFU mode: Triggering manual getDisplayMedia prompt');
+            try {
+                streamToPublish = await navigator.mediaDevices.getDisplayMedia({
+                    video: true,
+                    audio: false
+                });
+            } catch (e) {
+                log('ERROR', 'Failed to get display media for legacy sharing', e);
+                return null;
+            }
+        }
+
+        const result = await stream.publishScreenTrack(streamToPublish);
         if (result && result.mid) {
             presence.toggleScreenShareState(localParticipant.value!.public_id, true);
             signaling.broadcastScreenShareState(true, result.mid);
         }
+        return result;
     }
 
     async function unpublishScreenTrack() {
@@ -292,6 +420,11 @@ export const useMeetingStore = defineStore('meeting', () => {
 
     function setStream(newStream: MediaStream | null) {
         stream.setLocalStream(newStream);
+        if (newStream) {
+            startLocalAudioAnalysis(newStream);
+        } else {
+            stopLocalAudioAnalysis();
+        }
     }
 
     async function muteParticipant(publicId: string) {
@@ -573,6 +706,51 @@ export const useMeetingStore = defineStore('meeting', () => {
         // Prevent strictly duplicate IDs, though usually broadcast logic only sends once
         if (!chatMessages.value.find(m => m.id === msg.id)) {
             chatMessages.value.push(msg);
+        }
+    }
+
+    async function initMediaEngine() {
+        if (!meeting.value || !localParticipant.value) return;
+        if (localParticipant.value.status !== 'admitted') {
+            log('SYS', 'Skipping media engine init: Participant not admitted');
+            return;
+        }
+
+        log('SYS', 'Initializing media engine...');
+
+        if (meeting.value.recording_enabled) {
+            // Cloudflare SDK Path
+            try {
+                const { default: api } = await import('@/lib/api');
+                const tokenRes = await api.post(`/api/meetings/${meeting.value.public_id}/recording/token`);
+                
+                if (tokenRes.data.auth_token) {
+                    log('SYS', 'Joining Cloudflare Realtime session...');
+                    await stream.initSDK(tokenRes.data.auth_token, stream.localStream.value);
+                }
+                
+                // Sync recording state if active
+                if (tokenRes.data.recording) {
+                    log('SYS', 'Active recording found, syncing state');
+                    const startedAt = new Date(tokenRes.data.recording.started_at).getTime();
+                    const now = new Date().getTime();
+                    const currentDuration = Math.max(0, Math.floor((now - startedAt) / 1000));
+                    
+                    handleRecordingStarted({
+                        recording_id: tokenRes.data.recording.id,
+                        started_by: 'System',
+                        duration: currentDuration
+                    });
+                }
+            } catch (e) {
+                log('ERROR', 'Failed to initialize Cloudflare SDK', e);
+            }
+        } else {
+            // Legacy SFU Path
+            log('SYS', 'Initializing Legacy SFU session...');
+            stream.initSFU(stream.localStream.value);
+            // Proactively ask everyone to re-send their media info to us
+            signaling.broadcastRequestMediaInfo();
         }
     }
 
@@ -1052,6 +1230,7 @@ export const useMeetingStore = defineStore('meeting', () => {
         // Stream Manager
         remoteStreams: stream.remoteStreams,
         localStream: stream.localStream,
+        localVolume,
         sfuConnectionState: stream.sfuConnectionState,
         sfuIceState: stream.sfuIceState,
         sfuPc: stream.sfuPc,
@@ -1181,5 +1360,11 @@ export const useMeetingStore = defineStore('meeting', () => {
         sendAnnotationUpdate,
         receiveAnnotationUpdate,
         handleAnnotationUpdate: receiveAnnotationUpdate,
+
+        // PRO Recording
+        isRecording,
+        activeRecordingId,
+        handleRecordingStarted,
+        handleRecordingStopped,
     };
 });

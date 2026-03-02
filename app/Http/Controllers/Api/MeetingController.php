@@ -39,17 +39,17 @@ class MeetingController extends Controller
         return MeetingResource::collection($meetings);
     }
 
-    public function store(Request $request): MeetingResource
+    public function store(Request $request): MeetingResource|JsonResponse
     {
         $this->authorize('create', Meeting::class);
 
         $request->validate([
-            'title' => 'required|string|max:255',
-            'description' => 'nullable|string|max:1000',
-            'start_time' => 'required|date',
-            'end_time' => 'nullable|date|after:start_time',
-            'settings' => 'nullable|array',
-            'password' => [
+            'title'                    => 'required|string|max:255',
+            'description'              => 'nullable|string|max:1000',
+            'start_time'               => 'required|date',
+            'end_time'                 => 'nullable|date|after:start_time',
+            'settings'                 => 'nullable|array',
+            'password'                 => [
                 'nullable',
                 'string',
                 'max:100',
@@ -59,7 +59,14 @@ class MeetingController extends Controller
                     }
                 },
             ],
-            'auto_generate_password' => 'nullable|boolean',
+            'auto_generate_password'   => 'nullable|boolean',
+            'save_to_calendar'         => 'nullable|boolean',
+            'send_invite'              => 'nullable|boolean',
+            'participants'             => 'nullable|array',
+            'participants.*.type'      => 'required_with:participants|in:user,email',
+            'participants.*.id'        => 'nullable|string',
+            'participants.*.email'     => 'nullable|email',
+            'participants.*.name'      => 'nullable|string',
         ]);
 
         $existing = Meeting::where('user_id', Auth::id())
@@ -78,9 +85,16 @@ class MeetingController extends Controller
         }
 
         $data = $request->only(['title', 'description', 'start_time', 'end_time', 'settings']);
-        $data['password'] = $password;
+        $data['password']         = $password;
+        $data['save_to_calendar'] = $request->boolean('save_to_calendar');
+        $data['send_invite']      = $request->boolean('send_invite');
+        $data['participants']     = $request->input('participants', []);
 
-        $meeting = $this->meetingService->createMeeting($request->user(), $data);
+        try {
+            $meeting = $this->meetingService->createMeeting($request->user(), $data);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['message' => $e->getMessage(), 'errors' => $e->errors()], 422);
+        }
 
         return new MeetingResource($meeting->load(['host', 'participants.user']));
     }
