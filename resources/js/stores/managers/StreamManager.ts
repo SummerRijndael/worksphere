@@ -761,8 +761,9 @@ export function createStreamManager(
                             'PUT'
                         );
                     } catch (renegErr) {
-                        log('ERROR', `Renegotiation failed for ${participantPublicId}:`, renegErr);
-                        throw renegErr; // bubble up for retry
+                        // Don't throw — the track is already received and linked.
+                        // Renegotiation failure shouldn't trigger a full retry.
+                        log('SFU', `Renegotiation warning for ${participantPublicId} (track already received, non-fatal):`, renegErr);
                     }
 
                     participantTransceivers.set(normalizedId, {
