@@ -330,11 +330,11 @@ export const useAuthStore = defineStore('auth', () => {
 
       return { success: true };
     } catch (error: any) {
-      if (error.response?.data?.requires_challenge) {
+      if (error.requires_challenge || error.response?.data?.requires_challenge) {
           return {
               success: false,
               requires_challenge: true,
-              error: error.response?.data?.message || 'Security check required.',
+              error: error.message || error.response?.data?.message || 'Security check required.',
           };
       }
       
