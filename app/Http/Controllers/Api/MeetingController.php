@@ -108,7 +108,10 @@ class MeetingController extends Controller
 
     public function join(Request $request, Meeting $meeting): JsonResponse
     {
-        $request->validate(['email' => 'nullable|email']);
+        $request->validate([
+            'email' => 'nullable|email',
+            'is_companion' => 'nullable|boolean',
+        ]);
 
         $participantSessionId = session('meeting_participant_id');
 
@@ -119,7 +122,8 @@ class MeetingController extends Controller
                 $request->input('name', 'Guest'),
                 $request->input('email'),
                 $request->input('password'),
-                $participantSessionId
+                $participantSessionId,
+                $request->boolean('is_companion')
             );
 
             if (! $request->user()) {

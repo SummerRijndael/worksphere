@@ -815,7 +815,7 @@ const handleMouseDown = (e: any) => {
             normalizedPoints: [0, 0],
             lineCap: 'round',
             lineJoin: 'round',
-            tension: 0.5,
+            tension: 0, // Set to 0 to prevent the "lasso" / bending effect
         };
     } else if (currentTool.value === 'rect') {
         currentDrawingElement.value = {

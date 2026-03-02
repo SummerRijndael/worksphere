@@ -104,7 +104,12 @@ async function startVisualizer(deviceId: string) {
     stopVisualizer();
     try {
         const stream = await navigator.mediaDevices.getUserMedia({
-            audio: { deviceId: { exact: deviceId } },
+            audio: { 
+                deviceId: { exact: deviceId },
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+            },
         });
         microphoneStream.value = stream;
 
@@ -278,12 +283,12 @@ async function startCameraPreview(deviceId?: string) {
             video: deviceId
                 ? {
                       deviceId: { exact: deviceId },
-                      width: { ideal: 640 },
-                      height: { ideal: 360 },
+                      width: { ideal: 1280 },
+                      height: { ideal: 720 },
                   }
                 : {
-                      width: { ideal: 640 },
-                      height: { ideal: 360 },
+                      width: { ideal: 1280 },
+                      height: { ideal: 720 },
                       facingMode: "user",
                   },
             audio: false,
@@ -405,8 +410,11 @@ watch(
         () => store.videoEffect,
         () => store.backgroundImage,
         () => store.autoFraming,
+        () => store.hasPhysicalGreenScreen,
+        () => store.greenScreenColor,
+        () => store.greenScreenThreshold,
     ],
-    async ([effect, bgImage, framing]) => {
+    async ([effect, bgImage, framing, hasGreenScreen, greenColor, threshold]) => {
         if (!props.open || activeTab.value !== "video" || !originalPreviewTrack)
             return;
 
@@ -417,6 +425,9 @@ watch(
                     effect,
                     bgImage || undefined,
                     framing,
+                    hasGreenScreen,
+                    greenColor,
+                    threshold
                 );
                 previewProcessedStream.value = new MediaStream([
                     processedTrack,
@@ -473,6 +484,16 @@ const handleImageUpload = (event: Event) => {
 const selectPreset = (url: string) => {
     store.setBackgroundImage(url);
     store.setVideoEffect("image");
+};
+
+const handleAutoDetect = async () => {
+    if (originalPreviewTrack) {
+        const detectedColor = await backgroundBlur.autoDetectGreenScreenColor(originalPreviewTrack);
+        store.setGreenScreenColor(detectedColor);
+        if (!store.hasPhysicalGreenScreen) {
+            store.setHasPhysicalGreenScreen(true);
+        }
+    }
 };
 
 watch(
@@ -945,6 +966,69 @@ onBeforeUnmount(() => {
                                             >Custom</span
                                         >
                                     </label>
+                                </div>
+
+                                <!-- Chroma Key / Physical Green Screen -->
+                                <div class="bg-(--surface-tertiary)/10 rounded-xl p-4 border border-(--border-subtle) space-y-4">
+                                    <div class="flex items-center justify-between">
+                                        <div class="space-y-0.5">
+                                            <div class="flex items-center gap-2">
+                                                <div class="h-2 w-2 rounded-full bg-green-500"></div>
+                                                <span class="text-sm font-semibold text-(--text-primary)">I have a green screen</span>
+                                            </div>
+                                            <p class="text-[10px] text-(--text-tertiary)">Improves edge quality and saves CPU power.</p>
+                                        </div>
+                                        <label class="relative inline-flex items-center cursor-pointer">
+                                            <input 
+                                                type="checkbox" 
+                                                class="sr-only peer" 
+                                                v-model="store.hasPhysicalGreenScreen"
+                                            >
+                                            <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                                        </label>
+                                    </div>
+
+                                    <div v-if="store.hasPhysicalGreenScreen" class="flex items-center gap-4 pt-2 border-t border-(--border-subtle)/30 animate-in fade-in slide-in-from-top-1 duration-200">
+                                        <div class="space-y-2 flex-1">
+                                            <label class="text-[10px] font-bold uppercase tracking-wider text-(--text-muted)">Screen Color</label>
+                                            <div class="flex items-center gap-2">
+                                                <div 
+                                                    class="h-8 w-8 rounded-lg border border-(--border-subtle) shadow-sm shrink-0"
+                                                    :style="{ backgroundColor: store.greenScreenColor }"
+                                                ></div>
+                                                <input 
+                                                    type="color" 
+                                                    v-model="store.greenScreenColor"
+                                                    class="opacity-0 absolute w-8 h-8 cursor-pointer"
+                                                >
+                                                <Button 
+                                                    variant="ghost" 
+                                                    size="sm" 
+                                                    class="h-8 text-[10px] px-2"
+                                                    @click="handleAutoDetect"
+                                                >
+                                                    <Icon name="Pipette" size="12" class="mr-1" />
+                                                    Auto-detect
+                                                </Button>
+                                            </div>
+                                        </div>
+
+                                        <div class="space-y-2 flex-1">
+                                            <label class="text-[10px] font-bold uppercase tracking-wider text-(--text-muted)">Sensitivity</label>
+                                            <div class="flex items-center gap-3">
+                                                <input 
+                                                    type="range" 
+                                                    min="0.01" 
+                                                    max="0.5" 
+                                                    step="0.01" 
+                                                    :value="store.greenScreenThreshold"
+                                                    @input="(e) => store.setGreenScreenThreshold(parseFloat((e.target as HTMLInputElement).value))"
+                                                    class="flex-1 h-1 bg-(--surface-tertiary) rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-600 shadow-sm"
+                                                >
+                                                <span class="text-[10px] font-mono text-(--text-secondary) w-6">{{ Math.round(store.greenScreenThreshold * 100) }}</span>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>

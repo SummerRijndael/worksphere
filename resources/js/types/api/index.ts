@@ -36,6 +36,7 @@ export interface PaginatedResponse<T> {
 export interface ApiError {
   message: string;
   errors?: Record<string, string[]>;
+  [key: string]: any; // Allow extra fields like requires_challenge
 }
 
 export interface LoginRequest {

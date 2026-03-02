@@ -404,9 +404,12 @@ const toggleCamera = async () => {
         // Toggling ON
         try {
             const stream = await navigator.mediaDevices.getUserMedia({
-                video: videoCallStore.selectedVideoDeviceId
-                    ? { deviceId: videoCallStore.selectedVideoDeviceId }
-                    : true,
+                video: {
+                    deviceId: videoCallStore.selectedVideoDeviceId || undefined,
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    frameRate: { ideal: 30 }
+                },
             });
             const videoTrack = stream.getVideoTracks()[0];
             meetingStore.originalVideoTrack = videoTrack;
@@ -481,9 +484,12 @@ const toggleMic = async () => {
         // Toggling ON
         try {
             const stream = await navigator.mediaDevices.getUserMedia({
-                audio: videoCallStore.selectedAudioDeviceId
-                    ? { deviceId: videoCallStore.selectedAudioDeviceId }
-                    : true,
+                audio: {
+                    deviceId: videoCallStore.selectedAudioDeviceId || undefined,
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true,
+                },
             });
             const audioTrack = stream.getAudioTracks()[0];
             localStream.value.addTrack(audioTrack);
@@ -512,8 +518,11 @@ watch(
         () => videoCallStore.videoEffect,
         () => videoCallStore.backgroundImage,
         () => videoCallStore.autoFraming,
+        () => videoCallStore.hasPhysicalGreenScreen,
+        () => videoCallStore.greenScreenColor,
+        () => videoCallStore.greenScreenThreshold,
     ],
-    async ([effect, bgImage, framing]) => {
+    async ([effect, bgImage, framing, hasGreenScreen, greenColor, threshold]) => {
         if (
             !isCameraOn.value ||
             !meetingStore.originalVideoTrack ||
@@ -529,6 +538,9 @@ watch(
                     effect,
                     bgImage || undefined,
                     framing,
+                    hasGreenScreen,
+                    greenColor,
+                    threshold
                 );
             } else {
                 backgroundBlur.stopProcessing();
@@ -577,7 +589,12 @@ watch(
                 });
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({
-                        audio: newAudio ? { deviceId: newAudio } : true,
+                        audio: {
+                            deviceId: newAudio || undefined,
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true
+                        },
                     });
                     localStream.value.addTrack(stream.getAudioTracks()[0]);
                 } catch (e) {
@@ -593,7 +610,11 @@ watch(
                 });
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({
-                        video: newVideo ? { deviceId: newVideo } : true,
+                        video: {
+                            deviceId: newVideo || undefined,
+                            width: { ideal: 1280 },
+                            height: { ideal: 720 }
+                        },
                     });
                     localStream.value.addTrack(stream.getVideoTracks()[0]);
                 } catch (e) {
@@ -729,6 +750,7 @@ const joinAndPresent = async () => {
             guestName.value,
             password.value || undefined,
             guestEmail.value.trim() || undefined,
+            true // is_companion
         );
 
         router.push({

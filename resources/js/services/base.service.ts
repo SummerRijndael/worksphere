@@ -17,6 +17,7 @@ export abstract class BaseService {
       const apiError: ApiError = {
         message: error.response?.data?.message || 'An error occurred',
         errors: error.response?.data?.errors,
+        ...(error.response?.data || {}), // Preserve all other fields (requires_challenge, etc)
       };
       throw apiError;
     }

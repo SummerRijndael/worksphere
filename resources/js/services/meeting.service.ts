@@ -109,10 +109,10 @@ class MeetingService extends BaseService {
         return response.data;
     }
 
-    async joinMeeting(id: string, name?: string, password?: string, email?: string): Promise<{ meeting: Meeting; participant: MeetingParticipant }> {
+    async joinMeeting(id: string, name?: string, password?: string, email?: string, is_companion?: boolean): Promise<{ meeting: Meeting; participant: MeetingParticipant }> {
         const response = await this.post<{ meeting: Meeting; participant: MeetingParticipant }>(
             `/api/meetings/${id}/join`,
-            { name, password, email }
+            { name, password, email, is_companion }
         );
 
         if (response?.participant?.public_id) {

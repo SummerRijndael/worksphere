@@ -59,6 +59,9 @@ export const useVideoCallStore = defineStore('videoCall', () => {
   const backgroundImage = ref<string | null>(null);
   const autoFraming = ref(false);
   const videoFitMode = ref<'cover' | 'contain'>('contain');
+  const hasPhysicalGreenScreen = ref(false);
+  const greenScreenColor = ref('#00FF00');
+  const greenScreenThreshold = ref(0.12);
 
   // ============================================================================
   // Getters
@@ -325,6 +328,18 @@ export const useVideoCallStore = defineStore('videoCall', () => {
     autoFraming,
     setAutoFraming: (enabled: boolean) => {
         autoFraming.value = enabled;
+    },
+    hasPhysicalGreenScreen,
+    greenScreenColor,
+    greenScreenThreshold,
+    setHasPhysicalGreenScreen: (enabled: boolean) => {
+        hasPhysicalGreenScreen.value = enabled;
+    },
+    setGreenScreenColor: (color: string) => {
+        greenScreenColor.value = color;
+    },
+    setGreenScreenThreshold: (threshold: number) => {
+        greenScreenThreshold.value = threshold;
     }
   };
 });

@@ -80,6 +80,10 @@ export const useMeetingStore = defineStore('meeting', () => {
     const activeRecordingId = ref<string | null>(null);
     const recordingDuration = ref(0);
     const recordingTimerInterval = ref<number | null>(null);
+    const meetingLink = computed(() => {
+        if (!meeting.value?.public_id) return '';
+        return `${window.location.origin}/m/${meeting.value.public_id}`;
+    });
 
     const formattedRecordingDuration = computed(() => {
         const mins = Math.floor(recordingDuration.value / 60);
