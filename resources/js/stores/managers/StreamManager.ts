@@ -33,6 +33,13 @@ export function createStreamManager(
     const sfuTransceiverMap = new Map<RTCRtpTransceiver, { participantId: string, trackName: string }>();
     const midToParticipantMap = new Map<string, string>();
     const participantPullAttempts = new Map<string, number>();
+    const visibleParticipantIds = ref<Set<string>>(new Set());
+    // Persist MIDs per participant to help "Sticky MIDs" logic
+    const remoteParticipantMids = new Map<string, { audio?: string; video?: string; screen?: string }>();
+    
+    // Sticky Slots: Maintain a consistent order of participants to keep MIDs stable across resets
+    const participantSlots = ref<string[]>([]);
+    
     const pendingTrackEvents: { track: MediaStreamTrack, mid: string, transceiver: RTCRtpTransceiver, streams: readonly MediaStream[] }[] = [];
     // Queue for signals that arrive before SFU session is established
     const pendingPullSignals: { participantPublicId: string, remoteSessionId?: string, audioMid?: string, videoMid?: string, screenMid?: string }[] = [];
@@ -303,7 +310,7 @@ export function createStreamManager(
                     }
                 }
             }
-        }, 60000);
+        }, 90000); // Relaxed for high-latency stability
     }
 
     async function initSFU(stream: MediaStream | null) {
@@ -360,9 +367,9 @@ export function createStreamManager(
                 checkState();
             }),
             new Promise((resolve) => setTimeout(() => {
-                log('SFU', 'ICE Connection wait timed out (10s), proceeding with signaling...');
+                log('SFU', 'ICE Connection wait timed out (20s), proceeding with signaling...');
                 resolve(true);
-            }, 10000))
+            }, 20000))
         ]);
 
         sfuPc.ontrack = (event) => {
@@ -441,6 +448,21 @@ export function createStreamManager(
         sfuTransceiverMap.set(atc, { participantId: 'self', trackName: 'audio' });
         sfuTransceiverMap.set(vtc, { participantId: 'self', trackName: 'video' });
 
+        // --- STICKY SLOTS PRE-ALLOCATION ---
+        // Restore transceivers for existing participants in their original order
+        participantSlots.value.forEach(pid => {
+            const audioTc = sfuPc!.addTransceiver("audio", { direction: "recvonly" });
+            const videoTc = sfuPc!.addTransceiver("video", { direction: "recvonly" });
+            sfuTransceiverMap.set(audioTc, { participantId: pid, trackName: "audio" });
+            sfuTransceiverMap.set(videoTc, { participantId: pid, trackName: "video" });
+            
+            // If they had a screenshare slot, restore that too
+            if (remoteStreams.value.has(`${pid}:screen`)) {
+                const screenTc = sfuPc!.addTransceiver("video", { direction: "recvonly" });
+                sfuTransceiverMap.set(screenTc, { participantId: pid, trackName: "screen" });
+            }
+        });
+
         if (stream) {
             log('SFU', 'Applying initial stream tracks to transceivers');
             stream.getTracks().forEach((track) => {
@@ -498,20 +520,30 @@ export function createStreamManager(
 
                 // 2. DOUBLE TAP: Explicitly register tracks via sfuSessionTracks (from CallApp.vue L2293)
                 log('SFU', 'Double Tap: Explicitly registering tracks to ensure activation');
-                try {
-                    const tracksRes = await meetingService.sfuSessionTracks(
-                        meetingRef.value!.public_id,
-                        sfuSessionId.value!,
-                        trackObjects, // Pass trackObjects here for the double tap
-                        undefined
-                    );
-                    if (tracksRes.sessionDescription) {
-                        log('SFU', 'Applying Double Tap SDP Answer');
-                        await sfuPc.setRemoteDescription(new RTCSessionDescription(tracksRes.sessionDescription));
+                const executeDoubleTap = async (attempt = 1): Promise<void> => {
+                    try {
+                        const tracksRes = await meetingService.sfuSessionTracks(
+                            meetingRef.value!.public_id,
+                            sfuSessionId.value!,
+                            trackObjects,
+                            undefined
+                        );
+                        if (tracksRes.sessionDescription) {
+                            log('SFU', 'Applying Double Tap SDP Answer');
+                            await sfuPc!.setRemoteDescription(new RTCSessionDescription(tracksRes.sessionDescription));
+                        }
+                    } catch (e: any) {
+                        const isRetryable = e?.response?.status === 425 || e?.response?.status === 502;
+                        if (isRetryable && attempt < 3) {
+                            const delay = 1000 * attempt;
+                            log('SFU', `Double Tap failed with ${e?.response?.status}. Retrying in ${delay}ms...`);
+                            await new Promise(r => setTimeout(r, delay));
+                            return executeDoubleTap(attempt + 1);
+                        }
+                        log('ERROR', 'Double Tap track registration failed/warning:', e);
                     }
-                } catch (e) {
-                    log('ERROR', 'Double Tap track registration warning:', e);
-                }
+                };
+                await executeDoubleTap();
 
                 await iceConnectedPromise;
                 
@@ -578,6 +610,13 @@ export function createStreamManager(
 
         // Case-specific track requests:
         const existingStream = remoteStreams.value.get(normalizedId);
+        
+        // NOTE: Visibility gating (selective subscribing) is DISABLED for now.
+        // The visibleParticipantIds set was not being populated correctly due to
+        // a timing issue with meetingStore.stream initialization, causing a deadlock
+        // where tracks couldn't be pulled because participants weren't "visible",
+        // but participants couldn't become visible without their tracks.
+        // TODO: Re-implement selective subscribing once the visibility watcher is fixed.
         const needsAudio = !existingStream || existingStream.getAudioTracks().length === 0 || !!audioMid;
         const needsVideo = !existingStream || existingStream.getVideoTracks().length === 0 || !!videoMid;
         const needsScreen = !existingStream || !remoteStreams.value.has(`${normalizedId}:screen`) || !!screenMid;
@@ -618,15 +657,17 @@ export function createStreamManager(
 
                 if (!audioTransceiver && trackReqs.some(r => r.trackName === 'audio')) {
                     audioTransceiver = sfuPc.addTransceiver("audio", { direction: "recvonly" });
-                    sfuTransceiverMap.set(audioTransceiver, { participantId: participantPublicId.toLowerCase(), trackName: "audio" });
+                    sfuTransceiverMap.set(audioTransceiver, { participantId: normalizedId, trackName: "audio" });
+                    if (!participantSlots.value.includes(normalizedId)) participantSlots.value.push(normalizedId);
                 }
                 if (!videoTransceiver && trackReqs.some(r => r.trackName === 'video')) {
                     videoTransceiver = sfuPc.addTransceiver("video", { direction: "recvonly" });
-                    sfuTransceiverMap.set(videoTransceiver, { participantId: participantPublicId.toLowerCase(), trackName: "video" });
+                    sfuTransceiverMap.set(videoTransceiver, { participantId: normalizedId, trackName: "video" });
+                    if (!participantSlots.value.includes(normalizedId)) participantSlots.value.push(normalizedId);
                 }
                 if (!screenTransceiver && trackReqs.some(r => r.trackName === 'screen')) {
                     screenTransceiver = sfuPc.addTransceiver("video", { direction: "recvonly" });
-                    sfuTransceiverMap.set(screenTransceiver, { participantId: participantPublicId.toLowerCase(), trackName: "screen" });
+                    sfuTransceiverMap.set(screenTransceiver, { participantId: normalizedId, trackName: "screen" });
                 }
 
                 // Proactive MID Assignment: Map local transceiver MIDs to the request
@@ -642,9 +683,12 @@ export function createStreamManager(
                     return req;
                 });
 
-                log('SFU', `Attempt ${currentAttempts}: Pulling tracks for ${participantPublicId} [Audio: ${audioTransceiver?.mid || 'None'}, Video: ${videoTransceiver?.mid || 'None'}, Screen: ${screenTransceiver?.mid || 'None'}] using session ${sfuSessionId.value}...`);
+                log('SFU', `Attempt ${currentAttempts}: Pulling tracks for ${participantPublicId} [Audio: ${audioTransceiver?.mid || 'None'}, Video: ${videoTransceiver?.mid || 'None'}, Screen: ${screenTransceiver?.mid || 'None'}] using local session ${sfuSessionId.value}, remote session ${targetSessionId}...`);
 
                 // SERVER-INITIATED OFFER FLOW (from CallApp.vue L2895-2955)
+                // Use OUR local session ID for the API call (we're telling the SFU
+                // "pull these remote tracks INTO my session"), but the track requests
+                // contain the remote participant's sessionId to identify which tracks to pull.
                 const res = await meetingService.sfuSessionTracks(
                     meetingRef.value!.public_id,
                     sfuSessionId.value!,
@@ -656,7 +700,7 @@ export function createStreamManager(
 
                 if (foundAny && res.sessionDescription) {
                     log('SFU', `Track pull success on attempt ${currentAttempts} for ${participantPublicId}`);
-                    participantPullAttempts.delete(participantPublicId);
+                    // Moved deletion to after track is confirmed and settled to prevent early retry reset
 
                     // Normalizing ID for consistency in internal maps
                     const normalizedId = participantPublicId.toLowerCase();
@@ -680,7 +724,12 @@ export function createStreamManager(
 
                     // Server Offer → Client Answer flow (from CallApp.vue L2942-2955)
                     log('SFU', `Processing Server Offer for tracks from ${participantPublicId}`);
-                    await sfuPc!.setRemoteDescription(toSdpAnswer(res.sessionDescription));
+                    try {
+                        await sfuPc!.setRemoteDescription(toSdpAnswer(res.sessionDescription));
+                    } catch (sdpErr) {
+                        log('ERROR', `setRemoteDescription failed for ${participantPublicId}:`, sdpErr);
+                        throw sdpErr; // bubble up to try-catch for retry
+                    }
 
                     // Map MIDs to participant AFTER setRemoteDescription so tr.mid is available
                     if (Array.isArray(res.tracks)) {
@@ -699,23 +748,36 @@ export function createStreamManager(
 
                     flushPendingTracks();
 
-                    const answer = await sfuPc!.createAnswer();
-                    await sfuPc!.setLocalDescription(answer);
+                    try {
+                        const answer = await sfuPc!.createAnswer();
+                        await sfuPc!.setLocalDescription(answer);
 
-                    await meetingService.sfuSessionRenegotiate(
-                        meetingRef.value!.public_id,
-                        sfuSessionId.value!,
-                        mungeSdp(answer.sdp!),
-                        'answer',
-                        'PUT'
-                    );
+                        log('SFU', `Renegotiating backend for ${participantPublicId}...`);
+                        await meetingService.sfuSessionRenegotiate(
+                            meetingRef.value!.public_id,
+                            sfuSessionId.value!,
+                            mungeSdp(answer.sdp!),
+                            'answer',
+                            'PUT'
+                        );
+                    } catch (renegErr) {
+                        log('ERROR', `Renegotiation failed for ${participantPublicId}:`, renegErr);
+                        throw renegErr; // bubble up for retry
+                    }
 
-                    // Record transceivers for dedup (from CallApp.vue L2957-2966)
                     participantTransceivers.set(normalizedId, {
                         audioMid: res.tracks?.find((t: any) => t.trackName === 'audio')?.mid || '',
                         videoMid: res.tracks?.find((t: any) => t.trackName === 'video')?.mid || '',
                         screenMid: res.tracks?.find((t: any) => t.trackName === 'screen')?.mid || ''
                     });
+
+                    // CRITICAL: Settling Delay for High Latency (1500ms)
+                    // Gives the PeerConnection a moment to "digest" the new tracks before new signaling
+                    log('SFU', `Settling handshake for ${participantPublicId}...`);
+                    await new Promise(r => setTimeout(r, 1000));
+                    
+                    // Only delete attempt counter after successful settlement
+                    participantPullAttempts.delete(participantPublicId);
                 } else {
                     // Retry with backoff (from CallApp.vue L2968-2985)
                     log('SFU', `Pull attempt ${currentAttempts} for ${participantPublicId} returned no valid tracks. Rescheduling...`);
@@ -994,6 +1056,7 @@ export function createStreamManager(
         }
         if (sfuPc) sfuPc.close();
         remoteStreams.value.clear();
+        participantSlots.value = [];
         remoteSfuSessions.clear();
         remoteSfuTracks.clear();
         sfuTransceiverMap.clear();
@@ -1008,11 +1071,48 @@ export function createStreamManager(
         audioAnalysers.clear();
     }
 
+    function setVisibleParticipants(ids: string[]) {
+        const newSet = new Set(ids.map(id => id.toLowerCase()));
+        const added = [...newSet].filter(id => !visibleParticipantIds.value.has(id));
+        const removed = [...visibleParticipantIds.value].filter(id => !newSet.has(id));
+
+        visibleParticipantIds.value = newSet;
+
+        if (added.length > 0) {
+            log('SFU', `Visibility updated: Added ${added.join(', ')}`);
+            // Proactively pull tracks for newly visible participants if we have their session info
+            added.forEach(id => {
+                const sessionId = remoteSfuSessions.get(id);
+                if (sessionId) {
+                    pullParticipantTracks(id, sessionId);
+                }
+            });
+        }
+
+        if (removed.length > 0) {
+            log('SFU', `Visibility updated: Removed ${removed.length} participants from active view.`);
+            // In a future update, we can call unsubscribeTracks(removed) here to save bandwidth
+            // but for now we keep the tracks to avoid signaling overhead on every scroll.
+        }
+    }
+
+    async function unsubscribeTracks(participantPublicIds: string[]) {
+        if (!sfuPc || !sfuSessionId.value) return;
+
+        return runInSFUQueue(async () => {
+            if (!sfuPc || !sfuSessionId.value) return;
+            log('SFU', `Unsubscribing tracks for: ${participantPublicIds.join(', ')}`);
+            // Implementation would involve setting transceiver direction to 'inactive'
+            // and potentially calling a server endpoint if supported.
+        });
+    }
+
     return {
         localStream,
         remoteStreams,
         remoteSfuSessions,
         remoteSfuTracks,
+        visibleParticipantIds,
         sfuIceState,
         sfuConnectionState,
         sfuSessionId,
@@ -1020,6 +1120,7 @@ export function createStreamManager(
 
         addLocalStream,
         setLocalStream,
+        setVisibleParticipants,
         initSFU,
         resetSFUSession,
         pullParticipantTracks,

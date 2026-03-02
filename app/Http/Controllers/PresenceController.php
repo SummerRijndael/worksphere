@@ -63,6 +63,24 @@ class PresenceController extends Controller
     }
 
     /**
+     * Send a heartbeat for a specific meeting.
+     *
+     * POST /api/presence/meetings/{meeting}/heartbeat
+     */
+    public function meetingHeartbeat(Request $request, string $meetingId): JsonResponse
+    {
+        $participantPublicId = $request->input('participant_id') ?? Auth::user()?->public_id;
+        
+        if (! $participantPublicId) {
+            return response()->json(['error' => 'Participant ID required'], 400);
+        }
+
+        $this->presenceService->meetingHeartbeat($meetingId, $participantPublicId);
+
+        return response()->json(['status' => 'ok']);
+    }
+
+    /**
      * Explicitly mark user as offline (e.g., on page unload).
      *
      * POST /api/presence/offline
@@ -213,7 +231,7 @@ class PresenceController extends Controller
         $status = $this->normalizeStatus($request->input('status'));
 
         // Dispatch the event directly without changing DB preference
-        \App\Events\UserPresenceChanged::dispatch($user, $status);
+        \App\Events\Chat\UserPresenceChanged::dispatch($user, $status);
 
         return response()->json([
             'success' => true,

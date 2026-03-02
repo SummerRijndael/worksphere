@@ -289,6 +289,11 @@ class MeetingController extends Controller
 
     public function sfuSessionNew(Request $request, Meeting $meeting): JsonResponse
     {
+        $participant = $this->resolveParticipant($request, $meeting);
+        if (! $participant || $participant->status !== 'admitted') {
+            return response()->json(['message' => 'Unauthorized or participant not admitted.'], 403);
+        }
+
         $request->validate([
             'sessionDescription' => 'required|array',
             'sessionDescription.sdp' => 'required|string',
@@ -328,6 +333,11 @@ class MeetingController extends Controller
 
     public function sfuSessionTracks(Request $request, Meeting $meeting, string $sessionId): JsonResponse
     {
+        $participant = $this->resolveParticipant($request, $meeting);
+        if (! $participant || $participant->status !== 'admitted') {
+            return response()->json(['message' => 'Unauthorized or participant not admitted.'], 403);
+        }
+
         $appId = config('services.cloudflare.app_id');
         $secret = config('services.cloudflare.app_secret');
 
@@ -359,6 +369,11 @@ class MeetingController extends Controller
 
     public function sfuSessionRenegotiate(Request $request, Meeting $meeting, string $sessionId): JsonResponse
     {
+        $participant = $this->resolveParticipant($request, $meeting);
+        if (! $participant || $participant->status !== 'admitted') {
+            return response()->json(['message' => 'Unauthorized or participant not admitted.'], 403);
+        }
+
         $appId = config('services.cloudflare.app_id');
         $secret = config('services.cloudflare.app_secret');
 

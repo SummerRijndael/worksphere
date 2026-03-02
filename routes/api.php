@@ -1012,6 +1012,7 @@ Route::middleware(['throttle:meetings'])->prefix('meetings')->group(function () 
     Route::post('/broadcasting/auth', [\App\Http\Controllers\Api\MeetingController::class, 'broadcastingAuth']);
     Route::get('/{meeting}/turn-credentials', [\App\Http\Controllers\Api\MeetingController::class, 'turnCredentials']);
     Route::post('/{meeting}/join', [\App\Http\Controllers\Api\MeetingController::class, 'join']);
+    Route::post('/{meeting}/heartbeat', [\App\Http\Controllers\PresenceController::class, 'meetingHeartbeat']);
     Route::post('/{meeting}/signal', [\App\Http\Controllers\Api\MeetingController::class, 'signal'])
         ->withoutMiddleware('throttle:api')
         ->middleware('throttle:signaling');

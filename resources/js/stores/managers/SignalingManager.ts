@@ -468,8 +468,9 @@ export function createSignalingManager(
             }
             
             // ONLY pull if we actually have something to pull
-            if (audioMid || videoMid || screenMid || updatedTracks.audioMid || updatedTracks.videoMid || updatedTracks.screenMid) {
-                streamManager.pullParticipantTracks(normalizedSenderId, sessionId, audioMid, videoMid, screenMid);
+            if (updatedTracks.audioMid || updatedTracks.videoMid || updatedTracks.screenMid) {
+                // Pass the updated known MIDs down to the pull function, so it doesn't rely solely on the signal payload
+                streamManager.pullParticipantTracks(normalizedSenderId, sessionId, updatedTracks.audioMid, updatedTracks.videoMid, updatedTracks.screenMid);
             } else {
                 log('SIGNAL', `Ignoring media-ready from ${normalizedSenderId}: no track MIDs provided yet.`);
             }

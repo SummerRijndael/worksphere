@@ -125,8 +125,15 @@ class MeetingService implements MeetingServiceContract
         Log::channel('videocall')->info('[504_DEBUG] Join start', ['meeting' => $meeting->public_id]);
 
         // 1. Basic Meeting Status Checks
-        if ($meeting->status === 'ended') {
+        $isHost = $user && $meeting->user_id === $user->id;
+        
+        if ($meeting->status === 'ended' && ! $isHost) {
             abort(403, 'This meeting has already ended.');
+        }
+
+        // Auto-activate meeting if host joins
+        if ($isHost && $meeting->status !== 'active') {
+            $meeting->update(['status' => 'active']);
         }
         Log::channel('videocall')->info('[504_DEBUG] Step 1: Status check done', ['time' => microtime(true) - $start]);
 
@@ -185,6 +192,33 @@ class MeetingService implements MeetingServiceContract
             }
         }
         Log::channel('videocall')->info('[504_DEBUG] Step 4: Lock check done', ['time' => microtime(true) - $start]);
+
+        // 4.5 Capacity Check
+        $isPro = config('worksphere.meetings.pro_mode', false);
+        $maxParticipants = $isPro
+            ? config('worksphere.meetings.limits.pro_max_participants', 50)
+            : config('worksphere.meetings.limits.free_max_participants', 25);
+
+        $isAlreadyParticipant = false;
+        if (! $isCompanion) {
+            if ($user && MeetingParticipant::where('meeting_id', $meeting->id)->where('user_id', $user->id)->whereIn('status', ['admitted', 'waiting'])->exists()) {
+                $isAlreadyParticipant = true;
+            } elseif ($participantSessionId && MeetingParticipant::where('meeting_id', $meeting->id)->where('public_id', $participantSessionId)->whereIn('status', ['admitted', 'waiting'])->exists()) {
+                $isAlreadyParticipant = true;
+            }
+        }
+
+        if (! $isAlreadyParticipant && ! $isHost) {
+            $currentCount = MeetingParticipant::where('meeting_id', $meeting->id)
+                ->whereIn('status', ['admitted', 'waiting'])
+                ->count();
+
+            if ($currentCount >= $maxParticipants) {
+                abort(403, "This meeting has reached its maximum capacity of {$maxParticipants} participants.");
+            }
+        }
+        Log::channel('videocall')->info('[504_DEBUG] Step 4.5: Capacity check done', ['time' => microtime(true) - $start]);
+
 
         // 5. Determine participant status
         // If whitelisted or host, bypass wait room. Otherwise check lobby_enabled

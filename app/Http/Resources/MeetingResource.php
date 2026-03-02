@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\MeetingParticipant;
+use App\Services\Chat\PresenceService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Auth;
@@ -38,6 +39,8 @@ class MeetingResource extends JsonResource
             'participants' => $this->when(($this->user_id === Auth::id() || MeetingParticipant::where('meeting_id', $this->id)->where('user_id', Auth::id())->where('status', 'admitted')->exists() || (session('meeting_participant_id') && MeetingParticipant::where('meeting_id', $this->id)->where('public_id', session('meeting_participant_id'))->where('status', 'admitted')->exists())), function () {
                 return MeetingParticipantResource::collection($this->whenLoaded('participants'));
             }),
+            'active_participant_count' => count(app(PresenceService::class)->getActiveMeetingParticipantIds($this->public_id)),
+            'active_participant_ids' => app(PresenceService::class)->getActiveMeetingParticipantIds($this->public_id),
             'active_breakout_session' => $this->activeBreakoutSession,
             // PRO recording: true when MEETING_RECORDING_ENABLED=true (dev toggle).
             // Replace with subscription/billing check when real pro users exist.

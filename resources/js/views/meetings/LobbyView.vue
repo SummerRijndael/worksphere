@@ -7,7 +7,7 @@
         >
             <!-- Left Side: Video Preview -->
             <div
-                v-if="!(meeting?.status === 'ended' || isEndedQuery)"
+                v-if="!((meeting?.status === 'ended' || isEndedQuery) && !isHost)"
                 class="video-section flex-1 w-full max-w-3xl relative rounded-2xl overflow-hidden bg-black shadow-2xl aspect-video"
             >
                 <div
@@ -106,8 +106,8 @@
             <div
                 class="join-section w-full md:w-96 flex flex-col items-center text-center"
             >
-                <!-- Meeting Ended State -->
-                <template v-if="meeting?.status === 'ended' || isEndedQuery">
+                <!-- Meeting Ended State (Non-host) -->
+                <template v-if="(meeting?.status === 'ended' || isEndedQuery) && !isHost">
                     <div
                         class="w-full mb-8 pt-6 pb-8 px-6 bg-surface-elevated border border-(--border-default) rounded-2xl flex flex-col items-center shadow-lg"
                     >
@@ -242,7 +242,7 @@
                                 size="20"
                                 class="animate-spin mr-2"
                             />
-                            {{ joining ? "Joining..." : "Join now" }}
+                            {{ joining ? "Joining..." : (meeting?.status === 'ended' ? "Restart & Join" : "Join now") }}
                         </button>
                         <!-- Present Button -->
                         <button
