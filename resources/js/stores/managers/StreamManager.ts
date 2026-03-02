@@ -34,6 +34,8 @@ export function createStreamManager(
     const midToParticipantMap = new Map<string, string>();
     const participantPullAttempts = new Map<string, number>();
     const visibleParticipantIds = ref<Set<string>>(new Set());
+    const participantFirstSeen = new Map<string, number>(); // timestamp of first sfu-media-ready
+    const MAX_VIDEO_SUBSCRIPTIONS = 9; // Active Grid: cap video pulls to this many participants
     // Persist MIDs per participant to help "Sticky MIDs" logic
     const remoteParticipantMids = new Map<string, { audio?: string; video?: string; screen?: string }>();
     
@@ -553,6 +555,7 @@ export function createStreamManager(
                 
                 broadcastMediaMids();
                 startHealthCheck();
+                startQualityMonitor();
 
                 // Replay any queued signals that arrived before we were ready
                 if (pendingPullSignals.length > 0) {
@@ -611,15 +614,27 @@ export function createStreamManager(
         // Case-specific track requests:
         const existingStream = remoteStreams.value.get(normalizedId);
         
-        // NOTE: Visibility gating (selective subscribing) is DISABLED for now.
-        // The visibleParticipantIds set was not being populated correctly due to
-        // a timing issue with meetingStore.stream initialization, causing a deadlock
-        // where tracks couldn't be pulled because participants weren't "visible",
-        // but participants couldn't become visible without their tracks.
-        // TODO: Re-implement selective subscribing once the visibility watcher is fixed.
+        // Selective subscribing: Audio ALWAYS pulls. Video/Screen only pull if:
+        //   (a) participant is in the visible set (UI watcher), OR
+        //   (b) within GRACE_PERIOD_MS of first being seen (allows watcher to fire), OR
+        //   (c) explicit MID was provided (re-broadcast / signal trigger)
+        const GRACE_PERIOD_MS = 5000;
+        if (!participantFirstSeen.has(normalizedId)) {
+            participantFirstSeen.set(normalizedId, Date.now());
+        }
+        const timeSinceFirstSeen = Date.now() - (participantFirstSeen.get(normalizedId) || Date.now());
+        const isVisible = visibleParticipantIds.value.has(normalizedId);
+        const inGracePeriod = timeSinceFirstSeen < GRACE_PERIOD_MS;
+        const shouldPullVideo = isVisible || inGracePeriod || !!videoMid;
+        const shouldPullScreen = isVisible || inGracePeriod || !!screenMid;
+
+        if (!shouldPullVideo && !shouldPullScreen) {
+            log('SFU', `Selective sub: skipping video/screen for ${normalizedId} (not visible, grace expired). Audio still pulled.`);
+        }
+
         const needsAudio = !existingStream || existingStream.getAudioTracks().length === 0 || !!audioMid;
-        const needsVideo = !existingStream || existingStream.getVideoTracks().length === 0 || !!videoMid;
-        const needsScreen = !existingStream || !remoteStreams.value.has(`${normalizedId}:screen`) || !!screenMid;
+        const needsVideo = shouldPullVideo && (!existingStream || existingStream.getVideoTracks().length === 0 || !!videoMid);
+        const needsScreen = shouldPullScreen && (!existingStream || !remoteStreams.value.has(`${normalizedId}:screen`) || !!screenMid);
 
         const trackReqs: any[] = [];
         if (needsAudio) trackReqs.push({ location: "remote", sessionId: targetSessionId, trackName: "audio" });
@@ -1073,11 +1088,17 @@ export function createStreamManager(
     }
 
     function setVisibleParticipants(ids: string[]) {
-        const newSet = new Set(ids.map(id => id.toLowerCase()));
+        // Active Grid: cap to MAX_VIDEO_SUBSCRIPTIONS (prioritization order is determined by caller)
+        const cappedIds = ids.slice(0, MAX_VIDEO_SUBSCRIPTIONS);
+        const newSet = new Set(cappedIds.map(id => id.toLowerCase()));
         const added = [...newSet].filter(id => !visibleParticipantIds.value.has(id));
         const removed = [...visibleParticipantIds.value].filter(id => !newSet.has(id));
 
         visibleParticipantIds.value = newSet;
+
+        if (ids.length > MAX_VIDEO_SUBSCRIPTIONS) {
+            log('SFU', `Active Grid: capped visible from ${ids.length} to ${MAX_VIDEO_SUBSCRIPTIONS}`);
+        }
 
         if (added.length > 0) {
             log('SFU', `Visibility updated: Added ${added.join(', ')}`);
@@ -1092,8 +1113,6 @@ export function createStreamManager(
 
         if (removed.length > 0) {
             log('SFU', `Visibility updated: Removed ${removed.length} participants from active view.`);
-            // In a future update, we can call unsubscribeTracks(removed) here to save bandwidth
-            // but for now we keep the tracks to avoid signaling overhead on every scroll.
         }
     }
 
@@ -1106,6 +1125,110 @@ export function createStreamManager(
             // Implementation would involve setting transceiver direction to 'inactive'
             // and potentially calling a server endpoint if supported.
         });
+    }
+
+    // ========== Per-Participant Quality Scoring ==========
+    const participantQualityScores = ref<Map<string, { score: number, packetsLost: number, jitter: number, fps: number }>>(new Map());
+    let qualityMonitorInterval: ReturnType<typeof setInterval> | null = null;
+    // Store previous stats for delta calculation
+    const prevReceiverStats = new Map<string, { packetsReceived: number, packetsLost: number, timestamp: number }>();
+
+    function startQualityMonitor() {
+        if (qualityMonitorInterval) return;
+        log('QUALITY', 'Starting per-participant quality monitor (5s interval)');
+
+        qualityMonitorInterval = setInterval(async () => {
+            if (!sfuPc) return;
+
+            const newScores = new Map(participantQualityScores.value);
+
+            // Group transceivers by participant
+            const participantStats = new Map<string, { packetsLost: number, packetsReceived: number, jitter: number, fps: number, trackCount: number }>();
+
+            for (const [transceiver, meta] of sfuTransceiverMap.entries()) {
+                if (!transceiver.receiver || transceiver.direction !== 'recvonly') continue;
+                const pid = meta.participantId;
+
+                try {
+                    const stats = await transceiver.receiver.getStats();
+                    let inboundRtp: any = null;
+
+                    stats.forEach((report: any) => {
+                        if (report.type === 'inbound-rtp') {
+                            inboundRtp = report;
+                        }
+                    });
+
+                    if (!inboundRtp) continue;
+
+                    const existing = participantStats.get(pid) || { packetsLost: 0, packetsReceived: 0, jitter: 0, fps: 0, trackCount: 0 };
+
+                    // Delta calculation for loss rate
+                    const prevKey = `${pid}:${meta.trackName}`;
+                    const prev = prevReceiverStats.get(prevKey);
+                    const currentReceived = inboundRtp.packetsReceived || 0;
+                    const currentLost = inboundRtp.packetsLost || 0;
+
+                    if (prev) {
+                        const deltaReceived = currentReceived - prev.packetsReceived;
+                        const deltaLost = currentLost - prev.packetsLost;
+                        existing.packetsReceived += deltaReceived;
+                        existing.packetsLost += deltaLost;
+                    }
+
+                    prevReceiverStats.set(prevKey, {
+                        packetsReceived: currentReceived,
+                        packetsLost: currentLost,
+                        timestamp: Date.now()
+                    });
+
+                    // Jitter (take worst across tracks)
+                    if (inboundRtp.jitter && inboundRtp.jitter > existing.jitter) {
+                        existing.jitter = inboundRtp.jitter;
+                    }
+
+                    // FPS (video only)
+                    if (meta.trackName === 'video' && inboundRtp.framesPerSecond) {
+                        existing.fps = inboundRtp.framesPerSecond;
+                    }
+
+                    existing.trackCount++;
+                    participantStats.set(pid, existing);
+                } catch (e) {
+                    // getStats can fail for ended transceivers
+                }
+            }
+
+            // Compute scores
+            for (const [pid, stats] of participantStats.entries()) {
+                const totalPackets = stats.packetsReceived + stats.packetsLost;
+                const lossRate = totalPackets > 0 ? stats.packetsLost / totalPackets : 0;
+
+                // Score: 5 (excellent) → 1 (critical)
+                let score = 5;
+                if (lossRate > 0.15) score = 1;       // >15% loss = critical
+                else if (lossRate > 0.08) score = 2;   // >8% loss = poor
+                else if (lossRate > 0.03) score = 3;   // >3% loss = fair
+                else if (lossRate > 0.01) score = 4;   // >1% loss = good
+
+                // Penalize high jitter
+                if (stats.jitter > 0.1) score = Math.min(score, 2);
+                else if (stats.jitter > 0.05) score = Math.min(score, 3);
+
+                // Penalize very low FPS (if we have video)
+                if (stats.fps > 0 && stats.fps < 5) score = Math.min(score, 2);
+                else if (stats.fps > 0 && stats.fps < 15) score = Math.min(score, 3);
+
+                newScores.set(pid, {
+                    score,
+                    packetsLost: stats.packetsLost,
+                    jitter: Math.round(stats.jitter * 1000), // ms
+                    fps: Math.round(stats.fps)
+                });
+            }
+
+            participantQualityScores.value = newScores;
+        }, 5000);
     }
 
     return {
@@ -1130,6 +1253,10 @@ export function createStreamManager(
         publishScreenTrack,
         unpublishScreenTrack,
         removeParticipantStreams,
-        cleanup
+        cleanup,
+        
+        // Per-participant quality scoring
+        participantQualityScores,
+        startQualityMonitor
     };
 }

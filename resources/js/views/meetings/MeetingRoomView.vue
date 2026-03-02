@@ -1650,24 +1650,44 @@ onMounted(async () => {
     updateClock();
     
     // SFU PRO: Synchronize visible participants for selective media pulling
+    // Priority order: spotlight > active speaker > talking > visible tiles > local
     watch([paginatedTiles, spotlightTile], ([tiles, spotlight]) => {
         const visibleIds: string[] = [];
+        const seen = new Set<string>();
         
-        // Add spotlight if active
+        const addUnique = (id: string) => {
+            const lower = id.toLowerCase();
+            if (!seen.has(lower)) {
+                seen.add(lower);
+                visibleIds.push(lower);
+            }
+        };
+        
+        // Priority 1: Spotlight (always highest priority)
         if (spotlight) {
             const pid = spotlight.participant.public_id.toLowerCase();
-            visibleIds.push(spotlight.isScreen ? `${pid}:screen` : pid);
+            addUnique(spotlight.isScreen ? `${pid}:screen` : pid);
         }
         
-        // Add all visible tiles (grid or filmstrip)
+        // Priority 2: Active speaker
+        if (meetingStore.activeSpeakerId) {
+            addUnique(meetingStore.activeSpeakerId.toLowerCase());
+        }
+        
+        // Priority 3: All currently talking participants
+        if (meetingStore.talkingParticipants) {
+            meetingStore.talkingParticipants.forEach((pid: string) => addUnique(pid.toLowerCase()));
+        }
+        
+        // Priority 4: All visible tiles (grid or filmstrip)
         tiles.forEach(tile => {
             const pid = tile.participant.public_id.toLowerCase();
-            visibleIds.push(tile.isScreen ? `${pid}:screen` : pid);
+            addUnique(tile.isScreen ? `${pid}:screen` : pid);
         });
 
-        // Add local participant so we always pull our own state if needed for previews
+        // Priority 5: Local participant (always include)
         if (meetingStore.localParticipant) {
-            visibleIds.push(meetingStore.localParticipant.public_id.toLowerCase());
+            addUnique(meetingStore.localParticipant.public_id.toLowerCase());
         }
 
         meetingStore.stream?.setVisibleParticipants?.(visibleIds);
