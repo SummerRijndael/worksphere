@@ -632,9 +632,21 @@ const joinMeeting = async () => {
             }
         }
 
-        // Only store the stream — do NOT call addLocalStream here.
-        // addLocalStream triggers initSFU which needs localParticipant (only set after initializeMeeting in the Room).
+        // Sanitization: Ensure hardware is physically stopped if toggled off in lobby.
+        // This prevents the camera light from staying on even if the track is disabled.
         if (localStream.value) {
+            if (!isCameraOn.value) {
+                localStream.value.getVideoTracks().forEach(t => {
+                    t.stop();
+                    localStream.value?.removeTrack(t);
+                });
+            }
+            if (!isMicOn.value) {
+                localStream.value.getAudioTracks().forEach(t => {
+                    t.stop();
+                    localStream.value?.removeTrack(t);
+                });
+            }
             meetingStore.setStream(localStream.value);
         }
 
@@ -695,7 +707,20 @@ const joinAndPresent = async () => {
             }
         }
 
+        // Sanitization: Ensure hardware is physically stopped if toggled off in lobby.
         if (localStream.value) {
+            if (!isCameraOn.value) {
+                localStream.value.getVideoTracks().forEach(t => {
+                    t.stop();
+                    localStream.value?.removeTrack(t);
+                });
+            }
+            if (!isMicOn.value) {
+                localStream.value.getAudioTracks().forEach(t => {
+                    t.stop();
+                    localStream.value?.removeTrack(t);
+                });
+            }
             meetingStore.setStream(localStream.value);
         }
 

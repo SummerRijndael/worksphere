@@ -627,9 +627,8 @@ onMounted(async () => {
         setupRealtimeQueueStats();
         setupRealtimeCacheStats();
 
-        // Setup polling for Reverb and External Services (failsafe for Echo)
+        // Setup polling for External Services (failsafe for Echo)
         reverbInterval = setInterval(() => {
-            fetchReverbStats();
             fetchExternalServices();
         }, 30000);
     } finally {

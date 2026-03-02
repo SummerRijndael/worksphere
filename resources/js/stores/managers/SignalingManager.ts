@@ -119,8 +119,14 @@ export function createSignalingManager(
         const normalizedSenderId = senderId.toLowerCase();
         const myId = localParticipantRef.value?.public_id?.toLowerCase();
         
-        // Ignore own signals (by ID or if it's our current SFU session)
-        if (!localParticipantRef.value || normalizedSenderId === myId || (data?.sessionId === streamManager.sfuSessionId.value)) {
+        // Ignore own signals (by ID).
+        // We also ignore signals from our *own* current SFU session to avoid loopbacks,
+        // but only if it's not the generic 'realtime-kit' ID used by all Cloudflare SDK participants.
+        const isOwnSession = data?.sessionId &&
+                            data.sessionId === streamManager.sfuSessionId.value &&
+                            streamManager.sfuSessionId.value !== 'realtime-kit';
+
+        if (!localParticipantRef.value || normalizedSenderId === myId || isOwnSession) {
             return;
         }
         
@@ -293,9 +299,25 @@ export function createSignalingManager(
             return;
         }
 
+        if (type === 'recording-started') {
+            log('SIGNAL', 'Recording started signal received', data);
+            const { useMeetingStore } = await import('@/stores/meeting');
+            useMeetingStore().handleRecordingStarted(data);
+            return;
+        }
+
+        if (type === 'recording-stopped') {
+            log('SIGNAL', 'Recording stopped signal received', data);
+            const { useMeetingStore } = await import('@/stores/meeting');
+            useMeetingStore().handleRecordingStopped(data);
+            return;
+        }
+
         if (type === 'request-media-info') {
             log('SIGNAL', `Participant ${normalizedSenderId} requested our media info`);
-            streamManager.rebroadcastToJoiner(normalizedSenderId);
+            if (streamManager.rebroadcastToJoiner) {
+                streamManager.rebroadcastToJoiner(normalizedSenderId);
+            }
             return;
         }
 

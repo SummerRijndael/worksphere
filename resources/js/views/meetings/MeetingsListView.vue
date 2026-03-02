@@ -213,19 +213,17 @@
                             class="flex -space-x-2"
                         >
                             <div
-                                v-for="participant in meeting.participants.slice(
-                                    0,
-                                    3,
-                                )"
+                                v-for="participant in meeting.participants.slice(0, 3)"
                                 :key="participant.id"
-                                class="w-7 h-7 rounded-full border-2 border-(--surface-primary) bg-(--surface-tertiary) flex items-center justify-center overflow-hidden"
+                                :title="participant.user?.name || 'Guest'"
+                                class="w-7 h-7 rounded-full border-2 border-(--surface-primary) overflow-hidden shrink-0"
                             >
-                                <img
-                                    v-if="participant.user?.avatar_url"
-                                    :src="participant.user.avatar_url"
-                                    class="w-full h-full object-cover"
+                                <Avatar 
+                                    :src="participant.user?.avatar_url" 
+                                    :alt="participant.user?.name" 
+                                    size="sm"
+                                    class="w-full h-full"
                                 />
-                                <Icon v-else name="user" size="12" />
                             </div>
                         </div>
                         <span class="text-xs text-(--text-muted)">
@@ -356,7 +354,7 @@ import { useRouter } from "vue-router";
 import { meetingService, type Meeting } from "@/services/meeting.service";
 import MeetingCreateModal from "./components/MeetingCreateModal.vue";
 import MeetingEditModal from "./components/MeetingEditModal.vue";
-import { Icon, Dropdown, DropdownItem } from "@/components/ui";
+import { Icon, Dropdown, DropdownItem, Avatar } from "@/components/ui";
 import { toast } from "vue-sonner";
 import dayjs from "dayjs";
 import { useAuthStore } from "@/stores/auth";
