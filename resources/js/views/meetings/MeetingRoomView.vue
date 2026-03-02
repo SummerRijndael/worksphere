@@ -23,10 +23,10 @@
                             <div class="ping-dot"></div>
                         </div>
                     </div>
-                    <h1 class="waiting-title">You're in the Waiting Room</h1>
+                    <h1 class="waiting-title">Please wait...</h1>
                     <p class="waiting-desc">
                         The meeting host has been notified. They'll let you in
-                        shortly.
+                        soon.
                     </p>
                     <div class="waiting-meta">
                         <div class="waiting-host-badge">
@@ -228,6 +228,40 @@
             }"
         >
             <div class="gmeet-stage" style="position: relative">
+                <!-- Poor Connection Notice -->
+                <Transition
+                    enter-active-class="transition duration-300 ease-out"
+                    enter-from-class="opacity-0 -translate-y-4"
+                    enter-to-class="opacity-100 translate-y-0"
+                    leave-active-class="transition duration-200 ease-in"
+                    leave-from-class="opacity-100 translate-y-0"
+                    leave-to-class="opacity-0 -translate-y-4"
+                >
+                    <div
+                        v-if="poorConnectionDetected"
+                        class="poor-connection-banner"
+                    >
+                        <div class="poor-connection-content">
+                            <Icon
+                                name="alert-triangle"
+                                size="18"
+                                class="text-red-400"
+                            />
+                            <div class="poor-connection-text">
+                                <span class="font-bold">Poor Connection:</span>
+                                Meeting quality may be affected.
+                            </div>
+                            <button
+                                @click="meetingStore.resetSFUSession()"
+                                class="poor-connection-action"
+                            >
+                                <Icon name="refresh-cw" size="14" />
+                                <span>Reconnect</span>
+                            </button>
+                        </div>
+                    </div>
+                </Transition>
+
                 <!-- Laser Pointer Overlay: transparent, sits above video grid -->
 
                 <template v-if="isSpotlightMode && spotlightTile">
@@ -892,7 +926,11 @@
                 <div
                     v-if="isRecording"
                     class="recording-badge"
-                    :title="isRecording ? `Recording in progress (${formattedDuration})` : ''"
+                    :title="
+                        isRecording
+                            ? `Recording in progress (${formattedDuration})`
+                            : ''
+                    "
                 >
                     <span class="recording-dot"></span>
                     <span>REC</span>
@@ -912,18 +950,18 @@
 
             <!-- Center: Media Controls -->
             <div class="bar-section bar-section--center">
-                <div style="position: relative; display: flex;">
-                    <div 
+                <div style="position: relative; display: flex">
+                    <div
                         v-if="isMicOn"
                         class="mic-volume-ring"
                         :style="{
                             transform: `scale(${1 + Math.min(meetingStore.localVolume / 40, 0.7)})`,
-                            opacity: meetingStore.localVolume > 2 ? 1 : 0
+                            opacity: meetingStore.localVolume > 2 ? 1 : 0,
                         }"
                     ></div>
                     <button
                         class="ctrl-btn"
-                        style="z-index: 1;"
+                        style="z-index: 1"
                         :class="{ 'ctrl-btn--off': !isMicOn }"
                         @click="toggleMic"
                         :title="micToggleTitle"
@@ -1369,6 +1407,25 @@ function updateClock() {
     });
 }
 
+// Presence Heartbeat
+let heartbeatInterval: any;
+async function sendHeartbeat() {
+    if (!meetingStore.meeting || !meetingStore.localParticipant) return;
+    // Only count as "live" if admitted to the room
+    if (meetingStore.localParticipant.status !== "admitted") return;
+
+    try {
+        await api.post(
+            `/api/meetings/${meetingStore.meeting.public_id}/heartbeat`,
+            {
+                participant_id: meetingStore.localParticipant.public_id,
+            },
+        );
+    } catch (e) {
+        // Silent fail for heartbeats
+    }
+}
+
 const isWaiting = computed(() => {
     // Safety: Host/Moderator should never see the waiting room overlay
     if (meetingStore.isModerator || meetingStore.isHost) return false;
@@ -1591,6 +1648,30 @@ function nextPage() {
 
 onMounted(async () => {
     updateClock();
+    
+    // SFU PRO: Synchronize visible participants for selective media pulling
+    watch([paginatedTiles, spotlightTile], ([tiles, spotlight]) => {
+        const visibleIds: string[] = [];
+        
+        // Add spotlight if active
+        if (spotlight) {
+            const pid = spotlight.participant.public_id.toLowerCase();
+            visibleIds.push(spotlight.isScreen ? `${pid}:screen` : pid);
+        }
+        
+        // Add all visible tiles (grid or filmstrip)
+        tiles.forEach(tile => {
+            const pid = tile.participant.public_id.toLowerCase();
+            visibleIds.push(tile.isScreen ? `${pid}:screen` : pid);
+        });
+
+        // Add local participant so we always pull our own state if needed for previews
+        if (meetingStore.localParticipant) {
+            visibleIds.push(meetingStore.localParticipant.public_id.toLowerCase());
+        }
+
+        meetingStore.stream?.setVisibleParticipants?.(visibleIds);
+    }, { immediate: true, deep: true });
     clockInterval = window.setInterval(updateClock, 10000);
 
     if (!participantId) {
@@ -1640,11 +1721,18 @@ onMounted(async () => {
 
         // Auto-start screen share if joined via "Present" button
         if (route.query.present === "1") {
-            toast.info("Joined in Companion Mode. Audio and video are disabled.", { duration: 5000 });
+            toast.info(
+                "Joined in Companion Mode. Audio and video are disabled.",
+                { duration: 5000 },
+            );
             setTimeout(() => {
                 toggleScreenShare();
             }, 2000); // Wait for SFU connection to establish
         }
+
+        // Start Heartbeat
+        sendHeartbeat();
+        heartbeatInterval = window.setInterval(sendHeartbeat, 30000);
     } catch (e) {
         console.error("[MeetingRoom] Failed to initialize:", e);
         toast.error("Something went wrong. Please rejoin from the lobby.");
@@ -1667,6 +1755,7 @@ function handleGlobalKeydown(e: KeyboardEvent) {
 onUnmounted(() => {
     window.removeEventListener("keydown", handleGlobalKeydown);
     window.clearInterval(clockInterval);
+    window.clearInterval(heartbeatInterval);
     backgroundBlur.stopProcessing();
     meetingStore.cleanup();
 });
@@ -1702,10 +1791,12 @@ async function toggleScreenShare() {
             }
         } catch (err) {
             console.error("Screen share failed:", err);
-            
+
             // Smart Fallback for Mobile/Tablets
             if (route.query.present === "1") {
-                toast.warning("Screen sharing restricted on this device. Opening Whiteboard instead!");
+                toast.warning(
+                    "Screen sharing restricted on this device. Opening Whiteboard instead!",
+                );
                 whiteboardStore.isVisible = true;
             } else {
                 toast.error("Failed to share screen");
@@ -1736,7 +1827,7 @@ const toggleCamera = async () => {
                     deviceId: videoCallStore.selectedVideoDeviceId || undefined,
                     width: { ideal: 1280 },
                     height: { ideal: 720 },
-                    frameRate: { ideal: 30 }
+                    frameRate: { ideal: 30 },
                 },
             });
             const videoTrack = newStream.getVideoTracks()[0];
@@ -1755,7 +1846,7 @@ const toggleCamera = async () => {
                     videoCallStore.autoFraming,
                     videoCallStore.hasPhysicalGreenScreen,
                     videoCallStore.greenScreenColor,
-                    videoCallStore.greenScreenThreshold
+                    videoCallStore.greenScreenThreshold,
                 );
             }
 
@@ -1840,7 +1931,14 @@ watch(
         () => videoCallStore.greenScreenColor,
         () => videoCallStore.greenScreenThreshold,
     ],
-    async ([effect, bgImage, framing, hasGreenScreen, greenColor, threshold]) => {
+    async ([
+        effect,
+        bgImage,
+        framing,
+        hasGreenScreen,
+        greenColor,
+        threshold,
+    ]) => {
         if (
             !isCameraOn.value ||
             !meetingStore.originalVideoTrack ||
@@ -1858,7 +1956,7 @@ watch(
                     framing,
                     hasGreenScreen,
                     greenColor,
-                    threshold
+                    threshold,
                 );
             } else {
                 backgroundBlur.stopProcessing();
@@ -1909,7 +2007,7 @@ watch(
                         deviceId: newAudio || undefined,
                         echoCancellation: true,
                         noiseSuppression: true,
-                        autoGainControl: true
+                        autoGainControl: true,
                     },
                 });
                 const track = newS.getAudioTracks()[0];
@@ -1932,7 +2030,7 @@ watch(
                     video: {
                         deviceId: newVideo || undefined,
                         width: { ideal: 1280 },
-                        height: { ideal: 720 }
+                        height: { ideal: 720 },
                     },
                 });
                 const videoTrack = newS.getVideoTracks()[0];
@@ -1951,7 +2049,7 @@ watch(
                         videoCallStore.autoFraming,
                         videoCallStore.hasPhysicalGreenScreen,
                         videoCallStore.greenScreenColor,
-                        videoCallStore.greenScreenThreshold
+                        videoCallStore.greenScreenThreshold,
                     );
                 }
 
@@ -2126,6 +2224,9 @@ const networkStats = reactive({
 let lastBytes = 0;
 let lastStatsTime = Date.now();
 let statsInterval: number | null = null;
+const poorConnectionDetected = ref(false);
+let poorConnectionTimer = 0;
+const POOR_CONNECTION_THRESHOLD = 5; // 5 seconds (roughly 2 intervals)
 
 async function updateNetworkStats() {
     const pc = meetingStore.sfuPc();
@@ -2141,13 +2242,26 @@ async function updateNetworkStats() {
         let totalPacketsLost = 0;
         let totalPacketsReceived = 0;
 
+        // Find the active transport to pinpoint the correct candidate pair
+        let activeCandidatePairId: string | null = null;
         stats.forEach((report) => {
-            // RTT from candidate-pair
+            if (report.type === "transport") {
+                activeCandidatePairId = report.selectedCandidatePairId;
+            }
+        });
+
+        stats.forEach((report) => {
+            // RTT from active candidate-pair
             if (
                 report.type === "candidate-pair" &&
-                report.state === "succeeded"
+                (report.id === activeCandidatePairId ||
+                    (report.state === "succeeded" && report.nominated))
             ) {
-                networkStats.rtt = (report.currentRoundTripTime || 0) * 1000;
+                const newRtt = (report.currentRoundTripTime || 0) * 1000;
+                // Basic sanity check, ignore absurd early values > 10s
+                if (newRtt < 10000) {
+                    networkStats.rtt = newRtt;
+                }
             }
             // Outbound bitrate (bytesSent) or Inbound (bytesReceived)
             // For general health, we track both but bitrate usually refers to outbound local
@@ -2173,10 +2287,29 @@ async function updateNetworkStats() {
         networkStats.packetLoss = lossPercent;
 
         // Scoring (0=Good, 1=Fair, 2=Poor)
-        if (lossPercent > 10 || networkStats.rtt > 400) networkStats.score = 2;
-        else if (lossPercent > 3 || networkStats.rtt > 200)
+        let oldScore = networkStats.score;
+
+        if (lossPercent > 10 || networkStats.rtt > 400) {
+            networkStats.score = 2;
+            poorConnectionTimer++;
+            if (poorConnectionTimer >= POOR_CONNECTION_THRESHOLD) {
+                poorConnectionDetected.value = true;
+            }
+        } else if (lossPercent > 3 || networkStats.rtt > 200) {
             networkStats.score = 1;
-        else networkStats.score = 0;
+            poorConnectionTimer = 0;
+            poorConnectionDetected.value = false;
+        } else {
+            networkStats.score = 0;
+            poorConnectionTimer = 0;
+            poorConnectionDetected.value = false;
+        }
+
+        if (oldScore !== networkStats.score || networkStats.score === 2) {
+            console.log(
+                `[NetworkStats] Score: ${networkStats.score} | RTT: ${networkStats.rtt}ms | Loss: ${lossPercent.toFixed(2)}% | Bitrate: ${(networkStats.bitrate || 0).toFixed(0)}kbps | Timer: ${poorConnectionTimer}/${POOR_CONNECTION_THRESHOLD}`,
+            );
+        }
     } catch (e) {
         // Silent fail for stats
     }
@@ -2309,8 +2442,13 @@ onBeforeUnmount(() => {
 }
 
 @keyframes flash {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.3; }
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.3;
+    }
 }
 
 @keyframes pulse-red {
@@ -2368,7 +2506,9 @@ onBeforeUnmount(() => {
     border-radius: 50%;
     background: rgba(138, 180, 248, 0.4);
     pointer-events: none;
-    transition: transform 0.05s linear, opacity 0.1s ease-out;
+    transition:
+        transform 0.05s linear,
+        opacity 0.1s ease-out;
     z-index: 0;
 }
 
@@ -3697,11 +3837,23 @@ onBeforeUnmount(() => {
     position: fixed;
     inset: 0;
     z-index: 100;
-    background: #202124;
+    background: rgba(32, 33, 36, 0.6);
+    backdrop-filter: blur(40px);
+    -webkit-backdrop-filter: blur(40px);
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 24px;
+    animation: waitingFadeIn 0.5s ease-out;
+}
+
+@keyframes waitingFadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
 }
 
 .waiting-content {
@@ -3978,5 +4130,62 @@ onBeforeUnmount(() => {
     to {
         transform: rotate(360deg);
     }
+}
+
+/* ─── Poor Connection Banner ─────────────────────────────────────────── */
+.poor-connection-banner {
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 100;
+    pointer-events: none;
+    width: auto;
+    max-width: 90%;
+    margin-top: 16px;
+}
+
+.poor-connection-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    background: rgba(220, 38, 38, 0.15);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(220, 38, 38, 0.3);
+    border-radius: 12px;
+    color: white;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    pointer-events: auto;
+}
+
+.poor-connection-text {
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.poor-connection-action {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    color: white;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.poor-connection-action:hover {
+    background: rgba(255, 255, 255, 0.25);
+    border-color: rgba(255, 255, 255, 0.4);
+}
+
+.poor-connection-action:active {
+    transform: scale(0.95);
 }
 </style>

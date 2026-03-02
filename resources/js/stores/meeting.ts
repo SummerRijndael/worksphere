@@ -752,10 +752,13 @@ export const useMeetingStore = defineStore('meeting', () => {
         } else {
             // Legacy SFU Path
             log('SYS', 'Initializing Legacy SFU session...');
-            stream.initSFU(stream.localStream.value);
-            // Proactively ask everyone to re-send their media info to us
-            signaling.broadcastRequestMediaInfo();
+            await stream.initSFU(stream.localStream.value);
         }
+    }
+
+    async function resetSFUSession() {
+        log('SYS', 'Manual SFU Reset requested via UI');
+        await stream.resetSFUSession(stream.localStream.value);
     }
 
     function toggleDevMode() { 
@@ -1250,9 +1253,9 @@ export const useMeetingStore = defineStore('meeting', () => {
         addLocalStream: stream.addLocalStream,
         setStream,
         toggleHand,
-        replaceTrack: stream.replaceTrack,
         publishScreenTrack,
         unpublishScreenTrack,
+        resetSFUSession,
         
         // Host Action proxies
         sendSignal: signaling.sendSignal, // used by LaserPointerOverlay for laser-move events

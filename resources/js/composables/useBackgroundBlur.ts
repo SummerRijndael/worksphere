@@ -52,6 +52,12 @@ export function useBackgroundBlur() {
     let useChromaKey = false;
     let chromaKeyColor = { r: 0, g: 255, b: 0 };
     let chromaKeyThreshold = 0.12;
+
+    
+    // Mask state for reuse
+    let maskImageData: ImageData | null = null;
+    let maskImageDataWidth = 0;
+    let maskImageDataHeight = 0;
     
     async function loadModel() {
         if (isLoaded.value || isLoading.value) return;
@@ -396,7 +402,8 @@ export function useBackgroundBlur() {
 
             createImageBitmap(maskImageData).then(bmp => {
                 drawComposition(bmp, true);
-            }).catch(() => {
+            }).catch(e => {
+                console.error("[BackgroundBlur] ChromaKey createImageBitmap failed", e);
                 if (ctx && canvas) ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                 animationFrameId = requestAnimationFrame(draw);
             });
@@ -449,7 +456,8 @@ export function useBackgroundBlur() {
                  }
                  createImageBitmap(maskImageData).then(bmp => {
                      drawComposition(bmp, true);
-                 }).catch(() => {
+                 }).catch(e => {
+                     console.error("[BackgroundBlur] ConfidenceMask createImageBitmap failed", e);
                      // Fallback: draw raw video if bitmap creation fails
                      if (ctx && canvas) {
                          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -491,7 +499,8 @@ export function useBackgroundBlur() {
 
                  createImageBitmap(maskImageData).then(bmp => {
                      drawComposition(bmp, true);
-                 }).catch(() => {
+                 }).catch(e => {
+                     console.error("[BackgroundBlur] CategoryMask createImageBitmap failed", e);
                      if (ctx && canvas) {
                          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                      }
@@ -505,7 +514,12 @@ export function useBackgroundBlur() {
         };
         
         const drawComposition = (mask: ImageBitmap, shouldClose: boolean) => {
-             if (!ctx || !canvas || !video || !blurCtx || !personCtx || !blurCanvas || !personCanvas) return;
+             if (!ctx || !canvas || !video || !blurCtx || !personCtx || !blurCanvas || !personCanvas) {
+                 if (shouldClose) mask.close();
+                 // Even if we can't draw the composition, we MUST trigger the next frame
+                 animationFrameId = requestAnimationFrame(draw);
+                 return;
+             }
 
              const w = canvas.width;
              const h = canvas.height;

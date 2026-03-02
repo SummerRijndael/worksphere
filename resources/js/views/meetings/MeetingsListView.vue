@@ -110,9 +110,34 @@
                                 <Icon name="video" size="20" />
                             </div>
                             <div>
-                                <h3 class="font-bold text-lg leading-tight">
-                                    {{ meeting.title }}
-                                </h3>
+                                <div class="flex items-center gap-2">
+                                    <h3 class="font-bold text-lg leading-tight">
+                                        {{ meeting.title }}
+                                    </h3>
+                                    <!-- Status Badge -->
+                                    <div 
+                                        v-if="meeting.status === 'active'" 
+                                        class="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 text-[10px] font-bold uppercase tracking-wider h-fit"
+                                    >
+                                        <span class="relative flex h-1.5 w-1.5">
+                                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                            <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                                        </span>
+                                        Live
+                                    </div>
+                                    <div 
+                                        v-else-if="meeting.status === 'ended'" 
+                                        class="px-2 py-0.5 rounded-full bg-gray-500/10 text-gray-400 text-[10px] font-bold uppercase tracking-wider h-fit"
+                                    >
+                                        Ended
+                                    </div>
+                                    <div 
+                                        v-else 
+                                        class="px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 text-[10px] font-bold uppercase tracking-wider h-fit"
+                                    >
+                                        Scheduled
+                                    </div>
+                                </div>
                                 <div
                                     class="text-xs text-(-(--text-muted)) font-medium flex items-center gap-1 mt-1"
                                 >
@@ -209,11 +234,11 @@
 
                     <div class="flex items-center gap-2 mb-6">
                         <div
-                            v-if="meeting.participants?.length"
+                            v-if="getActiveParticipants(meeting)?.length"
                             class="flex -space-x-2"
                         >
                             <div
-                                v-for="participant in meeting.participants.slice(0, 3)"
+                                v-for="participant in getActiveParticipants(meeting).slice(0, 3)"
                                 :key="participant.id"
                                 :title="participant.user?.name || 'Guest'"
                                 class="w-7 h-7 rounded-full border-2 border-(--surface-primary) overflow-hidden shrink-0"
@@ -226,13 +251,17 @@
                                 />
                             </div>
                         </div>
-                        <span class="text-xs text-(--text-muted)">
-                            {{ meeting.participants?.length || 0 }}
+                        <span 
+                            class="text-xs font-medium"
+                            :class="meeting.status === 'active' ? 'text-emerald-500' : 'text-(--text-muted)'"
+                        >
+                            {{ getMeetingDisplayCount(meeting) }}
                             {{
-                                meeting.participants?.length === 1
+                                getMeetingDisplayCount(meeting) === 1
                                     ? "participant"
                                     : "participants"
                             }}
+                            {{ meeting.status === 'active' ? 'in call' : '' }}
                         </span>
                     </div>
 
@@ -401,7 +430,7 @@ const startInstantMeeting = async () => {
         const meeting = await meetingService.createMeeting({
             title: `Instant Meeting - ${dayjs().format("HH:mm")}`,
             start_time: dayjs().toISOString(),
-            settings: { instant: true },
+            settings: { instant: true, lobby_enabled: false },
         });
 
         toast.success("Instant meeting created");
@@ -479,6 +508,22 @@ const cancelMeeting = async (meeting: Meeting) => {
 const formatTime = (time: string | undefined) => {
     if (!time) return "Instant";
     return dayjs(time).format("MMM D, YYYY · HH:mm");
+};
+
+const getActiveParticipants = (meeting: Meeting) => {
+    if (meeting.status !== "active" || !meeting.active_participant_ids) {
+        return meeting.participants || [];
+    }
+    return (meeting.participants || []).filter((p) =>
+        meeting.active_participant_ids?.includes(p.public_id),
+    );
+};
+
+const getMeetingDisplayCount = (meeting: Meeting) => {
+    if (meeting.status === "active") {
+        return meeting.active_participant_count ?? 0;
+    }
+    return meeting.participants?.length ?? 0;
 };
 
 onMounted(fetchMeetings);

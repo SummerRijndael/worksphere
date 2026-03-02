@@ -8,7 +8,9 @@ export interface Meeting {
     description: string | null;
     start_time: string;
     end_time: string | null;
-    status: 'scheduled' | 'live' | 'ended';
+    status: 'scheduled' | 'active' | 'ended';
+    active_participant_count?: number;
+    active_participant_ids?: string[];
     is_locked?: boolean;
     settings: {
         lobby_enabled: boolean;

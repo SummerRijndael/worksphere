@@ -87,6 +87,38 @@ class PresenceService
     }
 
     /**
+     * Record a heartbeat for a specific meeting.
+     */
+    public function meetingHeartbeat(string $meetingPublicId, string $participantPublicId): void
+    {
+        $key = "meeting:presence:{$meetingPublicId}";
+        
+        // Add participant to the set of active users for this meeting
+        Redis::zadd($key, now()->timestamp, $participantPublicId);
+        
+        // Set expiry for the whole set if it's new (e.g. 2 hours)
+        Redis::expire($key, 7200);
+        
+        // Prune participants who haven't sent a heartbeat in 60 seconds
+        $threshold = now()->timestamp - 60;
+        Redis::zremrangebyscore($key, '-inf', $threshold);
+    }
+
+    /**
+     * Get IDs of participants currently active in the meeting.
+     */
+    public function getActiveMeetingParticipantIds(string $meetingPublicId): array
+    {
+        $key = "meeting:presence:{$meetingPublicId}";
+        
+        // Prune stale before returning
+        $threshold = now()->timestamp - 60;
+        Redis::zremrangebyscore($key, '-inf', $threshold);
+        
+        return Redis::zrange($key, 0, -1) ?: [];
+    }
+
+    /**
      * Remove a user from the online pool and broadcast when they go offline.
      */
     public function markOffline(User|int|null $user): bool
