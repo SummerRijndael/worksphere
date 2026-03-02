@@ -208,9 +208,18 @@ export function createStreamManager(
         return { audioMid, videoMid, screenMid };
     }
 
-    function broadcastMediaMids() {
+    function broadcastMediaMids(retryCount = 0) {
         if (!sfuPc || !localParticipantRef.value) return;
         const { audioMid, videoMid, screenMid } = getLocalTrackMids();
+        
+        // If no MIDs are available yet (transceivers haven't been assigned MIDs by SDP),
+        // retry after a short delay. This happens commonly for late joiners.
+        if (!audioMid && !videoMid && !screenMid && retryCount < 5) {
+            log('SIGNAL', `No MIDs available yet (attempt ${retryCount + 1}/5), retrying in 1s...`);
+            setTimeout(() => broadcastMediaMids(retryCount + 1), 1000);
+            return;
+        }
+
         log('SIGNAL', 'Triggering SFU Media Ready broadcast', { audioMid, videoMid, screenMid });
         onSfuMediaReady(audioMid, videoMid, screenMid);
     }
@@ -737,13 +746,13 @@ export function createStreamManager(
 
                     flushPendingTracks();
 
-                    // Server Offer → Client Answer flow (from CallApp.vue L2942-2955)
-                    log('SFU', `Processing Server Offer for tracks from ${participantPublicId}`);
+                    // Apply server offer and send answer — all wrapped in non-fatal catch
+                    // because by this point tracks are already received via ontrack
                     try {
+                        log('SFU', `Processing Server Offer for tracks from ${participantPublicId}`);
                         await sfuPc!.setRemoteDescription(toSdpAnswer(res.sessionDescription));
                     } catch (sdpErr) {
-                        log('ERROR', `setRemoteDescription failed for ${participantPublicId}:`, sdpErr);
-                        throw sdpErr; // bubble up to try-catch for retry
+                        log('SFU', `setRemoteDescription warning for ${participantPublicId} (track already received, non-fatal):`, sdpErr);
                     }
 
                     // Map MIDs to participant AFTER setRemoteDescription so tr.mid is available
