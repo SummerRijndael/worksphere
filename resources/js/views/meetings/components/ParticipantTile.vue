@@ -75,6 +75,12 @@
                 size="14"
                 class="tile-mic-muted"
             />
+            <span
+                v-if="qualityScore > 0 && qualityScore <= 2 && !isLocal"
+                class="tile-quality-dot"
+                :class="qualityScore === 1 ? 'tile-quality-critical' : 'tile-quality-poor'"
+                :title="qualityScore === 1 ? 'Critical connection' : 'Poor connection'"
+            ></span>
             <span class="tile-name-text">{{ displayName }}</span>
         </div>
 
@@ -187,6 +193,13 @@ const isSpeaking = computed(() => {
         meetingStore.talkingParticipants.has(props.participant.public_id) &&
         !props.isScreenShare
     );
+});
+
+const qualityScore = computed(() => {
+    const scores = meetingStore.stream?.participantQualityScores?.value;
+    if (!scores) return 0;
+    const pid = props.participant.public_id?.toLowerCase();
+    return scores.get(pid)?.score ?? 0;
 });
 
 // -- Aspect Ratio & Content Scaling Logic --
@@ -514,5 +527,26 @@ watch(() => meetingStore.lastAnnotationSignal, (data) => {
 }
 .tile-pin-btn--active:hover {
     background: #aecbfa;
+}
+
+/* Quality Indicator */
+.tile-quality-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.tile-quality-poor {
+    background: #f9ab00;
+    box-shadow: 0 0 4px rgba(249, 171, 0, 0.6);
+}
+.tile-quality-critical {
+    background: #ea4335;
+    box-shadow: 0 0 4px rgba(234, 67, 53, 0.6);
+    animation: quality-pulse 1.5s ease-in-out infinite;
+}
+@keyframes quality-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
 }
 </style>

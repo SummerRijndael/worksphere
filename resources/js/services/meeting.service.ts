@@ -144,6 +144,10 @@ class MeetingService extends BaseService {
         return this.delete(`/api/meetings/${id}`);
     }
 
+    async resendInvites(id: string) {
+        return this.post(`/api/meetings/${id}/resend-invites`, {});
+    }
+
     async lockMeeting(id: string) {
         return this.post(`/api/meetings/${id}/lock`, {});
     }
@@ -211,6 +215,11 @@ class MeetingService extends BaseService {
             body.sessionDescription = { type: 'offer', sdp: offer };
         }
         const response = await this.api.post(`/api/meetings/${id}/sfu/sessions/${sessionId}/tracks/new`, body);
+        return response.data;
+    }
+
+    async sfuTracksUpdate(id: string, sessionId: string, tracks: any[]): Promise<any> {
+        const response = await this.api.put(`/api/meetings/${id}/sfu/sessions/${sessionId}/tracks/update`, { tracks });
         return response.data;
     }
 

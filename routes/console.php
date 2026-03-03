@@ -147,10 +147,14 @@ Schedule::job(new \App\Jobs\RenewGoogleWatchChannelsJob)
     ->withoutOverlapping()
     ->onOneServer();
 
-// Re-establish all Google Calendar Watch Channels (Daily)
+// Safety-net: register channels for users with NO active channel (weekly, Sunday 4 AM).
+// RenewGoogleWatchChannelsJob (3 AM daily) handles proactive renewal of expiring channels.
+// This job only fills gaps: failed initial registrations or truly expired/missing channels.
 Schedule::command('google:watch-all')
-    ->dailyAt('04:00')
-    ->name('google-watch-all')
+    ->weekly()
+    ->sundays()
+    ->at('04:00')
+    ->name('google-watch-all-safety-net')
     ->withoutOverlapping()
     ->onOneServer();
 

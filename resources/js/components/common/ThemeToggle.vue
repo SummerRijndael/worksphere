@@ -21,7 +21,9 @@ function getCurrentIcon() {
     <Dropdown align="end">
         <template #trigger>
             <Button variant="ghost" size="icon" class="h-9 w-9">
-                <component :is="getCurrentIcon()" class="h-4 w-4" />
+                <Sun v-if="getCurrentIcon() === Sun" class="h-4 w-4" />
+                <Moon v-else-if="getCurrentIcon() === Moon" class="h-4 w-4" />
+                <Monitor v-else class="h-4 w-4" />
             </Button>
         </template>
 
@@ -30,7 +32,9 @@ function getCurrentIcon() {
             :key="theme.id"
             @select="themeStore.setMode(theme.id)"
         >
-            <component :is="theme.icon" class="h-4 w-4" />
+            <Sun v-if="theme.icon === Sun" class="h-4 w-4" />
+            <Moon v-else-if="theme.icon === Moon" class="h-4 w-4" />
+            <Monitor v-else-if="theme.icon === Monitor" class="h-4 w-4" />
             <span>{{ theme.label }}</span>
             <span
                 v-if="theme.id === themeStore.currentMode"

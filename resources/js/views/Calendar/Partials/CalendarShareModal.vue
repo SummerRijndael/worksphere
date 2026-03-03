@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 import axios from "axios";
-import { Trash } from "lucide-vue-next";
+// import { Trash } from "lucide-vue-next";
 import Modal from "@/components/ui/Modal.vue";
 import Button from "@/components/ui/Button.vue";
 import ParticipantSelector from "@/components/ui/ParticipantSelector.vue";
@@ -43,6 +43,8 @@ const selectedParticipants = ref<Participant[]>([]);
 const newSharePermission = ref("view");
 const errorMsg = ref("");
 
+const shareToRevoke = ref<number | null>(null);
+
 // Proxies for Modal
 const closeModal = () => {
     emit("close");
@@ -62,7 +64,7 @@ const fetchShares = async () => {
     isLoading.value = true;
     try {
         const response = await axios.get<CalendarSharesResponse>(
-            "/api/calendar/shares"
+            "/api/calendar/shares",
         );
         shares.value = response.data.my_shares;
         hasSharedWithMe.value = response.data.shared_with_me;
@@ -80,7 +82,7 @@ watch(
             fetchShares();
             selectedParticipants.value = [];
         }
-    }
+    },
 );
 
 const addShares = async () => {
@@ -131,16 +133,25 @@ const updateShare = async (id: number, permission: string) => {
     }
 };
 
-const removeShare = async (id: number) => {
-    if (!confirm("Are you sure you want to stop sharing with this user?"))
-        return;
+const removeShare = (id: number) => {
+    if (confirm("Are you sure you want to stop sharing with this user? The user will immediately lose access to view or edit your calendar events.")) {
+        shareToRevoke.value = id;
+        confirmRevoke();
+    }
+};
 
+const confirmRevoke = async () => {
+    if (shareToRevoke.value === null) return;
+
+    const id = shareToRevoke.value;
     try {
         await axios.delete(`/api/calendar/shares/${id}`);
         await fetchShares();
     } catch (e) {
         console.error("Failed to remove share", e);
         alert("Failed to revoke access.");
+    } finally {
+        shareToRevoke.value = null;
     }
 };
 
@@ -165,7 +176,7 @@ const getInitials = (name: string) => {
             <!-- Add New Share -->
             <div>
                 <label
-                    class="block text-sm font-medium text-[var(--text-secondary)] mb-2"
+                    class="block text-sm font-medium text-(--text-secondary) mb-2"
                     >Share with people</label
                 >
                 <div class="space-y-3">
@@ -181,7 +192,7 @@ const getInitials = (name: string) => {
                     <div class="flex items-center justify-end gap-2">
                         <select
                             v-model="newSharePermission"
-                            class="h-9 rounded-lg border border-[var(--border-default)] bg-[var(--surface-primary)] text-sm px-3 focus:outline-none focus:ring-2 focus:ring-[var(--interactive-primary)]/30"
+                            class="h-9 rounded-lg border border-(--border-default) bg-(--surface-primary) text-sm px-3 focus:outline-none focus:ring-2 focus:ring-(--interactive-primary)/30"
                         >
                             <option value="view">Can view</option>
                             <option value="edit">Can edit</option>
@@ -201,7 +212,7 @@ const getInitials = (name: string) => {
                 </div>
                 <p
                     v-if="errorMsg"
-                    class="mt-2 text-sm text-[var(--color-error)]"
+                    class="mt-2 text-sm text-error"
                 >
                     {{ errorMsg }}
                 </p>
@@ -209,64 +220,66 @@ const getInitials = (name: string) => {
 
             <!-- Shared With User List -->
             <div>
-                <h4 class="text-sm font-medium text-[var(--text-primary)] mb-3">
+                <h4 class="text-sm font-medium text-(--text-primary) mb-3">
                     People with access
                 </h4>
 
                 <div
                     v-if="isLoading && shares.length === 0"
-                    class="text-center py-8 text-[var(--text-muted)]"
+                    class="text-center py-8 text-(--text-muted)"
                 >
                     Loading...
                 </div>
 
                 <ul
                     v-else-if="shares.length > 0"
-                    class="divide-y divide-[var(--border-subtle)]"
+                    class="divide-y divide-(--border-subtle)"
                 >
                     <li
                         v-for="share in shares"
                         :key="share.share_id"
-                        class="py-3 flex items-center justify-between group"
+                        class="py-3 flex items-center justify-between group text-(--text-primary)"
                     >
                         <div class="flex items-center gap-3">
                             <div
-                                class="h-8 w-8 rounded-full bg-[var(--surface-tertiary)] flex items-center justify-center text-[var(--text-secondary)] font-bold text-xs"
+                                class="h-8 w-8 rounded-full bg-(--surface-tertiary) flex items-center justify-center text-(--text-secondary) font-bold text-xs"
                             >
                                 {{ getInitials(share.name) }}
                             </div>
                             <div>
                                 <p
-                                    class="text-sm font-medium text-[var(--text-primary)]"
+                                    class="text-sm font-medium text-(--text-primary)"
                                 >
                                     {{ share.name }}
                                 </p>
-                                <p class="text-xs text-[var(--text-secondary)]">
+                                <p class="text-xs text-(--text-secondary)">
                                     {{ share.email }}
                                 </p>
                             </div>
                         </div>
-                        <div class="flex items-center gap-2">
+                        <div
+                            class="flex items-center gap-2 text-(--text-secondary)"
+                        >
                             <select
                                 :value="share.permission_level"
                                 @change="
                                     updateShare(
                                         share.share_id,
                                         ($event.target as HTMLSelectElement)
-                                            .value
+                                            .value,
                                     )
                                 "
-                                class="text-xs border-none bg-transparent text-[var(--text-secondary)] focus:ring-0 cursor-pointer hover:bg-[var(--surface-secondary)] rounded py-1 px-2 transition-colors"
+                                class="text-xs border-none bg-transparent text-(--text-secondary) focus:ring-0 cursor-pointer hover:bg-(--surface-secondary) rounded py-1 px-2 transition-colors"
                             >
                                 <option value="view">Can view</option>
                                 <option value="edit">Can edit</option>
                             </select>
                             <button
                                 @click="removeShare(share.share_id)"
-                                class="text-[var(--text-muted)] hover:text-[var(--color-error)] p-1.5 rounded-md hover:bg-[var(--surface-secondary)] transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+                                class="text-(--text-muted) hover:text-error p-1.5 rounded-md hover:bg-(--surface-secondary) transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
                                 title="Revoke access"
                             >
-                                <Trash class="h-4 w-4" />
+                                <!-- <Trash class="h-4 w-4" /> -->
                             </button>
                         </div>
                     </li>
@@ -274,9 +287,9 @@ const getInitials = (name: string) => {
 
                 <div
                     v-else
-                    class="text-center py-8 bg-[var(--surface-secondary)]/30 rounded-lg border border-dashed border-[var(--border-default)]"
+                    class="text-center py-8 bg-(--surface-secondary)/30 rounded-lg border border-dashed border-(--border-default)"
                 >
-                    <p class="text-sm text-[var(--text-muted)]">
+                    <p class="text-sm text-(--text-muted)">
                         Not shared with anyone yet.
                     </p>
                 </div>
@@ -287,4 +300,5 @@ const getInitials = (name: string) => {
             <Button variant="secondary" @click="closeModal"> Done </Button>
         </template>
     </Modal>
+
 </template>

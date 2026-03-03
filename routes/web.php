@@ -88,6 +88,23 @@ Route::get('/call/{callId}', function () {
     return view('call');
 })->middleware(['auth:sanctum'])->name('call.page');
 
+// Public Profile Route (for SEO/social unfurling - must be before generic catch-all)
+Route::get('/p/{slug}', function (string $slug) {
+    // We lookup the user by username (slug)
+    $user = User::where('username', $slug)->first();
+
+    if (! $user) {
+        // Fallback to standard view if user not found, SPA will handles 404 UI
+        return view('app');
+    }
+
+    return view('app', [
+        'ogTitle' => $user->name.' on WorkSphere',
+        'ogDescription' => $user->bio ?? 'View profile on WorkSphere.',
+        'ogImage' => $user->avatar_url ?? asset('static/images/worksphere_brand.png'),
+    ]);
+});
+
 Route::get('/{any?}', function () {
     return view('app');
 })->where('any', '.*');

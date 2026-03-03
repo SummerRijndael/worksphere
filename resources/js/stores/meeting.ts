@@ -1251,11 +1251,15 @@ export const useMeetingStore = defineStore('meeting', () => {
         initializeMeeting,
         cleanup,
         addLocalStream: stream.addLocalStream,
+        replaceTrack: stream.replaceTrack,
         setStream,
         toggleHand,
         publishScreenTrack,
         unpublishScreenTrack,
         resetSFUSession,
+        
+        // Full stream manager (for advanced access like setVisibleParticipants)
+        stream,
         
         // Host Action proxies
         sendSignal: signaling.sendSignal, // used by LaserPointerOverlay for laser-move events

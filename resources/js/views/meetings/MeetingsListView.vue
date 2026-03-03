@@ -7,9 +7,43 @@
                 <h1 class="text-xl sm:text-2xl font-bold text-(--text-primary)">
                     Meetings
                 </h1>
-                <p class="text-sm text-(--text-muted)">
-                    Schedule and manage your video conferences
-                </p>
+                <div class="flex items-center gap-3 mt-1">
+                    <p class="text-sm text-(--text-muted)">
+                        Schedule and manage your video conferences
+                    </p>
+                    <div class="flex items-center gap-2">
+                        <button
+                            @click="manualRefresh"
+                            :disabled="isRefreshing"
+                            class="p-1 rounded hover:bg-(--surface-tertiary) text-(--text-muted) transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                            :title="
+                                isRefreshing ? 'Refreshing...' : 'Refresh list'
+                            "
+                        >
+                            <Icon
+                                name="refresh-cw"
+                                size="14"
+                                :class="{ 'animate-spin': isRefreshing }"
+                            />
+                        </button>
+                        <label
+                            class="flex items-center gap-1.5 cursor-pointer select-none"
+                        >
+                            <input
+                                type="checkbox"
+                                v-model="autoRefreshEnabled"
+                                class="sr-only peer"
+                            />
+                            <div
+                                class="w-7 h-4 bg-(--border-muted) peer-checked:bg-emerald-500 rounded-full relative transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-3 after:h-3 after:bg-white after:rounded-full after:transition-transform peer-checked:after:translate-x-3"
+                            ></div>
+                            <span
+                                class="text-[11px] text-(--text-muted) whitespace-nowrap"
+                                >Auto</span
+                            >
+                        </label>
+                    </div>
+                </div>
             </div>
             <div class="flex flex-col sm:flex-row gap-3 items-center">
                 <!-- Join by ID -->
@@ -24,7 +58,7 @@
                     <input
                         v-model="joinId"
                         placeholder="Enter Meeting ID"
-                        class="bg-transparent border-none outline-none px-2 py-1 text-sm w-40 text-(--text-primary)"
+                        class="bg-transparent border-none outline-none focus:ring-0 focus:outline-none px-2 py-1 text-sm w-40 text-(--text-primary)"
                         @keyup.enter="handleJoinById"
                     />
                     <button
@@ -99,9 +133,9 @@
             <div
                 v-for="meeting in meetings"
                 :key="meeting.id"
-                class="bg-(--surface-primary) border border-(--border-muted) rounded-xl overflow-hidden hover:shadow-lg transition-shadow group"
+                class="bg-(--surface-primary) border border-(--border-muted) rounded-xl overflow-hidden hover:shadow-lg transition-shadow group flex flex-col h-full"
             >
-                <div class="p-5">
+                <div class="p-5 flex flex-col h-full">
                     <div class="flex justify-between items-start mb-4">
                         <div class="flex items-center gap-3">
                             <div
@@ -111,28 +145,35 @@
                             </div>
                             <div>
                                 <div class="flex items-center gap-2">
-                                    <h3 class="font-bold text-lg leading-tight">
+                                    <h3
+                                        class="font-bold text-lg leading-tight truncate max-w-[12rem] sm:max-w-[14rem]"
+                                        :title="meeting.title"
+                                    >
                                         {{ meeting.title }}
                                     </h3>
                                     <!-- Status Badge -->
-                                    <div 
-                                        v-if="meeting.status === 'active'" 
+                                    <div
+                                        v-if="meeting.status === 'active'"
                                         class="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 text-[10px] font-bold uppercase tracking-wider h-fit"
                                     >
                                         <span class="relative flex h-1.5 w-1.5">
-                                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                            <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                                            <span
+                                                class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"
+                                            ></span>
+                                            <span
+                                                class="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"
+                                            ></span>
                                         </span>
                                         Live
                                     </div>
-                                    <div 
-                                        v-else-if="meeting.status === 'ended'" 
+                                    <div
+                                        v-else-if="meeting.status === 'ended'"
                                         class="px-2 py-0.5 rounded-full bg-gray-500/10 text-gray-400 text-[10px] font-bold uppercase tracking-wider h-fit"
                                     >
                                         Ended
                                     </div>
-                                    <div 
-                                        v-else 
+                                    <div
+                                        v-else
                                         class="px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 text-[10px] font-bold uppercase tracking-wider h-fit"
                                     >
                                         Scheduled
@@ -209,6 +250,35 @@
                                     <Icon name="edit" size="14" class="mr-2" />
                                     Edit Meeting
                                 </DropdownItem>
+
+                                <DropdownItem
+                                    v-if="
+                                        isOwner(meeting) &&
+                                        meeting.participants?.length > 1
+                                    "
+                                    @select="resendInvites(meeting)"
+                                    :disabled="resendingSet.has(meeting.id)"
+                                >
+                                    <Icon
+                                        :name="
+                                            resendingSet.has(meeting.id)
+                                                ? 'loader-2'
+                                                : 'mail'
+                                        "
+                                        size="14"
+                                        class="mr-2"
+                                        :class="{
+                                            'animate-spin': resendingSet.has(
+                                                meeting.id,
+                                            ),
+                                        }"
+                                    />
+                                    {{
+                                        resendingSet.has(meeting.id)
+                                            ? "Sending..."
+                                            : "Resend Invites"
+                                    }}
+                                </DropdownItem>
                                 <DropdownItem
                                     v-if="isOwner(meeting)"
                                     destructive
@@ -226,10 +296,9 @@
                     </div>
 
                     <p
-                        v-if="meeting.description"
                         class="text-sm text-(--text-secondary) line-clamp-2 mb-4 h-10"
                     >
-                        {{ meeting.description }}
+                        {{ meeting.description || "" }}
                     </p>
 
                     <div class="flex items-center gap-2 mb-6">
@@ -238,22 +307,28 @@
                             class="flex -space-x-2"
                         >
                             <div
-                                v-for="participant in getActiveParticipants(meeting).slice(0, 3)"
+                                v-for="participant in getActiveParticipants(
+                                    meeting,
+                                ).slice(0, 3)"
                                 :key="participant.id"
                                 :title="participant.user?.name || 'Guest'"
                                 class="w-7 h-7 rounded-full border-2 border-(--surface-primary) overflow-hidden shrink-0"
                             >
-                                <Avatar 
-                                    :src="participant.user?.avatar_url" 
-                                    :alt="participant.user?.name" 
+                                <Avatar
+                                    :src="participant.user?.avatar_url"
+                                    :alt="participant.user?.name"
                                     size="sm"
                                     class="w-full h-full"
                                 />
                             </div>
                         </div>
-                        <span 
+                        <span
                             class="text-xs font-medium"
-                            :class="meeting.status === 'active' ? 'text-emerald-500' : 'text-(--text-muted)'"
+                            :class="
+                                meeting.status === 'active'
+                                    ? 'text-emerald-500'
+                                    : 'text-(--text-muted)'
+                            "
                         >
                             {{ getMeetingDisplayCount(meeting) }}
                             {{
@@ -261,11 +336,11 @@
                                     ? "participant"
                                     : "participants"
                             }}
-                            {{ meeting.status === 'active' ? 'in call' : '' }}
+                            {{ meeting.status === "active" ? "in call" : "" }}
                         </span>
                     </div>
 
-                    <div class="flex gap-2">
+                    <div class="flex gap-2 mt-auto pt-4">
                         <button
                             @click="joinMeeting(meeting)"
                             class="flex-1 py-2 bg-(--color-primary-600) hover:bg-(--color-primary-700) text-white rounded-lg text-sm font-semibold transition-colors"
@@ -378,7 +453,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, onMounted, onUnmounted, watch } from "vue";
 import { useRouter } from "vue-router";
 import { meetingService, type Meeting } from "@/services/meeting.service";
 import MeetingCreateModal from "./components/MeetingCreateModal.vue";
@@ -398,7 +473,16 @@ const showCreateModal = ref(false);
 const editingMeeting = ref<Meeting | null>(null);
 const createdMeeting = ref<Meeting | null>(null);
 const revealedPasswords = ref<Set<number>>(new Set());
+const resendingSet = ref<Set<number>>(new Set());
 const joinId = ref("");
+
+// Auto-refresh state
+const autoRefreshEnabled = ref(false);
+const isRefreshing = ref(false);
+let pollInterval: ReturnType<typeof setInterval> | null = null;
+let lastFetchTime = 0;
+const POLL_INTERVAL_MS = 30000; // 30 seconds
+const RATE_LIMIT_MS = 5000; // 5s cooldown on manual refresh
 
 const handleJoinById = () => {
     if (!joinId.value.trim()) return;
@@ -411,6 +495,7 @@ const fetchMeetings = async () => {
     try {
         const response = await meetingService.listMeetings();
         meetings.value = response || [];
+        lastFetchTime = Date.now();
     } catch (error) {
         console.error("Failed to fetch meetings:", error);
         meetings.value = [];
@@ -419,6 +504,62 @@ const fetchMeetings = async () => {
         loading.value = false;
     }
 };
+
+// Silent fetch — no loading spinner (polling/focus)
+const silentFetchMeetings = async () => {
+    // Rate limit: skip if last fetch was too recent
+    if (Date.now() - lastFetchTime < RATE_LIMIT_MS) return;
+    try {
+        const response = await meetingService.listMeetings();
+        meetings.value = response || [];
+        lastFetchTime = Date.now();
+    } catch (error) {
+        // Silent fail for background refreshes
+    }
+};
+
+// Manual refresh with rate limit + visual feedback
+const manualRefresh = async () => {
+    if (isRefreshing.value) return;
+    if (Date.now() - lastFetchTime < RATE_LIMIT_MS) return;
+
+    isRefreshing.value = true;
+    try {
+        const response = await meetingService.listMeetings();
+        meetings.value = response || [];
+        lastFetchTime = Date.now();
+    } catch (error) {
+        toast.error("Failed to refresh meetings");
+    } finally {
+        // Keep spinner for at least 500ms for visual feedback
+        setTimeout(() => {
+            isRefreshing.value = false;
+        }, 500);
+    }
+};
+
+const handleWindowFocus = () => {
+    if (
+        autoRefreshEnabled.value &&
+        Date.now() - lastFetchTime > RATE_LIMIT_MS
+    ) {
+        silentFetchMeetings();
+    }
+};
+
+// Watch auto-refresh toggle
+watch(autoRefreshEnabled, (enabled) => {
+    if (enabled) {
+        pollInterval = setInterval(silentFetchMeetings, POLL_INTERVAL_MS);
+        window.addEventListener("focus", handleWindowFocus);
+    } else {
+        if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+        }
+        window.removeEventListener("focus", handleWindowFocus);
+    }
+});
 
 const isCreatingInstant = ref(false);
 
@@ -505,6 +646,23 @@ const cancelMeeting = async (meeting: Meeting) => {
     }
 };
 
+const resendInvites = async (meeting: Meeting) => {
+    if (resendingSet.value.has(meeting.id)) return;
+    resendingSet.value.add(meeting.id);
+
+    try {
+        const result = await meetingService.resendInvites(meeting.public_id);
+        toast.success(result?.message || "Invitations sent successfully");
+    } catch (error: any) {
+        toast.error(
+            error?.response?.data?.message ||
+                "Failed to resend invites. Ensure there are participants to invite.",
+        );
+    } finally {
+        resendingSet.value.delete(meeting.id);
+    }
+};
+
 const formatTime = (time: string | undefined) => {
     if (!time) return "Instant";
     return dayjs(time).format("MMM D, YYYY · HH:mm");
@@ -526,5 +684,16 @@ const getMeetingDisplayCount = (meeting: Meeting) => {
     return meeting.participants?.length ?? 0;
 };
 
-onMounted(fetchMeetings);
+onMounted(() => {
+    fetchMeetings();
+    lastFetchTime = Date.now();
+});
+
+onUnmounted(() => {
+    if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+    }
+    window.removeEventListener("focus", handleWindowFocus);
+});
 </script>

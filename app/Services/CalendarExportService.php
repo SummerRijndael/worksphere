@@ -33,8 +33,22 @@ class CalendarExportService
 
         $lines[] = 'SUMMARY:'.$this->escapeIcsText($event->title);
 
-        if ($event->description) {
-            $lines[] = 'DESCRIPTION:'.$this->escapeIcsText($event->description);
+        $description = $event->description ?? '';
+
+        // Add meeting details to description if attached
+        if ($event instanceof \App\Models\Event && $event->meeting) {
+            $meetingInfo = "\n\n--- Video Meeting Details ---\n";
+            $meetingInfo .= "Join URL: " . config('app.url') . "/meetings/" . $event->meeting->public_id . "/join\n";
+            $meetingInfo .= "Meeting ID: " . $event->meeting->public_id . "\n";
+            if ($event->meeting->password) {
+                $meetingInfo .= "Password: " . $event->meeting->password . "\n";
+            }
+            $meetingInfo .= "---------------------------\n";
+            $description = $description . $meetingInfo;
+        }
+
+        if ($description) {
+            $lines[] = 'DESCRIPTION:'.$this->escapeIcsText($description);
         }
 
         if ($event->location) {
@@ -95,8 +109,21 @@ class CalendarExportService
 
             $eventLines[] = 'SUMMARY:'.$this->escapeIcsText($event->title);
 
-            if ($event->description) {
-                $eventLines[] = 'DESCRIPTION:'.$this->escapeIcsText($event->description);
+            $description = $event->description ?? '';
+
+            if ($event instanceof \App\Models\Event && $event->meeting) {
+                $meetingInfo = "\n\n--- Video Meeting Details ---\n";
+                $meetingInfo .= "Join URL: " . config('app.url') . "/meetings/" . $event->meeting->public_id . "/join\n";
+                $meetingInfo .= "Meeting ID: " . $event->meeting->public_id . "\n";
+                if ($event->meeting->password) {
+                    $meetingInfo .= "Password: " . $event->meeting->password . "\n";
+                }
+                $meetingInfo .= "---------------------------\n";
+                $description = $description . $meetingInfo;
+            }
+
+            if ($description) {
+                $eventLines[] = 'DESCRIPTION:'.$this->escapeIcsText($description);
             }
 
             if ($event->location) {
