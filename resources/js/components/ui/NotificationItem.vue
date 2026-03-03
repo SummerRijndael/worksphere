@@ -94,7 +94,13 @@ const declineInvitation = async (notificationId) => {
             class="h-9 w-9 rounded-full flex items-center justify-center shrink-0"
             :class="iconColor"
         >
-            <component :is="icon" class="h-4 w-4" />
+            <Users v-if="icon === Users" class="h-4 w-4" />
+            <Folder v-else-if="icon === Folder" class="h-4 w-4" />
+            <Download v-else-if="icon === Download" class="h-4 w-4" />
+            <AlertCircle v-else-if="icon === AlertCircle" class="h-4 w-4" />
+            <AlertTriangle v-else-if="icon === AlertTriangle" class="h-4 w-4" />
+            <CheckCircle2 v-else-if="icon === CheckCircle2" class="h-4 w-4" />
+            <Bell v-else class="h-4 w-4" />
         </div>
 
         <!-- Content -->

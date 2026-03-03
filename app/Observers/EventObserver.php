@@ -55,7 +55,7 @@ class EventObserver
     public function deleted(Event $event): void
     {
         if ($event->google_event_id) {
-            SyncGoogleEventJob::dispatch($event);
+            SyncGoogleEventJob::dispatch($event, 'delete');
         }
     }
 }

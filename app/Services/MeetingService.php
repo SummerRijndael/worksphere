@@ -75,6 +75,7 @@ class MeetingService implements MeetingServiceContract
                     'start_time' => $startTime,
                     'end_time' => $endTime,
                     'is_all_day' => false,
+                    'reminder_minutes_before' => $data['reminder_minutes_before'] ?? null,
                     'external_attendees' => $externalEmails,
                     'meeting_id' => $meeting->id,
                 ]);
@@ -133,7 +134,10 @@ class MeetingService implements MeetingServiceContract
 
         // Auto-activate meeting if host joins
         if ($isHost && $meeting->status !== 'active') {
-            $meeting->update(['status' => 'active']);
+            $meeting->update([
+                'status' => 'active',
+                'actual_start_time' => now()
+            ]);
         }
         Log::channel('videocall')->info('[504_DEBUG] Step 1: Status check done', ['time' => microtime(true) - $start]);
 

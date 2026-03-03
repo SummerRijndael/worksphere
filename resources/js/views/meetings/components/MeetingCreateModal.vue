@@ -78,13 +78,26 @@
                             </label>
                         </div>
 
-                        <div v-if="!form.auto_generate_password">
+                        <div v-if="!form.auto_generate_password" class="space-y-2">
                             <input
                                 v-model="form.password"
                                 type="text"
                                 placeholder="Set meeting password (optional)"
                                 class="w-full bg-(--surface-tertiary) border-(--border-muted) rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-(--color-primary-500)/50 transition-all border text-sm"
                             />
+                            <!-- Password Strength Meter -->
+                            <div v-if="form.password" class="space-y-1">
+                                <div class="flex gap-1 h-1.5 w-full rounded-full overflow-hidden bg-(--surface-tertiary)">
+                                    <div :class="passwordStrength.score >= 1 ? passwordStrength.color : 'bg-transparent'" class="h-full flex-1 transition-colors"></div>
+                                    <div :class="passwordStrength.score >= 2 ? passwordStrength.color : 'bg-transparent'" class="h-full flex-1 transition-colors"></div>
+                                    <div :class="passwordStrength.score >= 3 ? passwordStrength.color : 'bg-transparent'" class="h-full flex-1 transition-colors"></div>
+                                    <div :class="passwordStrength.score >= 4 ? passwordStrength.color : 'bg-transparent'" class="h-full flex-1 transition-colors"></div>
+                                </div>
+                                <div class="flex justify-between items-center text-[10px]">
+                                    <span class="text-(--text-muted)">Must contain 8+ characters, mixed case, and numbers</span>
+                                    <span :class="[passwordStrength.color.replace('bg-', 'text-'), passwordStrength.color.replace('bg-', 'bg-').replace('500', '500/10')]" class="font-medium px-1.5 py-0.5 rounded-sm">{{ passwordStrength.label }}</span>
+                                </div>
+                            </div>
                         </div>
                         <div v-else class="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 flex items-center gap-3">
                             <Icon name="lock" size="16" class="text-blue-500 shrink-0" />
@@ -157,6 +170,33 @@
                                 <div class="w-9 h-5 bg-(--surface-tertiary) peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-(--color-primary-600) border border-(--border-muted)"></div>
                             </div>
                         </label>
+
+                        <!-- Notification Reminder (Shown when Save to Calendar is ON) -->
+                        <transition name="slide-down">
+                            <div v-if="form.save_to_calendar" class="pt-3 border-t border-(--border-muted) flex items-center justify-between">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                        v-model="form.enable_reminder"
+                                        type="checkbox"
+                                        class="w-4 h-4 rounded border-(--border-muted) text-(--color-primary-600) focus:ring-(--color-primary-500)"
+                                    />
+                                    <Icon name="bell" size="14" class="text-(--text-muted)" />
+                                    <span class="text-sm text-(--text-secondary)">Add reminder notification</span>
+                                </label>
+                                <select
+                                    v-if="form.enable_reminder"
+                                    v-model="form.reminder_minutes_before"
+                                    class="bg-(--surface-tertiary) border border-(--border-muted) rounded px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-(--color-primary-500)"
+                                >
+                                    <option :value="5">5 mins before</option>
+                                    <option :value="10">10 mins before</option>
+                                    <option :value="15">15 mins before</option>
+                                    <option :value="30">30 mins before</option>
+                                    <option :value="60">1 hour before</option>
+                                    <option :value="1440">1 day before</option>
+                                </select>
+                            </div>
+                        </transition>
                     </div>
 
                     <!-- Invite Participants toggle + selector -->
@@ -278,9 +318,27 @@ const form = reactive({
     lobby_enabled: true,
     // New fields
     save_to_calendar: false,
+    enable_reminder: false,
+    reminder_minutes_before: 15,
     invite_participants: false,
     participants: [] as Array<{ type: 'user' | 'email'; id?: string; email?: string; name?: string; avatar?: string }>,
     send_invite: false,
+});
+
+const passwordStrength = computed(() => {
+    const pw = form.password;
+    if (!pw) return { score: 0, label: 'Weak', color: 'bg-red-500' };
+    
+    let score = 0;
+    if (pw.length >= 8) score++;
+    if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) score++;
+    if (/\d/.test(pw)) score++;
+    if (/[^A-Za-z0-9]/.test(pw)) score++;
+    
+    if (score <= 1) return { score, label: 'Weak', color: 'bg-red-500' };
+    if (score === 2) return { score, label: 'Fair', color: 'bg-amber-500' };
+    if (score === 3) return { score, label: 'Good', color: 'bg-blue-500' };
+    return { score, label: 'Strong', color: 'bg-green-500' };
 });
 
 /** True if there are external (email-type) participants */
@@ -329,6 +387,7 @@ const submit = async () => {
                 lobby_enabled: form.lobby_enabled,
             },
             save_to_calendar: form.save_to_calendar,
+            reminder_minutes_before: form.save_to_calendar && form.enable_reminder ? form.reminder_minutes_before : null,
             send_invite: form.send_invite,
             participants: form.invite_participants ? form.participants : [],
         } as any);

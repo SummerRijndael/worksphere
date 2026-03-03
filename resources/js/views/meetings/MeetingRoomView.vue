@@ -1696,7 +1696,8 @@ onMounted(async () => {
                 );
             }
 
-            meetingStore.stream?.setVisibleParticipants?.(visibleIds);
+            const spotlightPid = spotlight ? spotlight.participant.public_id.toLowerCase() : null;
+            meetingStore.stream?.setVisibleParticipants?.(visibleIds, spotlightPid);
         },
         { immediate: true, deep: true },
     );

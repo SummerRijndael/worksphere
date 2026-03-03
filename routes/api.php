@@ -355,6 +355,18 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
         Route::get('/clients', [\App\Http\Controllers\Api\ClientController::class, 'index']);
         Route::apiResource('clients.contacts', \App\Http\Controllers\Api\ClientContactController::class)->shallow();
 
+        // Meetings Management
+        Route::prefix('meetings')->group(function () {
+            Route::get('/', [\App\Http\Controllers\Api\MeetingController::class, 'index']);
+            Route::post('/', [\App\Http\Controllers\Api\MeetingController::class, 'store']);
+            Route::get('/{meeting}', [\App\Http\Controllers\Api\MeetingController::class, 'show']);
+            Route::put('/{meeting}', [\App\Http\Controllers\Api\MeetingController::class, 'update']);
+            Route::post('/{meeting}/end', [\App\Http\Controllers\Api\MeetingController::class, 'end']);
+            Route::delete('/{meeting}', [\App\Http\Controllers\Api\MeetingController::class, 'destroy']);
+            Route::post('/{meeting}/recordings', [\App\Http\Controllers\Api\MeetingController::class, 'startRecording']);
+            Route::post('/{meeting}/recordings/stop', [\App\Http\Controllers\Api\MeetingController::class, 'stopRecording']);
+        });
+
         // Invoices Management
         Route::prefix('invoices')->group(function () {
             Route::get('/', [\App\Http\Controllers\Api\InvoiceController::class, 'index']);
@@ -990,6 +1002,8 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
         Route::post('/', [\App\Http\Controllers\Api\MeetingController::class, 'store'])
             ->middleware('throttle:meeting-creation');
         Route::patch('/{meeting}', [\App\Http\Controllers\Api\MeetingController::class, 'update']);
+        Route::post('/{meeting}/resend-invites', [\App\Http\Controllers\Api\MeetingController::class, 'resendInvites'])
+            ->middleware('throttle:5,1');
         Route::post('/{meeting}/participants/{participant}/admit', [\App\Http\Controllers\Api\MeetingController::class, 'admit']);
         Route::post('/{meeting}/participants/{participant}/reject', [\App\Http\Controllers\Api\MeetingController::class, 'reject']);
         Route::post('/{meeting}/participants/{participant}/mute', [\App\Http\Controllers\Api\MeetingController::class, 'mute']);
@@ -1067,6 +1081,7 @@ Route::middleware(['throttle:meetings'])->prefix('meetings')->group(function () 
     ])->group(function () {
         Route::post('/{meeting}/sfu/sessions/new', [\App\Http\Controllers\Api\MeetingController::class, 'sfuSessionNew']);
         Route::post('/{meeting}/sfu/sessions/{sessionId}/tracks/new', [\App\Http\Controllers\Api\MeetingController::class, 'sfuSessionTracks']);
+        Route::put('/{meeting}/sfu/sessions/{sessionId}/tracks/update', [\App\Http\Controllers\Api\MeetingController::class, 'sfuTracksUpdate']);
         Route::put('/{meeting}/sfu/sessions/{sessionId}/renegotiate', [\App\Http\Controllers\Api\MeetingController::class, 'sfuSessionRenegotiate']);
     });
 });

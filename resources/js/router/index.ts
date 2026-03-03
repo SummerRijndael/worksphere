@@ -90,6 +90,15 @@ const routes: RouteRecordRaw[] = [
         props: { code: "503" },
     },
     {
+        path: "/callback/calendar",
+        name: "google-oauth-callback",
+        component: () => import("@/views/Calendar/GoogleOAuthCallback.vue"),
+        meta: {
+            title: "Connecting Google Calendar...",
+            layout: "none",
+        },
+    },
+    {
         path: "/p/:slug",
         name: "public-profile",
         component: () => import("@/views/PublicProfileView.vue"),
@@ -571,7 +580,6 @@ const routes: RouteRecordRaw[] = [
                 path: "calendar",
                 name: "calendar",
                 component: () => import("@/views/Calendar/Index.vue"),
-                alias: "/callback/calendar",
                 meta: {
                     title: "Calendar",
                     breadcrumb: "Calendar",

@@ -3,11 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Mail\EventInvitation;
+use App\Mail\EventCancelled;
 use App\Models\Event;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
 
 class CalendarController extends Controller
 {
@@ -65,7 +67,7 @@ class CalendarController extends Controller
                 }
             })
             ->between($request->start, $request->end)
-            ->with(['attendees', 'organizer'])
+            ->with(['attendees', 'organizer', 'meeting'])
             ->get();
 
         return \App\Http\Resources\EventResource::collection($events);
@@ -77,8 +79,8 @@ class CalendarController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'title' => 'required|string|max:255',
-            'description' => 'nullable|string',
+            'title' => 'required|string|max:100',
+            'description' => 'nullable|string|max:800',
             'start_time' => 'required|date',
             'end_time' => 'required|date|after_or_equal:start_time',
             'location' => 'nullable|string|max:255',
@@ -90,6 +92,11 @@ class CalendarController extends Controller
             'external_emails.*' => 'email',
             'send_invite' => 'boolean',
         ]);
+
+        $validated['title'] = strip_tags($validated['title']);
+        if (! empty($validated['description'])) {
+            $validated['description'] = strip_tags($validated['description']);
+        }
 
         return DB::transaction(function () use ($validated, $request) {
             $event = Event::create([
@@ -109,7 +116,7 @@ class CalendarController extends Controller
                     'end_time' => $event->end_time,
                     'user_id' => auth()->id(),
                     'status' => 'scheduled',
-                    'password' => $hasGuests ? \Illuminate\Support\Str::random(10) : null,
+                    'password' => \Illuminate\Support\Str::random(10),
                     'settings' => [
                         'lobby_enabled' => true,
                         'guest_access' => true,
@@ -141,7 +148,7 @@ class CalendarController extends Controller
                 }
             }
 
-            return new \App\Http\Resources\EventResource($event->load(['attendees', 'organizer']));
+            return new \App\Http\Resources\EventResource($event->load(['attendees', 'organizer', 'meeting']));
         });
     }
 
@@ -152,7 +159,7 @@ class CalendarController extends Controller
     {
         $this->authorize('view', $event); // Need Policy or manual check
 
-        return new \App\Http\Resources\EventResource($event->load(['attendees', 'organizer']));
+        return new \App\Http\Resources\EventResource($event->load(['attendees', 'organizer', 'meeting']));
     }
 
     /**
@@ -166,8 +173,8 @@ class CalendarController extends Controller
         }
 
         $validated = $request->validate([
-            'title' => 'sometimes|string|max:255',
-            'description' => 'nullable|string',
+            'title' => 'sometimes|string|max:100',
+            'description' => 'nullable|string|max:800',
             'start_time' => 'sometimes|date',
             'end_time' => 'sometimes|date|after_or_equal:start_time',
             'location' => 'nullable|string|max:255',
@@ -179,6 +186,13 @@ class CalendarController extends Controller
             'external_emails.*' => 'email',
             'send_invite' => 'boolean',
         ]);
+
+        if (isset($validated['title'])) {
+            $validated['title'] = strip_tags($validated['title']);
+        }
+        if (isset($validated['description'])) {
+            $validated['description'] = strip_tags($validated['description']);
+        }
 
         return DB::transaction(function () use ($validated, $event, $request) {
             $event->update([
@@ -199,7 +213,7 @@ class CalendarController extends Controller
                             'end_time' => $event->end_time,
                             'user_id' => auth()->id(),
                             'status' => 'scheduled',
-                            'password' => $hasGuests ? \Illuminate\Support\Str::random(10) : null,
+                            'password' => \Illuminate\Support\Str::random(10),
                             'settings' => [
                                 'lobby_enabled' => true,
                                 'guest_access' => true,
@@ -229,8 +243,9 @@ class CalendarController extends Controller
             }
 
             if ($request->has('send_invite') && $request->boolean('send_invite')) {
+                $isReschedule = $event->wasChanged(['start_time', 'end_time', 'location', 'title', 'description']);
+
                 // Logic to send/update invitations
-                // Send to internal attendees
                 $attendees = $event->attendees;
                 foreach ($attendees as $user) {
                     if ($user->id !== auth()->id()) {
@@ -238,7 +253,6 @@ class CalendarController extends Controller
                     }
                 }
 
-                // Send to external attendees
                 if (! empty($event->external_attendees)) {
                     foreach ($event->external_attendees as $email) {
                         Mail::to($email)->queue(new EventInvitation($event, true));
@@ -246,7 +260,7 @@ class CalendarController extends Controller
                 }
             }
 
-            return new \App\Http\Resources\EventResource($event->load(['attendees', 'organizer']));
+            return new \App\Http\Resources\EventResource($event->load(['attendees', 'organizer', 'meeting']));
         });
     }
 
@@ -257,6 +271,20 @@ class CalendarController extends Controller
     {
         if ($event->user_id !== auth()->id()) {
             abort(403, 'Unauthorized action.');
+        }
+
+        // Notify participants before deletion
+        $attendees = $event->attendees;
+        foreach ($attendees as $user) {
+            if ($user->id !== auth()->id()) {
+                Mail::to($user)->queue(new EventCancelled($event));
+            }
+        }
+
+        if (! empty($event->external_attendees)) {
+            foreach ($event->external_attendees as $email) {
+                Mail::to($email)->queue(new EventCancelled($event));
+            }
         }
 
         $event->delete();

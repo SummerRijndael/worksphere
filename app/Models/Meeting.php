@@ -20,12 +20,20 @@ class Meeting extends Model
         'app_id',
         // RealtimeKit meeting ID (set when a PRO recording session is initialised)
         'cf_meeting_id',
+        'actual_start_time',
+        'actual_end_time',
+        'unique_participant_count',
+        'peak_participant_count',
     ];
 
     protected $casts = [
         'start_time' => 'datetime',
         'end_time' => 'datetime',
+        'actual_start_time' => 'datetime',
+        'actual_end_time' => 'datetime',
         'settings' => 'array',
+        'unique_participant_count' => 'integer',
+        'peak_participant_count' => 'integer',
     ];
 
     protected static function boot()

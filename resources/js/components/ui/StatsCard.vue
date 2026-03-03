@@ -64,11 +64,13 @@ const colorClasses = computed(() => {
                 </div>
             </div>
             
-            <div v-if="icon" 
+            <div v-if="icon || $slots.icon" 
                 class="rounded-lg p-2.5 ring-1 flex items-center justify-center transition-colors"
                 :class="colorClasses"
             >
-                <component :is="icon" class="h-5 w-5" />
+                <slot name="icon">
+                    <component :is="icon" class="h-5 w-5" />
+                </slot>
             </div>
         </div>
 

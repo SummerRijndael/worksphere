@@ -15,7 +15,7 @@ class DirectoryController extends Controller
     public function search(Request $request)
     {
         $request->validate([
-            'search' => 'required|string|min:2',
+            'search' => 'nullable|string',
         ]);
 
         $user = $request->user();
@@ -25,16 +25,19 @@ class DirectoryController extends Controller
         $teamIds = $user->teams()->pluck('teams.id');
 
         // 2. Search users who are members of any of these teams
-        $users = User::query()
+        $usersQuery = User::query()
             ->whereHas('teams', function ($q) use ($teamIds) {
                 $q->whereIn('teams.id', $teamIds);
-            })
-            ->where(function ($q) use ($query) {
+            });
+
+        if (!empty($query)) {
+            $usersQuery->where(function ($q) use ($query) {
                 $q->where('name', 'like', "%{$query}%")
                     ->orWhere('email', 'like', "%{$query}%");
-            })
-            // Exclude current user from results (optional, but usually desired for "sharing with others")
-            ->where('id', '!=', $user->id)
+            });
+        }
+
+        $users = $usersQuery->where('id', '!=', $user->id)
             ->limit(20)
             ->get();
 

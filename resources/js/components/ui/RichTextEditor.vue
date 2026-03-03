@@ -937,7 +937,29 @@ const containerClasses = computed(() =>
                                 "
                                 @click="button.action"
                             >
-                                <component :is="button.icon" class="h-4 w-4" />
+                                <Bold v-if="button.icon === Bold" class="h-4 w-4" />
+                                <Italic v-else-if="button.icon === Italic" class="h-4 w-4" />
+                                <UnderlineIcon v-else-if="button.icon === UnderlineIcon" class="h-4 w-4" />
+                                <Strikethrough v-else-if="button.icon === Strikethrough" class="h-4 w-4" />
+                                <Code v-else-if="button.icon === Code" class="h-4 w-4" />
+                                <Undo v-else-if="button.icon === Undo" class="h-4 w-4" />
+                                <Redo v-else-if="button.icon === Redo" class="h-4 w-4" />
+                                <Heading1 v-else-if="button.icon === Heading1" class="h-4 w-4" />
+                                <Heading2 v-else-if="button.icon === Heading2" class="h-4 w-4" />
+                                <AlignLeft v-else-if="button.icon === AlignLeft" class="h-4 w-4" />
+                                <AlignCenter v-else-if="button.icon === AlignCenter" class="h-4 w-4" />
+                                <AlignRight v-else-if="button.icon === AlignRight" class="h-4 w-4" />
+                                <AlignJustify v-else-if="button.icon === AlignJustify" class="h-4 w-4" />
+                                <List v-else-if="button.icon === List" class="h-4 w-4" />
+                                <ListOrdered v-else-if="button.icon === ListOrdered" class="h-4 w-4" />
+                                <Quote v-else-if="button.icon === Quote" class="h-4 w-4" />
+                                <LinkIcon v-else-if="button.icon === LinkIcon" class="h-4 w-4" />
+                                <Unlink v-else-if="button.icon === Unlink" class="h-4 w-4" />
+                                <MonitorPlay v-else-if="button.icon === MonitorPlay" class="h-4 w-4" />
+                                <Palette v-else-if="button.icon === Palette" class="h-4 w-4" />
+                                <Type v-else-if="button.icon === Type" class="h-4 w-4" />
+                                <TableIcon v-else-if="button.icon === TableIcon" class="h-4 w-4" />
+                                <component v-else :is="button.icon" class="h-4 w-4" />
                             </button>
                         </template>
                     </div>
@@ -996,7 +1018,10 @@ const containerClasses = computed(() =>
                                     :title="button.title"
                                     class="p-1 px-1.5 rounded-md hover:bg-(--surface-tertiary) flex items-center gap-1 transition-all"
                                 >
+                                    <Type v-if="button.icon === Type" class="h-3.5 w-3.5 text-(--text-secondary)" />
+                                    <Palette v-else-if="button.icon === Palette" class="h-3.5 w-3.5 text-(--text-secondary)" />
                                     <component
+                                        v-else
                                         :is="button.icon"
                                         class="h-3.5 w-3.5 text-(--text-secondary)"
                                     />

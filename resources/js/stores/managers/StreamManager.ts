@@ -48,6 +48,13 @@ export function createStreamManager(
     
     // Desync Guard (Self-Healing)
     let healthCheckInterval: number | null = null;
+
+    // ── Simulcast Layer Switching (Opt 3) ──
+    // Tracks which layer we've requested for each participant's video
+    const trackPreferredLayers = new Map<string, string>(); // participantId → "l"|"m"|"h"
+    const spotlightedParticipantId = ref<string | null>(null);
+    let simulcastDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const SIMULCAST_DEBOUNCE_MS = 500;
     
     // SFU Queue
     let sfuQueue: Promise<void> = Promise.resolve();
@@ -650,12 +657,29 @@ export function createStreamManager(
         }
 
         const needsAudio = !existingStream || existingStream.getAudioTracks().length === 0 || !!audioMid;
-        const needsVideo = shouldPullVideo && (!existingStream || existingStream.getVideoTracks().length === 0 || !!videoMid);
-        const needsScreen = shouldPullScreen && (!existingStream || !remoteStreams.value.has(`${normalizedId}:screen`) || !!screenMid);
+        const existingVideoTracks = existingStream?.getVideoTracks() || [];
+        const hasScreenStream = remoteStreams.value.has(`${normalizedId}:screen`);
+        const needsVideo = shouldPullVideo && (existingVideoTracks.length === 0 || !!videoMid);
+        const needsScreen = shouldPullScreen && (!hasScreenStream || !!screenMid);
 
         const trackReqs: any[] = [];
         if (needsAudio) trackReqs.push({ location: "remote", sessionId: targetSessionId, trackName: "audio" });
-        if (needsVideo) trackReqs.push({ location: "remote", sessionId: targetSessionId, trackName: "video" });
+        if (needsVideo) {
+            // Determine initial simulcast layer based on spotlight/visibility
+            const isSpotlighted = spotlightedParticipantId.value === normalizedId;
+            const preferredRid = isSpotlighted ? 'h' : 'l';
+            trackPreferredLayers.set(normalizedId, preferredRid);
+            trackReqs.push({
+                location: "remote",
+                sessionId: targetSessionId,
+                trackName: "video",
+                simulcast: {
+                    preferredRid,
+                    priorityOrdering: 'none',
+                    ridNotAvailable: 'asciibetical'
+                }
+            });
+        }
         if (needsScreen || (currentAttempts === 1 && participantPublicId.includes(':screen'))) {
              trackReqs.push({ location: "remote", sessionId: targetSessionId, trackName: "screen" });
         }
@@ -798,10 +822,10 @@ export function createStreamManager(
                         log('SFU', `Renegotiation warning for ${participantPublicId} (track already received, non-fatal):`, renegErr);
                     }
 
-                    participantTransceivers.set(normalizedId, {
-                        audioMid: res.tracks?.find((t: any) => t.trackName === 'audio')?.mid || '',
-                        videoMid: res.tracks?.find((t: any) => t.trackName === 'video')?.mid || '',
-                        screenMid: res.tracks?.find((t: any) => t.trackName === 'screen')?.mid || ''
+                    remoteParticipantMids.set(normalizedId, {
+                        audio: res.tracks?.find((t: any) => t.trackName === 'audio')?.mid || '',
+                        video: res.tracks?.find((t: any) => t.trackName === 'video')?.mid || '',
+                        screen: res.tracks?.find((t: any) => t.trackName === 'screen')?.mid || ''
                     });
 
                     // CRITICAL: Settling Delay for High Latency (1500ms)
@@ -1104,7 +1128,7 @@ export function createStreamManager(
         audioAnalysers.clear();
     }
 
-    function setVisibleParticipants(ids: string[]) {
+    function setVisibleParticipants(ids: string[], spotlightId?: string | null) {
         // Active Grid: cap to MAX_VIDEO_SUBSCRIPTIONS (prioritization order is determined by caller)
         const cappedIds = ids.slice(0, MAX_VIDEO_SUBSCRIPTIONS);
         const newSet = new Set(cappedIds.map(id => id.toLowerCase()));
@@ -1112,6 +1136,7 @@ export function createStreamManager(
         const removed = [...visibleParticipantIds.value].filter(id => !newSet.has(id));
 
         visibleParticipantIds.value = newSet;
+        spotlightedParticipantId.value = spotlightId?.toLowerCase() || null;
 
         if (ids.length > MAX_VIDEO_SUBSCRIPTIONS) {
             log('SFU', `Active Grid: capped visible from ${ids.length} to ${MAX_VIDEO_SUBSCRIPTIONS}`);
@@ -1130,6 +1155,68 @@ export function createStreamManager(
 
         if (removed.length > 0) {
             log('SFU', `Visibility updated: Removed ${removed.length} participants from active view.`);
+        }
+
+        // Debounced simulcast layer update
+        scheduleSimulcastLayerUpdate();
+    }
+
+    function scheduleSimulcastLayerUpdate() {
+        if (simulcastDebounceTimer) clearTimeout(simulcastDebounceTimer);
+        simulcastDebounceTimer = setTimeout(() => updateSimulcastLayers(), SIMULCAST_DEBOUNCE_MS);
+    }
+
+    async function updateSimulcastLayers() {
+        if (!sfuPc || !sfuSessionId.value || !meetingRef.value) return;
+
+        const tracksToUpdate: any[] = [];
+        const spotlight = spotlightedParticipantId.value;
+
+        for (const [transceiver, meta] of sfuTransceiverMap.entries()) {
+            if (meta.trackName !== 'video' || meta.participantId === 'self') continue;
+            if (!transceiver.mid) continue;
+
+            const pid = meta.participantId;
+            const isSpotlighted = spotlight === pid;
+            const isVisible = visibleParticipantIds.value.has(pid);
+
+            // Determine desired layer
+            let desiredRid = 'l'; // filmstrip default = low (180p)
+            if (isSpotlighted) {
+                desiredRid = 'h'; // spotlight = high (720p)
+            } else if (isVisible) {
+                desiredRid = 'm'; // visible grid tile = medium (360p)
+            }
+
+            // Only update if layer actually changed
+            const currentRid = trackPreferredLayers.get(pid);
+            if (currentRid === desiredRid) continue;
+
+            trackPreferredLayers.set(pid, desiredRid);
+            tracksToUpdate.push({
+                mid: transceiver.mid,
+                simulcast: {
+                    preferredRid: desiredRid,
+                    priorityOrdering: 'none',
+                    ridNotAvailable: 'asciibetical'
+                }
+            });
+
+            log('SFU', `Simulcast layer switch: ${pid} → ${desiredRid} (${isSpotlighted ? 'spotlight' : isVisible ? 'grid' : 'filmstrip'})`);
+        }
+
+        if (tracksToUpdate.length === 0) return;
+
+        try {
+            await meetingService.sfuTracksUpdate(
+                meetingRef.value.public_id,
+                sfuSessionId.value,
+                tracksToUpdate
+            );
+            log('SFU', `Simulcast layers updated for ${tracksToUpdate.length} track(s)`);
+        } catch (err) {
+            // Non-fatal — layer switching failure shouldn't break anything
+            log('SFU', `Simulcast layer update failed (non-fatal):`, err);
         }
     }
 
@@ -1274,6 +1361,10 @@ export function createStreamManager(
         
         // Per-participant quality scoring
         participantQualityScores,
-        startQualityMonitor
+        startQualityMonitor,
+
+        // Simulcast layer switching
+        updateSimulcastLayers,
+        spotlightedParticipantId
     };
 }

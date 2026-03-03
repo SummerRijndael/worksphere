@@ -7,31 +7,31 @@
     <meta name="theme-color" content="#ffffff">
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
-    <title>{{ config('app.name', 'CoreSync') }}</title>
+    <title>{{ $ogTitle ?? config('app.name', 'WorkSphere') }}</title>
 
     <!-- SEO -->
     <meta name="description"
-        content="Unified Data, Seamless Workflow. CoreSync connects your essential business tools into one powerful ecosystem.">
-    <meta name="keywords" content="CoreSync, workflow, automation, efficiency, data sync">
-    <meta name="author" content="CoreSync">
+        content="{{ $ogDescription ?? 'Unified Data, Seamless Workflow. WorkSphere connects your essential business tools into one powerful ecosystem.' }}">
+    <meta name="keywords" content="WorkSphere, workflow, automation, efficiency, data sync">
+    <meta name="author" content="WorkSphere">
 
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
-    <meta property="og:site_name" content="{{ config('app.name', 'CoreSync') }}">
-    <meta property="og:title" content="{{ config('app.name', 'CoreSync') }}">
+    <meta property="og:site_name" content="{{ config('app.name', 'WorkSphere') }}">
+    <meta property="og:title" content="{{ $ogTitle ?? config('app.name', 'WorkSphere') }}">
     <meta property="og:description"
-        content="Unified Data, Seamless Workflow. CoreSync connects your essential business tools into one powerful ecosystem.">
-    <meta property="og:url" content="{{ config('app.url') }}">
+        content="{{ $ogDescription ?? 'Unified Data, Seamless Workflow. WorkSphere connects your essential business tools into one powerful ecosystem.' }}">
+    <meta property="og:url" content="{{ url()->current() }}">
     <meta property="og:image"
-        content="{{ app(\App\Services\AppSettingsService::class)->get('app.opengraph') ?? asset('static/images/og-image.png') }}">
+        content="{{ $ogImage ?? (app(\App\Services\AppSettingsService::class)->get('app.opengraph') ?? asset('static/images/worksphere_brand.png')) }}">
 
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="{{ config('app.name', 'CoreSync') }}">
+    <meta name="twitter:title" content="{{ $ogTitle ?? config('app.name', 'WorkSphere') }}">
     <meta name="twitter:description"
-        content="Unified Data, Seamless Workflow. CoreSync connects your essential business tools into one powerful ecosystem.">
+        content="{{ $ogDescription ?? 'Unified Data, Seamless Workflow. WorkSphere connects your essential business tools into one powerful ecosystem.' }}">
     <meta name="twitter:image"
-        content="{{ app(\App\Services\AppSettingsService::class)->get('app.opengraph') ?? asset('static/images/og-image.png') }}">
+        content="{{ $ogImage ?? (app(\App\Services\AppSettingsService::class)->get('app.opengraph') ?? asset('static/images/worksphere_brand.png')) }}">
 
     <!-- Favicon -->
     <link rel="icon"

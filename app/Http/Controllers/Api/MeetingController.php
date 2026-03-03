@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rules\Password;
 
 class MeetingController extends Controller
 {
@@ -53,6 +54,7 @@ class MeetingController extends Controller
                 'nullable',
                 'string',
                 'max:100',
+                Password::min(8)->mixedCase()->numbers(),
                 function ($attribute, $value, $fail) use ($request) {
                     if (($request->input('settings.guest_access') ?? false) && empty($value)) {
                         $fail('A password is required when guest access is enabled.');
@@ -61,6 +63,7 @@ class MeetingController extends Controller
             ],
             'auto_generate_password'   => 'nullable|boolean',
             'save_to_calendar'         => 'nullable|boolean',
+            'reminder_minutes_before'  => 'nullable|integer|min:0',
             'send_invite'              => 'nullable|boolean',
             'participants'             => 'nullable|array',
             'participants.*.type'      => 'required_with:participants|in:user,email',
@@ -81,12 +84,14 @@ class MeetingController extends Controller
 
         $password = $request->password;
         if ($request->auto_generate_password) {
-            $password = Str::random(10);
+            // Generate a strong password: e.g., "A1b2C3d4!"
+            $password = Str::password(12, true, true, false, false); 
         }
 
         $data = $request->only(['title', 'description', 'start_time', 'end_time', 'settings']);
         $data['password']         = $password;
         $data['save_to_calendar'] = $request->boolean('save_to_calendar');
+        $data['reminder_minutes_before'] = $request->input('reminder_minutes_before');
         $data['send_invite']      = $request->boolean('send_invite');
         $data['participants']     = $request->input('participants', []);
 
@@ -243,7 +248,12 @@ class MeetingController extends Controller
             'start_time' => 'required|date',
             'end_time' => 'nullable|date|after:start_time',
             'settings' => 'nullable|array',
-            'password' => 'nullable|string|max:100',
+            'password' => [
+                'nullable',
+                'string',
+                'max:100',
+                Password::min(8)->mixedCase()->numbers(),
+            ],
             'auto_generate_password' => 'nullable|boolean',
         ]);
 
@@ -408,6 +418,42 @@ class MeetingController extends Controller
             return response()->json($responseData, $response->status());
         } catch (\Exception $e) {
             return response()->json(['error' => 'SFU Renegotiation Exception', 'details' => $e->getMessage()], 500);
+        }
+    }
+
+    public function sfuTracksUpdate(Request $request, Meeting $meeting, string $sessionId): JsonResponse
+    {
+        $participant = $this->resolveParticipant($request, $meeting);
+        if (! $participant || $participant->status !== 'admitted') {
+            return response()->json(['message' => 'Unauthorized or participant not admitted.'], 403);
+        }
+
+        $appId = config('services.cloudflare.app_id');
+        $secret = config('services.cloudflare.app_secret');
+
+        Log::channel('videocall')->info('[SFU] Updating tracks (simulcast layer switch)', [
+            'meeting' => $meeting->public_id,
+            'sessionId' => $sessionId,
+            'tracks' => $request->input('tracks'),
+        ]);
+
+        try {
+            $response = Http::withToken($secret)
+                ->timeout(30)
+                ->put("https://rtc.live.cloudflare.com/v1/apps/{$appId}/sessions/{$sessionId}/tracks/update", $request->only(['tracks']));
+
+            $responseData = $response->json();
+            if (! $response->successful()) {
+                Log::channel('videocall')->error('[SFU] Cloudflare tracks/update error', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                    'sessionId' => $sessionId,
+                ]);
+            }
+
+            return response()->json($responseData, $response->status());
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'SFU Track Update Error', 'details' => $e->getMessage()], 500);
         }
     }
 
@@ -622,7 +668,14 @@ class MeetingController extends Controller
     {
         $this->authorize('update', $meeting); // Only host
 
-        $meeting->update(['status' => 'ended']);
+        $uniqueCount = $meeting->participants()->count();
+
+        $meeting->update([
+            'status' => 'ended',
+            'actual_end_time' => now(),
+            'unique_participant_count' => $uniqueCount,
+            'peak_participant_count' => $uniqueCount, // Using total as peak estimate for now
+        ]);
         $hostParticipant = $meeting->participants()->where('user_id', Auth::id())->first();
 
         broadcast(new MeetingSignal(

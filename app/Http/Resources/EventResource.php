@@ -27,6 +27,7 @@ class EventResource extends JsonResource
             'organizer' => $this->whenLoaded('organizer', fn () => $this->normalizeUser($this->organizer)),
             'attendees' => $this->whenLoaded('attendees', fn () => $this->attendees->map(fn ($u) => $this->normalizeUser($u))),
             'external_attendees' => $this->external_attendees ?? [],
+            'meeting' => $this->whenLoaded('meeting'),
         ];
     }
 
