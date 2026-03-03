@@ -2,10 +2,7 @@
     <div class="tile-root" :class="{ 'tile-speaking': isSpeaking }">
         <!-- Core Video Content Box -->
         <div v-show="actualHasVideo" class="tile-video-container">
-            <div 
-                class="tile-video-content" 
-                :style="videoContentStyle"
-            >
+            <div class="tile-video-content" :style="videoContentStyle">
                 <!-- Local Video (Persistent to avoid iOS Safari play failures) -->
                 <video
                     v-if="isLocal"
@@ -32,9 +29,9 @@
 
                 <!-- Targeted Laser Pointer Overlay -->
                 <!-- Renders relative to the video aspect-ratio box -->
-                <LaserPointerOverlay 
+                <LaserPointerOverlay
                     v-if="meetingStore.laserPointerMode !== 'off'"
-                    :target-participant-id="participant.public_id" 
+                    :target-participant-id="participant.public_id"
                     :is-screen-share="isScreenShare"
                 />
 
@@ -78,8 +75,16 @@
             <span
                 v-if="qualityScore > 0 && qualityScore <= 2 && !isLocal"
                 class="tile-quality-dot"
-                :class="qualityScore === 1 ? 'tile-quality-critical' : 'tile-quality-poor'"
-                :title="qualityScore === 1 ? 'Critical connection' : 'Poor connection'"
+                :class="
+                    qualityScore === 1
+                        ? 'tile-quality-critical'
+                        : 'tile-quality-poor'
+                "
+                :title="
+                    qualityScore === 1
+                        ? 'Critical connection'
+                        : 'Poor connection'
+                "
             ></span>
             <span class="tile-name-text">{{ displayName }}</span>
         </div>
@@ -133,10 +138,8 @@ const isLocal = computed(() => {
 });
 
 const streamIdLookup = computed(() => {
-    const pid = props.participant.public_id?.toLowerCase() || '';
-    return props.isScreenShare
-        ? `${pid}:screen`
-        : pid;
+    const pid = props.participant.public_id?.toLowerCase() || "";
+    return props.isScreenShare ? `${pid}:screen` : pid;
 });
 
 const activeStream = computed(() => {
@@ -215,30 +218,29 @@ const videoContentStyle = computed(() => {
     // If not in spotlight/screenshare, we want to cover the tile (fill)
     if (!props.isSpotlight && !props.isScreenShare) {
         return {
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover' as any
+            width: "100%",
+            height: "100%",
+            objectFit: "cover" as any,
         };
     }
 
     // In spotlight/screenshare, we want to contain (show all pixels)
     // We use aspect-ratio to ensure the container matches the video EXACTLY.
-    // By using width/height: auto and max-width/max-height: 100%, 
+    // By using width/height: auto and max-width/max-height: 100%,
     // the browser will scale the box to fit perfectly while maintaining the ratio.
     return {
         aspectRatio: `${streamAspectRatio.value}`,
-        width: 'auto',
-        height: 'auto',
-        maxWidth: '100%',
-        maxHeight: '100%',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
+        width: "auto",
+        height: "auto",
+        maxWidth: "100%",
+        maxHeight: "100%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
         flexShrink: 1,
-        flexGrow: 0
+        flexGrow: 0,
     };
 });
-
 
 const displayName = computed(() => {
     let name = isLocal.value
@@ -264,7 +266,9 @@ const localVideo = ref<HTMLVideoElement | null>(null);
 const bindLocalVideo = (el: any) => {
     localVideo.value = el as HTMLVideoElement | null;
     if (el) {
-        el.addEventListener('resize', () => updateAspectRatio(el as HTMLVideoElement));
+        el.addEventListener("resize", () =>
+            updateAspectRatio(el as HTMLVideoElement),
+        );
         updateAspectRatio(el as HTMLVideoElement);
     }
 };
@@ -277,21 +281,20 @@ watch(
         props.localStreamOverride,
     ],
     ([videoEl, camStream, isScreen, overrideStream]) => {
-        const stream =
-            isScreen && overrideStream
-                ? overrideStream
-                : camStream;
+        const stream = isScreen && overrideStream ? overrideStream : camStream;
         if (videoEl && stream) {
             const el = videoEl as HTMLVideoElement;
             if (el.srcObject !== stream) {
                 el.srcObject = stream as MediaStream;
-                el.play().catch(e => console.warn("[LocalVideo] Auto-play prevented", e));
+                el.play().catch((e) =>
+                    console.warn("[LocalVideo] Auto-play prevented", e),
+                );
             }
         } else if (videoEl && !stream) {
             (videoEl as HTMLVideoElement).srcObject = null;
         }
     },
-    { immediate: true, flush: 'post' },
+    { immediate: true, flush: "post" },
 );
 
 // -- Remote Video Binding --
@@ -301,7 +304,9 @@ const remoteAudio = ref<HTMLAudioElement | null>(null);
 const bindRemoteVideo = (el: any) => {
     remoteVideo.value = el as HTMLVideoElement | null;
     if (el) {
-        el.addEventListener('resize', () => updateAspectRatio(el as HTMLVideoElement));
+        el.addEventListener("resize", () =>
+            updateAspectRatio(el as HTMLVideoElement),
+        );
         updateAspectRatio(el as HTMLVideoElement);
     }
     updateRemoteStream();
@@ -334,7 +339,10 @@ watch(
             if (audioEl && audioEl.srcObject !== newStream) {
                 audioEl.srcObject = newStream;
                 audioEl.play().catch((e: any) => {
-                    console.warn(`[AudioPlayback] Playback failed for ${props.participant.public_id}:`, e);
+                    console.warn(
+                        `[AudioPlayback] Playback failed for ${props.participant.public_id}:`,
+                        e,
+                    );
                 });
             }
         }
@@ -355,21 +363,28 @@ const bindAnnotationOverlay = (el: any) => {
 };
 
 // Handle remote annotation updates
-watch(() => meetingStore.lastAnnotationSignal, (data) => {
-    if (!data) return;
-    
-    const signalSenderId = data.participant_id?.toLowerCase();
-    const myId = props.participant.public_id?.toLowerCase();
-    
-    // Normal case: Update for this tile's strokes (sender == tile owner)
-    if (signalSenderId === myId) {
-        annotationOverlay.value?.handleRemoteUpdate(data);
-    }
-    // SPECIAL CASE: Someone is requesting sync from US (we are the presenter)
-    else if (isLocal.value && data.type === 'request-sync' && data.target_participant_id?.toLowerCase() === myId) {
-        annotationOverlay.value?.handleRemoteUpdate(data);
-    }
-});
+watch(
+    () => meetingStore.lastAnnotationSignal,
+    (data) => {
+        if (!data) return;
+
+        const signalSenderId = data.participant_id?.toLowerCase();
+        const myId = props.participant.public_id?.toLowerCase();
+
+        // Normal case: Update for this tile's strokes (sender == tile owner)
+        if (signalSenderId === myId) {
+            annotationOverlay.value?.handleRemoteUpdate(data);
+        }
+        // SPECIAL CASE: Someone is requesting sync from US (we are the presenter)
+        else if (
+            isLocal.value &&
+            data.type === "request-sync" &&
+            data.target_participant_id?.toLowerCase() === myId
+        ) {
+            annotationOverlay.value?.handleRemoteUpdate(data);
+        }
+    },
+);
 </script>
 
 <style scoped>
@@ -383,6 +398,12 @@ watch(() => meetingStore.lastAnnotationSignal, (data) => {
     justify-content: center;
     overflow: hidden;
     border-radius: 8px;
+}
+
+@media (max-width: 768px) {
+    .tile-root {
+        border-radius: 0;
+    }
 }
 
 .tile-speaking {
@@ -546,7 +567,12 @@ watch(() => meetingStore.lastAnnotationSignal, (data) => {
     animation: quality-pulse 1.5s ease-in-out infinite;
 }
 @keyframes quality-pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
 }
 </style>

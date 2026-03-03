@@ -104,11 +104,11 @@ async function startVisualizer(deviceId: string) {
     stopVisualizer();
     try {
         const stream = await navigator.mediaDevices.getUserMedia({
-            audio: { 
+            audio: {
                 deviceId: { exact: deviceId },
                 echoCancellation: true,
                 noiseSuppression: true,
-                autoGainControl: true
+                autoGainControl: true,
             },
         });
         microphoneStream.value = stream;
@@ -414,7 +414,14 @@ watch(
         () => store.greenScreenColor,
         () => store.greenScreenThreshold,
     ],
-    async ([effect, bgImage, framing, hasGreenScreen, greenColor, threshold]) => {
+    async ([
+        effect,
+        bgImage,
+        framing,
+        hasGreenScreen,
+        greenColor,
+        threshold,
+    ]) => {
         if (!props.open || activeTab.value !== "video" || !originalPreviewTrack)
             return;
 
@@ -427,7 +434,7 @@ watch(
                     framing,
                     hasGreenScreen,
                     greenColor,
-                    threshold
+                    threshold,
                 );
                 previewProcessedStream.value = new MediaStream([
                     processedTrack,
@@ -488,7 +495,10 @@ const selectPreset = (url: string) => {
 
 const handleAutoDetect = async () => {
     if (originalPreviewTrack) {
-        const detectedColor = await backgroundBlur.autoDetectGreenScreenColor(originalPreviewTrack);
+        const detectedColor =
+            await backgroundBlur.autoDetectGreenScreenColor(
+                originalPreviewTrack,
+            );
         store.setGreenScreenColor(detectedColor);
         if (!store.hasPhysicalGreenScreen) {
             store.setHasPhysicalGreenScreen(true);
@@ -523,21 +533,21 @@ onBeforeUnmount(() => {
         @click.self="$emit('close')"
     >
         <div
-            class="bg-(--surface-primary) rounded-xl border border-(--border-subtle) ring-1 ring-black/5 dark:ring-white/5 shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col h-[540px]"
+            class="bg-(--surface-primary) rounded-xl border border-(--border-subtle) ring-1 ring-black/5 dark:ring-white/5 shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col h-auto max-h-[90vh] sm:h-[540px]"
         >
-            <div class="flex-1 flex overflow-hidden">
-                <!-- Sidebar -->
+            <div class="flex-1 flex flex-col sm:flex-row overflow-hidden">
+                <!-- Sidebar / Mobile Tabs -->
                 <div
-                    class="w-44 bg-(--surface-secondary)/30 border-r border-(--border-subtle) flex flex-col pt-4"
+                    class="w-full sm:w-44 bg-(--surface-secondary)/30 border-b sm:border-b-0 sm:border-r border-(--border-subtle) flex flex-col pt-2 sm:pt-4"
                 >
                     <div
-                        class="px-3 pb-4 flex-1 overflow-y-auto custom-scrollbar"
+                        class="px-3 pb-2 sm:pb-4 flex-1 overflow-x-auto sm:overflow-y-auto custom-scrollbar"
                     >
-                        <div class="space-y-1">
+                        <div class="flex sm:flex-col gap-1">
                             <button
                                 v-for="tab in tabs"
                                 :key="tab.id"
-                                class="w-full flex items-center gap-2.5 px-3 py-2 text-sm font-medium rounded-lg transition-all group"
+                                class="flex-1 sm:w-full flex items-center justify-center sm:justify-start gap-2.5 px-3 py-2 text-sm font-medium rounded-lg transition-all group whitespace-nowrap"
                                 :class="[
                                     activeTab === tab.id
                                         ? 'bg-blue-600/10 text-blue-600 dark:text-blue-400'
@@ -559,7 +569,9 @@ onBeforeUnmount(() => {
                         </div>
                     </div>
 
-                    <div class="p-4 border-t border-(--border-subtle)">
+                    <div
+                        class="hidden sm:block p-4 border-t border-(--border-subtle)"
+                    >
                         <div class="flex items-center gap-2 px-1">
                             <div
                                 class="h-1.5 w-1.5 rounded-full bg-success"
@@ -576,7 +588,7 @@ onBeforeUnmount(() => {
                 <div
                     class="flex-1 overflow-y-auto custom-scrollbar bg-(--surface-primary)"
                 >
-                    <div class="p-8 space-y-8">
+                    <div class="p-4 sm:p-8 space-y-6 sm:space-y-8">
                         <!-- Header -->
                         <div class="space-y-1">
                             <h2 class="text-xl font-bold text-(--text-primary)">
@@ -852,7 +864,9 @@ onBeforeUnmount(() => {
                                     class="text-xs font-semibold uppercase tracking-wider text-(--text-tertiary)"
                                     >Background Effects</label
                                 >
-                                <div class="grid grid-cols-4 gap-3">
+                                <div
+                                    class="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 gap-3"
+                                >
                                     <!-- None -->
                                     <button
                                         @click="store.setVideoEffect('none')"
@@ -969,63 +983,126 @@ onBeforeUnmount(() => {
                                 </div>
 
                                 <!-- Chroma Key / Physical Green Screen -->
-                                <div class="bg-(--surface-tertiary)/10 rounded-xl p-4 border border-(--border-subtle) space-y-4">
-                                    <div class="flex items-center justify-between">
+                                <div
+                                    class="bg-(--surface-tertiary)/10 rounded-xl p-4 border border-(--border-subtle) space-y-4"
+                                >
+                                    <div
+                                        class="flex items-center justify-between"
+                                    >
                                         <div class="space-y-0.5">
-                                            <div class="flex items-center gap-2">
-                                                <div class="h-2 w-2 rounded-full bg-green-500"></div>
-                                                <span class="text-sm font-semibold text-(--text-primary)">I have a green screen</span>
-                                            </div>
-                                            <p class="text-[10px] text-(--text-tertiary)">Improves edge quality and saves CPU power.</p>
-                                        </div>
-                                        <label class="relative inline-flex items-center cursor-pointer">
-                                            <input 
-                                                type="checkbox" 
-                                                class="sr-only peer" 
-                                                v-model="store.hasPhysicalGreenScreen"
+                                            <div
+                                                class="flex items-center gap-2"
                                             >
-                                            <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                                                <div
+                                                    class="h-2 w-2 rounded-full bg-green-500"
+                                                ></div>
+                                                <span
+                                                    class="text-sm font-semibold text-(--text-primary)"
+                                                    >I have a green screen</span
+                                                >
+                                            </div>
+                                            <p
+                                                class="text-[10px] text-(--text-tertiary)"
+                                            >
+                                                Improves edge quality and saves
+                                                CPU power.
+                                            </p>
+                                        </div>
+                                        <label
+                                            class="relative inline-flex items-center cursor-pointer"
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                class="sr-only peer"
+                                                v-model="
+                                                    store.hasPhysicalGreenScreen
+                                                "
+                                            />
+                                            <div
+                                                class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"
+                                            ></div>
                                         </label>
                                     </div>
 
-                                    <div v-if="store.hasPhysicalGreenScreen" class="flex items-center gap-4 pt-2 border-t border-(--border-subtle)/30 animate-in fade-in slide-in-from-top-1 duration-200">
+                                    <div
+                                        v-if="store.hasPhysicalGreenScreen"
+                                        class="flex items-center gap-4 pt-2 border-t border-(--border-subtle)/30 animate-in fade-in slide-in-from-top-1 duration-200"
+                                    >
                                         <div class="space-y-2 flex-1">
-                                            <label class="text-[10px] font-bold uppercase tracking-wider text-(--text-muted)">Screen Color</label>
-                                            <div class="flex items-center gap-2">
-                                                <div 
+                                            <label
+                                                class="text-[10px] font-bold uppercase tracking-wider text-(--text-muted)"
+                                                >Screen Color</label
+                                            >
+                                            <div
+                                                class="flex items-center gap-2"
+                                            >
+                                                <div
                                                     class="h-8 w-8 rounded-lg border border-(--border-subtle) shadow-sm shrink-0"
-                                                    :style="{ backgroundColor: store.greenScreenColor }"
+                                                    :style="{
+                                                        backgroundColor:
+                                                            store.greenScreenColor,
+                                                    }"
                                                 ></div>
-                                                <input 
-                                                    type="color" 
-                                                    v-model="store.greenScreenColor"
+                                                <input
+                                                    type="color"
+                                                    v-model="
+                                                        store.greenScreenColor
+                                                    "
                                                     class="opacity-0 absolute w-8 h-8 cursor-pointer"
-                                                >
-                                                <Button 
-                                                    variant="ghost" 
-                                                    size="sm" 
+                                                />
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
                                                     class="h-8 text-[10px] px-2"
                                                     @click="handleAutoDetect"
                                                 >
-                                                    <Icon name="Pipette" size="12" class="mr-1" />
+                                                    <Icon
+                                                        name="Pipette"
+                                                        size="12"
+                                                        class="mr-1"
+                                                    />
                                                     Auto-detect
                                                 </Button>
                                             </div>
                                         </div>
 
                                         <div class="space-y-2 flex-1">
-                                            <label class="text-[10px] font-bold uppercase tracking-wider text-(--text-muted)">Sensitivity</label>
-                                            <div class="flex items-center gap-3">
-                                                <input 
-                                                    type="range" 
-                                                    min="0.01" 
-                                                    max="0.5" 
-                                                    step="0.01" 
-                                                    :value="store.greenScreenThreshold"
-                                                    @input="(e) => store.setGreenScreenThreshold(parseFloat((e.target as HTMLInputElement).value))"
+                                            <label
+                                                class="text-[10px] font-bold uppercase tracking-wider text-(--text-muted)"
+                                                >Sensitivity</label
+                                            >
+                                            <div
+                                                class="flex items-center gap-3"
+                                            >
+                                                <input
+                                                    type="range"
+                                                    min="0.01"
+                                                    max="0.5"
+                                                    step="0.01"
+                                                    :value="
+                                                        store.greenScreenThreshold
+                                                    "
+                                                    @input="
+                                                        (e) =>
+                                                            store.setGreenScreenThreshold(
+                                                                parseFloat(
+                                                                    (
+                                                                        e.target as HTMLInputElement
+                                                                    ).value,
+                                                                ),
+                                                            )
+                                                    "
                                                     class="flex-1 h-1 bg-(--surface-tertiary) rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-600 shadow-sm"
+                                                />
+                                                <span
+                                                    class="text-[10px] font-mono text-(--text-secondary) w-6"
+                                                    >{{
+                                                        Math.round(
+                                                            store.greenScreenThreshold *
+                                                                100,
+                                                        )
+                                                    }}</span
                                                 >
-                                                <span class="text-[10px] font-mono text-(--text-secondary) w-6">{{ Math.round(store.greenScreenThreshold * 100) }}</span>
                                             </div>
                                         </div>
                                     </div>

@@ -582,9 +582,8 @@
                                     />
 
                                     <!-- Moderator Menu -->
-                                    <Menu
-                                        as="div"
-                                        class="relative inline-block text-left ml-2"
+                                    <!-- Moderator Menu -->
+                                    <DropdownMenuRoot
                                         v-if="
                                             meetingStore.isModerator &&
                                             p.public_id !==
@@ -593,167 +592,138 @@
                                             p.role !== 'host'
                                         "
                                     >
-                                        <MenuButton
-                                            class="p-1 hover:bg-surface-tertiary rounded-full text-secondary"
-                                        >
-                                            <Icon
-                                                name="more-vertical"
-                                                size="16"
-                                            />
-                                        </MenuButton>
-                                        <transition
-                                            enter-active-class="transition ease-out duration-100"
-                                            enter-from-class="transform opacity-0 scale-95"
-                                            enter-to-class="transform opacity-100 scale-100"
-                                            leave-active-class="transition ease-in duration-75"
-                                            leave-from-class="transform opacity-100 scale-100"
-                                            leave-to-class="transform opacity-0 scale-95"
-                                        >
-                                            <MenuItems
-                                                class="absolute right-0 mt-1 w-48 origin-top-right bg-surface-elevated rounded-md shadow-lg focus:outline-none z-50 py-1 border border-default"
+                                        <DropdownMenuTrigger as-child>
+                                            <button
+                                                class="p-1 hover:bg-surface-tertiary rounded-full text-secondary transition-colors outline-none"
                                             >
-                                                <MenuItem v-slot="{ active }">
-                                                    <button
-                                                        @click="
+                                                <Icon
+                                                    name="more-vertical"
+                                                    size="16"
+                                                />
+                                            </button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuPortal>
+                                            <DropdownMenuContent
+                                                side="bottom"
+                                                align="end"
+                                                :side-offset="5"
+                                                class="z-50 min-w-[180px] bg-surface-elevated border border-default rounded-lg shadow-xl overflow-hidden py-1 animate-in fade-in zoom-in-95 duration-100"
+                                            >
+                                                <DropdownMenuItem
+                                                    @click="
+                                                        p.is_muted_by_host
+                                                            ? meetingStore.unmuteParticipant(
+                                                                  p.public_id,
+                                                              )
+                                                            : meetingStore.muteParticipant(
+                                                                  p.public_id,
+                                                              )
+                                                    "
+                                                    class="group flex items-center w-full px-4 py-2 text-sm text-primary cursor-pointer outline-none hover:bg-blue-500/10 hover:text-blue-400 data-highlighted:bg-blue-500/10 data-highlighted:text-blue-400 transition-colors"
+                                                >
+                                                    <Icon
+                                                        :name="
                                                             p.is_muted_by_host
-                                                                ? meetingStore.unmuteParticipant(
-                                                                      p.public_id,
-                                                                  )
-                                                                : meetingStore.muteParticipant(
-                                                                      p.public_id,
-                                                                  )
+                                                                ? 'mic'
+                                                                : 'mic-off'
                                                         "
-                                                        :class="[
-                                                            active
-                                                                ? 'bg-blue-500/10 text-blue-400'
-                                                                : 'text-primary',
-                                                            'group flex items-center w-full px-4 py-2 text-sm',
-                                                        ]"
-                                                    >
-                                                        <Icon
-                                                            :name="
-                                                                p.is_muted_by_host
-                                                                    ? 'mic'
-                                                                    : 'mic-off'
-                                                            "
-                                                            size="16"
-                                                            class="mr-3 text-secondary"
-                                                        />
-                                                        {{
-                                                            p.is_muted_by_host
-                                                                ? "Allow Unmute"
-                                                                : "Mute Microphone"
-                                                        }}
-                                                    </button>
-                                                </MenuItem>
-                                                <MenuItem v-slot="{ active }">
-                                                    <button
-                                                        @click="
+                                                        size="16"
+                                                        class="mr-3 text-secondary group-hover:text-blue-400 transition-colors"
+                                                    />
+                                                    {{
+                                                        p.is_muted_by_host
+                                                            ? "Allow Unmute"
+                                                            : "Mute Microphone"
+                                                    }}
+                                                </DropdownMenuItem>
+
+                                                <DropdownMenuItem
+                                                    @click="
+                                                        p.is_camera_disabled_by_host
+                                                            ? meetingStore.allowCamera(
+                                                                  p.public_id,
+                                                              )
+                                                            : meetingStore.disableCamera(
+                                                                  p.public_id,
+                                                              )
+                                                    "
+                                                    class="group flex items-center w-full px-4 py-2 text-sm text-primary cursor-pointer outline-none hover:bg-blue-500/10 hover:text-blue-400 data-highlighted:bg-blue-500/10 data-highlighted:text-blue-400 transition-colors"
+                                                >
+                                                    <Icon
+                                                        :name="
                                                             p.is_camera_disabled_by_host
-                                                                ? meetingStore.allowCamera(
-                                                                      p.public_id,
-                                                                  )
-                                                                : meetingStore.disableCamera(
-                                                                      p.public_id,
-                                                                  )
+                                                                ? 'video'
+                                                                : 'video-off'
                                                         "
-                                                        :class="[
-                                                            active
-                                                                ? 'bg-blue-500/10 text-blue-400'
-                                                                : 'text-primary',
-                                                            'group flex items-center w-full px-4 py-2 text-sm',
-                                                        ]"
-                                                    >
-                                                        <Icon
-                                                            :name="
-                                                                p.is_camera_disabled_by_host
-                                                                    ? 'video'
-                                                                    : 'video-off'
-                                                            "
-                                                            size="16"
-                                                            class="mr-3 text-secondary"
-                                                        />
-                                                        {{
-                                                            p.is_camera_disabled_by_host
-                                                                ? "Allow Camera"
-                                                                : "Turn Off Camera"
-                                                        }}
-                                                    </button>
-                                                </MenuItem>
+                                                        size="16"
+                                                        class="mr-3 text-secondary group-hover:text-blue-400 transition-colors"
+                                                    />
+                                                    {{
+                                                        p.is_camera_disabled_by_host
+                                                            ? "Allow Camera"
+                                                            : "Turn Off Camera"
+                                                    }}
+                                                </DropdownMenuItem>
+
                                                 <template
                                                     v-if="meetingStore.isHost"
                                                 >
-                                                    <div
-                                                        class="my-1 border-t border-default"
-                                                    ></div>
-                                                    <MenuItem
-                                                        v-slot="{ active }"
-                                                    >
-                                                        <button
-                                                            @click="
-                                                                p.role ===
-                                                                'participant'
-                                                                    ? meetingStore.promoteParticipant(
-                                                                          p.public_id,
-                                                                      )
-                                                                    : meetingStore.demoteParticipant(
-                                                                          p.public_id,
-                                                                      )
-                                                            "
-                                                            :class="[
-                                                                active
-                                                                    ? 'bg-blue-500/10 text-blue-400'
-                                                                    : 'text-primary',
-                                                                'group flex items-center w-full px-4 py-2 text-sm',
-                                                            ]"
-                                                        >
-                                                            <Icon
-                                                                :name="
-                                                                    p.role ===
-                                                                    'participant'
-                                                                        ? 'shield'
-                                                                        : 'shield-off'
-                                                                "
-                                                                size="16"
-                                                                class="mr-3 text-secondary"
-                                                            />
-                                                            {{
-                                                                p.role ===
-                                                                "participant"
-                                                                    ? "Make Co-host"
-                                                                    : "Remove Co-host"
-                                                            }}
-                                                        </button>
-                                                    </MenuItem>
-                                                </template>
-                                                <div
-                                                    class="my-1 border-t border-default"
-                                                ></div>
-                                                <MenuItem v-slot="{ active }">
-                                                    <button
+                                                    <DropdownMenuSeparator
+                                                        class="h-px bg-default mx-2 my-1"
+                                                    />
+                                                    <DropdownMenuItem
                                                         @click="
-                                                            meetingStore.kickParticipant(
-                                                                p.public_id,
-                                                            )
+                                                            p.role ===
+                                                            'participant'
+                                                                ? meetingStore.promoteParticipant(
+                                                                      p.public_id,
+                                                                  )
+                                                                : meetingStore.demoteParticipant(
+                                                                      p.public_id,
+                                                                  )
                                                         "
-                                                        :class="[
-                                                            active
-                                                                ? 'bg-red-500/20 text-red-500'
-                                                                : 'text-red-400',
-                                                            'group flex items-center w-full px-4 py-2 text-sm',
-                                                        ]"
+                                                        class="group flex items-center w-full px-4 py-2 text-sm text-primary cursor-pointer outline-none hover:bg-blue-500/10 hover:text-blue-400 data-highlighted:bg-blue-500/10 data-highlighted:text-blue-400 transition-colors"
                                                     >
                                                         <Icon
-                                                            name="minus-circle"
+                                                            :name="
+                                                                p.role ===
+                                                                'participant'
+                                                                    ? 'shield'
+                                                                    : 'shield-off'
+                                                            "
                                                             size="16"
-                                                            class="mr-3 border-red-500"
+                                                            class="mr-3 text-secondary group-hover:text-blue-400 transition-colors"
                                                         />
-                                                        Remove from call
-                                                    </button>
-                                                </MenuItem>
-                                            </MenuItems>
-                                        </transition>
-                                    </Menu>
+                                                        {{
+                                                            p.role ===
+                                                            "participant"
+                                                                ? "Make Co-host"
+                                                                : "Remove Co-host"
+                                                        }}
+                                                    </DropdownMenuItem>
+                                                </template>
+
+                                                <DropdownMenuSeparator
+                                                    class="h-px bg-default mx-2 my-1"
+                                                />
+                                                <DropdownMenuItem
+                                                    @click="
+                                                        meetingStore.kickParticipant(
+                                                            p.public_id,
+                                                        )
+                                                    "
+                                                    class="group flex items-center w-full px-4 py-2 text-sm text-red-400 cursor-pointer outline-none hover:bg-red-500/20 hover:text-red-500 data-highlighted:bg-red-500/20 data-highlighted:text-red-500 transition-colors"
+                                                >
+                                                    <Icon
+                                                        name="minus-circle"
+                                                        size="16"
+                                                        class="mr-3 text-red-400 group-hover:text-red-500 transition-colors"
+                                                    />
+                                                    Remove from meeting
+                                                </DropdownMenuItem>
+                                            </DropdownMenuContent>
+                                        </DropdownMenuPortal>
+                                    </DropdownMenuRoot>
                                 </div>
                             </div>
                         </div>
@@ -1069,182 +1039,581 @@
 
             <!-- Right: Activity Toggles -->
             <div class="bar-section bar-section--right">
-                <button
-                    v-if="
-                        meetingStore.isModerator &&
-                        meetingStore.waitingParticipants.length > 0
-                    "
-                    class="ctrl-btn btn--alert"
-                    @click="openRequestsPanel"
-                    title="Requests"
-                >
-                    <Icon name="user-plus" size="20" />
-                    <span class="badge-count">{{
-                        meetingStore.waitingParticipants.length
-                    }}</span>
-                </button>
+                <!-- Secondary Actions (Desktop) -->
+                <div class="hidden lg:flex items-center gap-2">
+                    <button
+                        v-if="
+                            meetingStore.isModerator &&
+                            meetingStore.waitingParticipants.length > 0
+                        "
+                        class="ctrl-btn btn--alert"
+                        @click="openRequestsPanel"
+                        title="Requests"
+                    >
+                        <Icon name="user-plus" size="20" />
+                        <span class="badge-count">{{
+                            meetingStore.waitingParticipants.length
+                        }}</span>
+                    </button>
 
-                <button
-                    class="ctrl-btn"
-                    :class="{ 'ctrl-btn--active': showParticipantsPanel }"
-                    @click="toggleParticipantsPanel"
-                    title="Participants"
-                >
-                    <Icon name="users" size="20" />
-                    <span class="badge-count badge-count--secondary">{{
-                        meetingStore.allParticipants.length
-                    }}</span>
-                </button>
-
-                <button
-                    class="ctrl-btn"
-                    :class="{ 'ctrl-btn--active': showChatPanel }"
-                    @click="toggleChatPanel"
-                    title="Chat"
-                >
-                    <Icon name="message-square" size="20" />
-                </button>
-
-                <button
-                    v-if="meetingStore.isHost"
-                    class="ctrl-btn lock-btn-wrap"
-                    :class="{ 'ctrl-btn--lock-active': meetingStore.isLocked }"
-                    @click="meetingStore.toggleLock()"
-                    :title="
-                        meetingStore.isLocked
-                            ? 'Unlock Meeting'
-                            : 'Lock Meeting'
-                    "
-                >
-                    <Transition name="icon-morph" mode="out-in">
-                        <Icon
-                            :key="meetingStore.isLocked ? 'lock' : 'unlock'"
-                            :name="meetingStore.isLocked ? 'lock' : 'unlock'"
-                            size="20"
-                        />
-                    </Transition>
-                </button>
-
-                <Menu as="div" class="activities-dropdown-wrap">
-                    <MenuButton
+                    <button
                         class="ctrl-btn"
+                        :class="{ 'ctrl-btn--active': showParticipantsPanel }"
+                        @click="toggleParticipantsPanel"
+                        title="Participants"
+                    >
+                        <Icon name="users" size="20" />
+                        <span class="badge-count badge-count--secondary">{{
+                            meetingStore.allParticipants.length
+                        }}</span>
+                    </button>
+
+                    <button
+                        class="ctrl-btn"
+                        :class="{ 'ctrl-btn--active': showChatPanel }"
+                        @click="toggleChatPanel"
+                        title="Chat"
+                    >
+                        <Icon name="message-square" size="20" />
+                    </button>
+
+                    <button
+                        v-if="meetingStore.isHost"
+                        class="ctrl-btn lock-btn-wrap"
                         :class="{
-                            'ctrl-btn--active':
-                                whiteboardStore.isVisible ||
-                                showPollPanel ||
-                                meetingStore.showBreakoutManager,
+                            'ctrl-btn--lock-active': meetingStore.isLocked,
                         }"
-                        title="Activities"
+                        @click="meetingStore.toggleLock()"
+                        :title="
+                            meetingStore.isLocked
+                                ? 'Unlock Meeting'
+                                : 'Lock Meeting'
+                        "
                     >
-                        <Icon name="grid" size="20" />
-                    </MenuButton>
-                    <transition
-                        enter-active-class="transition duration-100 ease-out"
-                        enter-from-class="transform scale-95 opacity-0"
-                        enter-to-class="transform scale-100 opacity-100"
-                        leave-active-class="transition duration-75 ease-in"
-                        leave-from-class="transform scale-100 opacity-100"
-                        leave-to-class="transform scale-95 opacity-0"
-                    >
-                        <MenuItems class="activities-menu-items">
-                            <div class="px-1 py-1">
-                                <MenuItem v-slot="{ active }">
-                                    <button
+                        <Transition name="icon-morph" mode="out-in">
+                            <Icon
+                                :key="meetingStore.isLocked ? 'lock' : 'unlock'"
+                                :name="
+                                    meetingStore.isLocked ? 'lock' : 'unlock'
+                                "
+                                size="20"
+                            />
+                        </Transition>
+                    </button>
+
+                    <!-- Activities Menu (Desktop) -->
+                    <DropdownMenuRoot>
+                        <DropdownMenuTrigger as-child>
+                            <button
+                                class="ctrl-btn hidden lg:flex"
+                                :class="{
+                                    'ctrl-btn--active':
+                                        whiteboardStore.isVisible ||
+                                        showPollPanel ||
+                                        meetingStore.showBreakoutManager,
+                                }"
+                                title="Activities"
+                            >
+                                <Icon name="grid" size="20" />
+                            </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuPortal>
+                            <DropdownMenuContent
+                                side="top"
+                                align="center"
+                                :side-offset="16"
+                                class="z-1000 w-64 bg-surface-elevated/95 backdrop-blur-xl border border-default rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 data-[side=top]:slide-in-from-bottom-4 duration-200"
+                            >
+                                <div class="p-1.5 space-y-0.5">
+                                    <DropdownMenuItem
                                         @click="togglePollPanel"
-                                        :class="[
-                                            active
-                                                ? 'bg-surface-tertiary text-primary'
-                                                : 'text-primary',
-                                            'menu-action-item',
-                                        ]"
+                                        class="menu-action-item px-3 py-2 rounded-xl flex items-center transition-colors cursor-pointer outline-none hover:bg-white/5 data-highlighted:bg-white/5 text-white"
                                     >
                                         <Icon
                                             name="bar-chart-2"
                                             size="18"
-                                            class="mr-3 text-secondary"
+                                            class="mr-3 text-white/70"
                                         />
-                                        <span>Polls</span>
-                                    </button>
-                                </MenuItem>
-                                <MenuItem v-slot="{ active }">
-                                    <button
+                                        <span class="font-medium text-sm"
+                                            >Polls</span
+                                        >
+                                    </DropdownMenuItem>
+
+                                    <DropdownMenuItem
                                         @click="
                                             whiteboardStore.isVisible =
                                                 !whiteboardStore.isVisible
                                         "
-                                        :class="[
-                                            active
-                                                ? 'bg-surface-tertiary text-primary'
-                                                : 'text-primary',
-                                            'menu-action-item',
-                                        ]"
+                                        class="menu-action-item px-3 py-2 rounded-xl flex items-center transition-colors cursor-pointer outline-none hover:bg-white/5 data-highlighted:bg-white/5 text-white"
                                     >
                                         <Icon
                                             name="edit-3"
                                             size="18"
-                                            class="mr-3 text-secondary"
+                                            class="mr-3 text-white/70"
                                         />
-                                        <span>Whiteboard</span>
-                                    </button>
-                                </MenuItem>
+                                        <span class="font-medium text-sm"
+                                            >Whiteboard</span
+                                        >
+                                    </DropdownMenuItem>
 
-                                <template v-if="meetingStore.isHost">
-                                    <div class="menu-divider"></div>
-                                    <MenuItem v-slot="{ active }">
-                                        <button
+                                    <template v-if="meetingStore.isHost">
+                                        <DropdownMenuSeparator
+                                            class="h-px bg-white/10 mx-2 my-1"
+                                        />
+                                        <DropdownMenuItem
                                             @click="
                                                 meetingStore.showBreakoutManager = true
                                             "
-                                            :class="[
-                                                active
-                                                    ? 'bg-surface-tertiary text-primary'
-                                                    : 'text-primary',
-                                                'menu-action-item',
-                                            ]"
+                                            class="menu-action-item px-3 py-2 rounded-xl flex items-center transition-colors cursor-pointer outline-none hover:bg-white/5 data-highlighted:bg-white/5 text-white"
                                         >
                                             <Icon
                                                 name="layout-grid"
                                                 size="18"
-                                                class="mr-3 text-secondary"
+                                                class="mr-3 text-white/70"
                                             />
-                                            <span>Breakout Rooms</span>
-                                        </button>
-                                    </MenuItem>
+                                            <span class="font-medium text-sm"
+                                                >Breakout Rooms</span
+                                            >
+                                        </DropdownMenuItem>
+                                    </template>
+                                </div>
+                            </DropdownMenuContent>
+                        </DropdownMenuPortal>
+                    </DropdownMenuRoot>
+
+                    <MeetingLayoutSelector />
+
+                    <button
+                        class="ctrl-btn"
+                        @click="showSettings = true"
+                        title="Settings"
+                    >
+                        <Icon name="settings" size="20" />
+                    </button>
+
+                    <button
+                        v-if="meetingStore.isHost && recordingEnabled"
+                        class="ctrl-btn"
+                        :class="{ 'ctrl-btn--recording': isRecording }"
+                        :disabled="isRecordingStarting || isRecordingStopping"
+                        @click="toggleRecording"
+                        :title="
+                            isRecording ? 'Stop Recording' : 'Start Recording'
+                        "
+                    >
+                        <Icon
+                            v-if="!isRecordingStarting && !isRecordingStopping"
+                            :name="isRecording ? 'circle-stop' : 'circle-dot'"
+                            size="20"
+                        />
+                        <div v-else class="flex items-center justify-center">
+                            <div
+                                class="recording-loading-spinner animate-pulse bg-red-500 w-3 h-3 rounded-full"
+                            ></div>
+                        </div>
+                    </button>
+                </div>
+
+                <!-- More Menu (Mobile) -->
+                <div class="more-menu-wrapper relative lg:hidden">
+                    <button
+                        class="ctrl-btn"
+                        :class="{ 'ctrl-btn--active': showMoreMenu }"
+                        @click.stop="showMoreMenu = !showMoreMenu"
+                        title="More options"
+                    >
+                        <Icon name="more-vertical" size="20" />
+                    </button>
+
+                    <Transition
+                        enter-active-class="transition duration-200 ease-out"
+                        enter-from-class="opacity-0 scale-95 translate-y-4"
+                        enter-to-class="opacity-100 scale-100 translate-y-0"
+                        leave-active-class="transition duration-150 ease-in"
+                        leave-from-class="opacity-100 scale-100 translate-y-0"
+                        leave-to-class="opacity-0 scale-95 translate-y-4"
+                    >
+                        <div
+                            v-if="showMoreMenu"
+                            ref="moreMenuRef"
+                            v-click-outside="() => (showMoreMenu = false)"
+                            class="modern-more-menu shadow-2xl"
+                        >
+                            <div
+                                class="p-1.5 space-y-0.5 max-h-[70dvh] overflow-y-auto custom-scrollbar"
+                            >
+                                <button
+                                    @click="
+                                        toggleParticipantsPanel();
+                                        showMoreMenu = false;
+                                    "
+                                    class="menu-action-item px-3 py-2.5 rounded-xl flex items-center gap-3 transition-all cursor-pointer outline-none hover:bg-white/5"
+                                    :class="
+                                        showParticipantsPanel
+                                            ? 'bg-blue-600/10! text-blue-400'
+                                            : 'text-white'
+                                    "
+                                >
+                                    <div
+                                        class="w-10 h-10 flex items-center justify-center rounded-xl transition-colors shrink-0"
+                                        :class="
+                                            showParticipantsPanel
+                                                ? 'bg-blue-600/20'
+                                                : 'bg-surface-secondary'
+                                        "
+                                    >
+                                        <Icon
+                                            name="users"
+                                            size="20"
+                                            :class="
+                                                showParticipantsPanel
+                                                    ? 'text-blue-400'
+                                                    : 'text-white/70'
+                                            "
+                                        />
+                                    </div>
+                                    <div class="grow min-w-0 text-left">
+                                        <div
+                                            class="flex items-center justify-between"
+                                        >
+                                            <span class="font-medium text-sm"
+                                                >Participants</span
+                                            >
+                                            <span
+                                                class="bg-white/10 px-1.5 py-0.5 rounded-lg text-[10px] font-bold text-white/60"
+                                            >
+                                                {{
+                                                    meetingStore.allParticipants
+                                                        .length
+                                                }}
+                                            </span>
+                                        </div>
+                                        <div
+                                            class="text-[10px] text-white/40 truncate"
+                                        >
+                                            Manage meeting attendees
+                                        </div>
+                                    </div>
+                                </button>
+
+                                <button
+                                    @click="
+                                        toggleChatPanel();
+                                        showMoreMenu = false;
+                                    "
+                                    class="menu-action-item px-3 py-2.5 rounded-xl flex items-center gap-3 transition-all cursor-pointer outline-none hover:bg-white/5"
+                                    :class="
+                                        showChatPanel
+                                            ? 'bg-blue-600/10! text-blue-400'
+                                            : 'text-white'
+                                    "
+                                >
+                                    <div
+                                        class="w-10 h-10 flex items-center justify-center rounded-xl transition-colors shrink-0"
+                                        :class="
+                                            showChatPanel
+                                                ? 'bg-blue-600/20'
+                                                : 'bg-surface-secondary'
+                                        "
+                                    >
+                                        <Icon
+                                            name="message-square"
+                                            size="20"
+                                            :class="
+                                                showChatPanel
+                                                    ? 'text-blue-400'
+                                                    : 'text-white/70'
+                                            "
+                                        />
+                                    </div>
+                                    <div class="grow min-w-0 text-left">
+                                        <div class="font-medium text-sm">
+                                            Chat
+                                        </div>
+                                        <div
+                                            class="text-[10px] text-white/40 truncate"
+                                        >
+                                            Send messages to everyone
+                                        </div>
+                                    </div>
+                                </button>
+
+                                <button
+                                    @click="
+                                        togglePollPanel();
+                                        showMoreMenu = false;
+                                    "
+                                    class="menu-action-item px-3 py-2.5 rounded-xl flex items-center gap-3 transition-all cursor-pointer outline-none hover:bg-white/5"
+                                    :class="
+                                        showPollPanel
+                                            ? 'bg-blue-600/10! text-blue-400'
+                                            : 'text-white'
+                                    "
+                                >
+                                    <div
+                                        class="w-10 h-10 flex items-center justify-center rounded-xl transition-colors shrink-0"
+                                        :class="
+                                            showPollPanel
+                                                ? 'bg-blue-600/20'
+                                                : 'bg-surface-secondary'
+                                        "
+                                    >
+                                        <Icon
+                                            name="bar-chart-2"
+                                            size="20"
+                                            :class="
+                                                showPollPanel
+                                                    ? 'text-blue-400'
+                                                    : 'text-white/70'
+                                            "
+                                        />
+                                    </div>
+                                    <div class="grow min-w-0 text-left">
+                                        <div class="font-medium text-sm">
+                                            Polls
+                                        </div>
+                                        <div
+                                            class="text-[10px] text-white/40 truncate"
+                                        >
+                                            Create and vote on polls
+                                        </div>
+                                    </div>
+                                </button>
+
+                                <button
+                                    @click="
+                                        whiteboardStore.isVisible =
+                                            !whiteboardStore.isVisible;
+                                        showMoreMenu = false;
+                                    "
+                                    class="menu-action-item px-3 py-2.5 rounded-xl flex items-center gap-3 transition-all cursor-pointer outline-none hover:bg-white/5"
+                                    :class="
+                                        whiteboardStore.isVisible
+                                            ? 'bg-blue-600/10! text-blue-400'
+                                            : 'text-white'
+                                    "
+                                >
+                                    <div
+                                        class="w-10 h-10 flex items-center justify-center rounded-xl transition-colors shrink-0"
+                                        :class="
+                                            whiteboardStore.isVisible
+                                                ? 'bg-blue-600/20'
+                                                : 'bg-surface-secondary'
+                                        "
+                                    >
+                                        <Icon
+                                            name="edit-3"
+                                            size="20"
+                                            :class="
+                                                whiteboardStore.isVisible
+                                                    ? 'text-blue-400'
+                                                    : 'text-white/70'
+                                            "
+                                        />
+                                    </div>
+                                    <div class="grow min-w-0 text-left">
+                                        <div class="font-medium text-sm">
+                                            Whiteboard
+                                        </div>
+                                        <div
+                                            class="text-[10px] text-white/40 truncate"
+                                        >
+                                            Collaborate on a canvas
+                                        </div>
+                                    </div>
+                                </button>
+
+                                <!-- Layout Selector (Mobile) Section -->
+                                <div
+                                    class="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white/50 flex items-center gap-2 mt-1"
+                                >
+                                    <Icon name="layout" size="12" />
+                                    <span>Layout Mode</span>
+                                </div>
+                                <div class="px-2 pb-2">
+                                    <MeetingLayoutSelector />
+                                </div>
+
+                                <div class="h-px bg-white/10 mx-2 my-1.5"></div>
+
+                                <button
+                                    @click="
+                                        showSettings = true;
+                                        showMoreMenu = false;
+                                    "
+                                    class="menu-action-item px-3 py-2.5 rounded-xl flex items-center gap-3 transition-all cursor-pointer outline-none hover:bg-white/5 text-white"
+                                >
+                                    <div
+                                        class="w-10 h-10 flex items-center justify-center rounded-xl bg-surface-secondary shrink-0"
+                                    >
+                                        <Icon
+                                            name="settings"
+                                            size="20"
+                                            class="text-white/70"
+                                        />
+                                    </div>
+                                    <div class="grow min-w-0 text-left">
+                                        <div class="font-medium text-sm">
+                                            Settings
+                                        </div>
+                                        <div
+                                            class="text-[10px] text-white/40 truncate"
+                                        >
+                                            Audio, video and more
+                                        </div>
+                                    </div>
+                                </button>
+
+                                <template v-if="meetingStore.isHost">
+                                    <button
+                                        @click="
+                                            meetingStore.toggleLock();
+                                            showMoreMenu = false;
+                                        "
+                                        class="menu-action-item px-3 py-2.5 rounded-xl flex items-center gap-3 transition-all cursor-pointer outline-none hover:bg-white/5 text-white"
+                                        :class="
+                                            meetingStore.isLocked
+                                                ? 'text-red-400!'
+                                                : ''
+                                        "
+                                    >
+                                        <div
+                                            class="w-10 h-10 flex items-center justify-center rounded-xl transition-colors shrink-0"
+                                            :class="
+                                                meetingStore.isLocked
+                                                    ? 'bg-red-500/20'
+                                                    : 'bg-surface-secondary'
+                                            "
+                                        >
+                                            <Icon
+                                                :name="
+                                                    meetingStore.isLocked
+                                                        ? 'lock'
+                                                        : 'unlock'
+                                                "
+                                                size="20"
+                                                :class="
+                                                    meetingStore.isLocked
+                                                        ? 'text-red-400'
+                                                        : 'text-white/70'
+                                                "
+                                            />
+                                        </div>
+                                        <div class="grow min-w-0 text-left">
+                                            <div class="font-medium text-sm">
+                                                {{
+                                                    meetingStore.isLocked
+                                                        ? "Unlock Room"
+                                                        : "Lock Room"
+                                                }}
+                                            </div>
+                                            <div
+                                                class="text-[10px] text-white/40 truncate"
+                                            >
+                                                {{
+                                                    meetingStore.isLocked
+                                                        ? "Allow anyone to join"
+                                                        : "Require approval to join"
+                                                }}
+                                            </div>
+                                        </div>
+                                    </button>
+
+                                    <button
+                                        v-if="recordingEnabled"
+                                        @click="
+                                            toggleRecording();
+                                            showMoreMenu = false;
+                                        "
+                                        :disabled="
+                                            isRecordingStarting ||
+                                            isRecordingStopping
+                                        "
+                                        class="menu-action-item px-3 py-2.5 rounded-xl flex items-center gap-3 transition-all cursor-pointer outline-none hover:bg-white/5 text-white"
+                                        :class="
+                                            isRecording ? 'text-red-500!' : ''
+                                        "
+                                    >
+                                        <div
+                                            class="w-10 h-10 flex items-center justify-center rounded-xl transition-colors shrink-0"
+                                            :class="
+                                                isRecording
+                                                    ? 'bg-red-500/20 animation-pulse'
+                                                    : 'bg-surface-secondary'
+                                            "
+                                        >
+                                            <Icon
+                                                :name="
+                                                    isRecording
+                                                        ? 'circle-stop'
+                                                        : 'circle-dot'
+                                                "
+                                                size="20"
+                                                :class="
+                                                    isRecording
+                                                        ? 'text-red-500'
+                                                        : 'text-white/70'
+                                                "
+                                            />
+                                        </div>
+                                        <div class="grow min-w-0 text-left">
+                                            <div class="font-medium text-sm">
+                                                {{
+                                                    isRecording
+                                                        ? "Stop Recording"
+                                                        : "Start Recording"
+                                                }}
+                                            </div>
+                                            <div
+                                                class="text-[10px] text-white/40 truncate"
+                                            >
+                                                Save this meeting to cloud
+                                            </div>
+                                        </div>
+                                    </button>
+                                </template>
+
+                                <template
+                                    v-if="
+                                        meetingStore.isModerator &&
+                                        meetingStore.waitingParticipants
+                                            .length > 0
+                                    "
+                                >
+                                    <div
+                                        class="h-px bg-white/10 mx-2 my-1.5"
+                                    ></div>
+                                    <button
+                                        @click="
+                                            openRequestsPanel();
+                                            showMoreMenu = false;
+                                        "
+                                        class="menu-action-item px-4 py-3 rounded-xl flex items-center justify-between transition-colors cursor-pointer outline-none bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white"
+                                    >
+                                        <div class="flex items-center">
+                                            <Icon
+                                                name="user-plus"
+                                                size="18"
+                                                class="mr-3"
+                                            />
+                                            <span class="font-medium"
+                                                >Waiting Room</span
+                                            >
+                                        </div>
+                                        <span
+                                            class="ml-auto bg-red-500 text-white px-1.5 py-0.5 rounded text-[10px]"
+                                        >
+                                            {{
+                                                meetingStore.waitingParticipants
+                                                    .length
+                                            }}
+                                        </span>
+                                    </button>
                                 </template>
                             </div>
-                        </MenuItems>
-                    </transition>
-                </Menu>
-
-                <MeetingLayoutSelector />
-
-                <button
-                    class="ctrl-btn"
-                    @click="showSettings = true"
-                    title="Settings"
-                >
-                    <Icon name="settings" size="20" />
-                </button>
-
-                <button
-                    v-if="meetingStore.isHost && recordingEnabled"
-                    class="ctrl-btn"
-                    :class="{ 'ctrl-btn--recording': isRecording }"
-                    :disabled="isRecordingStarting || isRecordingStopping"
-                    @click="toggleRecording"
-                    :title="isRecording ? 'Stop Recording' : 'Start Recording'"
-                >
-                    <Icon
-                        v-if="!isRecordingStarting && !isRecordingStopping"
-                        :name="isRecording ? 'circle-stop' : 'circle-dot'"
-                        size="20"
-                    />
-                    <div v-else class="flex items-center justify-center">
-                        <div
-                            class="recording-loading-spinner animate-pulse bg-red-500 w-3 h-3 rounded-full"
-                        ></div>
-                    </div>
-                </button>
+                        </div>
+                    </Transition>
+                </div>
             </div>
         </footer>
 
@@ -1282,7 +1651,14 @@ import { useBackgroundBlur } from "@/composables/useBackgroundBlur";
 import { Icon, Avatar } from "@/components/ui";
 import { toast } from "vue-sonner";
 import api from "@/lib/api";
-import { Menu, MenuButton, MenuItems, MenuItem } from "@headlessui/vue";
+import {
+    DropdownMenuRoot,
+    DropdownMenuTrigger,
+    DropdownMenuPortal,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+} from "reka-ui";
 
 import DeviceSettingsModal from "./components/DeviceSettingsModal.vue";
 import DevSimulationTool from "./components/DevSimulationTool.vue";
@@ -1334,6 +1710,7 @@ const showChatPanel = ref(false);
 const showPollPanel = ref(false);
 const showReactionPicker = ref(false);
 const showMeetingDetails = ref(false);
+const showMoreMenu = ref(false);
 const showDevTool = ref(false);
 const initializing = ref(true);
 const activeParticipantTab = ref<"members" | "waiting">("members");
@@ -1696,8 +2073,13 @@ onMounted(async () => {
                 );
             }
 
-            const spotlightPid = spotlight ? spotlight.participant.public_id.toLowerCase() : null;
-            meetingStore.stream?.setVisibleParticipants?.(visibleIds, spotlightPid);
+            const spotlightPid = spotlight
+                ? spotlight.participant.public_id.toLowerCase()
+                : null;
+            meetingStore.stream?.setVisibleParticipants?.(
+                visibleIds,
+                spotlightPid,
+            );
         },
         { immediate: true, deep: true },
     );
@@ -2987,6 +3369,7 @@ onBeforeUnmount(() => {
 
 .details-panel {
     width: 360px;
+    max-width: calc(100vw - 48px);
     background: var(--surface-elevated);
     border-radius: 12px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
@@ -3372,12 +3755,62 @@ onBeforeUnmount(() => {
     .bar-section--left {
         display: none; /* Hide meeting code on small screens */
     }
+    .bar-section--center {
+        gap: 6px;
+    }
     .ctrl-btn {
-        width: 38px;
-        height: 38px;
+        width: 40px;
+        height: 40px;
     }
     .ctrl-btn--hangup {
-        width: 48px;
+        width: 50px;
+    }
+}
+
+@media (max-width: 500px) {
+    .app-bottom-bar {
+        padding: 0 8px;
+        height: 68px;
+    }
+    .bar-section--center {
+        gap: 4px;
+    }
+    .ctrl-btn {
+        width: 36px;
+        height: 36px;
+    }
+    .ctrl-btn--hangup {
+        width: 46px;
+    }
+    .reaction-split-wrap {
+        height: 36px;
+    }
+    .reaction-quick-btn {
+        height: 32px;
+        padding: 0 8px;
+    }
+    .reaction-picker-trigger {
+        width: 24px;
+        height: 32px;
+    }
+    .quick-emoji {
+        font-size: 16px;
+    }
+}
+
+@media (max-width: 400px) {
+    .bar-section--center {
+        gap: 2px;
+    }
+    .ctrl-btn {
+        width: 34px;
+        height: 34px;
+    }
+    .ctrl-btn--hangup {
+        width: 42px;
+    }
+    .reaction-split-wrap {
+        padding: 1px;
     }
 }
 
@@ -4087,7 +4520,30 @@ onBeforeUnmount(() => {
         top: 0;
         bottom: 0;
         border-radius: 0;
-        z-index: 150;
+        z-index: 1001; /* Above more menu */
+        background: var(--surface-primary);
+    }
+
+    .gmeet-root,
+    .app-bottom-bar,
+    .meeting-info-pill,
+    .reaction-group {
+        border-radius: 0 !important;
+    }
+
+    .ctrl-btn--hangup {
+        border-radius: 9999px !important;
+    }
+
+    .meeting-details-overlay {
+        bottom: 16px;
+        left: 12px;
+        right: 12px;
+        z-index: 200;
+    }
+
+    .details-panel {
+        width: 100%;
     }
 
     .pip-self-view {
@@ -4218,7 +4674,25 @@ onBeforeUnmount(() => {
 
 .poor-connection-text {
     font-size: 13px;
-    white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+    .poor-connection-content {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 12px;
+    }
+
+    .poor-connection-text {
+        white-space: normal;
+        line-height: 1.4;
+    }
+
+    .poor-connection-banner {
+        width: calc(100% - 32px);
+        max-width: none;
+    }
 }
 
 .poor-connection-action {
@@ -4243,5 +4717,41 @@ onBeforeUnmount(() => {
 
 .poor-connection-action:active {
     transform: scale(0.95);
+}
+
+.modern-more-menu {
+    position: absolute;
+    bottom: calc(100% + 12px);
+    right: 0;
+    width: 280px;
+    background: var(--surface-elevated);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--border-default);
+    border-radius: 16px;
+    overflow: hidden;
+    z-index: 1000;
+}
+
+.more-menu-wrapper {
+    display: flex;
+    align-items: center;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
 }
 </style>

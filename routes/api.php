@@ -713,6 +713,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
         Route::get('/charts', [\App\Http\Controllers\Api\SecurityDashboardController::class, 'charts']);
         Route::get('/map-data', [\App\Http\Controllers\Api\SecurityDashboardController::class, 'mapData']);
         Route::get('/activity', [\App\Http\Controllers\Api\SecurityDashboardController::class, 'activity']);
+        Route::get('/ip-activity/{ip}', [\App\Http\Controllers\Api\SecurityDashboardController::class, 'ipActivity']);
         Route::get('/blocked-ips', [\App\Http\Controllers\Api\SecurityDashboardController::class, 'blockedIps']);
         Route::post('/blocked-ips', [\App\Http\Controllers\Api\SecurityDashboardController::class, 'blockIp']);
         Route::delete('/blocked-ips/{blockedIp}', [\App\Http\Controllers\Api\SecurityDashboardController::class, 'unblockIp']);

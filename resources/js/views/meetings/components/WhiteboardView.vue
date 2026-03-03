@@ -2,10 +2,10 @@
     <div
         ref="container"
         class="whiteboard-view"
-        :class="{ 
-            'is-drawing': isDrawing, 
+        :class="{
+            'is-drawing': isDrawing,
             'is-selecting': currentTool === 'select',
-            'is-filling': currentTool === 'fill' 
+            'is-filling': currentTool === 'fill',
         }"
         :style="{ background: whiteboardStore.backgroundColor }"
         @mousedown="handleMouseDown"
@@ -39,13 +39,25 @@
                 <div class="relative">
                     <button
                         class="tool-btn"
-                        :class="{ active: ['rect', 'circle', 'arrow', 'x-mark', 'check'].includes(currentTool) }"
+                        :class="{
+                            active: [
+                                'rect',
+                                'circle',
+                                'arrow',
+                                'x-mark',
+                                'check',
+                            ].includes(currentTool),
+                        }"
                         @click="showShapesBundle = !showShapesBundle"
                         title="Shapes"
                     >
                         <Icon :name="currentShapeIcon" size="18" />
                     </button>
-                    <div v-if="showShapesBundle" class="shapes-bundle glass-panel shadow-2xl" v-click-outside="() => showShapesBundle = false">
+                    <div
+                        v-if="showShapesBundle"
+                        class="shapes-bundle glass-panel shadow-2xl"
+                        v-click-outside="() => (showShapesBundle = false)"
+                    >
                         <button
                             v-for="shape in shapeTools"
                             :key="shape.id"
@@ -72,7 +84,11 @@
                 >
                     <Icon name="sticky-note" size="18" />
                 </button>
-                <div v-if="showStickers" class="sticker-picker glass-panel shadow-2xl" v-click-outside="() => showStickers = false">
+                <div
+                    v-if="showStickers"
+                    class="sticker-picker glass-panel shadow-2xl"
+                    v-click-outside="() => (showStickers = false)"
+                >
                     <button
                         v-for="sticker in stickerList"
                         :key="sticker"
@@ -99,38 +115,51 @@
                     />
                     <!-- Custom Color Picker -->
                     <div class="relative group">
-                        <button 
-                            class="color-btn custom-color-btn" 
+                        <button
+                            class="color-btn custom-color-btn"
                             :class="{ active: !colors.includes(currentColor) }"
-                            :style="{ backgroundColor: !colors.includes(currentColor) ? currentColor : 'transparent' }"
+                            :style="{
+                                backgroundColor: !colors.includes(currentColor)
+                                    ? currentColor
+                                    : 'transparent',
+                            }"
                         >
                             <Icon name="plus" size="12" />
-                            <input 
-                                type="color" 
-                                v-model="currentColor" 
+                            <input
+                                type="color"
+                                v-model="currentColor"
                                 class="absolute inset-0 opacity-0 cursor-pointer"
                                 title="Custom Color"
                             />
                         </button>
                     </div>
                 </div>
-                
+
                 <div class="tool-divider"></div>
-                
+
                 <div class="relative">
-                    <button 
-                        class="board-color-preview" 
-                        :style="{ backgroundColor: whiteboardStore.backgroundColor }" 
+                    <button
+                        class="board-color-preview"
+                        :style="{
+                            backgroundColor: whiteboardStore.backgroundColor,
+                        }"
                         @click="showBoardColors = !showBoardColors"
-                        title="Board Color" 
+                        title="Board Color"
                     />
-                    <div v-if="showBoardColors" class="board-color-picker glass-panel active" v-click-outside="() => showBoardColors = false">
+                    <div
+                        v-if="showBoardColors"
+                        class="board-color-picker glass-panel active"
+                        v-click-outside="() => (showBoardColors = false)"
+                    >
                         <button
                             v-for="color in boardColors"
                             :key="color"
                             class="color-btn"
                             :style="{ backgroundColor: color }"
-                            :class="{ active: whiteboardStore.backgroundColor === color }"
+                            :class="{
+                                active:
+                                    whiteboardStore.backgroundColor === color,
+                            }"
                             @click="selectBoardColor(color)"
                         />
                     </div>
@@ -165,7 +194,11 @@
                     >
                         <Icon name="download" size="18" />
                     </button>
-                    <div v-if="showExportOptions" class="export-options glass-panel shadow-2xl" v-click-outside="() => showExportOptions = false">
+                    <div
+                        v-if="showExportOptions"
+                        class="export-options glass-panel shadow-2xl"
+                        v-click-outside="() => (showExportOptions = false)"
+                    >
                         <button class="menu-item" @click="exportBoard('flat')">
                             <Icon name="file-image" size="14" />
                             <span>Transparent (Flat)</span>
@@ -188,11 +221,11 @@
                     >
                         <Icon name="image" size="18" />
                     </button>
-                    <input 
-                        type="file" 
-                        ref="imageInput" 
-                        class="hidden" 
-                        accept="image/*" 
+                    <input
+                        type="file"
+                        ref="imageInput"
+                        class="hidden"
+                        accept="image/*"
                         @change="handleImageUpload"
                     />
                 </div>
@@ -204,16 +237,36 @@
                 <button
                     class="tool-btn"
                     :class="{ active: whiteboardStore.scope === 'host' }"
-                    @click="whiteboardStore.setScope(whiteboardStore.scope === 'global' ? 'host' : 'global')"
-                    :title="whiteboardStore.scope === 'global' ? 'Unlock Whiteboard (Global)' : 'Lock Whiteboard (Host Only)'"
+                    @click="
+                        whiteboardStore.setScope(
+                            whiteboardStore.scope === 'global'
+                                ? 'host'
+                                : 'global',
+                        )
+                    "
+                    :title="
+                        whiteboardStore.scope === 'global'
+                            ? 'Unlock Whiteboard (Global)'
+                            : 'Lock Whiteboard (Host Only)'
+                    "
                 >
-                    <Icon :name="whiteboardStore.scope === 'global' ? 'unlock' : 'lock'" size="18" />
+                    <Icon
+                        :name="
+                            whiteboardStore.scope === 'global'
+                                ? 'unlock'
+                                : 'lock'
+                        "
+                        size="18"
+                    />
                 </button>
             </div>
 
             <div class="tool-divider" v-if="meetingStore.isHost"></div>
 
-            <button class="tool-btn close-btn" @click="whiteboardStore.isVisible = false">
+            <button
+                class="tool-btn close-btn"
+                @click="whiteboardStore.isVisible = false"
+            >
                 <Icon name="x" size="18" />
             </button>
         </div>
@@ -236,13 +289,15 @@
         </div>
 
         <!-- Context Menu -->
-        <div 
-            v-if="showContextMenu" 
-            class="whiteboard-context-menu shadow-2xl glass-panel" 
+        <div
+            v-if="showContextMenu"
+            class="whiteboard-context-menu shadow-2xl glass-panel"
             :style="{ left: menuPos.x + 'px', top: menuPos.y + 'px' }"
-            v-click-outside="() => showContextMenu = false"
+            v-click-outside="() => (showContextMenu = false)"
         >
-            <div class="menu-header px-3 py-1.5 text-xs text-gray-400 border-b border-white/10 uppercase tracking-wider">
+            <div
+                class="menu-header px-3 py-1.5 text-xs text-gray-400 border-b border-white/10 uppercase tracking-wider"
+            >
                 Object Layers
             </div>
             <button class="menu-item" @click="handleReorder('front')">
@@ -262,17 +317,20 @@
                 <span>Send to Back</span>
             </button>
             <div class="menu-divider"></div>
-            <button class="menu-item text-red-400 hover:bg-red-500/20" @click="handleDeleteSelected">
+            <button
+                class="menu-item text-red-400 hover:bg-red-500/20"
+                @click="handleDeleteSelected"
+            >
                 <Trash2 size="16" />
                 <span>Delete</span>
             </button>
         </div>
 
         <!-- Konva Canvas -->
-        <v-stage 
-            ref="stage" 
-            :config="stageConfig" 
-            @mousedown="handleStageMouseDown" 
+        <v-stage
+            ref="stage"
+            :config="stageConfig"
+            @mousedown="handleStageMouseDown"
             @touchstart="handleStageMouseDown"
             @contextmenu="handleContextMenu"
         >
@@ -344,7 +402,11 @@
                     <!-- Text/Stickers -->
                     <v-text
                         v-else-if="el.type === 'text' || el.type === 'sticker'"
-                        :config="{ ...el, name: 'element', draggable: currentTool === 'select' }"
+                        :config="{
+                            ...el,
+                            name: 'element',
+                            draggable: currentTool === 'select',
+                        }"
                         @dragend="handleDragEnd"
                         @transformend="handleTransformEnd"
                         @click="handleElementClick"
@@ -353,72 +415,114 @@
                 </template>
 
                 <!-- Presence Indicators (Remote Cursors) -->
-                <v-group 
-                    v-for="[id, coll] in Array.from(whiteboardStore.collaborators)" 
+                <v-group
+                    v-for="[id, coll] in Array.from(
+                        whiteboardStore.collaborators,
+                    )"
                     :key="'cursor-' + id"
-                    :config="{ x: coll.x * stageConfig.width, y: coll.y * stageConfig.height }"
+                    :config="{
+                        x: coll.x * stageConfig.width,
+                        y: coll.y * stageConfig.height,
+                    }"
                 >
-                    <v-line 
-                        :config="{ 
-                            points: [0, 0, 0, 15, 12, 12, 0, 0], 
-                            fill: coll.color, 
-                            stroke: '#ffffff', 
+                    <v-line
+                        :config="{
+                            points: [0, 0, 0, 15, 12, 12, 0, 0],
+                            fill: coll.color,
+                            stroke: '#ffffff',
                             strokeWidth: 1,
-                            closed: true
-                        }" 
+                            closed: true,
+                        }"
                     />
-                    <v-text 
-                        :config="{ 
-                            text: coll.name, 
-                            fontSize: 12, 
-                            fill: '#ffffff', 
-                            x: 10, 
+                    <v-text
+                        :config="{
+                            text: coll.name,
+                            fontSize: 12,
+                            fill: '#ffffff',
+                            x: 10,
                             y: 15,
-                            fontStyle: 'bold'
-                        }" 
+                            fontStyle: 'bold',
+                        }"
                     />
-                    <v-rect 
-                        :config="{ 
-                            x: 8, 
-                            y: 13, 
-                            width: (coll.name.length * 7) + 8, 
-                            height: 16, 
-                            fill: coll.color, 
+                    <v-rect
+                        :config="{
+                            x: 8,
+                            y: 13,
+                            width: coll.name.length * 7 + 8,
+                            height: 16,
+                            fill: coll.color,
                             cornerRadius: 4,
-                            listening: false 
-                        }" 
+                            listening: false,
+                        }"
                     />
                     <!-- Re-render text on top of label rect -->
-                    <v-text 
-                        :config="{ 
-                            text: coll.name, 
-                            fontSize: 11, 
-                            fill: '#000000', 
-                            x: 12, 
+                    <v-text
+                        :config="{
+                            text: coll.name,
+                            fontSize: 11,
+                            fill: '#000000',
+                            x: 12,
                             y: 16,
                             fontStyle: 'bold',
-                            listening: false
-                        }" 
+                            listening: false,
+                        }"
                     />
                 </v-group>
 
                 <!-- Current Drawing Preview -->
-                <v-line v-if="currentDrawingPreview && currentDrawingPreview.type === 'line'" :config="currentDrawingPreview" />
-                <v-rect v-if="currentDrawingPreview && currentDrawingPreview.type === 'rect'" :config="currentDrawingPreview" />
-                <v-circle v-if="currentDrawingPreview && currentDrawingPreview.type === 'circle'" :config="currentDrawingPreview" />
-                <v-arrow v-if="currentDrawingPreview && currentDrawingPreview.type === 'arrow'" :config="currentDrawingPreview" />
-                <v-line v-if="currentDrawingPreview && (currentDrawingPreview.type === 'x-mark' || currentDrawingPreview.type === 'check')" :config="currentDrawingPreview" />
+                <v-line
+                    v-if="
+                        currentDrawingPreview &&
+                        currentDrawingPreview.type === 'line'
+                    "
+                    :config="currentDrawingPreview"
+                />
+                <v-rect
+                    v-if="
+                        currentDrawingPreview &&
+                        currentDrawingPreview.type === 'rect'
+                    "
+                    :config="currentDrawingPreview"
+                />
+                <v-circle
+                    v-if="
+                        currentDrawingPreview &&
+                        currentDrawingPreview.type === 'circle'
+                    "
+                    :config="currentDrawingPreview"
+                />
+                <v-arrow
+                    v-if="
+                        currentDrawingPreview &&
+                        currentDrawingPreview.type === 'arrow'
+                    "
+                    :config="currentDrawingPreview"
+                />
+                <v-line
+                    v-if="
+                        currentDrawingPreview &&
+                        (currentDrawingPreview.type === 'x-mark' ||
+                            currentDrawingPreview.type === 'check')
+                    "
+                    :config="currentDrawingPreview"
+                />
 
                 <!-- Selection Transformer -->
                 <v-transformer
                     ref="transformerConfig"
                     :config="{
                         rotateEnabled: true,
-                        enabledAnchors: ['top-left', 'top-right', 'bottom-left', 'bottom-right'],
+                        enabledAnchors: [
+                            'top-left',
+                            'top-right',
+                            'bottom-left',
+                            'bottom-right',
+                        ],
                         boundBoxFunc: (oldBox, newBox) => {
-                            if (newBox.width < 5 || newBox.height < 5) return oldBox;
+                            if (newBox.width < 5 || newBox.height < 5)
+                                return oldBox;
                             return newBox;
-                        }
+                        },
                     }"
                 />
             </v-layer>
@@ -427,22 +531,25 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
-import Konva from 'konva';
-import { useWhiteboardStore, type WhiteboardElement } from '@/stores/whiteboard';
-import { Icon } from '@/components/ui';
-import { 
-    GripVertical, 
-    ChevronUp, 
-    ChevronDown, 
-    ChevronsUp, 
-    ChevronsDown, 
-    Trash2, 
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from "vue";
+import Konva from "konva";
+import {
+    useWhiteboardStore,
+    type WhiteboardElement,
+} from "@/stores/whiteboard";
+import { Icon } from "@/components/ui";
+import {
+    GripVertical,
+    ChevronUp,
+    ChevronDown,
+    ChevronsUp,
+    ChevronsDown,
+    Trash2,
     Image as ImageIcon,
     Lock,
-    Unlock
-} from 'lucide-vue-next';
-import { useMeetingStore } from '@/stores/meeting'; // Assuming this store exists for meeting context
+    Unlock,
+} from "lucide-vue-next";
+import { useMeetingStore } from "@/stores/meeting"; // Assuming this store exists for meeting context
 
 const whiteboardStore = useWhiteboardStore();
 const meetingStore = useMeetingStore(); // Assuming this store exists for meeting context
@@ -462,60 +569,76 @@ const showShapesBundle = ref(false);
 const showExportOptions = ref(false);
 
 // Tool State
-const currentTool = ref<'select' | 'brush' | 'rect' | 'circle' | 'text' | 'eraser' | 'fill'>('brush');
-const currentColor = ref('#8ab4f8');
+const currentTool = ref<
+    "select" | "brush" | "rect" | "circle" | "text" | "eraser" | "fill"
+>("brush");
+const currentColor = ref("#8ab4f8");
 const currentWidth = ref(4);
 
 // Text Tool State
 const isEditingText = ref(false);
-const textValue = ref('');
+const textValue = ref("");
 const textPos = ref({ x: 0, y: 0 });
 const textRef = ref<HTMLTextAreaElement | null>(null);
 
 const currentDrawingElement = ref<WhiteboardElement | null>(null);
 
 const mainTools = [
-    { id: 'select', name: 'Select', icon: 'mouse-pointer-2' },
-    { id: 'brush', name: 'Pencil', icon: 'pencil' },
-    { id: 'fill', name: 'Paint Bucket', icon: 'paint-bucket' },
-    { id: 'text', name: 'Text', icon: 'type' },
-    { id: 'eraser', name: 'Eraser', icon: 'eraser' },
+    { id: "select", name: "Select", icon: "mouse-pointer-2" },
+    { id: "brush", name: "Pencil", icon: "pencil" },
+    { id: "fill", name: "Paint Bucket", icon: "paint-bucket" },
+    { id: "text", name: "Text", icon: "type" },
+    { id: "eraser", name: "Eraser", icon: "eraser" },
 ] as const;
 
 const shapeTools = [
-    { id: 'rect', name: 'Rectangle', icon: 'square' },
-    { id: 'circle', name: 'Circle', icon: 'circle' },
-    { id: 'arrow', name: 'Arrow', icon: 'move-up-right' },
-    { id: 'x-mark', name: 'Cross', icon: 'x' },
-    { id: 'check', name: 'Check', icon: 'check' },
+    { id: "rect", name: "Rectangle", icon: "square" },
+    { id: "circle", name: "Circle", icon: "circle" },
+    { id: "arrow", name: "Arrow", icon: "move-up-right" },
+    { id: "x-mark", name: "Cross", icon: "x" },
+    { id: "check", name: "Check", icon: "check" },
 ] as const;
 
 const currentShapeIcon = computed(() => {
-    const activeShape = shapeTools.find(s => s.id === currentTool.value);
-    return activeShape ? activeShape.icon : 'shapes';
+    const activeShape = shapeTools.find((s) => s.id === currentTool.value);
+    return activeShape ? activeShape.icon : "shapes";
 });
 
 const colors = [
-    '#ffffff',
-    '#8ab4f8', // Blue
-    '#81c995', // Green
-    '#fdd663', // Yellow
-    '#f28b82', // Red
-    '#c58af9', // Purple
-    '#ff8bcb', // Pink
+    "#ffffff",
+    "#8ab4f8", // Blue
+    "#81c995", // Green
+    "#fdd663", // Yellow
+    "#f28b82", // Red
+    "#c58af9", // Purple
+    "#ff8bcb", // Pink
 ];
 
 const boardColors = [
-    '#202124', // Default Dark
-    '#ffffff', // White
-    '#f8f9fa', // Slate 50
-    '#e8eaed', // Slate 200
-    '#1a1b1e', // Black
-    '#fefcbf', // Yellow note
-    '#c6f6d5', // Green note
+    "#202124", // Default Dark
+    "#ffffff", // White
+    "#f8f9fa", // Slate 50
+    "#e8eaed", // Slate 200
+    "#1a1b1e", // Black
+    "#fefcbf", // Yellow note
+    "#c6f6d5", // Green note
 ];
 
-const stickerList = ['🚀', '⭐️', '🔥', '💡', '✅', '❌', '💯', '👎', '⚠️', '🎉', '📌', '❤️', '👍'];
+const stickerList = [
+    "🚀",
+    "⭐️",
+    "🔥",
+    "💡",
+    "✅",
+    "❌",
+    "💯",
+    "👎",
+    "⚠️",
+    "🎉",
+    "📌",
+    "❤️",
+    "👍",
+];
 
 const stageConfig = reactive({
     width: 0,
@@ -539,7 +662,7 @@ const vClickOutside = {
 
 const setTool = (tool: typeof currentTool.value) => {
     currentTool.value = tool;
-    if (tool !== 'select') {
+    if (tool !== "select") {
         whiteboardStore.selectedId = null;
         updateTransformer();
     }
@@ -568,10 +691,10 @@ onMounted(() => {
     updateSize();
     resizeObserver = new ResizeObserver(updateSize);
     if (container.value) resizeObserver.observe(container.value);
-    
+
     // Safety check for large meetings
     if (meetingStore.isHost && meetingStore.allParticipants.length > 50) {
-        whiteboardStore.setScope('host');
+        whiteboardStore.setScope("host");
     }
 
     whiteboardStore.requestSync();
@@ -588,32 +711,40 @@ const mapElementForDisplay = (el: WhiteboardElement, w: number, h: number) => {
         id: el.id,
         x: (el.nx || 0) * w,
         y: (el.ny || 0) * h,
-        draggable: currentTool.value === 'select' && !isDrawing.value,
+        draggable: currentTool.value === "select" && !isDrawing.value,
         scaleX: el.scaleX || 1,
         scaleY: el.scaleY || 1,
         rotation: el.rotation || 0,
     };
 
-    if (el.type === 'line') {
-        config.points = el.normalizedPoints?.map((p, i) => (i % 2 === 0 ? p * w : p * h));
-    } else if (el.type === 'rect') {
+    if (el.type === "line") {
+        config.points = el.normalizedPoints?.map((p, i) =>
+            i % 2 === 0 ? p * w : p * h,
+        );
+    } else if (el.type === "rect") {
         config.width = (el.nw || 0) * w;
         config.height = (el.nh || 0) * h;
-    } else if (el.type === 'circle') {
+    } else if (el.type === "circle") {
         config.radius = (el.nr || 0) * Math.min(w, h);
-    } else if (el.type === 'image') {
+    } else if (el.type === "image") {
         config.width = (el.nw || 0.3) * w;
         config.height = (el.nh || 0.3) * h;
-    } else if (el.type === 'arrow' || el.type === 'x-mark' || el.type === 'check') {
-        const points = el.normalizedPoints?.map((p, i) => (i % 2 === 0 ? p * w : p * h)) || [];
+    } else if (
+        el.type === "arrow" ||
+        el.type === "x-mark" ||
+        el.type === "check"
+    ) {
+        const points =
+            el.normalizedPoints?.map((p, i) => (i % 2 === 0 ? p * w : p * h)) ||
+            [];
         config.points = points;
-        if (el.type === 'arrow') {
+        if (el.type === "arrow") {
             config.pointerLength = 10;
             config.pointerWidth = 10;
             // For arrows, treat fill as the pointer color
             config.fill = el.fill || el.stroke;
         }
-    } else if (el.type === 'text' || el.type === 'sticker') {
+    } else if (el.type === "text" || el.type === "sticker") {
         config.fontSize = (el.nSize || 0.05) * h;
     }
     return config;
@@ -622,19 +753,27 @@ const mapElementForDisplay = (el: WhiteboardElement, w: number, h: number) => {
 const displayElements = computed(() => {
     const { width: w, height: h } = stageConfig;
     if (w === 0 || h === 0) return [];
-    return whiteboardStore.elements.map(el => mapElementForDisplay(el, w, h));
+    return whiteboardStore.elements.map((el) => mapElementForDisplay(el, w, h));
 });
 
 const currentDrawingPreview = computed(() => {
     if (!currentDrawingElement.value) return null;
-    return mapElementForDisplay(currentDrawingElement.value, stageConfig.width, stageConfig.height);
+    return mapElementForDisplay(
+        currentDrawingElement.value,
+        stageConfig.width,
+        stageConfig.height,
+    );
 });
 
 // Image Cache for v-image
 const imageObjects = new Map<string, HTMLImageElement>();
 const getImageConfig = (el: WhiteboardElement) => {
-    const displayConfig = mapElementForDisplay(el, stageConfig.width, stageConfig.height);
-    
+    const displayConfig = mapElementForDisplay(
+        el,
+        stageConfig.width,
+        stageConfig.height,
+    );
+
     if (!imageObjects.has(el.id)) {
         const img = new window.Image();
         img.src = el.src;
@@ -644,10 +783,10 @@ const getImageConfig = (el: WhiteboardElement) => {
         };
         imageObjects.set(el.id, img);
     }
-    
+
     return {
         ...displayConfig,
-        image: imageObjects.get(el.id)
+        image: imageObjects.get(el.id),
     };
 };
 
@@ -660,7 +799,9 @@ const updateTransformer = () => {
         transformerNode.nodes([]);
     } else {
         const stageInstance = stage.value.getStage();
-        const selectedNode = stageInstance.findOne('#' + whiteboardStore.selectedId);
+        const selectedNode = stageInstance.findOne(
+            "#" + whiteboardStore.selectedId,
+        );
         if (selectedNode) {
             transformerNode.nodes([selectedNode]);
         } else {
@@ -670,9 +811,12 @@ const updateTransformer = () => {
     transformerNode.getLayer()?.batchDraw();
 };
 
-watch(() => whiteboardStore.selectedId, () => {
-    setTimeout(updateTransformer, 0);
-});
+watch(
+    () => whiteboardStore.selectedId,
+    () => {
+        setTimeout(updateTransformer, 0);
+    },
+);
 
 const handleStageMouseDown = (e: any) => {
     if (!whiteboardStore.canDraw) {
@@ -684,7 +828,7 @@ const handleStageMouseDown = (e: any) => {
         showContextMenu.value = false;
         return;
     }
-    if (currentTool.value !== 'select' && currentTool.value !== 'fill') return;
+    if (currentTool.value !== "select" && currentTool.value !== "fill") return;
 
     // Deselect if clicking on empty space in select mode
     const stageInstance = e.target.getStage();
@@ -697,10 +841,10 @@ const handleStageMouseDown = (e: any) => {
 
 const handleContextMenu = (e: any) => {
     e.evt.preventDefault();
-    
+
     const stageInstance = e.target.getStage();
     const pointerPos = stageInstance.getPointerPosition();
-    
+
     // Check if we clicked on an element
     const clickedNode = e.target;
     if (clickedNode === stageInstance) {
@@ -713,16 +857,16 @@ const handleContextMenu = (e: any) => {
     if (id) {
         whiteboardStore.selectedId = id;
         updateTransformer();
-        
-        menuPos.value = { 
-            x: pointerPos.x, 
-            y: pointerPos.y 
+
+        menuPos.value = {
+            x: pointerPos.x,
+            y: pointerPos.y,
         };
         showContextMenu.value = true;
     }
 };
 
-const handleReorder = (action: 'front' | 'back' | 'forward' | 'backward') => {
+const handleReorder = (action: "front" | "back" | "forward" | "backward") => {
     if (whiteboardStore.selectedId) {
         whiteboardStore.reorderElement(whiteboardStore.selectedId, action);
         showContextMenu.value = false;
@@ -734,7 +878,9 @@ const handleReorder = (action: 'front' | 'back' | 'forward' | 'backward') => {
 const handleDeleteSelected = () => {
     if (whiteboardStore.selectedId) {
         const id = whiteboardStore.selectedId;
-        const newElements = whiteboardStore.elements.filter(el => el.id !== id);
+        const newElements = whiteboardStore.elements.filter(
+            (el) => el.id !== id,
+        );
         whiteboardStore.updateElements(newElements);
         whiteboardStore.selectedId = null;
         showContextMenu.value = false;
@@ -745,30 +891,36 @@ const handleDeleteSelected = () => {
 const handleElementClick = (e: any) => {
     // Stop propagation to prevent stage mousedown from deselecting immediately
     e.cancelBubble = true;
-    
+
     const id = e.target.id();
-    
+
     // Paint Bucket logic
-    if (currentTool.value === 'fill') {
+    if (currentTool.value === "fill") {
         if (!whiteboardStore.canDraw) return;
         const className = e.target.getClassName();
-        let fillProperty = 'fill';
-        if (className === 'Line' || className === 'Arrow') {
-            fillProperty = 'stroke';
+        let fillProperty = "fill";
+        if (className === "Line" || className === "Arrow") {
+            fillProperty = "stroke";
         }
-        
-        whiteboardStore.updateElement(id, { [fillProperty]: currentColor.value });
+
+        whiteboardStore.updateElement(id, {
+            [fillProperty]: currentColor.value,
+        });
         // Also update fill for Arrow if it's the target
-        if (className === 'Arrow') {
-            whiteboardStore.updateElement(id, { fill: currentColor.value }, true);
+        if (className === "Arrow") {
+            whiteboardStore.updateElement(
+                id,
+                { fill: currentColor.value },
+                true,
+            );
         }
-        
+
         whiteboardStore.saveToHistory();
         return;
     }
 
     // Select Tool logic
-    if (currentTool.value === 'select') {
+    if (currentTool.value === "select") {
         whiteboardStore.selectedId = id;
         updateTransformer();
     }
@@ -782,82 +934,90 @@ const getPointerPosition = (e: any) => {
 
 const handleMouseDown = (e: any) => {
     if (!whiteboardStore.canDraw) return;
-    if (e.target instanceof HTMLButtonElement || e.target instanceof HTMLTextAreaElement) return;
-    if (currentTool.value === 'select' || currentTool.value === 'fill') return;
+    if (
+        e.target instanceof HTMLButtonElement ||
+        e.target instanceof HTMLTextAreaElement
+    )
+        return;
+    if (currentTool.value === "select" || currentTool.value === "fill") return;
     if (isEditingText.value) return;
 
     const pos = getPointerPosition(e);
-    
-    if (currentTool.value === 'text') {
+
+    if (currentTool.value === "text") {
         isEditingText.value = true;
         textPos.value = pos;
-        textValue.value = '';
+        textValue.value = "";
         setTimeout(() => textRef.value?.focus(), 50);
         return;
     }
 
     isDrawing.value = true;
     const common = {
-        id: 'el_' + Math.random().toString(36).substr(2, 9),
-        stroke: currentTool.value === 'eraser' ? whiteboardStore.backgroundColor : currentColor.value,
+        id: "el_" + Math.random().toString(36).substr(2, 9),
+        stroke:
+            currentTool.value === "eraser"
+                ? whiteboardStore.backgroundColor
+                : currentColor.value,
         strokeWidth: currentWidth.value,
-        globalCompositeOperation: currentTool.value === 'eraser' ? 'destination-out' : 'source-over',
+        globalCompositeOperation:
+            currentTool.value === "eraser" ? "destination-out" : "source-over",
     };
 
-    if (currentTool.value === 'brush' || currentTool.value === 'eraser') {
+    if (currentTool.value === "brush" || currentTool.value === "eraser") {
         // For lines, start at (pos.x, pos.y) but points are relative to it
         currentDrawingElement.value = {
             ...common,
-            type: 'line',
+            type: "line",
             nx: pos.x / stageConfig.width,
             ny: pos.y / stageConfig.height,
             points: [0, 0],
             normalizedPoints: [0, 0],
-            lineCap: 'round',
-            lineJoin: 'round',
+            lineCap: "round",
+            lineJoin: "round",
             tension: 0, // Set to 0 to prevent the "lasso" / bending effect
         };
-    } else if (currentTool.value === 'rect') {
+    } else if (currentTool.value === "rect") {
         currentDrawingElement.value = {
             ...common,
-            type: 'rect',
+            type: "rect",
             nx: pos.x / stageConfig.width,
             ny: pos.y / stageConfig.height,
             nw: 0,
             nh: 0,
-            fill: 'transparent',
+            fill: "transparent",
         };
-    } else if (currentTool.value === 'circle') {
+    } else if (currentTool.value === "circle") {
         currentDrawingElement.value = {
             ...common,
-            type: 'circle',
+            type: "circle",
             nx: pos.x / stageConfig.width,
             ny: pos.y / stageConfig.height,
             nr: 0,
-            fill: 'transparent',
+            fill: "transparent",
         };
-    } else if (currentTool.value === 'arrow') {
+    } else if (currentTool.value === "arrow") {
         currentDrawingElement.value = {
             ...common,
-            type: 'arrow',
+            type: "arrow",
             nx: pos.x / stageConfig.width,
             ny: pos.y / stageConfig.height,
             points: [0, 0, 0, 0],
             normalizedPoints: [0, 0, 0, 0],
         };
-    } else if (currentTool.value === 'x-mark') {
+    } else if (currentTool.value === "x-mark") {
         currentDrawingElement.value = {
             ...common,
-            type: 'x-mark',
+            type: "x-mark",
             nx: pos.x / stageConfig.width,
             ny: pos.y / stageConfig.height,
             points: [0, 0, 0, 0, 0, 0, 0, 0],
             normalizedPoints: [0, 0, 0, 0, 0, 0, 0, 0],
         };
-    } else if (currentTool.value === 'check') {
+    } else if (currentTool.value === "check") {
         currentDrawingElement.value = {
             ...common,
-            type: 'check',
+            type: "check",
             nx: pos.x / stageConfig.width,
             ny: pos.y / stageConfig.height,
             points: [0, 0, 0, 0, 0, 0],
@@ -879,9 +1039,9 @@ const handleMouseMove = (e: any) => {
             const pos = stageInstance.getPointerPosition();
             if (pos) {
                 whiteboardStore.sendCursorMove(
-                    pos.x / stageConfig.width, 
+                    pos.x / stageConfig.width,
                     pos.y / stageConfig.height,
-                    currentColor.value
+                    currentColor.value,
                 );
                 lastCursorUpdate = now;
             }
@@ -892,27 +1052,36 @@ const handleMouseMove = (e: any) => {
     const pos = getPointerPosition(e);
     const last = currentDrawingElement.value;
 
-    if (last.type === 'line') {
+    if (last.type === "line") {
         const dx = pos.x / stageConfig.width - (last.nx || 0);
         const dy = pos.y / stageConfig.height - (last.ny || 0);
         last.normalizedPoints = (last.normalizedPoints || []).concat([dx, dy]);
-    } else if (last.type === 'rect') {
+    } else if (last.type === "rect") {
         last.nw = pos.x / stageConfig.width - (last.nx || 0);
         last.nh = pos.y / stageConfig.height - (last.ny || 0);
-    } else if (last.type === 'circle') {
+    } else if (last.type === "circle") {
         const dx = pos.x / stageConfig.width - (last.nx || 0);
         const dy = pos.y / stageConfig.height - (last.ny || 0);
         last.nr = Math.sqrt(dx * dx + dy * dy);
-    } else if (last.type === 'arrow') {
+    } else if (last.type === "arrow") {
         const dx = pos.x / stageConfig.width - (last.nx || 0);
         const dy = pos.y / stageConfig.height - (last.ny || 0);
         last.normalizedPoints = [0, 0, dx, dy];
-    } else if (last.type === 'x-mark') {
+    } else if (last.type === "x-mark") {
         const dx = pos.x / stageConfig.width - (last.nx || 0);
         const dy = pos.y / stageConfig.height - (last.ny || 0);
         // Draw two crossing lines relative to center
-        last.normalizedPoints = [-dx/2, -dy/2, dx/2, dy/2, -dx/2, dy/2, dx/2, -dy/2];
-    } else if (last.type === 'check') {
+        last.normalizedPoints = [
+            -dx / 2,
+            -dy / 2,
+            dx / 2,
+            dy / 2,
+            -dx / 2,
+            dy / 2,
+            dx / 2,
+            -dy / 2,
+        ];
+    } else if (last.type === "check") {
         const dx = pos.x / stageConfig.width - (last.nx || 0);
         const dy = pos.y / stageConfig.height - (last.ny || 0);
         // Standard checkmark tick relative to start
@@ -939,14 +1108,14 @@ const finishText = () => {
         return;
     }
     const newText: WhiteboardElement = {
-        type: 'text',
-        id: 'text_' + Math.random().toString(36).substr(2, 9),
+        type: "text",
+        id: "text_" + Math.random().toString(36).substr(2, 9),
         text: textValue.value,
         nx: textPos.value.x / stageConfig.width,
         ny: textPos.value.y / stageConfig.height,
         fill: currentColor.value,
         nSize: 24 / stageConfig.height,
-        fontStyle: 'bold',
+        fontStyle: "bold",
     };
     whiteboardStore.addElement(newText);
     cancelText();
@@ -962,8 +1131,8 @@ const addSticker = (sticker: string) => {
     if (!whiteboardStore.canDraw) return;
     const center = { x: stageConfig.width / 2, y: stageConfig.height / 2 };
     const newSticker: WhiteboardElement = {
-        type: 'sticker',
-        id: 'stick_' + Math.random().toString(36).substr(2, 9),
+        type: "sticker",
+        id: "stick_" + Math.random().toString(36).substr(2, 9),
         text: sticker,
         nx: center.x / stageConfig.width,
         ny: center.y / stageConfig.height,
@@ -971,7 +1140,7 @@ const addSticker = (sticker: string) => {
     };
     whiteboardStore.addElement(newSticker);
     showStickers.value = false;
-    setTool('select');
+    setTool("select");
     whiteboardStore.selectedId = newSticker.id;
 };
 
@@ -982,7 +1151,7 @@ const handleImageUpload = (e: Event) => {
     if (!file) return;
 
     // Security: Only images, and size limit (e.g., 2MB for Data URL sync stability)
-    if (!file.type.startsWith('image/')) return;
+    if (!file.type.startsWith("image/")) return;
     if (file.size > 2 * 1024 * 1024) {
         alert("Image too large (Max 2MB for whiteboard)");
         return;
@@ -997,14 +1166,14 @@ const handleImageUpload = (e: Event) => {
         img.onload = () => {
             const stageW = stageConfig.width;
             const stageH = stageConfig.height;
-            
+
             // Max size is 30% of stage
             const maxW = 0.3;
             const maxH = 0.3;
-            
+
             const imgAspect = img.width / img.height;
             const stageAspect = stageW / stageH;
-            
+
             let nw, nh;
             if (imgAspect > stageAspect) {
                 // Image is wider than stage relatively
@@ -1013,12 +1182,12 @@ const handleImageUpload = (e: Event) => {
             } else {
                 // Image is taller
                 nh = maxH;
-                nw = (nh * (stageH / stageW)) * imgAspect;
+                nw = nh * (stageH / stageW) * imgAspect;
             }
 
             const newImage: WhiteboardElement = {
-                type: 'image',
-                id: 'img_' + Math.random().toString(36).substr(2, 9),
+                type: "image",
+                id: "img_" + Math.random().toString(36).substr(2, 9),
                 src: dataUrl,
                 nx: 0.1,
                 ny: 0.1,
@@ -1028,14 +1197,14 @@ const handleImageUpload = (e: Event) => {
 
             whiteboardStore.addElement(newImage);
             whiteboardStore.selectedId = newImage.id;
-            setTool('select');
+            setTool("select");
         };
         img.src = dataUrl;
     };
     reader.readAsDataURL(file);
-    
+
     // Clear input
-    if (imageInput.value) imageInput.value.value = '';
+    if (imageInput.value) imageInput.value.value = "";
 };
 
 // Drag/Transform Synchronization
@@ -1063,11 +1232,11 @@ const handleTransformEnd = (e: any) => {
 };
 
 // Export Strategy
-const exportBoard = (mode: 'flat' | 'bg' | 'grid' = 'bg') => {
+const exportBoard = (mode: "flat" | "bg" | "grid" = "bg") => {
     showExportOptions.value = false;
     const stageInstance = stage.value.getStage();
     const layerInstance = layer.value.getNode();
-    
+
     // Temporarily disable transformer for export
     const oldSelected = whiteboardStore.selectedId;
     whiteboardStore.selectedId = null;
@@ -1078,7 +1247,7 @@ const exportBoard = (mode: 'flat' | 'bg' | 'grid' = 'bg') => {
     const w = stageConfig.width;
     const h = stageConfig.height;
 
-    if (mode === 'bg' || mode === 'grid') {
+    if (mode === "bg" || mode === "grid") {
         const bgRect = new Konva.Rect({
             x: 0,
             y: 0,
@@ -1089,25 +1258,30 @@ const exportBoard = (mode: 'flat' | 'bg' | 'grid' = 'bg') => {
         tempBG.add(bgRect);
     }
 
-    if (mode === 'grid') {
+    if (mode === "grid") {
         // Draw grid
         const gridSize = 40;
-        const color = whiteboardStore.backgroundColor === '#ffffff' ? '#eee' : '#333';
+        const color =
+            whiteboardStore.backgroundColor === "#ffffff" ? "#eee" : "#333";
         for (let i = 0; i <= w / gridSize; i++) {
-            tempBG.add(new Konva.Line({
-                points: [i * gridSize, 0, i * gridSize, h],
-                stroke: color,
-                strokeWidth: 1,
-                opacity: 0.5
-            }));
+            tempBG.add(
+                new Konva.Line({
+                    points: [i * gridSize, 0, i * gridSize, h],
+                    stroke: color,
+                    strokeWidth: 1,
+                    opacity: 0.5,
+                }),
+            );
         }
         for (let j = 0; j <= h / gridSize; j++) {
-            tempBG.add(new Konva.Line({
-                points: [0, j * gridSize, w, j * gridSize],
-                stroke: color,
-                strokeWidth: 1,
-                opacity: 0.5
-            }));
+            tempBG.add(
+                new Konva.Line({
+                    points: [0, j * gridSize, w, j * gridSize],
+                    stroke: color,
+                    strokeWidth: 1,
+                    opacity: 0.5,
+                }),
+            );
         }
     }
 
@@ -1115,22 +1289,22 @@ const exportBoard = (mode: 'flat' | 'bg' | 'grid' = 'bg') => {
     tempBG.moveToBottom();
 
     setTimeout(() => {
-        const dataURL = stageInstance.toDataURL({ 
+        const dataURL = stageInstance.toDataURL({
             pixelRatio: 2,
             callback: (data: string) => {
-                const link = document.createElement('a');
+                const link = document.createElement("a");
                 link.download = `whiteboard-${mode}-${Date.now()}.png`;
                 link.href = data;
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
-                
+
                 // Cleanup
                 tempBG.destroy();
                 // Restore selection
                 whiteboardStore.selectedId = oldSelected;
                 updateTransformer();
-            }
+            },
         });
     }, 50);
 };
@@ -1138,7 +1312,11 @@ const exportBoard = (mode: 'flat' | 'bg' | 'grid' = 'bg') => {
 // Touch support hooks
 const handleTouchStart = (e: TouchEvent) => {
     if (!whiteboardStore.canDraw) return;
-    if (e.target instanceof HTMLButtonElement || e.target instanceof HTMLTextAreaElement) return;
+    if (
+        e.target instanceof HTMLButtonElement ||
+        e.target instanceof HTMLTextAreaElement
+    )
+        return;
     handleMouseDown(e);
 };
 
@@ -1158,6 +1336,15 @@ const handleTouchMove = (e: TouchEvent) => {
     overflow: hidden;
     cursor: crosshair;
     transition: background 0.3s ease;
+    min-height: 480px;
+}
+
+@media (max-width: 768px) {
+    .whiteboard-view {
+        inset: 0;
+        border-radius: 0;
+        min-height: 400px;
+    }
 }
 
 .whiteboard-view.is-selecting {
@@ -1186,6 +1373,21 @@ const handleTouchMove = (e: TouchEvent) => {
     align-items: center;
     gap: 12px;
     z-index: 100;
+}
+
+@media (max-width: 768px) {
+    .whiteboard-toolbar {
+        bottom: 12px;
+        padding: 4px 8px;
+        gap: 8px;
+        max-width: calc(100% - 24px);
+        overflow-x: auto;
+        border-radius: 12px;
+    }
+
+    .toolbar-drag-handle {
+        display: none;
+    }
 }
 
 .toolbar-drag-handle {
