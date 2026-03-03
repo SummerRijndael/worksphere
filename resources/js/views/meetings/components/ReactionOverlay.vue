@@ -101,7 +101,7 @@ function sendReaction(emoji: string) {
 
 .reaction-picker-wrapper {
     position: absolute;
-    bottom: 0; /* Align with bottom of overlay */
+    bottom: 0;
     left: 50%;
     transform: translateX(-50%);
     pointer-events: auto;
@@ -110,11 +110,15 @@ function sendReaction(emoji: string) {
     padding: 8px 16px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
     margin-bottom: 20px;
+    max-width: 90vw;
+    width: fit-content;
 }
 
 .reaction-menu {
     display: flex;
     gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
 }
 
 .emoji-btn {
