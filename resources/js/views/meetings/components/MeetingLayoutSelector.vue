@@ -108,6 +108,8 @@ function selectLayout(id: any) {
     meetingStore.setLayout(id);
     showMenu.value = false;
 }
+
+defineExpose({ showMenu });
 </script>
 
 <style scoped>

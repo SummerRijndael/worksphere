@@ -192,6 +192,11 @@ export function useBackgroundBlur() {
         if (!canvas) {
             canvas = document.createElement("canvas");
             ctx = canvas.getContext("2d");
+            // Set once — no need to reset on every frame
+            if (ctx) {
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'medium';
+            }
         }
         
         // Resolution Strategy: True 720p for recording, 360p fallback for true potatoes
@@ -564,44 +569,23 @@ export function useBackgroundBlur() {
                   }
               };
 
-
              // 1. Prepare blurred background (on small canvas)
-             blurCtx.filter = 'blur(4px)'; // Reduced from 6px
+             blurCtx.filter = 'blur(4px)';
              drawOptimized(blurCtx, video, blurCanvas.width, blurCanvas.height);
              blurCtx.filter = 'none';
-                          // 2. Prepare person with MASK FEATHERING (Blur trick)
-              personCtx.clearRect(0, 0, w, h);
-              personCtx.save();
-              
-              // Draw mask first
-              personCtx.drawImage(mask, 0, 0, w, h);
-              
-              // Source-in to cut person out
-              personCtx.globalCompositeOperation = 'source-in';
-              drawOptimized(personCtx, video, w, h);
-              personCtx.restore();
 
-              // Apply subtle feathering to the edges (8px blur on the cutout)
-              // We do this by drawing the person on the main canvas with a slight blur first
-              // but actually a better way for "crisp but feathered" is to blur the mask itself
-              // which we already did by drawOptimized(personCtx, mask, w, h) with filter.
-              // Wait, I see lines 458-459 in original code did this. Let's refine it.
-              
-              /* Refined Feathering Logic */
-              personCtx.clearRect(0, 0, w, h);
-              personCtx.save();
-              // Blur the mask for feathering (8px for premium feel)
-              personCtx.filter = 'blur(8px)'; 
-              drawOptimized(personCtx, mask, w, h);
-              personCtx.restore();
-              
-              personCtx.globalCompositeOperation = 'source-in';
-              drawOptimized(personCtx, video, w, h);
-              personCtx.globalCompositeOperation = 'source-over';
+             // 2. Prepare person with mask feathering — single draw, no redundant pass
+             personCtx.clearRect(0, 0, w, h);
+             personCtx.save();
+             personCtx.filter = 'blur(8px)';
+             drawOptimized(personCtx, mask, w, h);
+             personCtx.restore();
+             
+             personCtx.globalCompositeOperation = 'source-in';
+             drawOptimized(personCtx, video, w, h);
+             personCtx.globalCompositeOperation = 'source-over';
 
              // 3. Final composition on main canvas
-             ctx.imageSmoothingEnabled = true;
-             ctx.imageSmoothingQuality = 'high'; // Premium scaling
              ctx.clearRect(0, 0, w, h);
 
               if (currentEffect === 'image' && cachedBgCanvas) {
