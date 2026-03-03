@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
-import { ChevronDown, X, Search, Plus, Loader2, Mail } from 'lucide-vue-next';
+import { ChevronDown, X, Search, Plus, LoaderCircle as Loader2, Mail } from 'lucide-vue-next';
 import { cn } from '@/lib/utils';
 import Avatar from './Avatar.vue';
 

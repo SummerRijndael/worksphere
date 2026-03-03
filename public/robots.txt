@@ -1,2 +1,29 @@
 User-agent: *
-Disallow:
+
+# Block all internal app routes
+Disallow: /dashboard
+Disallow: /calendar
+Disallow: /settings
+Disallow: /profile
+Disallow: /analytics
+Disallow: /projects
+Disallow: /tasks
+Disallow: /tickets
+Disallow: /chat
+Disallow: /meetings
+Disallow: /notes
+Disallow: /teams
+Disallow: /admin/
+Disallow: /portal/
+Disallow: /notifications
+Disallow: /dialer
+
+# Allow public-facing routes
+Allow: /
+Allow: /public/
+Allow: /p/
+Allow: /auth/login
+Allow: /terms
+Allow: /privacy
+
+Sitemap: https://worksphere.app/sitemap.xml
