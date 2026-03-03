@@ -33,15 +33,31 @@ class TrackPageView
             return $response;
         }
 
-        // Only track HTML responses
-        $contentType = $response->headers->get('Content-Type');
-        if (! $contentType || ! str_contains($contentType, 'text/html')) {
-            return $response;
+        // Track page view
+        if ($this->shouldTrack($request)) {
+            $this->tracker->trackRequest($request);
         }
 
-        // Track page view
-        $this->tracker->trackRequest($request);
-
         return $response;
+    }
+
+    /**
+     * Determine if the request should be tracked based on common asset extensions.
+     */
+    protected function shouldTrack(Request $request): bool
+    {
+        $path = $request->path();
+        $ignoredExtensions = [
+            '.map', '.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', 
+            '.json', '.txt', '.xml', '.webmanifest', '.woff', '.woff2', '.ttf'
+        ];
+
+        foreach ($ignoredExtensions as $ext) {
+            if (str_ends_with(strtolower($path), $ext)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

@@ -64,10 +64,26 @@ class SecurityDashboardController extends Controller
         $this->authorize('viewAny', FirewallIp::class);
 
         $limit = $request->integer('limit', 20);
+        $ip = $request->query('ip');
 
         $logs = FirewallLog::with('user')
+            ->when($ip, fn($q) => $q->where('ip', $ip))
             ->latest()
             ->paginate($limit);
+
+        return response()->json($logs);
+    }
+
+    /**
+     * Get detailed activity for a specific IP.
+     */
+    public function ipActivity(Request $request, string $ip)
+    {
+        $this->authorize('viewAny', FirewallIp::class);
+
+        $logs = FirewallLog::where('ip', $ip)
+            ->latest()
+            ->paginate($request->integer('per_page', 20));
 
         return response()->json($logs);
     }

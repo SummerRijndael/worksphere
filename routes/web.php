@@ -107,4 +107,4 @@ Route::get('/p/{slug}', function (string $slug) {
 
 Route::get('/{any?}', function () {
     return view('app');
-})->where('any', '.*');
+})->where('any', '^(?!.*\\.(js|css|map|png|jpg|jpeg|gif|svg|ico|json|txt|xml|webmanifest|woff2?|ttf)$).*$');

@@ -200,7 +200,16 @@ return [
             ],
 
             'patterns' => [
-                '#\.\/#is',
+                '#\.\./#i',
+                '#\.\.\\\\#i',
+                '#\.\.%2f#i',
+                '#\.\.%5c#i',
+                '#%2e%2e%2f#i',
+                '#%2e%2e%5c#i',
+                '#/etc/passwd#i',
+                '#boot\.ini#i',
+                '#win\.ini#i',
+                '#/windows/system32/#i',
             ],
 
             'auto_block' => [
@@ -291,6 +300,8 @@ return [
 
             'patterns' => [
                 '#(http|ftp){1,1}(s){0,1}://.*#i',
+                '#jndi:(ldap|rmi|dns|nis|iiop|corba|nds|http):#i',
+                '#\$\{jndi:#i',
             ],
 
             'exceptions' => [],
@@ -347,6 +358,10 @@ return [
             'patterns' => [
                 '#[\d\W](union select|union join|union distinct)[\d\W]#is',
                 '#[\d\W](union|union select|insert|from|where|concat|into|cast|truncate|select|delete|having)[\d\W]#is',
+                '#sleep\([\d\s]*\)#is',
+                '#benchmark\([\d\s]*,[\d\s]*\)#is',
+                '#waitfor\s+delay\s+[\'\"].*[\'\"]#is',
+                '#/\*!\d{5}#is',
             ],
 
             'auto_block' => [
@@ -385,7 +400,19 @@ return [
 
             'methods' => ['all'],
 
-            'inspections' => [], // i.e. 'admin'
+            'inspections' => [
+                '\.env',
+                '\.git/',
+                '\.github/',
+                'wp-config\.php',
+                'config\.json',
+                'docker-compose\.yml',
+                'composer\.json',
+                'package\.json',
+                'proc/self/',
+                'server-status',
+                'web-console',
+            ],
 
             'auto_block' => [
                 'attempts' => 5,
@@ -430,6 +457,10 @@ return [
 
                 // Unneeded tags
                 '#</*(applet|meta|xml|blink|link|style|script|embed|object|iframe|frame|frameset|ilayer|layer|bgsound|title|base|img)[^>]*>?#i',
+
+                // SVG XSS
+                '#<svg[^>]*onload#i',
+                '#<svg[^>]*><script#i',
             ],
 
             'auto_block' => [
