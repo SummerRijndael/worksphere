@@ -226,16 +226,24 @@ export function createStreamManager(
 
     // Ported from CallApp.vue L1782-1818: When a new participant joins,
     // re-send our sfu-media-ready signal so late joiners can pull our tracks.
-    function rebroadcastToJoiner(joinerPublicId: string) {
+    function rebroadcastToJoiner(joinerPublicId: string, retryCount = 0) {
         if (!sfuSessionId.value || !sfuPc || !localParticipantRef.value) return;
         const { audioMid, videoMid, screenMid } = getLocalTrackMids();
+        
+        // If we have no MIDs yet, retry — our transceivers may not have tracks active
+        if (!audioMid && !videoMid && !screenMid && retryCount < 3) {
+            log('SIGNAL', `No MIDs to rebroadcast to ${joinerPublicId} yet (attempt ${retryCount + 1}/3), retrying in 2s...`);
+            setTimeout(() => rebroadcastToJoiner(joinerPublicId, retryCount + 1), 2000);
+            return;
+        }
+        
         log('SIGNAL', `Re-broadcasting media info to new joiner ${joinerPublicId}`, { audioMid, videoMid, screenMid });
         
         meetingService.sendSignal(meetingRef.value!.public_id, {
             sender_participant_public_id: localParticipantRef.value.public_id,
             signal_type: 'signal',
             signal_data: {
-                type: 'sfu-media-ready', // CRITICAL: Added type so receiver recognizes this signal
+                type: 'sfu-media-ready',
                 current_room_id: currentRoomIdRef.value,
                 sessionId: sfuSessionId.value,
                 audioMid,
