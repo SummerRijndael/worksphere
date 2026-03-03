@@ -7,9 +7,34 @@
                 <h1 class="text-xl sm:text-2xl font-bold text-(--text-primary)">
                     Meetings
                 </h1>
-                <p class="text-sm text-(--text-muted)">
-                    Schedule and manage your video conferences
-                </p>
+                <div class="flex items-center gap-3 mt-1">
+                    <p class="text-sm text-(--text-muted)">
+                        Schedule and manage your video conferences
+                    </p>
+                    <div class="flex items-center gap-2">
+                        <button
+                            @click="manualRefresh"
+                            :disabled="isRefreshing"
+                            class="p-1 rounded hover:bg-(--surface-tertiary) text-(--text-muted) transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                            :title="isRefreshing ? 'Refreshing...' : 'Refresh list'"
+                        >
+                            <Icon 
+                                name="refresh-cw" 
+                                size="14" 
+                                :class="{ 'animate-spin': isRefreshing }" 
+                            />
+                        </button>
+                        <label class="flex items-center gap-1.5 cursor-pointer select-none">
+                            <input 
+                                type="checkbox" 
+                                v-model="autoRefreshEnabled" 
+                                class="sr-only peer" 
+                            />
+                            <div class="w-7 h-4 bg-(--border-muted) peer-checked:bg-emerald-500 rounded-full relative transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-3 after:h-3 after:bg-white after:rounded-full after:transition-transform peer-checked:after:translate-x-3"></div>
+                            <span class="text-[11px] text-(--text-muted) whitespace-nowrap">Auto</span>
+                        </label>
+                    </div>
+                </div>
             </div>
             <div class="flex flex-col sm:flex-row gap-3 items-center">
                 <!-- Join by ID -->
@@ -378,7 +403,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, onMounted, onUnmounted, watch } from "vue";
 import { useRouter } from "vue-router";
 import { meetingService, type Meeting } from "@/services/meeting.service";
 import MeetingCreateModal from "./components/MeetingCreateModal.vue";
@@ -400,6 +425,14 @@ const createdMeeting = ref<Meeting | null>(null);
 const revealedPasswords = ref<Set<number>>(new Set());
 const joinId = ref("");
 
+// Auto-refresh state
+const autoRefreshEnabled = ref(false);
+const isRefreshing = ref(false);
+let pollInterval: ReturnType<typeof setInterval> | null = null;
+let lastFetchTime = 0;
+const POLL_INTERVAL_MS = 30000; // 30 seconds
+const RATE_LIMIT_MS = 5000; // 5s cooldown on manual refresh
+
 const handleJoinById = () => {
     if (!joinId.value.trim()) return;
     openMeetingPopup(joinId.value.trim());
@@ -411,6 +444,7 @@ const fetchMeetings = async () => {
     try {
         const response = await meetingService.listMeetings();
         meetings.value = response || [];
+        lastFetchTime = Date.now();
     } catch (error) {
         console.error("Failed to fetch meetings:", error);
         meetings.value = [];
@@ -419,6 +453,54 @@ const fetchMeetings = async () => {
         loading.value = false;
     }
 };
+
+// Silent fetch — no loading spinner (polling/focus)
+const silentFetchMeetings = async () => {
+    // Rate limit: skip if last fetch was too recent
+    if (Date.now() - lastFetchTime < RATE_LIMIT_MS) return;
+    try {
+        const response = await meetingService.listMeetings();
+        meetings.value = response || [];
+        lastFetchTime = Date.now();
+    } catch (error) {
+        // Silent fail for background refreshes
+    }
+};
+
+// Manual refresh with rate limit + visual feedback
+const manualRefresh = async () => {
+    if (isRefreshing.value) return;
+    if (Date.now() - lastFetchTime < RATE_LIMIT_MS) return;
+    
+    isRefreshing.value = true;
+    try {
+        const response = await meetingService.listMeetings();
+        meetings.value = response || [];
+        lastFetchTime = Date.now();
+    } catch (error) {
+        toast.error("Failed to refresh meetings");
+    } finally {
+        // Keep spinner for at least 500ms for visual feedback
+        setTimeout(() => { isRefreshing.value = false; }, 500);
+    }
+};
+
+const handleWindowFocus = () => {
+    if (autoRefreshEnabled.value && Date.now() - lastFetchTime > RATE_LIMIT_MS) {
+        silentFetchMeetings();
+    }
+};
+
+// Watch auto-refresh toggle
+watch(autoRefreshEnabled, (enabled) => {
+    if (enabled) {
+        pollInterval = setInterval(silentFetchMeetings, POLL_INTERVAL_MS);
+        window.addEventListener('focus', handleWindowFocus);
+    } else {
+        if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+        window.removeEventListener('focus', handleWindowFocus);
+    }
+});
 
 const isCreatingInstant = ref(false);
 
@@ -526,5 +608,17 @@ const getMeetingDisplayCount = (meeting: Meeting) => {
     return meeting.participants?.length ?? 0;
 };
 
-onMounted(fetchMeetings);
+onMounted(() => {
+    fetchMeetings();
+    lastFetchTime = Date.now();
+});
+
+onUnmounted(() => {
+    if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+    }
+    window.removeEventListener('focus', handleWindowFocus);
+});
 </script>
+

@@ -1648,30 +1648,58 @@ function nextPage() {
 
 onMounted(async () => {
     updateClock();
-    
+
     // SFU PRO: Synchronize visible participants for selective media pulling
-    watch([paginatedTiles, spotlightTile], ([tiles, spotlight]) => {
-        const visibleIds: string[] = [];
-        
-        // Add spotlight if active
-        if (spotlight) {
-            const pid = spotlight.participant.public_id.toLowerCase();
-            visibleIds.push(spotlight.isScreen ? `${pid}:screen` : pid);
-        }
-        
-        // Add all visible tiles (grid or filmstrip)
-        tiles.forEach(tile => {
-            const pid = tile.participant.public_id.toLowerCase();
-            visibleIds.push(tile.isScreen ? `${pid}:screen` : pid);
-        });
+    // Priority order: spotlight > active speaker > talking > visible tiles > local
+    watch(
+        [paginatedTiles, spotlightTile],
+        ([tiles, spotlight]) => {
+            const visibleIds: string[] = [];
+            const seen = new Set<string>();
 
-        // Add local participant so we always pull our own state if needed for previews
-        if (meetingStore.localParticipant) {
-            visibleIds.push(meetingStore.localParticipant.public_id.toLowerCase());
-        }
+            const addUnique = (id: string) => {
+                const lower = id.toLowerCase();
+                if (!seen.has(lower)) {
+                    seen.add(lower);
+                    visibleIds.push(lower);
+                }
+            };
 
-        meetingStore.stream?.setVisibleParticipants?.(visibleIds);
-    }, { immediate: true, deep: true });
+            // Priority 1: Spotlight (always highest priority)
+            if (spotlight) {
+                const pid = spotlight.participant.public_id.toLowerCase();
+                addUnique(spotlight.isScreen ? `${pid}:screen` : pid);
+            }
+
+            // Priority 2: Active speaker
+            if (meetingStore.activeSpeakerId) {
+                addUnique(meetingStore.activeSpeakerId.toLowerCase());
+            }
+
+            // Priority 3: All currently talking participants
+            if (meetingStore.talkingParticipants) {
+                meetingStore.talkingParticipants.forEach((pid: string) =>
+                    addUnique(pid.toLowerCase()),
+                );
+            }
+
+            // Priority 4: All visible tiles (grid or filmstrip)
+            tiles.forEach((tile) => {
+                const pid = tile.participant.public_id.toLowerCase();
+                addUnique(tile.isScreen ? `${pid}:screen` : pid);
+            });
+
+            // Priority 5: Local participant (always include)
+            if (meetingStore.localParticipant) {
+                addUnique(
+                    meetingStore.localParticipant.public_id.toLowerCase(),
+                );
+            }
+
+            meetingStore.stream?.setVisibleParticipants?.(visibleIds);
+        },
+        { immediate: true, deep: true },
+    );
     clockInterval = window.setInterval(updateClock, 10000);
 
     if (!participantId) {
@@ -2226,6 +2254,7 @@ let lastStatsTime = Date.now();
 let statsInterval: number | null = null;
 const poorConnectionDetected = ref(false);
 let poorConnectionTimer = 0;
+let rttStaleCount = 0;
 const POOR_CONNECTION_THRESHOLD = 5; // 5 seconds (roughly 2 intervals)
 
 async function updateNetworkStats() {
@@ -2250,6 +2279,7 @@ async function updateNetworkStats() {
             }
         });
 
+        let rttUpdated = false;
         stats.forEach((report) => {
             // RTT from active candidate-pair
             if (
@@ -2257,14 +2287,30 @@ async function updateNetworkStats() {
                 (report.id === activeCandidatePairId ||
                     (report.state === "succeeded" && report.nominated))
             ) {
-                const newRtt = (report.currentRoundTripTime || 0) * 1000;
-                // Basic sanity check, ignore absurd early values > 10s
-                if (newRtt < 10000) {
+                // Primary: currentRoundTripTime (Chrome reliable, Firefox sometimes stale)
+                let newRtt = 0;
+                if (
+                    report.currentRoundTripTime &&
+                    report.currentRoundTripTime > 0
+                ) {
+                    newRtt = report.currentRoundTripTime * 1000;
+                }
+                // Fallback: totalRoundTripTime / responsesReceived (more reliable in Firefox)
+                else if (
+                    report.totalRoundTripTime &&
+                    report.responsesReceived > 0
+                ) {
+                    newRtt =
+                        (report.totalRoundTripTime / report.responsesReceived) *
+                        1000;
+                }
+
+                if (newRtt > 0 && newRtt < 10000) {
                     networkStats.rtt = newRtt;
+                    rttUpdated = true;
                 }
             }
             // Outbound bitrate (bytesSent) or Inbound (bytesReceived)
-            // For general health, we track both but bitrate usually refers to outbound local
             if (report.type === "outbound-rtp") {
                 currentBytes += report.bytesSent || 0;
             }
@@ -2274,6 +2320,15 @@ async function updateNetworkStats() {
                 totalPacketsReceived += report.packetsReceived || 0;
             }
         });
+
+        // If RTT was never updated from stats, don't let a stale value affect scoring
+        if (!rttUpdated && networkStats.rtt > 0) {
+            rttStaleCount++;
+        } else {
+            rttStaleCount = 0;
+        }
+        // After 5 stale readings (~15s), consider RTT unreliable and zero it out
+        const effectiveRtt = rttStaleCount >= 5 ? 0 : networkStats.rtt;
 
         if (lastBytes > 0 && delta > 0) {
             networkStats.bitrate =
@@ -2289,13 +2344,13 @@ async function updateNetworkStats() {
         // Scoring (0=Good, 1=Fair, 2=Poor)
         let oldScore = networkStats.score;
 
-        if (lossPercent > 10 || networkStats.rtt > 400) {
+        if (lossPercent > 10 || effectiveRtt > 400) {
             networkStats.score = 2;
             poorConnectionTimer++;
             if (poorConnectionTimer >= POOR_CONNECTION_THRESHOLD) {
                 poorConnectionDetected.value = true;
             }
-        } else if (lossPercent > 3 || networkStats.rtt > 200) {
+        } else if (lossPercent > 3 || effectiveRtt > 200) {
             networkStats.score = 1;
             poorConnectionTimer = 0;
             poorConnectionDetected.value = false;
@@ -2307,7 +2362,7 @@ async function updateNetworkStats() {
 
         if (oldScore !== networkStats.score || networkStats.score === 2) {
             console.log(
-                `[NetworkStats] Score: ${networkStats.score} | RTT: ${networkStats.rtt}ms | Loss: ${lossPercent.toFixed(2)}% | Bitrate: ${(networkStats.bitrate || 0).toFixed(0)}kbps | Timer: ${poorConnectionTimer}/${POOR_CONNECTION_THRESHOLD}`,
+                `[NetworkStats] Score: ${networkStats.score} | RTT: ${networkStats.rtt}ms${rttStaleCount >= 5 ? " (stale, ignored)" : ""} | Loss: ${lossPercent.toFixed(2)}% | Bitrate: ${(networkStats.bitrate || 0).toFixed(0)}kbps | Timer: ${poorConnectionTimer}/${POOR_CONNECTION_THRESHOLD}`,
             );
         }
     } catch (e) {
