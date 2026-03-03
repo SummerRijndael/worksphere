@@ -53,11 +53,19 @@ export function useBackgroundBlur() {
     let chromaKeyColor = { r: 0, g: 255, b: 0 };
     let chromaKeyThreshold = 0.12;
 
-    
     // Mask state for reuse
     let maskImageData: ImageData | null = null;
     let maskImageDataWidth = 0;
     let maskImageDataHeight = 0;
+
+    // Adaptive quality: track actual FPS to decide if we should downgrade model
+    const FPS_WINDOW = 30; // sliding window of last N frame timestamps
+    const FPS_DOWNGRADE_THRESHOLD = 15; // fps below this = struggling
+    const FPS_DOWNGRADE_WINDOW_MS = 5000; // must sustain low fps for this long
+    let fpsFrameTimes: number[] = [];
+    let lowFpsStartTime: number | null = null;
+    let hasDowngraded = false;
+    let isDowngrading = false;
     
     async function loadModel() {
         if (isLoaded.value || isLoading.value) return;
@@ -238,9 +246,6 @@ export function useBackgroundBlur() {
 
 
         let lastFrameTime = 0;
-        let lastSuccessfulFrameTime = performance.now();
-        let isAutoDowngraded = false;
-        
         const targetFps = isMobile ? 15 : 30;
         const frameInterval = 1000 / targetFps;
 
@@ -311,20 +316,26 @@ export function useBackgroundBlur() {
             }
             
             try {
-                // Watchdog: If we haven't had a successful frame in 3 seconds, or we are consistently slow, fallback.
-                const timeSinceSuccess = performance.now() - lastSuccessfulFrameTime;
-                if (timeSinceSuccess > 3000 && !isAutoDowngraded) {
-                    console.error("[BackgroundBlur] Watchdog Triggered: Video effect unsupported on this hardware/browser combination.");
-                    isAutoDowngraded = true;
-                    error.value = "Your device is struggling to run video effects. We've disabled them to keep your video running smoothly.";
-                }
+                // ── Adaptive FPS tracking ─────────────────────────────────────
+                const now = performance.now();
+                fpsFrameTimes.push(now);
+                if (fpsFrameTimes.length > FPS_WINDOW) fpsFrameTimes.shift();
 
-                if (isAutoDowngraded) {
-                    // Just draw raw video
-                    if (ctx) ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                    animationFrameId = requestAnimationFrame(draw);
-                    return;
+                if (fpsFrameTimes.length >= FPS_WINDOW && !hasDowngraded && !isDowngrading) {
+                    const windowMs = fpsFrameTimes[fpsFrameTimes.length - 1] - fpsFrameTimes[0];
+                    const actualFps = (FPS_WINDOW - 1) / (windowMs / 1000);
+
+                    if (actualFps < FPS_DOWNGRADE_THRESHOLD) {
+                        if (!lowFpsStartTime) lowFpsStartTime = now;
+                        else if (now - lowFpsStartTime > FPS_DOWNGRADE_WINDOW_MS) {
+                            console.warn(`[BackgroundBlur] Sustained low FPS (${actualFps.toFixed(1)}fps). Downgrading to lite model.`);
+                            downgradeToLiteModel();
+                        }
+                    } else {
+                        lowFpsStartTime = null; // reset if fps recovers
+                    }
                 }
+                // ─────────────────────────────────────────────────────────────
 
                 if (useChromaKey) {
                     // Manual Chroma Key Path
@@ -694,6 +705,59 @@ export function useBackgroundBlur() {
         currentTrackId = null;
         processedStream = null;
         outputTrack = null;
+    }
+
+    /**
+     * Hot-swap to the lite (landscape) model without stopping the stream.
+     * The draw loop will continue rendering raw video while the new model loads.
+     */
+    async function downgradeToLiteModel() {
+        if (isDowngrading || hasDowngraded) return;
+        isDowngrading = true;
+        console.log("[BackgroundBlur] Downgrading to lite model...");
+
+        try {
+            // Close the heavy model
+            if (segmenter.value) {
+                segmenter.value.close();
+                segmenter.value = null;
+                isLoaded.value = false;
+            }
+
+            const vision = await FilesetResolver.forVisionTasks(
+                "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.32/wasm"
+            );
+
+            const liteModel = "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter_landscape/float16/latest/selfie_segmenter_landscape.tflite";
+
+            // Try GPU first, fall back to CPU
+            try {
+                segmenter.value = await ImageSegmenter.createFromOptions(vision, {
+                    baseOptions: { modelAssetPath: liteModel, delegate: "GPU" },
+                    runningMode: "VIDEO" as const,
+                    outputCategoryMask: false,
+                    outputConfidenceMasks: true,
+                });
+            } catch {
+                segmenter.value = await ImageSegmenter.createFromOptions(vision, {
+                    baseOptions: { modelAssetPath: liteModel, delegate: "CPU" },
+                    runningMode: "VIDEO" as const,
+                    outputCategoryMask: false,
+                    outputConfidenceMasks: true,
+                });
+            }
+
+            isLoaded.value = true;
+            hasDowngraded = true;
+            fpsFrameTimes = [];
+            lowFpsStartTime = null;
+            console.log("[BackgroundBlur] Lite model loaded. Resuming effects.");
+        } catch (e) {
+            console.error("[BackgroundBlur] Failed to load lite model:", e);
+            error.value = "Your device is struggling to run video effects.";
+        } finally {
+            isDowngrading = false;
+        }
     }
 
     function destroy() {
