@@ -360,8 +360,8 @@ export function useBackgroundBlur() {
                     if (ctx) ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                     animationFrameId = requestAnimationFrame(draw);
                 }
-            } catch (e) {
-                console.error("Segmentation error:", e);
+            } catch (e: any) {
+                console.error("Segmentation error:", e && e.message ? e.message : String(e), e && e.stack ? e.stack : "");
                 // Resilient fallback: Always show at least the raw video
                 if (ctx && canvas && video) {
                     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -452,7 +452,18 @@ export function useBackgroundBlur() {
                  const mask = result.confidenceMasks[0];
                  const width = mask.width;
                  const height = mask.height;
-                 const maskData = mask.getAsFloat32Array();
+                 let maskData: Float32Array;
+
+                 try {
+                     maskData = mask.getAsFloat32Array();
+                 } catch (err: any) {
+                     // WebGL ReadPixels crash (Format/Type incompatible) on Firefox/Chromium
+                     console.warn("[BackgroundBlur] Hardware GPU Mask extraction failed. Forcing CPU downgrade.", err);
+                     if (!isDowngrading) downgradeToLiteModel();
+                     if (ctx && canvas && video) ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                     animationFrameId = requestAnimationFrame(draw);
+                     return;
+                 }
 
                  // Reuse or create ImageData for mask
                  if (!maskImageData || maskImageDataWidth !== width || maskImageDataHeight !== height) {
@@ -491,7 +502,16 @@ export function useBackgroundBlur() {
                  const mask = result.categoryMask;
                  const width = mask.width;
                  const height = mask.height;
-                 const maskData = mask.getAsUint8Array();
+                 let maskData: Uint8Array;
+                 try {
+                     maskData = mask.getAsUint8Array();
+                 } catch (err: any) {
+                     console.warn("[BackgroundBlur] Hardware GPU CategoryMask extraction failed. Forcing CPU downgrade.", err);
+                     if (!isDowngrading) downgradeToLiteModel();
+                     if (ctx && canvas && video) ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                     animationFrameId = requestAnimationFrame(draw);
+                     return;
+                 }
                  
                  if (!maskImageData || maskImageDataWidth !== width || maskImageDataHeight !== height) {
                      maskImageData = new ImageData(width, height);
