@@ -447,7 +447,6 @@ export function useBackgroundBlur() {
             }
 
             if (result.confidenceMasks && result.confidenceMasks.length > 0) {
-                 lastSuccessfulFrameTime = performance.now();
                  // Confidence mask: getAsFloat32Array returns values [0,1] per pixel
                  const mask = result.confidenceMasks[0];
                  const width = mask.width;
