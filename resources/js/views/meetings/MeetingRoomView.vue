@@ -1134,23 +1134,13 @@
                                             size="18"
                                             class="mr-3 text-white/70"
                                         />
-                                        <span class="font-medium text-sm"
-                                            >Polls</span
-                                        >
+                                        <span class="font-medium text-sm">Polls</span>
                                     </DropdownMenuItem>
 
                                     <DropdownMenuItem
                                         @click="
-                                            toggleRecording();
+                                            whiteboardStore.isVisible = !whiteboardStore.isVisible;
                                             showMoreMenu = false;
-                                        "
-                                        :disabled="
-                                            isRecordingStarting ||
-                                            isRecordingStopping
-                                        "
-                                        class="menu-action-item px-3 py-2.5 rounded-xl flex items-center gap-3 transition-all cursor-pointer outline-none hover:bg-white/5 text-white"
-                                        :class="
-                                            isRecording ? 'text-red-500!' : ''
                                         "
                                         class="menu-action-item px-3 py-2 rounded-xl flex items-center transition-colors cursor-pointer outline-none hover:bg-white/5 data-highlighted:bg-white/5 text-white"
                                     >
@@ -1159,78 +1149,54 @@
                                             size="18"
                                             class="mr-3 text-white/70"
                                         />
-                                        <span class="font-medium text-sm"
-                                            >Whiteboard</span
-                                        >
+                                        <span class="font-medium text-sm">Whiteboard</span>
                                     </DropdownMenuItem>
 
                                     <template v-if="meetingStore.isHost">
-                                        <DropdownMenuSeparator
-                                            class="h-px bg-white/10 mx-2 my-1"
-                                        />
+                                        <DropdownMenuSeparator class="h-px bg-white/10 mx-2 my-1" />
+                                        
                                         <DropdownMenuItem
-                                            @click="
-                                                meetingStore.showBreakoutManager = true
-                                            "
+                                            v-if="recordingEnabled"
+                                            @click="toggleRecording"
+                                            :disabled="isRecordingStarting || isRecordingStopping"
                                             class="menu-action-item px-3 py-2 rounded-xl flex items-center transition-colors cursor-pointer outline-none hover:bg-white/5 data-highlighted:bg-white/5 text-white"
                                         >
                                             <Icon
-                                                :name="
-                                                    isRecording
-                                                        ? 'circle-stop'
-                                                        : 'circle-dot'
-                                                "
-                                                size="20"
-                                                :class="
-                                                    isRecording
-                                                        ? 'text-red-500'
-                                                        : 'text-white/70'
-                                                "
+                                                :name="isRecording ? 'circle-stop' : 'circle-dot'"
+                                                size="18"
+                                                class="mr-3"
+                                                :class="isRecording ? 'text-red-500' : 'text-white/70'"
                                             />
-                                        </div>
-                                        <div class="grow min-w-0 text-left">
-                                            <div class="font-medium text-sm">
-                                                {{
-                                                    isRecording
-                                                        ? "Stop Recording"
-                                                        : "Start Recording"
-                                                }}
-                                            </div>
-                                            <div
-                                                class="text-[10px] text-white/40 truncate"
-                                            >
-                                                Save this meeting to cloud
-                                            </div>
-                                        </div>
-                                    </button>
-                                </template>
+                                            <span class="font-medium text-sm">
+                                                {{ isRecording ? 'Stop Recording' : 'Start Recording' }}
+                                            </span>
+                                        </DropdownMenuItem>
 
-                                <template
-                                    v-if="
-                                        meetingStore.isModerator &&
-                                        meetingStore.waitingParticipants
-                                            .length > 0
-                                    "
-                                >
-                                    <div
-                                        class="h-px bg-white/10 mx-2 my-1.5"
-                                    ></div>
-                                    <button
-                                        @click="
-                                            openRequestsPanel();
-                                            showMoreMenu = false;
-                                        "
-                                        class="menu-action-item px-4 py-3 rounded-xl flex items-center justify-between transition-colors cursor-pointer outline-none bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white"
-                                    >
-                                        <div class="flex items-center">
+                                        <DropdownMenuItem
+                                            @click="meetingStore.showBreakoutManager = true"
+                                            class="menu-action-item px-3 py-2 rounded-xl flex items-center transition-colors cursor-pointer outline-none hover:bg-white/5 data-highlighted:bg-white/5 text-white"
+                                        >
                                             <Icon
-                                                name="user-plus"
+                                                name="layout-grid"
                                                 size="18"
                                                 class="mr-3 text-white/70"
                                             />
-                                            <span class="font-medium text-sm"
-                                                >Breakout Rooms</span
-                                            >
+                                            <span class="font-medium text-sm">Breakout Rooms</span>
+                                        </DropdownMenuItem>
+                                    </template>
+
+                                    <template v-if="meetingStore.isModerator && meetingStore.waitingParticipants.length > 0">
+                                        <DropdownMenuSeparator class="h-px bg-white/10 mx-2 my-1" />
+                                        <DropdownMenuItem
+                                            @click="openRequestsPanel(); showMoreMenu = false;"
+                                            class="menu-action-item px-3 py-2 rounded-xl flex items-center transition-colors cursor-pointer outline-none bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white"
+                                        >
+                                            <Icon
+                                                name="user-plus"
+                                                size="18"
+                                                class="mr-3"
+                                            />
+                                            <span class="font-medium text-sm">Waiting Requests ({{ meetingStore.waitingParticipants.length }})</span>
                                         </DropdownMenuItem>
                                     </template>
                                 </div>
