@@ -1,5 +1,5 @@
 <template>
-    <div class="lobby-container bg-surface-primary min-h-screen flex flex-col md:flex-row items-center justify-center p-6 sm:p-4">
+    <div class="lobby-container bg-surface-primary min-h-screen flex items-center justify-center p-0 sm:p-4">
         <div class="max-w-6xl w-full flex flex-col md:flex-row gap-8 items-center justify-center">
             <!-- Left Side: Video Preview -->
             <div v-if="showVideoSection" class="video-section flex-1 w-full max-w-3xl relative rounded-none sm:rounded-2xl overflow-hidden bg-black shadow-2xl aspect-video">

@@ -1102,145 +1102,141 @@
                     </button>
 
                     <!-- Activities Menu (Desktop) -->
-                    <div
-                        class="layout-selector hidden lg:flex"
-                        style="position: relative"
-                    >
-                        <button
-                            class="ctrl-btn"
-                            :class="{
-                                'ctrl-btn--active':
-                                    whiteboardStore.isVisible ||
-                                    showPollPanel ||
-                                    meetingStore.showBreakoutManager,
-                            }"
-                            @click.stop="
-                                showActivitiesMenu = !showActivitiesMenu
-                            "
-                            title="Activities"
-                        >
-                            <Icon name="grid" size="20" />
-                        </button>
-
-                        <Transition
-                            enter-active-class="transition duration-200 ease-out"
-                            enter-from-class="opacity-0 scale-95 translate-y-2"
-                            enter-to-class="opacity-100 scale-100 translate-y-0"
-                            leave-active-class="transition duration-150 ease-in"
-                            leave-from-class="opacity-100 scale-100 translate-y-0"
-                            leave-to-class="opacity-0 scale-95 translate-y-2"
-                        >
-                            <div
-                                v-if="showActivitiesMenu"
-                                v-click-outside="
-                                    () => (showActivitiesMenu = false)
-                                "
-                                class="layout-menu shadow-xl"
+                    <DropdownMenuRoot>
+                        <DropdownMenuTrigger as-child>
+                            <button
+                                class="ctrl-btn hidden lg:flex"
+                                :class="{
+                                    'ctrl-btn--active':
+                                        whiteboardStore.isVisible ||
+                                        showPollPanel ||
+                                        meetingStore.showBreakoutManager,
+                                }"
+                                title="Activities"
                             >
-                                <div class="layout-menu-header">
-                                    <span>Activities</span>
-                                </div>
-                                <div class="layout-options">
-                                    <!-- Polls -->
-                                    <button
-                                        @click="
-                                            togglePollPanel;
-                                            showActivitiesMenu = false;
-                                        "
-                                        class="layout-option"
-                                        :class="{
-                                            'layout-option--active':
-                                                showPollPanel,
-                                        }"
+                                <Icon name="grid" size="20" />
+                            </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuPortal>
+                            <DropdownMenuContent
+                                side="top"
+                                align="center"
+                                :side-offset="16"
+                                class="z-1000 w-64 bg-surface-elevated/95 backdrop-blur-xl border border-default rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 data-[side=top]:slide-in-from-bottom-4 duration-200"
+                            >
+                                <div class="p-1.5 space-y-0.5">
+                                    <DropdownMenuItem
+                                        @click="togglePollPanel"
+                                        class="menu-action-item px-3 py-2 rounded-xl flex items-center transition-colors cursor-pointer outline-none hover:bg-white/5 data-highlighted:bg-white/5 text-white"
                                     >
-                                        <div class="layout-option-icon">
-                                            <Icon
-                                                name="bar-chart-2"
-                                                size="20"
-                                            />
-                                        </div>
-                                        <div class="layout-option-info">
-                                            <div class="layout-option-label">
-                                                Polls
-                                            </div>
-                                            <div class="layout-option-desc">
-                                                Create and vote on polls
-                                            </div>
-                                        </div>
-                                        <div
-                                            v-if="showPollPanel"
-                                            class="layout-option-check"
+                                        <Icon
+                                            name="bar-chart-2"
+                                            size="18"
+                                            class="mr-3 text-white/70"
+                                        />
+                                        <span class="font-medium text-sm"
+                                            >Polls</span
                                         >
-                                            <Icon name="check" size="16" />
-                                        </div>
-                                    </button>
+                                    </DropdownMenuItem>
 
-                                    <!-- Whiteboard -->
-                                    <button
+                                    <DropdownMenuItem
                                         @click="
-                                            whiteboardStore.isVisible =
-                                                !whiteboardStore.isVisible;
-                                            showActivitiesMenu = false;
+                                            toggleRecording();
+                                            showMoreMenu = false;
                                         "
-                                        class="layout-option"
-                                        :class="{
-                                            'layout-option--active':
-                                                whiteboardStore.isVisible,
-                                        }"
+                                        :disabled="
+                                            isRecordingStarting ||
+                                            isRecordingStopping
+                                        "
+                                        class="menu-action-item px-3 py-2.5 rounded-xl flex items-center gap-3 transition-all cursor-pointer outline-none hover:bg-white/5 text-white"
+                                        :class="
+                                            isRecording ? 'text-red-500!' : ''
+                                        "
+                                        class="menu-action-item px-3 py-2 rounded-xl flex items-center transition-colors cursor-pointer outline-none hover:bg-white/5 data-highlighted:bg-white/5 text-white"
                                     >
-                                        <div class="layout-option-icon">
-                                            <Icon name="edit-3" size="20" />
-                                        </div>
-                                        <div class="layout-option-info">
-                                            <div class="layout-option-label">
-                                                Whiteboard
-                                            </div>
-                                            <div class="layout-option-desc">
-                                                Collaborate on a canvas
-                                            </div>
-                                        </div>
-                                        <div
-                                            v-if="whiteboardStore.isVisible"
-                                            class="layout-option-check"
+                                        <Icon
+                                            name="edit-3"
+                                            size="18"
+                                            class="mr-3 text-white/70"
+                                        />
+                                        <span class="font-medium text-sm"
+                                            >Whiteboard</span
                                         >
-                                            <Icon name="check" size="16" />
-                                        </div>
-                                    </button>
+                                    </DropdownMenuItem>
 
                                     <template v-if="meetingStore.isHost">
-                                        <div
+                                        <DropdownMenuSeparator
                                             class="h-px bg-white/10 mx-2 my-1"
-                                        ></div>
-                                        <!-- Breakout Rooms -->
-                                        <button
+                                        />
+                                        <DropdownMenuItem
                                             @click="
-                                                meetingStore.showBreakoutManager = true;
-                                                showActivitiesMenu = false;
+                                                meetingStore.showBreakoutManager = true
                                             "
-                                            class="layout-option"
+                                            class="menu-action-item px-3 py-2 rounded-xl flex items-center transition-colors cursor-pointer outline-none hover:bg-white/5 data-highlighted:bg-white/5 text-white"
                                         >
-                                            <div class="layout-option-icon">
-                                                <Icon
-                                                    name="layout-grid"
-                                                    size="20"
-                                                />
+                                            <Icon
+                                                :name="
+                                                    isRecording
+                                                        ? 'circle-stop'
+                                                        : 'circle-dot'
+                                                "
+                                                size="20"
+                                                :class="
+                                                    isRecording
+                                                        ? 'text-red-500'
+                                                        : 'text-white/70'
+                                                "
+                                            />
+                                        </div>
+                                        <div class="grow min-w-0 text-left">
+                                            <div class="font-medium text-sm">
+                                                {{
+                                                    isRecording
+                                                        ? "Stop Recording"
+                                                        : "Start Recording"
+                                                }}
                                             </div>
-                                            <div class="layout-option-info">
-                                                <div
-                                                    class="layout-option-label"
-                                                >
-                                                    Breakout Rooms
-                                                </div>
-                                                <div class="layout-option-desc">
-                                                    Split into smaller groups
-                                                </div>
+                                            <div
+                                                class="text-[10px] text-white/40 truncate"
+                                            >
+                                                Save this meeting to cloud
                                             </div>
-                                        </button>
+                                        </div>
+                                    </button>
+                                </template>
+
+                                <template
+                                    v-if="
+                                        meetingStore.isModerator &&
+                                        meetingStore.waitingParticipants
+                                            .length > 0
+                                    "
+                                >
+                                    <div
+                                        class="h-px bg-white/10 mx-2 my-1.5"
+                                    ></div>
+                                    <button
+                                        @click="
+                                            openRequestsPanel();
+                                            showMoreMenu = false;
+                                        "
+                                        class="menu-action-item px-4 py-3 rounded-xl flex items-center justify-between transition-colors cursor-pointer outline-none bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white"
+                                    >
+                                        <div class="flex items-center">
+                                            <Icon
+                                                name="user-plus"
+                                                size="18"
+                                                class="mr-3 text-white/70"
+                                            />
+                                            <span class="font-medium text-sm"
+                                                >Breakout Rooms</span
+                                            >
+                                        </DropdownMenuItem>
                                     </template>
                                 </div>
-                            </div>
-                        </Transition>
-                    </div>
+                            </DropdownMenuContent>
+                        </DropdownMenuPortal>
+                    </DropdownMenuRoot>
 
                     <MeetingLayoutSelector />
 
@@ -1484,117 +1480,16 @@
                                     </div>
                                 </button>
 
-                                <!-- Standardized Layout Mode (Mobile) -->
-                                <button
-                                    @click="
-                                        showMobileLayout = !showMobileLayout
-                                    "
-                                    class="menu-action-item px-3 py-2.5 rounded-xl flex items-center gap-3 transition-all cursor-pointer outline-none hover:bg-white/5"
-                                    :class="
-                                        showMobileLayout
-                                            ? 'text-blue-400'
-                                            : 'text-white'
-                                    "
+                                <!-- Layout Selector (Mobile) Section -->
+                                <div
+                                    class="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white/50 flex items-center gap-2 mt-1"
                                 >
-                                    <div
-                                        class="w-10 h-10 flex items-center justify-center rounded-xl transition-colors shrink-0"
-                                        :class="
-                                            showMobileLayout
-                                                ? 'bg-blue-600/20'
-                                                : 'bg-surface-secondary'
-                                        "
-                                    >
-                                        <Icon
-                                            name="layout"
-                                            size="20"
-                                            :class="
-                                                showMobileLayout
-                                                    ? 'text-blue-400'
-                                                    : 'text-white/70'
-                                            "
-                                        />
-                                    </div>
-                                    <div class="grow min-w-0 text-left">
-                                        <div class="font-medium text-sm">
-                                            Change Layout
-                                        </div>
-                                        <div
-                                            class="text-[10px] text-white/40 truncate"
-                                        >
-                                            Modify how participants appear
-                                        </div>
-                                    </div>
-                                    <Icon
-                                        :name="
-                                            showMobileLayout
-                                                ? 'chevron-up'
-                                                : 'chevron-down'
-                                        "
-                                        size="16"
-                                        class="shrink-0 text-white/40"
-                                    />
-                                </button>
-
-                                <!-- Inline layout options -->
-                                <Transition
-                                    enter-active-class="transition duration-200 ease-out"
-                                    enter-from-class="opacity-0 -translate-y-1"
-                                    enter-to-class="opacity-100 translate-y-0"
-                                    leave-active-class="transition duration-150 ease-in"
-                                    leave-from-class="opacity-100 translate-y-0"
-                                    leave-to-class="opacity-0 -translate-y-1"
-                                >
-                                    <div
-                                        v-if="showMobileLayout"
-                                        class="mt-1 mx-2 bg-surface-secondary/50 rounded-xl overflow-hidden"
-                                    >
-                                        <button
-                                            v-for="layout in mobileLayouts"
-                                            :key="layout.id"
-                                            @click="
-                                                meetingStore.setLayout(
-                                                    layout.id,
-                                                );
-                                                showMobileLayout = false;
-                                                showMoreMenu = false;
-                                            "
-                                            class="w-full flex items-center gap-3 px-3 py-2.5 transition-all hover:bg-white/5 text-left"
-                                            :class="
-                                                meetingStore.preferredLayout ===
-                                                layout.id
-                                                    ? 'text-blue-400'
-                                                    : 'text-white/80'
-                                            "
-                                        >
-                                            <Icon
-                                                :name="layout.icon"
-                                                size="18"
-                                                class="shrink-0"
-                                            />
-                                            <div class="grow min-w-0">
-                                                <div
-                                                    class="font-medium text-sm"
-                                                >
-                                                    {{ layout.label }}
-                                                </div>
-                                                <div
-                                                    class="text-[10px] text-white/40"
-                                                >
-                                                    {{ layout.desc }}
-                                                </div>
-                                            </div>
-                                            <Icon
-                                                v-if="
-                                                    meetingStore.preferredLayout ===
-                                                    layout.id
-                                                "
-                                                name="check"
-                                                size="14"
-                                                class="shrink-0 text-blue-400"
-                                            />
-                                        </button>
-                                    </div>
-                                </Transition>
+                                    <Icon name="layout" size="12" />
+                                    <span>Layout Mode</span>
+                                </div>
+                                <div class="px-2 pb-2">
+                                    <MeetingLayoutSelector />
+                                </div>
 
                                 <div class="h-px bg-white/10 mx-2 my-1.5"></div>
 
@@ -1873,8 +1768,6 @@ const showPollPanel = ref(false);
 const showReactionPicker = ref(false);
 const showMeetingDetails = ref(false);
 const showMoreMenu = ref(false);
-const showMobileLayout = ref(false);
-const showActivitiesMenu = ref(false);
 const showDevTool = ref(false);
 const initializing = ref(true);
 const activeParticipantTab = ref<"members" | "waiting">("members");
@@ -5022,14 +4915,8 @@ onBeforeUnmount(() => {
 }
 
 .more-menu-wrapper {
-    display: none;
+    display: flex;
     align-items: center;
-}
-
-@media (max-width: 1023px) {
-    .more-menu-wrapper {
-        display: flex;
-    }
 }
 
 .custom-scrollbar::-webkit-scrollbar {
