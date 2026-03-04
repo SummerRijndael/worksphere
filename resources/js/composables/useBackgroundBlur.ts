@@ -235,13 +235,20 @@ export function useBackgroundBlur() {
         // Blur canvas is even smaller for performance
         blurCanvas.width = Math.round(targetWidth / blurDownsample); 
         blurCanvas.height = Math.round(targetHeight / blurDownsample);
-        blurCtx = blurCanvas.getContext("2d");
-
+        blurCtx = blurCanvas.getContext("2d", { alpha: false, willReadFrequently: true });
+        if (blurCtx) {
+            blurCtx.imageSmoothingEnabled = true;
+            blurCtx.imageSmoothingQuality = 'high';
+        }
 
         if (!personCanvas) personCanvas = document.createElement("canvas");
         personCanvas.width = targetWidth;
         personCanvas.height = targetHeight;
-        personCtx = personCanvas.getContext("2d");
+        personCtx = personCanvas.getContext("2d", { willReadFrequently: true });
+        if (personCtx) {
+            personCtx.imageSmoothingEnabled = true;
+            personCtx.imageSmoothingQuality = 'high';
+        }
 
         console.log(`[BackgroundBlur] Processing dimensions: ${targetWidth}x${targetHeight} (Source: ${video.videoWidth}x${video.videoHeight}), mode: ${currentRunningMode}`);
 
@@ -296,18 +303,26 @@ export function useBackgroundBlur() {
                     
                     if (ctx) {
                         ctx.imageSmoothingEnabled = true;
-                        ctx.imageSmoothingQuality = 'medium';
+                        ctx.imageSmoothingQuality = 'high';
                     }
                     
                     if (blurCanvas) {
                         const blurDownsample = isMobile ? 12 : 8;
                         blurCanvas.width = Math.round(newTargetWidth / blurDownsample);
                         blurCanvas.height = Math.round(newTargetHeight / blurDownsample);
+                        if (blurCtx) {
+                            blurCtx.imageSmoothingEnabled = true;
+                            blurCtx.imageSmoothingQuality = 'high';
+                        }
                     }
     
                     if (personCanvas) {
                         personCanvas.width = newTargetWidth;
                         personCanvas.height = newTargetHeight;
+                        if (personCtx) {
+                            personCtx.imageSmoothingEnabled = true;
+                            personCtx.imageSmoothingQuality = 'high';
+                        }
                     }
                     if (currentEffect === 'image' && currentImageUrl) {
                         updateBackgroundImage(currentImageUrl, canvas.width, canvas.height);
