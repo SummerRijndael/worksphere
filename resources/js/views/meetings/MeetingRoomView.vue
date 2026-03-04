@@ -2060,9 +2060,22 @@ const spotlightTile = computed(() => {
 
     // 3. Fallback: Active speaker (camera tile)
     if (meetingStore.activeSpeakerId) {
-        return renderedTiles.value.find(
+        const speaker = renderedTiles.value.find(
             (t) => t.id === meetingStore.activeSpeakerId && !t.isScreen,
         );
+        if (speaker) return speaker;
+    }
+
+    // 4. Ultimate Fallback: If user explicitly requested spotlight/sidebar but scene is silent
+    if (
+        meetingStore.preferredLayout === "spotlight" ||
+        meetingStore.preferredLayout === "sidebar"
+    ) {
+        // Try getting the first remote participant (renderedTiles already excludes local user)
+        const firstRemote = renderedTiles.value[0];
+        if (firstRemote) return firstRemote;
+        // If entirely alone, just spotlight yourself
+        if (localCameraTile.value) return localCameraTile.value;
     }
 
     return null;
@@ -2070,11 +2083,18 @@ const spotlightTile = computed(() => {
 
 const isSpotlightMode = computed(() => {
     if (meetingStore.preferredLayout === "tiled") return false;
+    // Force true if explicitly requested so we don't accidentally fall back
+    if (
+        meetingStore.preferredLayout === "spotlight" ||
+        meetingStore.preferredLayout === "sidebar"
+    )
+        return true;
     return !!spotlightTile.value;
 });
 
 const unspotlightedTiles = computed(() => {
-    if (!spotlightTile.value) return renderedTiles.value;
+    if (!spotlightTile.value || !isSpotlightMode.value)
+        return renderedTiles.value;
     return renderedTiles.value.filter((t) => t.id !== spotlightTile.value?.id);
 });
 

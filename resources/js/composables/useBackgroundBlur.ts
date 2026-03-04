@@ -587,14 +587,11 @@ export function useBackgroundBlur() {
               };
 
              // 1. Prepare blurred background (on small canvas)
-             blurCtx.filter = 'blur(4px)';
              drawOptimized(blurCtx, video, blurCanvas.width, blurCanvas.height);
-             blurCtx.filter = 'none';
 
              // 2. Prepare person with mask feathering — single draw, no redundant pass
              personCtx.clearRect(0, 0, w, h);
              personCtx.save();
-             personCtx.filter = 'blur(8px)';
              drawOptimized(personCtx, mask, w, h);
              personCtx.restore();
              
