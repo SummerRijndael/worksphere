@@ -73,7 +73,11 @@ class MediaController extends Controller
                 abort(404);
             }
 
-            return response()->file($path);
+            $cacheControl = $media->model_type === 'App\Models\User' ? 'public, max-age=86400' : 'private, max-age=3600';
+
+            return response()->file($path, [
+                'Cache-Control' => $cacheControl,
+            ]);
         }
 
         // Remote Driver (S3, etc.): getPath() returns relative key
@@ -82,7 +86,11 @@ class MediaController extends Controller
             abort(404);
         }
 
-        return \Illuminate\Support\Facades\Storage::disk($disk)->response($path);
+        $cacheControl = $media->model_type === 'App\Models\User' ? 'public, max-age=86400' : 'private, max-age=3600';
+
+        return \Illuminate\Support\Facades\Storage::disk($disk)->response($path, null, [
+            'Cache-Control' => $cacheControl,
+        ]);
     }
 
     /**

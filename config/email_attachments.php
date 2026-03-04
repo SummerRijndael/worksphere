@@ -13,5 +13,7 @@ return [
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'text/plain',
         'text/csv',
+        'image/svg+xml',
+        'image/x-icon',
     ],
 ];

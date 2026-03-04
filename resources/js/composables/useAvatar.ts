@@ -13,6 +13,7 @@ import type { Chat, ChatParticipant } from '@/types/models/chat';
  */
 export interface AvatarData {
   url: string | null;
+  thumbUrl: string | null;
   fallback: string;
   initials: string;
   color: string;
@@ -89,11 +90,16 @@ export function useAvatar() {
   /**
    * Get the best available avatar URL from an entity.
    */
-  function getAvatarUrl(entity: AvatarEntity): string | null {
+  function getAvatarUrl(entity: AvatarEntity, conversion: string | null = null): string | null {
     if (!entity) return null;
 
     // Check common avatar URL properties
     const e = entity as Record<string, unknown>;
+
+    // If a specific conversion is requested
+    if (conversion === 'thumb' && typeof e.avatar_thumb_url === 'string' && e.avatar_thumb_url) {
+      return e.avatar_thumb_url;
+    }
 
     // Priority: avatar_url > avatar > null
     if (typeof e.avatar_url === 'string' && e.avatar_url) {
@@ -126,6 +132,7 @@ export function useAvatar() {
 
     return {
       url: getAvatarUrl(entity),
+      thumbUrl: getAvatarUrl(entity, 'thumb'),
       fallback: DEFAULT_FALLBACK,
       initials: getInitials(name),
       color: getColorFromId(identifier),
@@ -155,6 +162,7 @@ export function useAvatar() {
     if (chat.avatar_url) {
       return {
         url: chat.avatar_url,
+        thumbUrl: chat.avatar_thumb_url || chat.avatar_url,
         fallback: GROUP_FALLBACK,
         initials: getInitials(chat.name || 'Group'),
         color: getColorFromId(chat.public_id),
@@ -175,6 +183,7 @@ export function useAvatar() {
     // Group/team chat fallback
     return {
       url: null,
+      thumbUrl: null,
       fallback: GROUP_FALLBACK,
       initials: getInitials(chat.name || 'Group'),
       color: getColorFromId(chat.public_id),

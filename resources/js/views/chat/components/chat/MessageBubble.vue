@@ -297,6 +297,7 @@ const firstUrl = computed(() => {
                         >
                             <img
                                 :src="img.thumb_url || img.url"
+                                loading="lazy"
                                 class="w-full h-full object-cover cursor-pointer transition-transform duration-500 hover:scale-105"
                                 @click="handleImageClick(img)"
                             />
@@ -357,6 +358,7 @@ const firstUrl = computed(() => {
                         :alt="giphy.title"
                         :width="giphy.width"
                         :height="giphy.height"
+                        loading="lazy"
                         class="max-w-full h-auto object-contain rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                         style="max-height: 400px"
                     />

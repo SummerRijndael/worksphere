@@ -5,9 +5,11 @@ import { Card, Button } from '@/components/ui';
 import { Send, CheckCircle2, AlertCircle } from 'lucide-vue-next';
 import axios from 'axios';
 import useRecaptcha from '@/composables/useRecaptcha';
+import useFingerprint from '@/composables/useFingerprint';
 import RecaptchaChallengeModal from '@/components/common/RecaptchaChallengeModal.vue';
 
 const { executeRecaptcha } = useRecaptcha();
+const { getFingerprint } = useFingerprint();
 const showChallenge = ref(false);
 
 const isLoading = ref(false);
@@ -21,26 +23,32 @@ const form = ref({
     title: '',
     category: '', // Optional, frontend select
     description: '',
+    website_url: '', // Honeypot
 });
 
 const submitTicket = async () => {
     isLoading.value = true;
     error.value = null;
     try {
-        const token = await executeRecaptcha('support_ticket');
+        const [token, fingerprint] = await Promise.all([
+            executeRecaptcha('support_ticket'),
+            getFingerprint()
+        ]);
+
         if (!token) {
-            error.value = 'Security check failed. Please refresh and try again.';
+            error.value = 'Security check failed. Please refresh and try again. (RC)';
             return;
         }
 
         const response = await axios.post('/api/public/tickets', {
             ...form.value,
-            recaptcha_token: token
+            recaptcha_token: token,
+            fingerprint: fingerprint
         });
         result.value = response.data;
         isSuccess.value = true;
         // Reset form
-        form.value = { name: '', email: '', title: '', category: '', description: '' };
+        form.value = { name: '', email: '', title: '', category: '', description: '', website_url: '' };
     } catch (e: any) {
         if (e.response?.data?.requires_challenge) {
             showChallenge.value = true;
@@ -57,14 +65,16 @@ const handleChallengeVerified = async (v2Token: string) => {
     isLoading.value = true;
     error.value = null;
     try {
+        const fingerprint = await getFingerprint();
         const response = await axios.post('/api/public/tickets', {
             ...form.value,
             recaptcha_token: 'fallback-initiated',
-            recaptcha_v2_token: v2Token
+            recaptcha_v2_token: v2Token,
+            fingerprint: fingerprint
         });
         result.value = response.data;
         isSuccess.value = true;
-        form.value = { name: '', email: '', title: '', category: '', description: '' };
+        form.value = { name: '', email: '', title: '', category: '', description: '', website_url: '' };
     } catch (e: any) {
         error.value = e.response?.data?.message || 'Failed to submit ticket (challenge failed).';
     } finally {
@@ -107,22 +117,32 @@ const handleChallengeVerified = async (v2Token: string) => {
                     <div class="grid sm:grid-cols-2 gap-6">
                         <div>
                             <label class="block text-sm font-medium text-[var(--text-primary)] mb-1.5">Your Name</label>
-                            <input v-model="form.name" type="text" required class="input" placeholder="John Doe" />
+                            <input v-model="form.name" type="text" required maxlength="255" class="input" placeholder="John Doe" />
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-[var(--text-primary)] mb-1.5">Email Address</label>
-                            <input v-model="form.email" type="email" required class="input" placeholder="john@example.com" />
+                            <input v-model="form.email" type="email" required maxlength="255" class="input" placeholder="john@example.com" />
                         </div>
                     </div>
 
                     <div>
                         <label class="block text-sm font-medium text-[var(--text-primary)] mb-1.5">Subject</label>
-                        <input v-model="form.title" type="text" required class="input" placeholder="Briefly describe your issue" />
+                        <input v-model="form.title" type="text" required maxlength="255" class="input" placeholder="Briefly describe your issue" />
                     </div>
                     
                     <div>
-                        <label class="block text-sm font-medium text-[var(--text-primary)] mb-1.5">Description</label>
-                        <textarea v-model="form.description" required rows="5" class="input resize-none" placeholder="Please provide as much detail as possible..."></textarea>
+                        <div class="flex justify-between items-center mb-1.5">
+                            <label class="block text-sm font-medium text-[var(--text-primary)]">Description</label>
+                            <span :class="['text-xs', form.description.length > 9500 ? 'text-red-500 font-medium' : 'text-[var(--text-secondary)]']">
+                                {{ form.description.length.toLocaleString() }} / 10,000
+                            </span>
+                        </div>
+                        <textarea v-model="form.description" required rows="5" maxlength="10000" class="input resize-none" placeholder="Please provide as much detail as possible..."></textarea>
+                    </div>
+
+                    <!-- Honeypot field - hidden from users -->
+                    <div style="display: none;" aria-hidden="true">
+                        <input v-model="form.website_url" type="text" name="website_url" tabindex="-1" autocomplete="off" />
                     </div>
 
                     <div class="flex justify-end">

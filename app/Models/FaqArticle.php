@@ -109,9 +109,19 @@ class FaqArticle extends Model implements HasMedia
 
     public function registerMediaConversions(?Media $media = null): void
     {
+        $this->addMediaConversion('thumb')
+            ->width(200)
+            ->height(200)
+            ->sharpen(10)
+            ->format('webp')
+            ->optimize()
+            ->performOnCollections('images');
+
         $this->addMediaConversion('preview')
             ->width(800)
             ->height(600)
+            ->format('webp')
+            ->optimize()
             ->performOnCollections('images');
     }
 }

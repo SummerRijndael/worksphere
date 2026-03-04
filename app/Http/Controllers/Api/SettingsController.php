@@ -7,12 +7,14 @@ use App\Models\Setting;
 use App\Services\AppSettingsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 class SettingsController extends Controller
 {
     public function __construct(
         protected AppSettingsService $settingsService,
-        protected \App\Services\AuditService $auditService
+        protected \App\Services\AuditService $auditService,
+        protected \App\Services\FileSecurityValidator $fileValidator
     ) {}
 
     /**
@@ -290,7 +292,10 @@ class SettingsController extends Controller
             'logo' => ['required', 'file', 'mimes:png,jpg,jpeg,svg,webp', 'max:2048'],
         ]);
 
-        $path = $request->file('logo')->store('branding', 'public');
+        $file = $request->file('logo');
+        $this->fileValidator->validate($file);
+
+        $path = $file->storeAs('branding', Str::uuid().'.'.$file->getClientOriginalExtension(), 'public');
         $url = \Illuminate\Support\Facades\Storage::disk('public')->url($path);
 
         $this->settingsService->set('app.logo', $url, ['group' => 'app', 'type' => 'string']);
@@ -310,7 +315,10 @@ class SettingsController extends Controller
             'favicon' => ['required', 'file', 'mimes:png,jpg,jpeg,svg,webp,ico', 'max:1024'],
         ]);
 
-        $path = $request->file('favicon')->store('branding', 'public');
+        $file = $request->file('favicon');
+        $this->fileValidator->validate($file);
+
+        $path = $file->storeAs('branding', Str::uuid().'.'.$file->getClientOriginalExtension(), 'public');
         $url = \Illuminate\Support\Facades\Storage::disk('public')->url($path);
 
         $this->settingsService->set('app.favicon', $url, ['group' => 'app', 'type' => 'string']);
@@ -330,7 +338,10 @@ class SettingsController extends Controller
             'opengraph' => ['required', 'file', 'mimes:png,jpg,jpeg,webp', 'max:4096'],
         ]);
 
-        $path = $request->file('opengraph')->store('branding', 'public');
+        $file = $request->file('opengraph');
+        $this->fileValidator->validate($file);
+
+        $path = $file->storeAs('branding', Str::uuid().'.'.$file->getClientOriginalExtension(), 'public');
         $url = \Illuminate\Support\Facades\Storage::disk('public')->url($path);
 
         $this->settingsService->set('app.opengraph', $url, ['group' => 'app', 'type' => 'string']);

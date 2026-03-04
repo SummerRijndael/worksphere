@@ -127,7 +127,7 @@ class MeetingService implements MeetingServiceContract
 
         // 1. Basic Meeting Status Checks
         $isHost = $user && $meeting->user_id === $user->id;
-        
+
         if ($meeting->status === 'ended' && ! $isHost) {
             abort(403, 'This meeting has already ended.');
         }
@@ -136,8 +136,9 @@ class MeetingService implements MeetingServiceContract
         if ($isHost && $meeting->status !== 'active') {
             $meeting->update([
                 'status' => 'active',
-                'actual_start_time' => now()
+                'actual_start_time' => now(),
             ]);
+            broadcast(new \App\Events\Meetings\MeetingStatusUpdated($meeting));
         }
         Log::channel('videocall')->info('[504_DEBUG] Step 1: Status check done', ['time' => microtime(true) - $start]);
 
@@ -223,7 +224,6 @@ class MeetingService implements MeetingServiceContract
         }
         Log::channel('videocall')->info('[504_DEBUG] Step 4.5: Capacity check done', ['time' => microtime(true) - $start]);
 
-
         // 5. Determine participant status
         // If whitelisted or host, bypass wait room. Otherwise check lobby_enabled
         $lobbyEnabled = $meeting->settings['lobby_enabled'] ?? true;
@@ -298,7 +298,7 @@ class MeetingService implements MeetingServiceContract
                     'status' => $status,
                     'metadata' => [
                         'is_companion' => $isCompanion,
-                        'display_name_override' => $isCompanion ? $user->name . ' (Presentation)' : null,
+                        'display_name_override' => $isCompanion ? $user->name.' (Presentation)' : null,
                         'fingerprint' => [
                             'ip' => request()->ip(),
                             'ua' => request()->userAgent(),

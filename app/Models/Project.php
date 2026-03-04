@@ -191,11 +191,15 @@ class Project extends Model implements HasMedia
             ->width(200)
             ->height(200)
             ->sharpen(10)
+            ->format('webp')
+            ->optimize()
             ->performOnCollections('gallery');
 
         $this->addMediaConversion('preview')
             ->width(800)
             ->height(600)
+            ->format('webp')
+            ->optimize()
             ->performOnCollections('gallery');
     }
 

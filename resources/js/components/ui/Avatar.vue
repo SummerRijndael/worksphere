@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 
 const props = defineProps({
     src: String,
+    thumbUrl: String,
     alt: String,
     fallback: String,
     color: { // Added this to fix the missing 'color' variable error
@@ -117,9 +118,10 @@ function handleLoad(e) {
     <div :class="containerClasses">
         <div :class="innerClasses" :style="{ backgroundColor: !src || hasError ? color : undefined }">
             <img
-                v-if="src && !hasError"
-                :src="src"
+                v-if="(thumbUrl || src) && !hasError"
+                :src="thumbUrl || src"
                 :alt="alt"
+                loading="lazy"
                 class="h-full w-full object-cover"
                 @error="handleError"
                 @load="handleLoad"

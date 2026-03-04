@@ -597,6 +597,17 @@ const routes: RouteRecordRaw[] = [
                 },
             },
             {
+                path: "meetings/:id",
+                name: "meeting-details",
+                component: () => import("@/views/meetings/MeetingDetailsView.vue"),
+                meta: {
+                    title: "Meeting Details",
+                    breadcrumb: "Meeting Details",
+                    breadcrumbParent: { name: "meetings", label: "Meetings" },
+                    transition: "slide-fade",
+                },
+            },
+            {
                 path: "notes",
                 name: "notes",
                 component: () => import("@/views/NotesView.vue"),

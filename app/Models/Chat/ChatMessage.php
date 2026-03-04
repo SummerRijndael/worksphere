@@ -156,7 +156,6 @@ class ChatMessage extends Model implements HasMedia
                 'text/plain',
                 // Other
                 'application/octet-stream',
-                'application/x-empty',
             ]);
     }
 

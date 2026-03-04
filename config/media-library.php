@@ -153,6 +153,7 @@ return [
             '-pass 10', // for maximizing the amount of analysis pass.
             '-mt', // multithreading for some speed improvements.
             '-q 90', // quality factor that brings the least noticeable changes.
+            '-metadata none', // strip all EXIF and metadata for privacy
         ],
         Spatie\ImageOptimizer\Optimizers\Avifenc::class => [
             '-a cq-level=23', // constant quality level, lower values mean better quality and greater file size (0-63).

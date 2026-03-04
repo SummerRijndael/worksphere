@@ -45,12 +45,12 @@ class MeetingController extends Controller
         $this->authorize('create', Meeting::class);
 
         $request->validate([
-            'title'                    => 'required|string|max:255',
-            'description'              => 'nullable|string|max:1000',
-            'start_time'               => 'required|date',
-            'end_time'                 => 'nullable|date|after:start_time',
-            'settings'                 => 'nullable|array',
-            'password'                 => [
+            'title' => 'required|string|max:255',
+            'description' => 'nullable|string|max:1000',
+            'start_time' => 'required|date',
+            'end_time' => 'nullable|date|after:start_time',
+            'settings' => 'nullable|array',
+            'password' => [
                 'nullable',
                 'string',
                 'max:100',
@@ -61,15 +61,15 @@ class MeetingController extends Controller
                     }
                 },
             ],
-            'auto_generate_password'   => 'nullable|boolean',
-            'save_to_calendar'         => 'nullable|boolean',
-            'reminder_minutes_before'  => 'nullable|integer|min:0',
-            'send_invite'              => 'nullable|boolean',
-            'participants'             => 'nullable|array',
-            'participants.*.type'      => 'required_with:participants|in:user,email',
-            'participants.*.id'        => 'nullable|string',
-            'participants.*.email'     => 'nullable|email',
-            'participants.*.name'      => 'nullable|string',
+            'auto_generate_password' => 'nullable|boolean',
+            'save_to_calendar' => 'nullable|boolean',
+            'reminder_minutes_before' => 'nullable|integer|min:0',
+            'send_invite' => 'nullable|boolean',
+            'participants' => 'nullable|array',
+            'participants.*.type' => 'required_with:participants|in:user,email',
+            'participants.*.id' => 'nullable|string',
+            'participants.*.email' => 'nullable|email',
+            'participants.*.name' => 'nullable|string',
         ]);
 
         $existing = Meeting::where('user_id', Auth::id())
@@ -85,15 +85,15 @@ class MeetingController extends Controller
         $password = $request->password;
         if ($request->auto_generate_password) {
             // Generate a strong password: e.g., "A1b2C3d4!"
-            $password = Str::password(12, true, true, false, false); 
+            $password = Str::password(12, true, true, false, false);
         }
 
         $data = $request->only(['title', 'description', 'start_time', 'end_time', 'settings']);
-        $data['password']         = $password;
+        $data['password'] = $password;
         $data['save_to_calendar'] = $request->boolean('save_to_calendar');
         $data['reminder_minutes_before'] = $request->input('reminder_minutes_before');
-        $data['send_invite']      = $request->boolean('send_invite');
-        $data['participants']     = $request->input('participants', []);
+        $data['send_invite'] = $request->boolean('send_invite');
+        $data['participants'] = $request->input('participants', []);
 
         try {
             $meeting = $this->meetingService->createMeeting($request->user(), $data);
@@ -672,9 +672,9 @@ class MeetingController extends Controller
 
         $meeting->update([
             'status' => 'ended',
-            'actual_end_time' => now(),
+            'actual_end_time' => $meeting->actual_end_time ?? now(),
             'unique_participant_count' => $uniqueCount,
-            'peak_participant_count' => $uniqueCount, // Using total as peak estimate for now
+            // We retain the peak_participant_count calculated during the meeting
         ]);
         $hostParticipant = $meeting->participants()->where('user_id', Auth::id())->first();
 
@@ -684,6 +684,8 @@ class MeetingController extends Controller
             'meeting-ended',
             ['ended_by' => $hostParticipant?->public_id ?? 'system']
         ));
+
+        broadcast(new \App\Events\Meetings\MeetingStatusUpdated($meeting));
 
         return response()->json(['message' => 'Meeting ended.']);
     }
