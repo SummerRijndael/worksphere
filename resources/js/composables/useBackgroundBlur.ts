@@ -400,7 +400,6 @@ export function useBackgroundBlur() {
         };
 
         const renderChromaKeyResult = (maskData: Float32Array, width: number, height: number) => {
-            lastSuccessfulFrameTime = performance.now();
             
             if (!maskImageData || maskImageDataWidth !== width || maskImageDataHeight !== height) {
                 maskImageData = new ImageData(width, height);
