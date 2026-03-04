@@ -57,6 +57,8 @@ export function useBackgroundBlur() {
     let maskImageData: ImageData | null = null;
     let maskImageDataWidth = 0;
     let maskImageDataHeight = 0;
+    let maskFeatherCanvas: HTMLCanvasElement | null = null;
+    let maskFeatherCtx: CanvasRenderingContext2D | null = null;
 
     // Adaptive quality: track actual FPS to decide if we should downgrade model
     const FPS_WINDOW = 30; // sliding window of last N frame timestamps
@@ -239,6 +241,7 @@ export function useBackgroundBlur() {
         if (blurCtx) {
             blurCtx.imageSmoothingEnabled = true;
             blurCtx.imageSmoothingQuality = 'high';
+            blurCtx.filter = isMobile ? 'blur(4px)' : 'blur(8px)';
         }
 
         if (!personCanvas) personCanvas = document.createElement("canvas");
@@ -313,6 +316,7 @@ export function useBackgroundBlur() {
                         if (blurCtx) {
                             blurCtx.imageSmoothingEnabled = true;
                             blurCtx.imageSmoothingQuality = 'high';
+                            blurCtx.filter = isMobile ? 'blur(4px)' : 'blur(8px)';
                         }
                     }
     
@@ -437,7 +441,21 @@ export function useBackgroundBlur() {
             }
 
             createImageBitmap(maskImageData).then(bmp => {
-                drawComposition(bmp, true);
+                if (!maskFeatherCanvas) {
+                    maskFeatherCanvas = document.createElement("canvas");
+                    maskFeatherCtx = maskFeatherCanvas.getContext("2d");
+                }
+                if (maskFeatherCanvas && maskFeatherCtx) {
+                    if (maskFeatherCanvas.width !== width) maskFeatherCanvas.width = width;
+                    if (maskFeatherCanvas.height !== height) maskFeatherCanvas.height = height;
+                    maskFeatherCtx.clearRect(0, 0, width, height);
+                    maskFeatherCtx.filter = 'blur(4px)';
+                    maskFeatherCtx.drawImage(bmp, 0, 0);
+                    drawComposition(maskFeatherCanvas, false);
+                    bmp.close();
+                } else {
+                    drawComposition(bmp, true);
+                }
             }).catch(e => {
                 console.error("[BackgroundBlur] ChromaKey createImageBitmap failed", e);
                 if (ctx && canvas) ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -501,7 +519,21 @@ export function useBackgroundBlur() {
                      updateFraming(maskData, width, height);
                  }
                  createImageBitmap(maskImageData).then(bmp => {
-                     drawComposition(bmp, true);
+                     if (!maskFeatherCanvas) {
+                         maskFeatherCanvas = document.createElement("canvas");
+                         maskFeatherCtx = maskFeatherCanvas.getContext("2d");
+                     }
+                     if (maskFeatherCanvas && maskFeatherCtx) {
+                         if (maskFeatherCanvas.width !== width) maskFeatherCanvas.width = width;
+                         if (maskFeatherCanvas.height !== height) maskFeatherCanvas.height = height;
+                         maskFeatherCtx.clearRect(0, 0, width, height);
+                         maskFeatherCtx.filter = 'blur(4px)';
+                         maskFeatherCtx.drawImage(bmp, 0, 0);
+                         drawComposition(maskFeatherCanvas, false);
+                         bmp.close();
+                     } else {
+                         drawComposition(bmp, true);
+                     }
                  }).catch(e => {
                      console.error("[BackgroundBlur] ConfidenceMask createImageBitmap failed", e);
                      // Fallback: draw raw video if bitmap creation fails
@@ -553,7 +585,21 @@ export function useBackgroundBlur() {
                  }
 
                  createImageBitmap(maskImageData).then(bmp => {
-                     drawComposition(bmp, true);
+                     if (!maskFeatherCanvas) {
+                         maskFeatherCanvas = document.createElement("canvas");
+                         maskFeatherCtx = maskFeatherCanvas.getContext("2d");
+                     }
+                     if (maskFeatherCanvas && maskFeatherCtx) {
+                         if (maskFeatherCanvas.width !== width) maskFeatherCanvas.width = width;
+                         if (maskFeatherCanvas.height !== height) maskFeatherCanvas.height = height;
+                         maskFeatherCtx.clearRect(0, 0, width, height);
+                         maskFeatherCtx.filter = 'blur(4px)';
+                         maskFeatherCtx.drawImage(bmp, 0, 0);
+                         drawComposition(maskFeatherCanvas, false);
+                         bmp.close();
+                     } else {
+                         drawComposition(bmp, true);
+                     }
                  }).catch(e => {
                      console.error("[BackgroundBlur] CategoryMask createImageBitmap failed", e);
                      if (ctx && canvas) {
@@ -568,9 +614,9 @@ export function useBackgroundBlur() {
             }
         };
         
-        const drawComposition = (mask: ImageBitmap, shouldClose: boolean) => {
+        const drawComposition = (mask: ImageBitmap | HTMLCanvasElement, shouldClose: boolean) => {
              if (!ctx || !canvas || !video || !blurCtx || !personCtx || !blurCanvas || !personCanvas) {
-                 if (shouldClose) mask.close();
+                 if (shouldClose && mask instanceof ImageBitmap) mask.close();
                  // Even if we can't draw the composition, we MUST trigger the next frame
                  animationFrameId = requestAnimationFrame(draw);
                  return;
@@ -643,7 +689,7 @@ export function useBackgroundBlur() {
              
              ctx.drawImage(personCanvas, 0, 0, w, h);
              
-             if (shouldClose) {
+             if (shouldClose && mask instanceof ImageBitmap) {
                 mask.close();
              }
              
