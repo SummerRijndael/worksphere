@@ -57,8 +57,6 @@ export function useBackgroundBlur() {
     let maskImageData: ImageData | null = null;
     let maskImageDataWidth = 0;
     let maskImageDataHeight = 0;
-    let maskFeatherCanvas: HTMLCanvasElement | null = null;
-    let maskFeatherCtx: CanvasRenderingContext2D | null = null;
 
     // Adaptive quality: track actual FPS to decide if we should downgrade model
     const FPS_WINDOW = 30; // sliding window of last N frame timestamps
@@ -233,7 +231,7 @@ export function useBackgroundBlur() {
         
         // Setup offscreen canvases
         if (!blurCanvas) blurCanvas = document.createElement("canvas");
-        const blurDownsample = isMobile ? 12 : 8;
+        const blurDownsample = isMobile ? 12 : 8; // Heavier downsample for a massive Gaussian effect
         // Blur canvas is even smaller for performance
         blurCanvas.width = Math.round(targetWidth / blurDownsample); 
         blurCanvas.height = Math.round(targetHeight / blurDownsample);
@@ -241,7 +239,6 @@ export function useBackgroundBlur() {
         if (blurCtx) {
             blurCtx.imageSmoothingEnabled = true;
             blurCtx.imageSmoothingQuality = 'high';
-            blurCtx.filter = isMobile ? 'blur(4px)' : 'blur(8px)';
         }
 
         if (!personCanvas) personCanvas = document.createElement("canvas");
@@ -316,7 +313,6 @@ export function useBackgroundBlur() {
                         if (blurCtx) {
                             blurCtx.imageSmoothingEnabled = true;
                             blurCtx.imageSmoothingQuality = 'high';
-                            blurCtx.filter = isMobile ? 'blur(4px)' : 'blur(8px)';
                         }
                     }
     
@@ -418,7 +414,42 @@ export function useBackgroundBlur() {
             return mask;
         };
 
+        function fastBoxBlur(data: Float32Array, width: number, height: number, radius: number) {
+            if (radius < 1) return;
+            const temp = new Float32Array(data.length);
+            
+            // Horizontal
+            for (let y = 0; y < height; y++) {
+                let sum = 0;
+                for (let i = -radius; i <= radius; i++) {
+                    const x = Math.min(Math.max(i, 0), width - 1);
+                    sum += data[y * width + x];
+                }
+                for (let x = 0; x < width; x++) {
+                    temp[y * width + x] = sum / (2 * radius + 1);
+                    const nextX = Math.min(x + radius + 1, width - 1);
+                    const prevX = Math.max(x - radius, 0);
+                    sum += data[y * width + nextX] - data[y * width + prevX];
+                }
+            }
+            // Vertical
+            for (let x = 0; x < width; x++) {
+                let sum = 0;
+                for (let i = -radius; i <= radius; i++) {
+                    const y = Math.min(Math.max(i, 0), height - 1);
+                    sum += temp[y * width + x];
+                }
+                for (let y = 0; y < height; y++) {
+                    data[y * width + x] = sum / (2 * radius + 1);
+                    const nextY = Math.min(y + radius + 1, height - 1);
+                    const prevY = Math.max(y - radius, 0);
+                    sum += temp[nextY * width + x] - temp[prevY * width + x];
+                }
+            }
+        }
+
         const renderChromaKeyResult = (maskData: Float32Array, width: number, height: number) => {
+            fastBoxBlur(maskData, width, height, isMobile ? 2 : 3);
             
             if (!maskImageData || maskImageDataWidth !== width || maskImageDataHeight !== height) {
                 maskImageData = new ImageData(width, height);
@@ -441,21 +472,7 @@ export function useBackgroundBlur() {
             }
 
             createImageBitmap(maskImageData).then(bmp => {
-                if (!maskFeatherCanvas) {
-                    maskFeatherCanvas = document.createElement("canvas");
-                    maskFeatherCtx = maskFeatherCanvas.getContext("2d");
-                }
-                if (maskFeatherCanvas && maskFeatherCtx) {
-                    if (maskFeatherCanvas.width !== width) maskFeatherCanvas.width = width;
-                    if (maskFeatherCanvas.height !== height) maskFeatherCanvas.height = height;
-                    maskFeatherCtx.clearRect(0, 0, width, height);
-                    maskFeatherCtx.filter = 'blur(4px)';
-                    maskFeatherCtx.drawImage(bmp, 0, 0);
-                    drawComposition(maskFeatherCanvas, false);
-                    bmp.close();
-                } else {
-                    drawComposition(bmp, true);
-                }
+                drawComposition(bmp, true);
             }).catch(e => {
                 console.error("[BackgroundBlur] ChromaKey createImageBitmap failed", e);
                 if (ctx && canvas) ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -496,6 +513,9 @@ export function useBackgroundBlur() {
                      return;
                  }
 
+                 // Software blur on the float mask data directly for superior soft-edge rendering
+                 fastBoxBlur(maskData, width, height, isMobile ? 2 : 3);
+
                  // Reuse or create ImageData for mask
                  if (!maskImageData || maskImageDataWidth !== width || maskImageDataHeight !== height) {
                      maskImageData = new ImageData(width, height);
@@ -519,21 +539,7 @@ export function useBackgroundBlur() {
                      updateFraming(maskData, width, height);
                  }
                  createImageBitmap(maskImageData).then(bmp => {
-                     if (!maskFeatherCanvas) {
-                         maskFeatherCanvas = document.createElement("canvas");
-                         maskFeatherCtx = maskFeatherCanvas.getContext("2d");
-                     }
-                     if (maskFeatherCanvas && maskFeatherCtx) {
-                         if (maskFeatherCanvas.width !== width) maskFeatherCanvas.width = width;
-                         if (maskFeatherCanvas.height !== height) maskFeatherCanvas.height = height;
-                         maskFeatherCtx.clearRect(0, 0, width, height);
-                         maskFeatherCtx.filter = 'blur(4px)';
-                         maskFeatherCtx.drawImage(bmp, 0, 0);
-                         drawComposition(maskFeatherCanvas, false);
-                         bmp.close();
-                     } else {
-                         drawComposition(bmp, true);
-                     }
+                     drawComposition(bmp, true);
                  }).catch(e => {
                      console.error("[BackgroundBlur] ConfidenceMask createImageBitmap failed", e);
                      // Fallback: draw raw video if bitmap creation fails
@@ -558,15 +564,22 @@ export function useBackgroundBlur() {
                      return;
                  }
                  
+                 const floatMaskData = new Float32Array(maskData.length);
+                 for (let i = 0; i < maskData.length; i++) {
+                     floatMaskData[i] = maskData[i] > 0 ? 1.0 : 0.0;
+                 }
+                 
+                 // Apply software blur for Category mask
+                 fastBoxBlur(floatMaskData, width, height, isMobile ? 2 : 3);
+
                  if (!maskImageData || maskImageDataWidth !== width || maskImageDataHeight !== height) {
                      maskImageData = new ImageData(width, height);
                      maskImageDataWidth = width;
                      maskImageDataHeight = height;
                  }
                  const data = maskImageData.data;
-                 for (let i = 0; i < maskData.length; i++) {
-                     const val = maskData[i]; // Class index
-                     const alpha = val > 0 ? 255 : 0; // 0 = background
+                 for (let i = 0; i < floatMaskData.length; i++) {
+                     const alpha = Math.round(floatMaskData[i] * 255);
                      
                      const j = i * 4;
                      data[j] = 255;       // R
@@ -576,30 +589,11 @@ export function useBackgroundBlur() {
                  }
                  
                  if (isAutoFramingEnabled) {
-                     // Convert Uint8Array to Float32Array for updateFraming
-                     const floatMaskData = new Float32Array(maskData.length);
-                     for (let i = 0; i < maskData.length; i++) {
-                         floatMaskData[i] = maskData[i] > 0 ? 1.0 : 0.0;
-                     }
                      updateFraming(floatMaskData, width, height);
                  }
 
                  createImageBitmap(maskImageData).then(bmp => {
-                     if (!maskFeatherCanvas) {
-                         maskFeatherCanvas = document.createElement("canvas");
-                         maskFeatherCtx = maskFeatherCanvas.getContext("2d");
-                     }
-                     if (maskFeatherCanvas && maskFeatherCtx) {
-                         if (maskFeatherCanvas.width !== width) maskFeatherCanvas.width = width;
-                         if (maskFeatherCanvas.height !== height) maskFeatherCanvas.height = height;
-                         maskFeatherCtx.clearRect(0, 0, width, height);
-                         maskFeatherCtx.filter = 'blur(4px)';
-                         maskFeatherCtx.drawImage(bmp, 0, 0);
-                         drawComposition(maskFeatherCanvas, false);
-                         bmp.close();
-                     } else {
-                         drawComposition(bmp, true);
-                     }
+                     drawComposition(bmp, true);
                  }).catch(e => {
                      console.error("[BackgroundBlur] CategoryMask createImageBitmap failed", e);
                      if (ctx && canvas) {
@@ -614,7 +608,7 @@ export function useBackgroundBlur() {
             }
         };
         
-        const drawComposition = (mask: ImageBitmap | HTMLCanvasElement, shouldClose: boolean) => {
+        const drawComposition = (mask: ImageBitmap, shouldClose: boolean) => {
              if (!ctx || !canvas || !video || !blurCtx || !personCtx || !blurCanvas || !personCanvas) {
                  if (shouldClose && mask instanceof ImageBitmap) mask.close();
                  // Even if we can't draw the composition, we MUST trigger the next frame
@@ -666,11 +660,19 @@ export function useBackgroundBlur() {
               };
 
              // 1. Prepare blurred background (on small canvas)
+             if (currentEffect === 'blur') {
+                 blurCtx.filter = isMobile ? 'blur(8px)' : 'blur(16px)'; // Strong Gaussian-like distribution
+             } else {
+                 blurCtx.filter = 'none';
+             }
              drawOptimized(blurCtx, video, blurCanvas.width, blurCanvas.height);
+             blurCtx.filter = 'none';
 
              // 2. Prepare person with mask feathering — single draw, no redundant pass
              personCtx.clearRect(0, 0, w, h);
              personCtx.save();
+             // Mask is already mathematically feathered. No CSS filter required here.
+             personCtx.filter = 'none';
              drawOptimized(personCtx, mask, w, h);
              personCtx.restore();
              
