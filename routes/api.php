@@ -1070,6 +1070,7 @@ Route::middleware(['throttle:meetings'])->prefix('meetings')->group(function () 
     Route::post('/{meeting}/recording/stop', [\App\Http\Controllers\Api\MeetingRecordingController::class, 'stop']);
     Route::post('/{meeting}/recording/force-stop', [\App\Http\Controllers\Api\MeetingRecordingController::class, 'forceStop']);
     Route::get('/{meeting}/recordings', [\App\Http\Controllers\Api\MeetingRecordingController::class, 'index']);
+    Route::post('/{meeting}/recordings/{recording}/sync', [\App\Http\Controllers\Api\MeetingRecordingController::class, 'sync']);
 
     // SFU Proxy Routes — exclude content-scanning firewall middleware
     // SDP and WebRTC data triggers false positives in XSS/SQLi/LFI detectors
@@ -1091,7 +1092,6 @@ Route::middleware(['throttle:meetings'])->prefix('meetings')->group(function () 
 // Configure the URL in: dash.realtime.cloudflare.com → Your App → Webhooks
 Route::post('/webhooks/cloudflare/recording', [\App\Http\Controllers\Api\MeetingRecordingController::class, 'webhook'])
     ->middleware('throttle:60,1');
-
 
 // Two-Factor Challenge routes (no auth required, but rate limited)
 Route::middleware(['throttle:sensitive'])->group(function () {

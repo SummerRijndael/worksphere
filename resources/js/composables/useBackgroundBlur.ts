@@ -72,7 +72,7 @@ export function useBackgroundBlur() {
         isLoading.value = true;
         try {
              const vision = await FilesetResolver.forVisionTasks(
-                "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.32/wasm"
+                "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
             );
             
             // Device-aware model selection: Landscape (Lite) for mobile/weak CPUs, Full for Desktop
@@ -96,7 +96,7 @@ export function useBackgroundBlur() {
             console.warn("GPU Failed, trying CPU", e);
              try {
                     const vision = await FilesetResolver.forVisionTasks(
-                        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.32/wasm"
+                        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
                     );
                     // Fallback to CPU + int8 quantized model for absolute potato devices
                     const modelPath = isLowEnd 
@@ -200,11 +200,6 @@ export function useBackgroundBlur() {
         if (!canvas) {
             canvas = document.createElement("canvas");
             ctx = canvas.getContext("2d");
-            // Set once — no need to reset on every frame
-            if (ctx) {
-                ctx.imageSmoothingEnabled = true;
-                ctx.imageSmoothingQuality = 'medium';
-            }
         }
         
         // Resolution Strategy: True 720p for recording, 360p fallback for true potatoes
@@ -224,8 +219,14 @@ export function useBackgroundBlur() {
             }
         }
         
+        // Setting width/height resets the canvas context state!
         canvas.width = targetWidth;
         canvas.height = targetHeight;
+        if (ctx) {
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'medium';
+        }
+
 
         
         // Setup offscreen canvases
@@ -292,6 +293,11 @@ export function useBackgroundBlur() {
                     console.log(`[BackgroundBlur] Updating dimensions to ${newTargetWidth}x${newTargetHeight}`);
                     canvas.width = newTargetWidth;
                     canvas.height = newTargetHeight;
+                    
+                    if (ctx) {
+                        ctx.imageSmoothingEnabled = true;
+                        ctx.imageSmoothingQuality = 'medium';
+                    }
                     
                     if (blurCanvas) {
                         const blurDownsample = isMobile ? 12 : 8;
@@ -725,7 +731,7 @@ export function useBackgroundBlur() {
             }
 
             const vision = await FilesetResolver.forVisionTasks(
-                "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.32/wasm"
+                "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
             );
 
             const liteModel = "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter_landscape/float16/latest/selfie_segmenter_landscape.tflite";

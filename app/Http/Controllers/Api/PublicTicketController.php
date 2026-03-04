@@ -26,10 +26,14 @@ class PublicTicketController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|email|max:255',
             'title' => 'required|string|max:255',
-            'description' => 'required|string',
-            'category' => 'nullable|string', // Optional categorization
+            'description' => 'required|string|max:10000',
+            'category' => 'nullable|string|max:255',
             'recaptcha_token' => 'required|string',
             'recaptcha_v2_token' => 'nullable|string',
+            'fingerprint' => 'nullable|string|min:16|max:64',
+            'website_url' => 'nullable|string|max:0', // Honeypot field - must be empty
+        ], [
+            'website_url.max' => 'Security check: Invalid submission.',
         ]);
 
         // Check for v2 token first (fallback flow)

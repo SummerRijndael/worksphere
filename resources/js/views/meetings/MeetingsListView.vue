@@ -243,6 +243,10 @@
                                     <Icon name="copy" size="14" class="mr-2" />
                                     Copy Link
                                 </DropdownItem>
+                                <DropdownItem @select="router.push({ name: 'meeting-details', params: { id: meeting.public_id } })">
+                                    <Icon name="bar-chart-2" size="14" class="mr-2" />
+                                    View Details
+                                </DropdownItem>
                                 <DropdownItem
                                     v-if="isOwner(meeting)"
                                     @select="editingMeeting = meeting"
@@ -462,7 +466,9 @@ import { Icon, Dropdown, DropdownItem, Avatar } from "@/components/ui";
 import { toast } from "vue-sonner";
 import dayjs from "dayjs";
 import { useAuthStore } from "@/stores/auth";
+import { formatTimeAgo } from "@/utils/date";
 import { useMeeting } from "@/composables/useMeeting";
+import echo, { isEchoAvailable } from "@/echo";
 
 const authStore = useAuthStore();
 const router = useRouter();
@@ -547,16 +553,12 @@ const handleWindowFocus = () => {
     }
 };
 
-// Watch auto-refresh toggle
+// Remove manual polling logic block entirely
+// Silent fetch functions are kept for the 'focus' handler
 watch(autoRefreshEnabled, (enabled) => {
     if (enabled) {
-        pollInterval = setInterval(silentFetchMeetings, POLL_INTERVAL_MS);
         window.addEventListener("focus", handleWindowFocus);
     } else {
-        if (pollInterval) {
-            clearInterval(pollInterval);
-            pollInterval = null;
-        }
         window.removeEventListener("focus", handleWindowFocus);
     }
 });
@@ -684,16 +686,39 @@ const getMeetingDisplayCount = (meeting: Meeting) => {
     return meeting.participants?.length ?? 0;
 };
 
+// Start listening once echo is available
+const startEchoListener = () => {
+    if (authStore.user && isEchoAvailable()) {
+        echo.private(`user.${authStore.user.id}`)
+            .listen('.App\\Events\\Meetings\\MeetingStatusUpdated', (e: any) => {
+                const meeting = meetings.value.find(m => m.public_id === e.id);
+                if (meeting) {
+                    meeting.status = e.status;
+                } else {
+                    silentFetchMeetings();
+                }
+            });
+    }
+};
+
 onMounted(() => {
     fetchMeetings();
     lastFetchTime = Date.now();
+    
+    // Listen for realtime meeting status updates conditionally
+    if (isEchoAvailable()) {
+        startEchoListener();
+    } else {
+        window.addEventListener('echo:connected', startEchoListener, { once: true });
+    }
 });
 
 onUnmounted(() => {
-    if (pollInterval) {
-        clearInterval(pollInterval);
-        pollInterval = null;
-    }
     window.removeEventListener("focus", handleWindowFocus);
+    window.removeEventListener('echo:connected', startEchoListener);
+    
+    if (authStore.user && isEchoAvailable()) {
+        echo.leave(`user.${authStore.user.id}`);
+    }
 });
 </script>

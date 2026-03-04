@@ -108,6 +108,12 @@ Schedule::job(new \App\Jobs\PrunePresenceJob)
     ->withoutOverlapping()
     ->onOneServer();
 
+// Auto-end stale/crashed meetings every minute
+Schedule::command('meetings:prune')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->onOneServer();
+
 // Prune audit logs daily at 2:30 AM
 Schedule::command('audit:prune --days=30')
     ->dailyAt('02:30')

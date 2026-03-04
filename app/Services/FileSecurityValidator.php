@@ -89,43 +89,49 @@ class FileSecurityValidator
         $actualMime = $finfo->file($file->getRealPath());
         $claimedMime = $file->getClientMimeType();
 
-        // Check for MIME spoofing: strict equality check
-        // Note: Browsers sometimes guess mimes poorly (e.g. generic octet-stream),
-        // so we might need a whitelist of "safe but mismatched" mimes eventually.
-        // For strict security, we enforce match or specific allowed aliases.
+        // If they match perfectly, we're good.
+        if ($actualMime === $claimedMime) {
+            return;
+        }
 
-        // Strict consistency check: Does actual mime match allowed mimes? (Already checked in validateMimeType)
+        // 1. Blacklist check: Never allow spoofing high-risk executable types.
+        $highRiskMimes = [
+            'text/x-php', 'application/x-executable', 'application/x-sharedlib',
+            'application/x-sh', 'text/x-shellscript', 'application/x-msdownload',
+        ];
 
-        // Consistency: Does actual mime match extension?
-        // This stops "image.png" being a PHP script (text/x-php).
-        // It also stops "resume.docx" being a ZIP file (application/zip).
-
-        // Optional: Check if claimed mime matches actual mime.
-        // This is what the user suggested.
-        // But be careful: a valid CSV might be uploaded as application/vnd.ms-excel but actual is text/csv.
-        // If both are allowed, it's fine. If one is allowed, we rely on validateMimeType.
-
-        // Let's implement the user's specific request for spoofing check,
-        // but maybe relax it for known harmless mismatches if needed.
-        // For now, let's try strict.
-
-        if ($actualMime !== $claimedMime) {
-            // Exception for generic octet-stream being specifically identified as something else valid
-            if ($claimedMime === 'application/octet-stream') {
-                return;
-            }
-
-            // Exception for Office vs Zip:
-            // If actual is zip, but claimed is docx -> Blocked (this is the vulnerability fix).
-            // If actual is docx, but claimed is zip -> Maybe allowed?
-
-            // The user code:
-            // if ($actualMime !== $claimedMime) throw...
-
+        if (in_array($actualMime, $highRiskMimes, true)) {
             throw ValidationException::withMessages([
-                'file' => "MIME spoofing detected. Expected '{$claimedMime}', but found '{$actualMime}'.",
+                'file' => "Security violation: High-risk file type spoofing detected.",
             ]);
         }
+
+        // 2. Whitelist check: Allow common harmless mismatches.
+        $safeMismatches = [
+            // Claimed => [Actuals]
+            'application/vnd.ms-excel' => ['text/plain', 'text/csv'],
+            'text/csv' => ['text/plain', 'application/csv', 'application/vnd.ms-excel'],
+            'image/png' => ['image/x-png'],
+            'image/jpeg' => ['image/pjpeg'],
+            'application/octet-stream' => true, // Always allow identified stream
+        ];
+
+        if (isset($safeMismatches[$claimedMime])) {
+            $allowedActuals = $safeMismatches[$claimedMime];
+            if ($allowedActuals === true || in_array($actualMime, $allowedActuals, true)) {
+                return;
+            }
+        }
+
+        // 3. Document mismatch check (Strictness for macros)
+        // If claimed is a modern office doc, but actual is just a ZIP, it's often fine,
+        // but it's a common vector for macro malware if processed incorrectly.
+        // We rely on validateMimeType to ensure both are in the global allowed list.
+
+        // Default: Throw if not a known safe mismatch
+        throw ValidationException::withMessages([
+            'file' => "File content does not match the file extension provided (MIME spoofing detected).",
+        ]);
     }
 
     /**

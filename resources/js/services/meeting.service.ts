@@ -266,6 +266,11 @@ class MeetingService extends BaseService {
         return response.data;
     }
 
+    async syncRecording(meetingId: string, recordingId: string): Promise<{ id: string; status: string }> {
+        const response = await this.api.post(`/api/meetings/${meetingId}/recordings/${recordingId}/sync`);
+        return response.data;
+    }
+
     async listRecordings(meetingId: string): Promise<any[]> {
         const response = await this.api.get(`/api/meetings/${meetingId}/recordings`);
         return response.data?.data ?? [];

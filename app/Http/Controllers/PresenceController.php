@@ -70,12 +70,22 @@ class PresenceController extends Controller
     public function meetingHeartbeat(Request $request, string $meetingId): JsonResponse
     {
         $participantPublicId = $request->input('participant_id') ?? Auth::user()?->public_id;
-        
+
         if (! $participantPublicId) {
             return response()->json(['error' => 'Participant ID required'], 400);
         }
 
         $this->presenceService->meetingHeartbeat($meetingId, $participantPublicId);
+
+        // Update peak participant count
+        $meeting = \App\Models\Meeting::where('public_id', $meetingId)->first();
+        if ($meeting && $meeting->status === 'active') {
+            $activeCount = count($this->presenceService->getActiveMeetingParticipantIds($meetingId));
+            if ($activeCount > $meeting->peak_participant_count) {
+                // We use DB::table to avoid touching timestamps unnecessarily, or just regular update since it's an active meeting
+                $meeting->update(['peak_participant_count' => $activeCount]);
+            }
+        }
 
         return response()->json(['status' => 'ok']);
     }

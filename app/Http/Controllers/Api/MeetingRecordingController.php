@@ -82,6 +82,7 @@ class MeetingRecordingController extends Controller
                 $meeting->update(['cf_meeting_id' => $cfId]);
             } catch (\Throwable $e) {
                 Log::channel('cloudflare_realtime')->error('Failed to create RealtimeKit meeting', ['error' => $e->getMessage(), 'meeting' => $meetingId]);
+
                 return response()->json(['error' => 'Failed to create recording session.'], 500);
             }
         }
@@ -94,7 +95,7 @@ class MeetingRecordingController extends Controller
         // Identify the actual participant record for this session
         $participantId = $request->header('X-Participant-ID') ?: (session('meeting_participant_id') ?: session('participant_id'));
         $participantRecord = \App\Models\MeetingParticipant::where('meeting_id', $meeting->id);
-        
+
         if ($user) {
             $participantRecord->where('user_id', $user->id);
         } elseif ($participantId) {
@@ -104,9 +105,9 @@ class MeetingRecordingController extends Controller
 
         try {
             $participant = $this->realtime->addParticipant($meeting->cf_meeting_id, [
-                'name'                  => $user?->name ?? ($participantRecord->metadata['guest_name'] ?? 'Guest'),
-                'preset_name'           => $preset,
-                'custom_participant_id' => $participantRecord?->public_id ?? ($user?->public_id ?? 'guest-' . uniqid()),
+                'name' => $user?->name ?? ($participantRecord->metadata['guest_name'] ?? 'Guest'),
+                'preset_name' => $preset,
+                'custom_participant_id' => $participantRecord?->public_id ?? ($user?->public_id ?? 'guest-'.uniqid()),
             ]);
 
             // --- STUCK RECORDING CLEANUP ---
@@ -121,15 +122,16 @@ class MeetingRecordingController extends Controller
 
             return response()->json([
                 'cf_meeting_id' => $meeting->cf_meeting_id,
-                'auth_token'    => $participant['result']['authToken'] ?? $participant['result']['token'] ?? $participant['data']['token'] ?? $participant['token'] ?? null,
-                'recording'     => $active ? [
-                    'id'         => $active->id,
-                    'status'     => $active->status,
+                'auth_token' => $participant['result']['authToken'] ?? $participant['result']['token'] ?? $participant['data']['token'] ?? $participant['token'] ?? null,
+                'recording' => $active ? [
+                    'id' => $active->id,
+                    'status' => $active->status,
                     'started_at' => $active->created_at->toISOString(),
                 ] : null,
             ]);
         } catch (\Throwable $e) {
             Log::channel('cloudflare_realtime')->error('Failed to add RealtimeKit participant', ['error' => $e->getMessage()]);
+
             return response()->json(['error' => 'Failed to join recording session.'], 500);
         }
     }
@@ -162,27 +164,28 @@ class MeetingRecordingController extends Controller
             $cfRecordingId = $cfRecording['data']['id'] ?? $cfRecording['id'] ?? null;
 
             $recording = MeetingRecording::create([
-                'meeting_id'      => $meeting->id,
-                'cf_meeting_id'   => $meeting->cf_meeting_id,
+                'meeting_id' => $meeting->id,
+                'cf_meeting_id' => $meeting->cf_meeting_id,
                 'cf_recording_id' => $cfRecordingId,
-                'started_by'      => Auth::id(),
-                'status'          => 'recording',
+                'started_by' => Auth::id(),
+                'status' => 'recording',
             ]);
 
             // Broadcast to all participants in the meeting room
             broadcast(new MeetingSignal($meeting, 'system', 'recording-started', [
                 'recording_id' => $recording->id,
-                'started_by'   => Auth::user()?->name ?? 'Host',
+                'started_by' => Auth::user()?->name ?? 'Host',
             ]))->toOthers();
 
             return response()->json([
-                'recording_id'    => $recording->id,
+                'recording_id' => $recording->id,
                 'cf_recording_id' => $cfRecordingId,
-                'status'          => 'recording',
+                'status' => 'recording',
             ]);
         } catch (\Throwable $e) {
             Log::channel('cloudflare_realtime')->error('Failed to start recording', ['error' => $e->getMessage(), 'meeting' => $meetingId]);
-            return response()->json(['error' => 'Failed to start recording: ' . $e->getMessage()], 500);
+
+            return response()->json(['error' => 'Failed to start recording: '.$e->getMessage()], 500);
         }
     }
 
@@ -217,28 +220,29 @@ class MeetingRecordingController extends Controller
 
             return response()->json([
                 'recording_id' => $recording->id,
-                'status'       => $recording->fresh()->status,
+                'status' => $recording->fresh()->status,
             ]);
         } catch (\Throwable $e) {
             $errorMessage = $e->getMessage();
-            
+
             // Gracefully handle "already stopped" recordings
             if (str_contains($errorMessage, 'is not in progress') || str_contains($errorMessage, 'UPLOADED')) {
-                 $recording->update(['status' => 'processing']);
-                 
-                 broadcast(new MeetingSignal($meeting, 'system', 'recording-stopped', [
+                $recording->update(['status' => 'processing']);
+
+                broadcast(new MeetingSignal($meeting, 'system', 'recording-stopped', [
                     'recording_id' => $recording->id,
                 ]))->toOthers();
 
-                 return response()->json([
+                return response()->json([
                     'recording_id' => $recording->id,
-                    'status'       => 'processing',
-                    'message'      => 'Recording was already stopped.'
+                    'status' => 'processing',
+                    'message' => 'Recording was already stopped.',
                 ]);
             }
 
             Log::channel('cloudflare_realtime')->error('Failed to stop recording', ['error' => $errorMessage, 'meeting' => $meetingId]);
-            return response()->json(['error' => 'Failed to stop recording: ' . $errorMessage], 500);
+
+            return response()->json(['error' => 'Failed to stop recording: '.$errorMessage], 500);
         }
     }
 
@@ -279,19 +283,20 @@ class MeetingRecordingController extends Controller
      */
     public function index(string $meetingId): JsonResponse
     {
-        $meeting = $this->resolveAuthorizedMeeting($meetingId);
+        $meeting = Meeting::where('public_id', $meetingId)->firstOrFail();
+        \Illuminate\Support\Facades\Gate::authorize('view', $meeting);
 
         $recordings = $meeting->recordings()
             ->with('startedBy:id,public_id,name')
             ->latest()
             ->get()
             ->map(fn ($r) => [
-                'id'               => $r->id,
-                'status'           => $r->status,
-                'download_url'     => $r->download_url,
+                'id' => $r->id,
+                'status' => $r->status,
+                'download_url' => $r->download_url,
                 'duration_seconds' => $r->duration_seconds,
-                'started_by'       => $r->startedBy?->name,
-                'created_at'       => $r->created_at?->toISOString(),
+                'started_by' => $r->startedBy?->name,
+                'created_at' => $r->created_at?->toISOString(),
             ]);
 
         return response()->json(['data' => $recordings]);
@@ -309,9 +314,21 @@ class MeetingRecordingController extends Controller
         // Basic check — Cloudflare can't easily sign these, so we rely on obscurity
         // for now. You can add a shared secret header check here if Cloudflare adds one.
         $cfRecordingId = $request->input('recording_id') ?? $request->input('data.id');
-        $status        = $request->input('status')       ?? $request->input('data.status');
-        $downloadUrl   = $request->input('download_url') ?? $request->input('data.download_url');
-        $duration      = $request->input('duration')     ?? $request->input('data.duration');
+        $status = $request->input('status') ?? $request->input('data.status');
+        $downloadUrl = $request->input('download_url') ?? $request->input('data.download_url');
+        $duration = $request->input('duration') ?? $request->input('data.duration');
+        // R2 integration: Cloudflare might send storage info in metadata or custom fields
+        $storagePath = $request->input('storage_path') ?? $request->input('data.storage_path');
+        $storageDisk = $request->input('storage_disk') ?? $request->input('data.storage_disk') ?? ($storagePath ? 'private' : null);
+
+        Log::channel('cloudflare_realtime')->info('Recording webhook received', [
+            'recording_id' => $cfRecordingId,
+            'status' => $status,
+            'download_url' => $downloadUrl,
+            'storage_path' => $storagePath,
+            'duration' => $duration,
+            'payload' => $request->all(),
+        ]);
 
         if (! $cfRecordingId) {
             return response()->json(['ok' => false, 'error' => 'Missing recording_id'], 400);
@@ -321,24 +338,72 @@ class MeetingRecordingController extends Controller
 
         if ($recording) {
             $recording->update(array_filter([
-                'status'           => $this->mapCfStatus($status),
-                'download_url'     => $downloadUrl,
+                'status' => $this->mapCfStatus($status),
+                'download_url' => $downloadUrl,
+                'storage_path' => $storagePath,
+                'storage_disk' => $storageDisk,
                 'duration_seconds' => $duration,
-                'cf_metadata'      => $request->all(),
+                'cf_metadata' => $request->all(),
             ]));
         }
 
         return response()->json(['ok' => true]);
     }
 
+    /**
+     * POST /api/meetings/{meeting}/recordings/{recording}/sync
+     * Manually syncs the recording status from Cloudflare.
+     */
+    public function sync(string $meetingId, string $recordingId): JsonResponse
+    {
+        $meeting = Meeting::where('public_id', $meetingId)->firstOrFail();
+        \Illuminate\Support\Facades\Gate::authorize('view', $meeting);
+
+        $recording = $meeting->recordings()->where('id', $recordingId)->firstOrFail();
+
+        abort_unless($recording->cf_recording_id, 400, 'Recording has no Cloudflare ID.');
+
+        try {
+            $cfRecording = $this->realtime->getRecording($recording->cf_recording_id);
+
+            // Log the raw result to help debug structure
+            Log::channel('cloudflare_realtime')->debug('Manual sync result', ['result' => $cfRecording]);
+
+            $status = $cfRecording['data']['status'] ?? $cfRecording['status'] ?? null;
+            $downloadUrl = $cfRecording['data']['download_url'] ?? $cfRecording['download_url'] ?? null;
+            $duration = $cfRecording['data']['duration'] ?? $cfRecording['duration'] ?? null;
+            // R2 storage often shows up in a different field in the direct API response
+            $storagePath = $cfRecording['data']['storage_path'] ?? $cfRecording['storage_path'] ?? null;
+
+            if ($status) {
+                $recording->update(array_filter([
+                    'status' => $this->mapCfStatus($status),
+                    'download_url' => $downloadUrl,
+                    'storage_path' => $storagePath,
+                    'duration_seconds' => $duration,
+                    'cf_metadata' => $cfRecording,
+                ]));
+            }
+
+            return response()->json([
+                'id' => $recording->id,
+                'status' => $recording->status,
+            ]);
+        } catch (\Throwable $e) {
+            Log::channel('cloudflare_realtime')->error('Failed to sync recording', ['error' => $e->getMessage()]);
+
+            return response()->json(['error' => 'Failed to sync with Cloudflare: '.$e->getMessage()], 500);
+        }
+    }
+
     private function mapCfStatus(?string $cfStatus): string
     {
         return match ($cfStatus) {
-            'active'     => 'recording',
+            'active' => 'recording',
             'processing' => 'processing',
-            'completed'  => 'completed',
-            'failed'     => 'failed',
-            default      => 'processing',
+            'completed' => 'completed',
+            'failed' => 'failed',
+            default => 'processing',
         };
     }
 }

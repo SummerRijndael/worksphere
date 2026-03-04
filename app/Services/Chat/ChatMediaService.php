@@ -5,6 +5,7 @@ namespace App\Services\Chat;
 use App\Models\Chat\Chat;
 use App\Models\Chat\ChatMessage;
 use App\Models\User;
+use App\Services\FileSecurityValidator;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -16,6 +17,10 @@ use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class ChatMediaService
 {
+    public function __construct(
+        protected FileSecurityValidator $fileValidator
+    ) {}
+
     // File limits per request
     public const MAX_FILES_PER_REQUEST = 10;
 
@@ -65,23 +70,8 @@ class ChatMediaService
                 );
             }
 
-            // Check file type
-            $extension = strtolower($file->getClientOriginalExtension());
-            $allowedTypes = array_merge(self::ALLOWED_IMAGE_TYPES, self::ALLOWED_DOCUMENT_TYPES);
-
-            if (! in_array($extension, $allowedTypes, true)) {
-                throw new \InvalidArgumentException(
-                    'File type .'.htmlspecialchars($extension).' is not allowed.'
-                );
-            }
-
-            // Validate MIME type server-side (don't trust client)
-            $mimeType = $file->getMimeType();
-            if (! $this->isAllowedMimeType($mimeType)) {
-                throw new \InvalidArgumentException(
-                    'File MIME type '.htmlspecialchars($mimeType).' is not allowed.'
-                );
-            }
+            // Unified security validation (extension blocking, MIME spoofing, double extension)
+            $this->fileValidator->validate($file);
 
             $totalSize += $file->getSize();
         }
