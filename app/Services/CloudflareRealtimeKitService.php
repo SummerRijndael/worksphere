@@ -95,8 +95,12 @@ class CloudflareRealtimeKitService
     {
         $maxSeconds = $options['max_seconds'] ?? 86400;
         $params = [
-            'meeting_id'  => $cfMeetingId,
-            'max_seconds' => $maxSeconds,
+            'meeting_id'   => $cfMeetingId,
+            'max_seconds'  => $maxSeconds,
+            'audio_config' => [
+                'codec'   => 'AAC',
+                'channel' => 'stereo',
+            ],
         ];
 
         // Add Watermark if enabled/configured
