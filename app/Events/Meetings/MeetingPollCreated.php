@@ -26,7 +26,12 @@ class MeetingPollCreated implements ShouldBroadcastNow
             'question' => $poll->question,
             'options' => $poll->options,
             'is_active' => true,
+            'allow_multiple' => (bool) $poll->allow_multiple,
+            'allow_change_vote' => (bool) $poll->allow_change_vote,
+            'anonymous' => (bool) $poll->anonymous,
             'vote_counts' => array_fill(0, count($poll->options), 0),
+            'voter_count' => 0,
+            'my_votes' => [],
         ];
     }
 

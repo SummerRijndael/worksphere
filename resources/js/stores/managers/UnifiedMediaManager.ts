@@ -51,6 +51,7 @@ export function createUnifiedMediaManager(
         sfuConnectionState: computed(() => activeManager.value.sfuConnectionState.value),
         sfuIceState: computed(() => activeManager.value.sfuIceState.value),
         sfuSessionId: computed(() => activeManager.value.sfuSessionId.value),
+        networkScore: computed(() => (activeManager.value as any).networkScore?.value ?? 0),
         remoteSfuSessions: legacyManager.remoteSfuSessions,
         remoteSfuTracks: legacyManager.remoteSfuTracks,
         

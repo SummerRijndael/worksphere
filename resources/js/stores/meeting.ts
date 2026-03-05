@@ -1241,6 +1241,7 @@ export const useMeetingStore = defineStore('meeting', () => {
         sfuConnectionState: stream.sfuConnectionState,
         sfuIceState: stream.sfuIceState,
         sfuPc: stream.sfuPc,
+        networkScore: stream.networkScore,
         
         // Layout Manager
         pinnedParticipantId: layout.pinnedParticipantId,

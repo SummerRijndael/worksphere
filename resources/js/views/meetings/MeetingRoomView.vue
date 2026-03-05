@@ -911,7 +911,7 @@
                 </div>
 
                 <NetworkHealthIndicator
-                    v-if="meetingStore.sfuPc()"
+                    v-if="meetingStore.sfuPc() || (meetingStore.meeting && meetingStore.meeting.recording_enabled)"
                     v-bind="networkStats"
                     compact
                     class="ml-2"
@@ -2778,7 +2778,13 @@ const POOR_CONNECTION_THRESHOLD = 5; // 5 seconds (roughly 2 intervals)
 
 async function updateNetworkStats() {
     const pc = meetingStore.sfuPc();
-    if (!pc) return;
+    if (!pc) {
+        // SDK Mode Fallback: Sync score from store
+        if (meetingStore.meeting?.recording_enabled) {
+            networkStats.score = meetingStore.networkScore;
+        }
+        return;
+    }
 
     try {
         const stats = await pc.getStats();

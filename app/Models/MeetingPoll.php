@@ -60,11 +60,19 @@ class MeetingPoll extends Model
     public function getVoteCounts(): array
     {
         $counts = array_fill(0, count($this->options), 0);
-        $this->votes()->select('option_index', \DB::raw('count(*) as total'))
+        $votes = $this->votes()->select('option_index', \DB::raw('count(*) as total'))
             ->groupBy('option_index')
-            ->get()
-            ->each(fn ($row) => $counts[(int) $row->option_index] = (int) $row->total);
+            ->get();
+
+        foreach ($votes as $row) {
+            $counts[(int) $row->option_index] = (int) $row->total;
+        }
 
         return array_values($counts);
+    }
+
+    public function getVoterCount(): int
+    {
+        return $this->votes()->distinct('participant_id')->count('participant_id');
     }
 }

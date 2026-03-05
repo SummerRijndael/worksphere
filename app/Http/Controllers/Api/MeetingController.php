@@ -857,6 +857,8 @@ class MeetingController extends Controller
 
     public function getPolls(Request $request, Meeting $meeting): JsonResponse
     {
+        $participant = $this->resolveParticipant($request, $meeting);
+
         $polls = $meeting->polls()
             ->orderByDesc('created_at')
             ->take(10)
@@ -866,7 +868,12 @@ class MeetingController extends Controller
                 'question' => $p->question,
                 'options' => $p->options,
                 'is_active' => $p->is_active,
+                'allow_multiple' => (bool) $p->allow_multiple,
+                'allow_change_vote' => (bool) $p->allow_change_vote,
+                'anonymous' => (bool) $p->anonymous,
                 'vote_counts' => $p->getVoteCounts(),
+                'voter_count' => $p->getVoterCount(),
+                'my_votes' => $participant ? $p->votes()->where('participant_id', $participant->id)->pluck('option_index')->toArray() : [],
             ]);
 
         return response()->json(['data' => $polls]);
