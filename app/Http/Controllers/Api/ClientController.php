@@ -184,10 +184,10 @@ class ClientController extends Controller
 
         $validated = $request->validate([
             'team_id' => ['sometimes', 'exists:teams,public_id'], // Validate public_id
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['nullable', 'email', 'max:255', Rule::unique('clients')->where(fn ($query) => $query->where('team_id', $teamId))],
+            'name' => ['required', 'string', 'max:255', 'regex:/^[\pL\s\-\']+$/u', 'not_in:NaN,nan,null,NULL,undefined,UNDEFINED'],
+            'email' => ['nullable', 'email:rfc,dns,spoof', 'max:255', Rule::unique('clients')->where(fn ($query) => $query->where('team_id', $teamId))],
             'contact_person' => ['nullable', 'string', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:20', 'regex:/^([0-9\s\-\+\(\)]*)$/'],
+            'phone' => ['nullable', 'string', 'max:30', 'regex:/^([0-9\s\-\+\(\)]*)$/'],
             'address' => ['nullable', 'string', 'max:1000'],
             'status' => ['required', 'in:active,inactive'],
         ]);
@@ -279,10 +279,10 @@ class ClientController extends Controller
 
         $validated = $request->validate([
             'team_id' => ['sometimes', 'exists:teams,public_id'],
-            'name' => ['sometimes', 'string', 'max:255'],
-            'email' => ['sometimes', 'nullable', 'email', 'max:255', Rule::unique('clients')->where(fn ($query) => $query->where('team_id', $client->team_id))->ignore($client->id)],
+            'name' => ['sometimes', 'string', 'max:255', 'regex:/^[\pL\s\-\']+$/u', 'not_in:NaN,nan,null,NULL,undefined,UNDEFINED'],
+            'email' => ['sometimes', 'nullable', 'email:rfc,dns,spoof', 'max:255', Rule::unique('clients')->where(fn ($query) => $query->where('team_id', $client->team_id))->ignore($client->id)],
             'contact_person' => ['sometimes', 'nullable', 'string', 'max:255'],
-            'phone' => ['sometimes', 'nullable', 'string', 'max:20', 'regex:/^([0-9\s\-\+\(\)]*)$/'],
+            'phone' => ['sometimes', 'nullable', 'string', 'max:30', 'regex:/^([0-9\s\-\+\(\)]*)$/'],
             'address' => ['sometimes', 'nullable', 'string', 'max:1000'],
             'status' => ['sometimes', 'in:active,inactive'],
         ]);

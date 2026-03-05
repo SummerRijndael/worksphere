@@ -76,19 +76,7 @@ const stats = ref({
 const statsLoading = ref(true);
 
 // Methods
-const getPresenceBorder = (user) => {
-    const status = presenceUsers.value.get(user.public_id)?.status || "offline";
-    switch (status) {
-        case "online":
-            return "border-green-500 ring-2 ring-green-500/20";
-        case "away":
-            return "border-yellow-500 ring-2 ring-yellow-500/20";
-        case "busy":
-            return "border-red-500 ring-2 ring-red-500/20";
-        default:
-            return "border-transparent";
-    }
-};
+// Methods removed: getPresenceBorder (replaced by standard Avatar status prop)
 
 const fetchStats = async () => {
     try {
@@ -465,12 +453,12 @@ onMounted(() => {
                                                             "
                                                             :alt="user.name"
                                                             size="md"
-                                                            class="w-10 h-10 ring-2"
-                                                            :class="
-                                                                getPresenceBorder(
-                                                                    user,
-                                                                )
+                                                            :status="
+                                                                presenceUsers.get(
+                                                                    user.public_id,
+                                                                )?.status
                                                             "
+                                                            class="w-10 h-10 ring-2"
                                                         />
                                                     </div>
                                                 </div>
@@ -489,7 +477,10 @@ onMounted(() => {
                                             </div>
                                         </td>
                                         <td class="px-6 py-4">
-                                            <span class="text-sm font-mono text-[var(--text-secondary)]">@{{ user.username }}</span>
+                                            <span
+                                                class="text-sm font-mono text-[var(--text-secondary)]"
+                                                >@{{ user.username }}</span
+                                            >
                                         </td>
                                         <td class="px-6 py-4">
                                             <span
@@ -527,20 +518,56 @@ onMounted(() => {
                                         </td>
                                         <td class="px-6 py-4">
                                             <div class="flex flex-col gap-1">
-                                                <div v-if="user.has_2fa_enabled" class="flex items-center gap-1.5 text-green-600 dark:text-green-400">
-                                                    <ShieldCheck class="w-3.5 h-3.5" />
-                                                    <span class="text-xs font-medium">Enabled</span>
+                                                <div
+                                                    v-if="user.has_2fa_enabled"
+                                                    class="flex items-center gap-1.5 text-green-600 dark:text-green-400"
+                                                >
+                                                    <ShieldCheck
+                                                        class="w-3.5 h-3.5"
+                                                    />
+                                                    <span
+                                                        class="text-xs font-medium"
+                                                        >Enabled</span
+                                                    >
                                                 </div>
-                                                <div v-else class="flex items-center gap-1.5 text-[var(--text-tertiary)]">
-                                                    <ShieldAlert class="w-3.5 h-3.5" />
-                                                    <span class="text-xs">Disabled</span>
+                                                <div
+                                                    v-else
+                                                    class="flex items-center gap-1.5 text-[var(--text-tertiary)]"
+                                                >
+                                                    <ShieldAlert
+                                                        class="w-3.5 h-3.5"
+                                                    />
+                                                    <span class="text-xs"
+                                                        >Disabled</span
+                                                    >
                                                 </div>
-                                                
+
                                                 <!-- Enforcement Info -->
-                                                <div v-if="user.two_factor_requirement" class="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200/50 w-fit">
-                                                    Required by {{ user.two_factor_requirement.source === 'role' ? 'Role (' + user.two_factor_requirement.role + ')' : 'Account' }}
+                                                <div
+                                                    v-if="
+                                                        user.two_factor_requirement
+                                                    "
+                                                    class="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200/50 w-fit"
+                                                >
+                                                    Required by
+                                                    {{
+                                                        user
+                                                            .two_factor_requirement
+                                                            .source === "role"
+                                                            ? "Role (" +
+                                                              user
+                                                                  .two_factor_requirement
+                                                                  .role +
+                                                              ")"
+                                                            : "Account"
+                                                    }}
                                                 </div>
-                                                <div v-else-if="user.two_factor_enforced" class="text-[10px] px-1.5 py-0.5 rounded bg-[var(--surface-secondary)] text-[var(--text-tertiary)] border border-[var(--border-default)] w-fit">
+                                                <div
+                                                    v-else-if="
+                                                        user.two_factor_enforced
+                                                    "
+                                                    class="text-[10px] px-1.5 py-0.5 rounded bg-[var(--surface-secondary)] text-[var(--text-tertiary)] border border-[var(--border-default)] w-fit"
+                                                >
                                                     Optional
                                                 </div>
                                             </div>
@@ -548,18 +575,49 @@ onMounted(() => {
                                         <td
                                             class="px-6 py-4 text-[var(--text-tertiary)]"
                                         >
-                                            <div class="flex flex-col gap-1.5 text-[10px]">
-                                                <div class="flex items-center gap-1.5">
+                                            <div
+                                                class="flex flex-col gap-1.5 text-[10px]"
+                                            >
+                                                <div
+                                                    class="flex items-center gap-1.5"
+                                                >
                                                     <Plus class="w-3 h-3" />
-                                                    <span>Joined: {{ formatDate(user.created_at) }}</span>
+                                                    <span
+                                                        >Joined:
+                                                        {{
+                                                            formatDate(
+                                                                user.created_at,
+                                                            )
+                                                        }}</span
+                                                    >
                                                 </div>
-                                                <div v-if="user.last_login_at" class="flex items-center gap-1.5">
+                                                <div
+                                                    v-if="user.last_login_at"
+                                                    class="flex items-center gap-1.5"
+                                                >
                                                     <Clock class="w-3 h-3" />
-                                                    <span>Login: {{ formatRelativeTime(user.last_login_at) }}</span>
+                                                    <span
+                                                        >Login:
+                                                        {{
+                                                            formatRelativeTime(
+                                                                user.last_login_at,
+                                                            )
+                                                        }}</span
+                                                    >
                                                 </div>
-                                                <div v-if="user.updated_at" class="flex items-center gap-1.5 opacity-60">
+                                                <div
+                                                    v-if="user.updated_at"
+                                                    class="flex items-center gap-1.5 opacity-60"
+                                                >
                                                     <Edit2 class="w-3 h-3" />
-                                                    <span>Updated: {{ formatRelativeTime(user.updated_at) }}</span>
+                                                    <span
+                                                        >Updated:
+                                                        {{
+                                                            formatRelativeTime(
+                                                                user.updated_at,
+                                                            )
+                                                        }}</span
+                                                    >
                                                 </div>
                                             </div>
                                         </td>
@@ -641,8 +699,11 @@ onMounted(() => {
                                     :fallback="user.initials"
                                     :alt="user.name"
                                     size="xl"
+                                    :status="
+                                        presenceUsers.get(user.public_id)
+                                            ?.status
+                                    "
                                     class="w-20 h-20 border-4 border-[var(--surface-elevated)] shadow-md"
-                                    :class="getPresenceBorder(user)"
                                 />
                                 <div
                                     v-if="user.has_2fa_enabled"
@@ -659,11 +720,17 @@ onMounted(() => {
                             >
                                 {{ user.name }}
                             </h3>
-                            <div class="flex flex-col items-center mb-4 overflow-hidden w-full">
-                                <p class="text-xs text-[var(--text-secondary)] truncate w-full px-2 text-center">
+                            <div
+                                class="flex flex-col items-center mb-4 overflow-hidden w-full"
+                            >
+                                <p
+                                    class="text-xs text-[var(--text-secondary)] truncate w-full px-2 text-center"
+                                >
                                     {{ user.email }}
                                 </p>
-                                <p class="text-[10px] font-mono text-[var(--text-tertiary)]">
+                                <p
+                                    class="text-[10px] font-mono text-[var(--text-tertiary)]"
+                                >
                                     @{{ user.username }}
                                 </p>
                             </div>
@@ -696,12 +763,25 @@ onMounted(() => {
                                 class="w-full pt-4 border-t border-[var(--border-default)] space-y-1.5 text-[10px] text-[var(--text-tertiary)]"
                             >
                                 <div class="flex justify-between items-center">
-                                    <span class="flex items-center gap-1"><Plus class="w-2.5 h-2.5" /> Joined</span>
-                                    <span>{{ formatDate(user.created_at) }}</span>
+                                    <span class="flex items-center gap-1"
+                                        ><Plus class="w-2.5 h-2.5" />
+                                        Joined</span
+                                    >
+                                    <span>{{
+                                        formatDate(user.created_at)
+                                    }}</span>
                                 </div>
-                                <div v-if="user.last_login_at" class="flex justify-between items-center">
-                                    <span class="flex items-center gap-1"><Clock class="w-2.5 h-2.5" /> Login</span>
-                                    <span>{{ formatRelativeTime(user.last_login_at) }}</span>
+                                <div
+                                    v-if="user.last_login_at"
+                                    class="flex justify-between items-center"
+                                >
+                                    <span class="flex items-center gap-1"
+                                        ><Clock class="w-2.5 h-2.5" />
+                                        Login</span
+                                    >
+                                    <span>{{
+                                        formatRelativeTime(user.last_login_at)
+                                    }}</span>
                                 </div>
                             </div>
                         </div>
