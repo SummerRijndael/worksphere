@@ -675,6 +675,22 @@ class User extends Authenticatable implements HasMedia, MustVerifyEmail, WebAuth
     }
 
     /**
+     * Get the projects the user belongs to.
+     */
+    public function projects(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(Project::class, 'project_members');
+    }
+
+    /**
+     * Get the tasks assigned to the user.
+     */
+    public function assignedTasks(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Task::class, 'assigned_to');
+    }
+
+    /**
      * Get the chats that the user participates in.
      *
      * @return \Illuminate\Database\Eloquent\Relations\BelongsToMany<Chat>

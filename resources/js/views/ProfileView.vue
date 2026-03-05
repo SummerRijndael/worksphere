@@ -3,6 +3,8 @@ import { ref, onMounted, computed, watch } from "vue";
 import { useDate } from "@/composables/useDate";
 const { formatDate } = useDate();
 import { useAuthStore } from "@/stores/auth";
+import { useChatStore } from "@/stores/chat";
+import { useMiniChatStore } from "@/stores/minichat";
 import { Card, Button, Badge, Avatar, Input } from "@/components/ui";
 import MiniCalendar from "@/components/ui/MiniCalendar.vue";
 import PersonalTaskWidget from "@/components/tasks/PersonalTaskWidget.vue";
@@ -29,42 +31,91 @@ import {
     Globe,
     Copy,
     ExternalLink,
+    MessageSquare,
 } from "lucide-vue-next";
 import { Switch } from "@/components/ui";
 import { toast } from "vue-sonner";
 import api from "@/lib/api";
 
 const authStore = useAuthStore();
+const chatStore = useChatStore();
+const miniChatStore = useMiniChatStore();
 const isLoading = ref(true);
 const userDetails = ref(null);
+
+const projectDisplay = ref('grid');
+const teammateFilter = ref('all');
+const projects = ref([]);
+const teammates = ref([]);
+
+const filteredTeammates = computed(() => {
+    if (teammateFilter.value === 'all') return teammates.value;
+    return teammates.value.filter(t => t.relationship === teammateFilter.value);
+});
+
+const startChat = async (teammate) => {
+    try {
+        const chat = await chatStore.ensureDm(teammate.public_id);
+        miniChatStore.openChatWindow(chat);
+    } catch (error) {
+        console.error("Failed to start chat:", error);
+        toast.error("Could not start chat");
+    }
+};
+
+const fetchProjects = async (publicId) => {
+    try {
+        const response = await api.get(`/api/users/${publicId}/projects`);
+        projects.value = response.data.data;
+    } catch (error) {
+        console.error(error);
+    }
+};
+
+const fetchTeammates = async (publicId) => {
+    try {
+        const response = await api.get(`/api/users/${publicId}/teammates`);
+        teammates.value = response.data.data;
+    } catch (error) {
+        console.error(error);
+    }
+};
 
 // Mock Data for Calendar
 const currentMonth = ref(new Date());
 const weekDays = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 
-const stats = ref([
-    {
-        label: "Projects",
-        value: "24",
-        icon: Folder,
-        color: "text-blue-500",
-        bg: "bg-blue-500/10",
-    },
-    {
-        label: "Tasks Completed",
-        value: "142",
-        icon: CheckCircle,
-        color: "text-green-500",
-        bg: "bg-green-500/10",
-    },
-    {
-        label: "Hours Logged",
-        value: "1.2K",
-        icon: Clock,
-        color: "text-orange-500",
-        bg: "bg-orange-500/10",
-    },
-]);
+const stats = computed(() => {
+    const userStats = userDetails.value?.stats || {
+        projects_count: 0,
+        completed_tasks_count: 0,
+        hours_logged: 0,
+    };
+
+    return [
+        {
+            label: "Projects",
+            value: userStats.projects_count,
+            icon: Folder,
+            color: "text-blue-500",
+            bg: "bg-blue-500/10",
+        },
+        {
+            label: "Tasks Completed",
+            value: userStats.completed_tasks_count,
+            icon: CheckCircle,
+            color: "text-green-500",
+            bg: "bg-green-500/10",
+        },
+        {
+            label: "Hours Logged",
+            value: userStats.hours_logged,
+            icon: Clock,
+            color: "text-orange-500",
+            bg: "bg-orange-500/10",
+        },
+    ];
+});
 
 // Fetch full user details
 const fetchUserDetails = async () => {
@@ -73,6 +124,12 @@ const fetchUserDetails = async () => {
         const response = await api.get("/api/user/details");
         userDetails.value = response.data;
         isPublic.value = !!response.data.is_public;
+        
+        const publicId = response.data.public_id;
+        if (publicId) {
+            fetchProjects(publicId);
+            fetchTeammates(publicId);
+        }
     } catch (error) {
         console.error("Failed to fetch user details:", error);
     } finally {
@@ -459,61 +516,100 @@ onMounted(() => {
                     </div>
                 </Card>
 
-                <!-- Teams -->
+                <!-- Projects -->
                 <Card padding="lg">
                     <div class="flex items-center justify-between mb-6">
-                        <h2
-                            class="text-xl font-semibold text-[var(--text-primary)] flex items-center gap-2"
-                        >
-                            <Users
-                                class="h-5 w-5 text-[var(--text-secondary)]"
-                            />
-                            Teams
+                        <h2 class="text-xl font-semibold text-[var(--text-primary)] flex items-center gap-2">
+                            <Folder class="h-5 w-5 text-[var(--text-secondary)]" />
+                            Projects
                         </h2>
-                        <Button variant="ghost" size="sm">View All</Button>
+                        <div class="flex gap-2 bg-[var(--surface-primary)] p-1 rounded-lg border border-[var(--border-default)] items-center">
+                            <button @click="projectDisplay = 'grid'" :class="projectDisplay === 'grid' ? 'bg-[var(--surface-elevated)] text-[var(--text-primary)] shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'" class="px-3 py-1 text-xs font-medium rounded-md transition-all">Grid</button>
+                            <button @click="projectDisplay = 'list'" :class="projectDisplay === 'list' ? 'bg-[var(--surface-elevated)] text-[var(--text-primary)] shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'" class="px-3 py-1 text-xs font-medium rounded-md transition-all">List</button>
+                        </div>
                     </div>
 
-                    <div
-                        v-if="teams.length === 0"
-                        class="text-center py-8 text-[var(--text-muted)] bg-[var(--surface-secondary)] rounded-lg border border-dashed border-[var(--border-default)]"
-                    >
+                    <div v-if="projects.length === 0" class="text-center py-8 text-[var(--text-muted)] bg-[var(--surface-secondary)] rounded-lg border border-dashed border-[var(--border-default)]">
+                        <Folder class="h-8 w-8 mx-auto mb-2 opacity-50" />
+                        <p>No projects yet</p>
+                    </div>
+
+                    <!-- Grid View -->
+                    <div v-else-if="projectDisplay === 'grid'" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div v-for="project in projects" :key="project.id" class="p-4 rounded-xl border border-[var(--border-default)] hover:border-[var(--interactive-primary)] bg-[var(--surface-secondary)] transition-all group flex flex-col gap-2 relative overflow-hidden">
+                            <div class="flex justify-between items-start mb-2 group-hover:px-1 transition-all">
+                                <h3 class="font-medium text-[var(--text-primary)] truncate transition-colors">{{ project.name }}</h3>
+                                <Badge :variant="project.status.value === 'completed' ? 'success' : 'outline'" size="xs">{{ project.status.label }}</Badge>
+                            </div>
+                            <div class="w-full bg-[var(--surface-elevated)] rounded-full h-1.5 mt-auto">
+                                <div class="bg-[var(--interactive-primary)] h-1.5 rounded-full transition-all duration-1000 ease-out" :style="{ width: (project.progress_percentage || 0) + '%' }"></div>
+                            </div>
+                            <div class="flex justify-between text-[11px] text-[var(--text-muted)] mt-1 font-medium">
+                                <span>{{ project.tasks_count || 0 }} tasks</span>
+                                <span v-if="project.due_date" :class="{'text-red-500': project.is_overdue}">Due {{ formatDate(project.due_date) }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- List View -->
+                    <div v-else class="space-y-3">
+                        <div v-for="project in projects" :key="project.id" class="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-lg border border-[var(--border-default)] hover:bg-[var(--surface-secondary)] transition-colors group relative overflow-hidden gap-3 sm:gap-0">
+                            <div class="flex items-center gap-3">
+                                <div class="h-10 w-10 rounded-lg bg-[var(--surface-elevated)] flex items-center justify-center shrink-0 border border-[var(--border-default)]">
+                                    <Folder class="h-5 w-5 text-[var(--text-secondary)] group-hover:text-[var(--interactive-primary)] transition-colors" />
+                                </div>
+                                <div class="min-w-0 pr-4">
+                                    <p class="font-medium text-[var(--text-primary)] group-hover:text-[var(--interactive-primary)] transition-colors truncate">{{ project.name }}</p>
+                                    <div class="text-[11px] text-[var(--text-muted)] flex gap-2 font-medium">
+                                        <span>{{ project.progress_percentage || 0 }}% Complete</span>
+                                        <span v-if="project.due_date" :class="{'text-red-500': project.is_overdue}">• Due {{ formatDate(project.due_date) }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <Badge :variant="project.status.value === 'completed' ? 'success' : 'outline'" size="xs" class="ml-[3.25rem] sm:ml-0 shrink-0">{{ project.status.label }}</Badge>
+                        </div>
+                    </div>
+                </Card>
+
+                <!-- Teammates -->
+                <Card padding="lg">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
+                        <h2 class="text-xl font-semibold text-[var(--text-primary)] flex items-center gap-2">
+                            <Users class="h-5 w-5 text-[var(--text-secondary)]" />
+                            Teammates
+                        </h2>
+                        <select v-model="teammateFilter" class="bg-[var(--surface-elevated)] border border-[var(--border-default)] text-[var(--text-primary)] text-sm rounded-lg focus:ring-[var(--interactive-primary)] focus:border-[var(--interactive-primary)] block py-1.5 px-3 max-w-full sm:max-w-[200px] shadow-sm">
+                            <option value="all">All Teammates</option>
+                            <option value="owned">Teams I Own</option>
+                            <option value="member">Teams I'm a Member Of</option>
+                        </select>
+                    </div>
+
+                    <div v-if="filteredTeammates.length === 0" class="text-center py-8 text-[var(--text-muted)] bg-[var(--surface-secondary)] rounded-lg border border-dashed border-[var(--border-default)]">
                         <Users class="h-8 w-8 mx-auto mb-2 opacity-50" />
-                        <p>No teams joined yet</p>
+                        <p>No teammates found</p>
                     </div>
 
                     <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div
-                            v-for="team in teams"
-                            :key="team.id"
-                            class="flex items-center gap-4 p-4 rounded-xl border border-[var(--border-default)] hover:border-[var(--interactive-primary)] hover:bg-[var(--surface-secondary)] transition-all cursor-pointer group"
-                        >
+                        <div v-for="teammate in filteredTeammates" :key="teammate.public_id" class="flex items-center gap-4 p-3 rounded-xl border border-[var(--border-default)] hover:border-[var(--interactive-primary)] hover:bg-[var(--surface-secondary)] hover:shadow-sm transition-all group">
                             <Avatar
-                                :fallback="team.initials || 'T'"
-                                :src="team.avatar"
+                                :fallback="teammate.initials"
+                                :src="teammate.avatar_url"
                                 size="md"
                                 class="shrink-0"
+                                :status="teammate.presence"
                             />
                             <div class="flex-1 min-w-0">
-                                <p
-                                    class="font-medium text-[var(--text-primary)] truncate group-hover:text-[var(--interactive-primary)]"
-                                >
-                                    {{ team.name }}
+                                <p class="font-medium text-[var(--text-primary)] truncate group-hover:text-[var(--interactive-primary)] transition-colors">
+                                    {{ teammate.name }}
                                 </p>
-                                <div class="flex items-center gap-2 mt-1">
-                                    <Badge
-                                        variant="outline"
-                                        size="xs"
-                                        class="capitalize"
-                                    >
-                                        {{ team.pivot?.role || "Member" }}
-                                    </Badge>
-                                    <span
-                                        class="text-xs text-[var(--text-muted)] px-1.5 py-0.5 rounded bg-[var(--surface-elevated)]"
-                                    >
-                                        {{ team.members_count || 1 }} members
-                                    </span>
-                                </div>
+                                <p class="text-[11px] text-[var(--text-muted)] truncate font-medium">
+                                    {{ teammate.job_title || "Team Member" }}
+                                </p>
                             </div>
+                            <Button @click.prevent="startChat(teammate)" variant="ghost" size="icon-sm" class="shrink-0 opacity-0 group-hover:opacity-100 transition-all text-blue-500 hover:text-blue-600 bg-blue-50 dark:bg-blue-500/10 hover:bg-blue-100 dark:hover:bg-blue-500/20 translate-x-2 group-hover:translate-x-0" title="Send Message">
+                                <MessageSquare class="h-4 w-4" />
+                            </Button>
                         </div>
                     </div>
                 </Card>

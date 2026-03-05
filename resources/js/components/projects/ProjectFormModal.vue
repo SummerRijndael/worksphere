@@ -37,7 +37,7 @@ const schema = toTypedSchema(
         priority: z.string().min(1, "Priority is required"),
         start_date: z.string().optional(),
         due_date: z.string().optional(),
-        budget: z
+        budget: z.coerce
             .number()
             .min(0, "Budget must be at least 0")
             .max(9999999999.99, "Budget cannot exceed 9,999,999,999.99")

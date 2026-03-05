@@ -119,6 +119,13 @@ class UserController extends Controller
 
         // Load related data
         $user->load(['teams', 'roles', 'permissions']);
+        $user->loadCount([
+            'projects',
+            'assignedTasks as completed_tasks_count' => function ($query) {
+                $query->where('status', 'completed');
+            }
+        ]);
+        $user->loadSum('assignedTasks as hours_logged', 'actual_hours');
 
         // Manually load media since it's a trait method, though 'with' often works if model setup correctly.
         // But for clarity and ensuring it's loaded for the resource:

@@ -2025,7 +2025,7 @@ class MaintenanceService
         ];
         $reverbStart = microtime(true);
         try {
-            $port = config('reverb.servers.reverb.options.port', 9000);
+            $port = config('reverb.servers.reverb.options.port', 8080);
             $connection = @fsockopen('127.0.0.1', $port, $errno, $errstr, 1);
             if ($connection) {
                 fclose($connection);
