@@ -1,8 +1,10 @@
-<script setup>
 import { ref, watch, onMounted } from 'vue';
-import { Button, Checkbox } from '@/components/ui';
+import { Button, Checkbox, Input } from '@/components/ui';
 import api from '@/lib/api';
 import { useAuthStore } from '@/stores/auth';
+import { useForm } from 'vee-validate';
+import { toTypedSchema } from '@vee-validate/zod';
+import * as z from 'zod';
 
 const props = defineProps({
     open: Boolean,
@@ -20,7 +22,36 @@ const emit = defineEmits(['close', 'saved']);
 const authStore = useAuthStore();
 
 const isSubmitting = ref(false);
-const errors = ref({});
+const phoneRegex = /^([0-9\s\-\+\(\)]*)$/;
+
+const schema = toTypedSchema(
+    z.object({
+        name: z.string().min(1, "Name is required").max(255),
+        email: z.string().email("Invalid email").nullable().optional().or(z.literal("")),
+        phone: z
+            .string()
+            .max(20, "Phone number cannot exceed 20 characters")
+            .regex(phoneRegex, "Invalid phone number format")
+            .nullable()
+            .optional()
+            .or(z.literal("")),
+        role: z.string().max(255).nullable().optional(),
+        is_primary: z.boolean().default(false),
+    }),
+);
+
+const { handleSubmit, errors: vErrors, setValues, resetForm, defineField } = useForm({
+    validationSchema: schema,
+    initialValues: {
+        is_primary: false,
+    },
+});
+
+const [name, nameProps] = defineField("name");
+const [email, emailProps] = defineField("email");
+const [phone, phoneProps] = defineField("phone");
+const [role, roleProps] = defineField("role");
+const [is_primary, isPrimaryProps] = defineField("is_primary");
 
 const formData = ref({
     name: '',
@@ -34,33 +65,25 @@ watch(() => props.open, (isOpen) => {
     if (isOpen) {
         if (props.contact) {
             // Edit Mode
-            formData.value = {
+            const initial = {
                 name: props.contact.name,
                 email: props.contact.email || '',
                 phone: props.contact.phone || '',
                 role: props.contact.role || '',
                 is_primary: !!props.contact.is_primary,
             };
+            setValues(initial);
         } else {
             // Create Mode
-            formData.value = {
-                name: '',
-                email: '',
-                phone: '',
-                role: '',
-                is_primary: false,
-            };
+            resetForm();
         }
-        errors.value = {};
     }
 });
 
-const save = async () => {
+const save = handleSubmit(async (values) => {
     isSubmitting.value = true;
-    errors.value = {};
     
-    // Convert is_primary to boolean 0/1 if needed, but API validation handles boolean
-    const data = { ...formData.value };
+    const data = { ...values };
 
     try {
         if (props.contact) {
@@ -74,7 +97,8 @@ const save = async () => {
         emit('close');
     } catch (error) {
         if (error.response?.data?.errors) {
-            errors.value = error.response.data.errors;
+            // Handle server-side errors if any (unlikely with zod but good for consistency)
+            console.error(error.response.data.errors);
         } else {
             console.error(error);
         }
@@ -96,26 +120,43 @@ const save = async () => {
             <div class="p-6 space-y-4">
                 <div class="space-y-1">
                     <label class="text-sm font-medium text-[var(--text-secondary)]">Name</label>
-                    <input v-model="formData.name" type="text" class="input">
-                    <p v-if="errors.name" class="text-xs text-[var(--color-error)]">{{ errors.name[0] }}</p>
+                    <Input 
+                        v-model="name" 
+                        v-bind="nameProps" 
+                        placeholder="John Doe" 
+                        :error="vErrors.name" 
+                    />
                 </div>
 
                 <div class="space-y-1">
                     <label class="text-sm font-medium text-[var(--text-secondary)]">Email</label>
-                    <input v-model="formData.email" type="email" class="input">
-                    <p v-if="errors.email" class="text-xs text-[var(--color-error)]">{{ errors.email[0] }}</p>
+                    <Input 
+                        v-model="email" 
+                        v-bind="emailProps" 
+                        type="email" 
+                        placeholder="john@example.com" 
+                        :error="vErrors.email" 
+                    />
                 </div>
 
                 <div class="space-y-1">
                     <label class="text-sm font-medium text-[var(--text-secondary)]">Phone</label>
-                    <input v-model="formData.phone" type="text" class="input">
-                    <p v-if="errors.phone" class="text-xs text-[var(--color-error)]">{{ errors.phone[0] }}</p>
+                    <Input 
+                        v-model="phone" 
+                        v-bind="phoneProps" 
+                        placeholder="+1 234 567 890" 
+                        :error="vErrors.phone" 
+                    />
                 </div>
 
                 <div class="space-y-1">
                     <label class="text-sm font-medium text-[var(--text-secondary)]">Role / Job Title</label>
-                    <input v-model="formData.role" type="text" class="input" placeholder="e.g. Manager">
-                    <p v-if="errors.role" class="text-xs text-[var(--color-error)]">{{ errors.role[0] }}</p>
+                    <Input 
+                        v-model="role" 
+                        v-bind="roleProps" 
+                        placeholder="e.g. Manager" 
+                        :error="vErrors.role" 
+                    />
                 </div>
 
                 <!-- 

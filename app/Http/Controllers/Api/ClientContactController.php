@@ -21,7 +21,7 @@ class ClientContactController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['nullable', 'email', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:20', 'regex:/^([0-9\s\-\+\(\)]*)$/'],
             'role' => ['nullable', 'string', 'max:255'],
             'is_primary' => ['boolean'],
         ]);
@@ -46,7 +46,7 @@ class ClientContactController extends Controller
         $validated = $request->validate([
             'name' => ['sometimes', 'string', 'max:255'],
             'email' => ['nullable', 'email', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:20', 'regex:/^([0-9\s\-\+\(\)]*)$/'],
             'role' => ['nullable', 'string', 'max:255'],
             'is_primary' => ['boolean'],
         ]);

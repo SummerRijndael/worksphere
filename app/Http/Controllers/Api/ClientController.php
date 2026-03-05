@@ -187,7 +187,7 @@ class ClientController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'email' => ['nullable', 'email', 'max:255', Rule::unique('clients')->where(fn ($query) => $query->where('team_id', $teamId))],
             'contact_person' => ['nullable', 'string', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:50'],
+            'phone' => ['nullable', 'string', 'max:20', 'regex:/^([0-9\s\-\+\(\)]*)$/'],
             'address' => ['nullable', 'string', 'max:1000'],
             'status' => ['required', 'in:active,inactive'],
         ]);
@@ -223,31 +223,23 @@ class ClientController extends Controller
             }
         }
 
-        // Eager load relationships for the details view
+        // Eager load relationships and aggregates for the details view
         $client->load([
-            'projects' => function ($query) {
-                $query->latest()->limit(5); // Recent projects
-            },
+            'projects' => fn ($q) => $q->latest()->limit(5),
             'projects.team:id,name,public_id',
-            'invoices' => function ($query) {
-                $query->latest()->limit(5); // Recent invoices
-            },
+            'invoices' => fn ($q) => $q->latest()->limit(5),
             'contacts',
             'team:id,public_id,name',
-        ]);
+        ])->loadCount([
+            'projects',
+            'invoices',
+            'contacts',
+        ])->loadSum([
+            'invoices as total_paid' => fn ($q) => $q->paid(),
+            'invoices as total_pending' => fn ($q) => $q->pending(),
+        ], 'total');
 
-        // Append counts and sums
-        $client->loadCount(['projects', 'invoices', 'contacts']);
-
-        $client->loadSum(['invoices as total_paid' => function ($query) {
-            $query->paid();
-        }], 'total');
-
-        $client->loadSum(['invoices as total_pending' => function ($query) {
-            $query->pending();
-        }], 'total');
-
-        // Add overdue invoices
+        // Add overdue invoices - limited to 10 for performance
         $client->setRelation('overdue_invoices', $client->invoices()->overdue()->orderBy('due_date')->limit(10)->get());
 
         return response()->json($client);
@@ -288,10 +280,10 @@ class ClientController extends Controller
         $validated = $request->validate([
             'team_id' => ['sometimes', 'exists:teams,public_id'],
             'name' => ['sometimes', 'string', 'max:255'],
-            'email' => ['nullable', 'email', 'max:255', Rule::unique('clients')->ignore($client->id)->where(fn ($query) => $query->where('team_id', $targetTeamId))],
-            'contact_person' => ['nullable', 'string', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:50'],
-            'address' => ['nullable', 'string', 'max:1000'],
+            'email' => ['sometimes', 'nullable', 'email', 'max:255', Rule::unique('clients')->where(fn ($query) => $query->where('team_id', $client->team_id))->ignore($client->id)],
+            'contact_person' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'phone' => ['sometimes', 'nullable', 'string', 'max:20', 'regex:/^([0-9\s\-\+\(\)]*)$/'],
+            'address' => ['sometimes', 'nullable', 'string', 'max:1000'],
             'status' => ['sometimes', 'in:active,inactive'],
         ]);
 

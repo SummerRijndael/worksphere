@@ -32,7 +32,7 @@ class UpdateProjectRequest extends FormRequest
             'start_date' => ['nullable', 'date'],
             'due_date' => ['nullable', 'date', 'after_or_equal:start_date'],
             'client_id' => ['nullable', 'string', 'exists:clients,public_id'],
-            'budget' => ['nullable', 'numeric', 'min:0', 'max:999999999999.99'],
+            'budget' => ['nullable', 'numeric', 'min:0', 'max:9999999999.99'],
             'currency' => ['sometimes', 'string', 'size:3'],
             'settings' => ['nullable', 'array'],
         ];
@@ -49,7 +49,7 @@ class UpdateProjectRequest extends FormRequest
             'name.max' => 'Project name cannot exceed 255 characters.',
             'due_date.after_or_equal' => 'Due date must be on or after the start date.',
             'client_id.exists' => 'The selected client does not exist.',
-            'budget.max' => 'Budget cannot exceed the maximum allowed value.',
+            'budget.max' => 'Budget cannot exceed 9,999,999,999.99.',
         ];
     }
 }

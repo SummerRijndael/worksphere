@@ -139,7 +139,7 @@ class UserController extends Controller
         $rules = [
             'name' => ['sometimes', 'string', 'max:255', 'regex:/^[\pL\s\-\']+$/u'],
             'username' => ['sometimes', 'nullable', 'string', 'min:3', 'max:50', 'regex:/^[a-zA-Z0-9_\-\.]+$/', Rule::unique('users')->ignore($user->id)],
-            'phone' => ['sometimes', 'nullable', 'string', 'max:20'],
+            'phone' => ['sometimes', 'nullable', 'string', 'max:20', 'regex:/^([0-9\s\-\+\(\)]*)$/'],
         ];
 
         // Email can only be changed by the user themselves (self-service)
@@ -277,6 +277,7 @@ class UserController extends Controller
             'name' => ['required', 'string', 'max:255', 'regex:/^[\pL\s\-\']+$/u'],
             'email' => ['required', 'string', 'email:rfc', 'max:255', Rule::unique('users')->ignore($user->id)],
             'username' => ['nullable', 'string', 'min:3', 'max:50', 'regex:/^[a-zA-Z0-9_\-\.]+$/', Rule::unique('users')->ignore($user->id)],
+            'phone' => ['nullable', 'string', 'max:20', 'regex:/^([0-9\s\-\+\(\)]*)$/'],
             'title' => ['nullable', 'string', 'max:255'],
             'bio' => ['nullable', 'string', 'max:1000'],
             'location' => ['nullable', 'string', 'max:255'],
