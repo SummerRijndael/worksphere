@@ -457,6 +457,7 @@ const initProfile = () => {
                 authStore.user.preferences?.timezone ||
                 Intl.DateTimeFormat().resolvedOptions().timeZone,
             phone: authStore.user.phone || "",
+            skills: authStore.user.skills || [],
         };
 
         // Load preferences from user

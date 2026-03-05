@@ -1,3 +1,4 @@
+<script setup>
 import { ref, watch, onMounted, computed } from "vue";
 import { Button, Input } from "@/components/ui";
 import api from "@/lib/api";
@@ -23,12 +24,21 @@ const emit = defineEmits(["close", "saved"]);
 
 const authStore = useAuthStore();
 const isSubmitting = ref(false);
+const isLoadingTeams = ref(false);
+const availableTeams = ref([]);
+const selectedTeamId = ref(null);
+const errors = ref({});
 const phoneRegex = /^([0-9\s\-\+\(\)]*)$/;
 
 const schema = toTypedSchema(
     z.object({
         name: z.string().min(1, "Company Name is required").max(255),
-        email: z.string().email("Invalid email").nullable().optional().or(z.literal("")),
+        email: z
+            .string()
+            .email("Invalid email")
+            .nullable()
+            .optional()
+            .or(z.literal("")),
         contact_person: z.string().max(255).nullable().optional(),
         phone: z
             .string()
@@ -43,7 +53,13 @@ const schema = toTypedSchema(
     }),
 );
 
-const { handleSubmit, errors: vErrors, setValues, resetForm, defineField } = useForm({
+const {
+    handleSubmit,
+    errors: vErrors,
+    setValues,
+    resetForm,
+    defineField,
+} = useForm({
     validationSchema: schema,
     initialValues: {
         status: "active",
@@ -197,10 +213,8 @@ const save = handleSubmit(async (values) => {
         if (error.response?.data?.errors) {
             errors.value = error.response.data.errors;
         }
-    } finally {
-        isSubmitting.value = false;
     }
-};
+});
 </script>
 
 <template>
@@ -252,7 +266,7 @@ const save = handleSubmit(async (values) => {
                             :error="vErrors.name"
                         />
                     </div>
- 
+
                     <div class="space-y-1">
                         <label
                             class="text-sm font-medium text-[var(--text-secondary)]"
@@ -265,7 +279,7 @@ const save = handleSubmit(async (values) => {
                             :error="vErrors.contact_person"
                         />
                     </div>
- 
+
                     <div class="space-y-1">
                         <label
                             class="text-sm font-medium text-[var(--text-secondary)]"
@@ -279,7 +293,7 @@ const save = handleSubmit(async (values) => {
                             :error="vErrors.email"
                         />
                     </div>
- 
+
                     <div class="space-y-1">
                         <label
                             class="text-sm font-medium text-[var(--text-secondary)]"

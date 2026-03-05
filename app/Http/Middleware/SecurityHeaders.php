@@ -119,12 +119,12 @@ class SecurityHeaders
         // Definitions
         $policy = [
             "default-src 'self'",
-            "script-src {$scriptSrc} 'wasm-unsafe-eval' https://www.google.com https://www.gstatic.com https://cdn.jsdelivr.net https://storage.googleapis.com https://static.cloudflareinsights.com",
-            "script-src-elem {$scriptSrc} https://www.google.com https://www.gstatic.com https://cdn.jsdelivr.net https://storage.googleapis.com https://static.cloudflareinsights.com",
+            "script-src {$scriptSrc} 'wasm-unsafe-eval' https://www.google.com https://www.gstatic.com https://www.googletagmanager.com https://www.google-analytics.com https://ssl.google-analytics.com https://cdn.jsdelivr.net https://storage.googleapis.com https://static.cloudflareinsights.com https://cloudflareinsights.com",
+            "script-src-elem {$scriptSrc} https://www.google.com https://www.gstatic.com https://www.googletagmanager.com https://www.google-analytics.com https://ssl.google-analytics.com https://cdn.jsdelivr.net https://storage.googleapis.com https://static.cloudflareinsights.com https://cloudflareinsights.com",
             "style-src {$styleSrc}",
             "font-src {$fontSrc}",
             "img-src {$imgSrc}",
-            "connect-src {$connectSrc} https://www.google.com https://cdn.jsdelivr.net https://storage.googleapis.com https://static.cloudflareinsights.com" .
+            "connect-src {$connectSrc} https://www.google.com https://www.google-analytics.com https://www.googletagmanager.com https://cdn.jsdelivr.net https://storage.googleapis.com https://static.cloudflareinsights.com https://cloudflareinsights.com" .
             " https://*.dyte.io https://*.dyte.in https://*.flagsmith.com wss://*.dyte.io wss://*.dyte.in",
             "worker-src 'self' blob:",
             "frame-src 'self' https://www.google.com https://www.gstatic.com",
