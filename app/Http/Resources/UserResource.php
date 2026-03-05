@@ -39,6 +39,11 @@ class UserResource extends JsonResource
             'created_at' => $this->created_at?->toISOString(), // Joined date
             'updated_at' => $this->updated_at?->toISOString(),
             'presence' => $this->last_login_at && $this->last_login_at->diffInMinutes(now()) < 5 ? 'online' : 'offline',
+            'stats' => [
+                'projects_count' => $this->projects_count ?? 0,
+                'completed_tasks_count' => $this->completed_tasks_count ?? 0,
+                'hours_logged' => $this->hours_logged ? round($this->hours_logged, 1) : 0,
+            ],
         ];
 
         // Sensitive/Private data - Only for authenticated views or owner

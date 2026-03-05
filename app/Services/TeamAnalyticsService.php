@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Models\Task;
 use App\Models\Team;
 use App\Models\User;
-use Carbon\Carbon;
 
 class TeamAnalyticsService
 {
@@ -27,7 +26,6 @@ class TeamAnalyticsService
             ->first();
 
         // 2. Adherence Rate (On-time completion)
-        // Formula: (Tasks completed on or before due date / Total completed tasks with due date) * 100
         $completedWithDueDate = $team->projects()
             ->join('tasks', 'projects.id', '=', 'tasks.project_id')
             ->where('tasks.status', 'completed')
@@ -44,8 +42,6 @@ class TeamAnalyticsService
         $adherenceRate = $completedWithDueDate > 0 ? round(($completedOnTime / $completedWithDueDate) * 100, 1) : 0;
 
         // 3. Average Cycle Time (in days)
-        // Time from 'in_progress' (or created_at if generic) to 'completed_at'
-        // For simplicity using created_at to completed_at for now as start_date might be null
         $completedTasks = $team->projects()
             ->join('tasks', 'projects.id', '=', 'tasks.project_id')
             ->where('tasks.status', 'completed')
@@ -53,7 +49,6 @@ class TeamAnalyticsService
             ->get(['tasks.created_at', 'tasks.completed_at']);
 
         $avgCycleTime = $completedTasks->avg(function ($task) {
-            // Ensure dates are Carbon instances (casts should handle this, but being safe)
             return \Carbon\Carbon::parse($task->completed_at)->diffInHours($task->created_at);
         });
 
@@ -69,14 +64,66 @@ class TeamAnalyticsService
             ->where('tasks.status', '!=', 'completed')
             ->count();
 
+        // 5. Operator Efficiency (Actual vs Estimated)
+        $hourlyStats = $team->projects()
+            ->join('tasks', 'projects.id', '=', 'tasks.project_id')
+            ->whereNotNull('tasks.estimated_hours')
+            ->where('tasks.actual_hours', '>', 0)
+            ->selectRaw('
+                sum(tasks.estimated_hours) as total_estimated,
+                sum(tasks.actual_hours) as total_actual
+            ')
+            ->first();
+
+        $operatorEfficiency = 0;
+        if ($hourlyStats && $hourlyStats->total_actual > 0) {
+            $operatorEfficiency = round(($hourlyStats->total_estimated / $hourlyStats->total_actual) * 100, 1);
+        }
+
+        // 6. Project Burn Rate (Budget vs Actual Hours Cost)
+        $burnStats = $team->projects()
+            ->where('projects.status', 'active')
+            ->join('tasks', 'projects.id', '=', 'tasks.project_id')
+            ->selectRaw('
+                sum(tasks.estimated_hours) as active_estimated,
+                sum(tasks.actual_hours) as active_actual
+            ')
+            ->first();
+
+        $projectBurnRate = 0;
+        if ($burnStats && $burnStats->active_estimated > 0) {
+            $projectBurnRate = round(($burnStats->active_actual / $burnStats->active_estimated) * 100, 1);
+        }
+
+        // 7. PM/QA Pass Rate (First-time passed)
+        $teamProjectIds = $team->projects()->pluck('projects.id');
+
+        $totalReviews = 0;
+        $passedReviews = 0;
+
+        if ($teamProjectIds->isNotEmpty()) {
+            $totalReviews = \App\Models\TaskQaReview::whereHas('task', function ($q) use ($teamProjectIds) {
+                $q->whereIn('project_id', $teamProjectIds);
+            })->count();
+
+            $passedReviews = \App\Models\TaskQaReview::whereHas('task', function ($q) use ($teamProjectIds) {
+                $q->whereIn('project_id', $teamProjectIds);
+            })->where('status', 'passed')->count();
+        }
+
+        $pmPassRate = $totalReviews > 0 ? round(($passedReviews / $totalReviews) * 100, 1) : 0;
+
         return [
-            'total_tasks' => $taskCounts->total,
-            'completed_tasks' => $taskCounts->completed,
-            'overdue_tasks' => $taskCounts->overdue,
+            'total_tasks' => $taskCounts?->total ?? 0,
+            'completed_tasks' => $taskCounts?->completed ?? 0,
+            'overdue_tasks' => $taskCounts?->overdue ?? 0,
             'adherence_rate' => $adherenceRate,
             'avg_cycle_time_days' => $avgCycleDays,
             'due_this_week' => $dueThisWeek,
             'active_projects_count' => $team->projects()->where('status', 'active')->count(),
+            'operator_efficiency' => $operatorEfficiency,
+            'project_burn_rate' => $projectBurnRate,
+            'pm_pass_rate' => $pmPassRate,
         ];
     }
 

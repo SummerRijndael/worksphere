@@ -23,7 +23,7 @@ class MediaService
             $fileAdder->usingFileName($fileName);
         } else {
             $extension = $file->getClientOriginalExtension() ?: 'bin';
-            $fileAdder->usingFileName((string) \Illuminate\Support\Str::uuid() . '.' . $extension);
+            $fileAdder->usingFileName((string) \Illuminate\Support\Str::uuid().'.'.$extension);
         }
 
         if ($friendName) {

@@ -399,10 +399,10 @@ class MeetingRecordingController extends Controller
     private function mapCfStatus(?string $cfStatus): string
     {
         return match ($cfStatus) {
-            'active' => 'recording',
-            'processing' => 'processing',
-            'completed' => 'completed',
-            'failed' => 'failed',
+            'active', 'RECORDING' => 'recording',
+            'processing', 'INVOKED', 'UPLOADING' => 'processing',
+            'completed', 'UPLOADED' => 'completed',
+            'failed', 'ERRORED' => 'failed',
             default => 'processing',
         };
     }

@@ -331,24 +331,29 @@ async function deletePoll(pollId: string) {
 }
 
 const totalVotes = computed(() => {
-    const counts = meetingStore.activePoll?.vote_counts || [];
-    if (!Array.isArray(counts)) return Object.values(counts).reduce((s, n) => s + (n as number), 0);
-    return counts.reduce((sum, n) => sum + n, 0);
+    return meetingStore.activePoll?.voter_count ?? 0;
 });
 
 function votePercent(i: number): number {
-    let counts = meetingStore.activePoll?.vote_counts ?? [];
+    const poll = meetingStore.activePoll;
+    if (!poll) return 0;
+
+    let counts = poll.vote_counts ?? [];
     if (!Array.isArray(counts)) counts = Object.values(counts);
-    const total = counts.reduce((s, n) => s + (n as number), 0);
+
+    const total = poll.allow_multiple ? (poll.voter_count ?? 0) : counts.reduce((s, n) => s + (n as number), 0);
     if (total === 0) return 0;
+
     return Math.round(((counts[i] as number) / total) * 100);
 }
 
 function pollPercent(poll: any, i: number): number {
     let counts = poll.vote_counts || [];
     if (!Array.isArray(counts)) counts = Object.values(counts);
-    const total = counts.reduce((s: number, n: number) => s + n, 0);
+
+    const total = poll.allow_multiple ? (poll.voter_count ?? 0) : counts.reduce((s: number, n: number) => s + n, 0);
     if (total === 0) return 0;
+
     return Math.round(((counts[i] as number) / total) * 100);
 }
 </script>

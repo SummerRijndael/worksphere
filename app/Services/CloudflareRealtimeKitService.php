@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -24,15 +23,18 @@ use Illuminate\Support\Facades\Log;
 class CloudflareRealtimeKitService
 {
     private ?string $baseUrl = 'https://api.cloudflare.com/client/v4';
+
     private ?string $accountId;
+
     private ?string $apiToken;
+
     private ?string $appId;
 
     public function __construct()
     {
         $this->accountId = config('services.cloudflare_realtime.account_id') ?? '';
-        $this->apiToken  = config('services.cloudflare_realtime.api_token') ?? '';
-        $this->appId     = config('services.cloudflare_realtime.app_id')     ?? '';
+        $this->apiToken = config('services.cloudflare_realtime.api_token') ?? '';
+        $this->appId = config('services.cloudflare_realtime.app_id') ?? '';
     }
 
     // ─── Meeting Management ───────────────────────────────────────────────────
@@ -55,7 +57,7 @@ class CloudflareRealtimeKitService
      * Returns participant data including the auth_token needed by the frontend SDK.
      *
      * @param  string  $cfMeetingId  The Cloudflare RealtimeKit meeting ID
-     * @param  array   $participantData  ['name', 'preset_name', 'custom_participant_id']
+     * @param  array  $participantData  ['name', 'preset_name', 'custom_participant_id']
      */
     public function addParticipant(string $cfMeetingId, array $participantData): array
     {
@@ -88,17 +90,16 @@ class CloudflareRealtimeKitService
     /**
      * Start a recording for a RealtimeKit meeting.
      *
-     * @param  string  $cfMeetingId
-     * @param  array   $options      ['max_seconds' => int, 'watermark' => bool]
+     * @param  array  $options  ['max_seconds' => int, 'watermark' => bool]
      */
     public function startRecording(string $cfMeetingId, array $options = []): array
     {
         $maxSeconds = $options['max_seconds'] ?? 86400;
         $params = [
-            'meeting_id'   => $cfMeetingId,
-            'max_seconds'  => $maxSeconds,
+            'meeting_id' => $cfMeetingId,
+            'max_seconds' => $maxSeconds,
             'audio_config' => [
-                'codec'   => 'AAC',
+                'codec' => 'AAC',
                 'channel' => 'stereo',
             ],
         ];
@@ -108,13 +109,13 @@ class CloudflareRealtimeKitService
         if ($watermarkUrl) {
             $params['video_config'] = [
                 'watermark' => [
-                    'url'      => $watermarkUrl,
+                    'url' => $watermarkUrl,
                     'position' => config('services.cloudflare_realtime.watermark_position', 'right bottom'),
-                    'size'     => [
+                    'size' => [
                         'height' => (int) config('services.cloudflare_realtime.watermark_height', 40),
-                        'width'  => (int) config('services.cloudflare_realtime.watermark_width', 160),
+                        'width' => (int) config('services.cloudflare_realtime.watermark_width', 160),
                     ],
-                ]
+                ],
             ];
         }
 
@@ -179,15 +180,12 @@ class CloudflareRealtimeKitService
 
     // ─── Internal Helpers ─────────────────────────────────────────────────────
 
-    /**
-     * @return \Illuminate\Http\Client\PendingRequest
-     */
     private function client(): \Illuminate\Http\Client\PendingRequest
     {
         return Http::withToken($this->apiToken)
             ->withHeaders([
-                'Content-Type'  => 'application/json',
-                'Accept'        => 'application/json',
+                'Content-Type' => 'application/json',
+                'Accept' => 'application/json',
             ])->timeout(15);
     }
 
@@ -196,11 +194,11 @@ class CloudflareRealtimeKitService
         if ($response->failed()) {
             Log::channel('cloudflare_realtime')->error("CloudflareRealtimeKitService::{$context} failed", [
                 'status' => $response->status(),
-                'body'   => $response->body(),
+                'body' => $response->body(),
             ]);
 
             throw new \RuntimeException(
-                "Cloudflare RealtimeKit API error [{$response->status()}] in {$context}: " . $response->body()
+                "Cloudflare RealtimeKit API error [{$response->status()}] in {$context}: ".$response->body()
             );
         }
     }

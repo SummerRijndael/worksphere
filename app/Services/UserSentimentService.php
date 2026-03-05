@@ -3,22 +3,20 @@
 namespace App\Services;
 
 use App\Contracts\AppReviewServiceContract;
-
-
 use App\Models\AuditLog;
-use App\Models\Team;
-use App\Models\User;
-use App\Models\Ticket;
 use App\Models\LegalAgreementLog;
+use App\Models\Team;
+use App\Models\Ticket;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Cache;
 
 class UserSentimentService
 {
     public function __construct(
         protected AppReviewServiceContract $reviewService
     ) {}
+
     /**
      * Get user sentiment and vibe metrics.
      */
@@ -42,7 +40,7 @@ class UserSentimentService
             'churn_rate' => $this->calculateChurnRate($startDate),
             'retention_rate' => $this->calculateRetentionRate(),
             'feature_usage' => $this->getFeatureUsageDistribution($startDate),
-            
+
             // Business "Vibe" Entities
             'services_count' => Ticket::where('created_at', '>=', $startDate)->count(),
             'contracts_count' => LegalAgreementLog::where('created_at', '>=', $startDate)->count(),
@@ -52,9 +50,16 @@ class UserSentimentService
 
     protected function getVibeStatus(float $rating): string
     {
-        if ($rating >= 4.5) return 'Excellent';
-        if ($rating >= 3.5) return 'Positive';
-        if ($rating >= 2.5) return 'Mixed';
+        if ($rating >= 4.5) {
+            return 'Excellent';
+        }
+        if ($rating >= 3.5) {
+            return 'Positive';
+        }
+        if ($rating >= 2.5) {
+            return 'Mixed';
+        }
+
         return 'Needs Attention';
     }
 
@@ -64,12 +69,14 @@ class UserSentimentService
     protected function calculateChurnRate(Carbon $startDate): float
     {
         $total = User::count();
-        if ($total === 0) return 0;
+        if ($total === 0) {
+            return 0;
+        }
 
-        $inactive = User::where(function($q) {
-                $q->where('last_login_at', '<', now()->subDays(30))
-                  ->orWhereNull('last_login_at');
-            })
+        $inactive = User::where(function ($q) {
+            $q->where('last_login_at', '<', now()->subDays(30))
+                ->orWhereNull('last_login_at');
+        })
             ->count();
 
         return round(($inactive / $total) * 100, 1);
@@ -81,12 +88,14 @@ class UserSentimentService
     protected function calculateRetentionRate(): float
     {
         $total = User::count();
-        if ($total === 0) return 0;
+        if ($total === 0) {
+            return 0;
+        }
 
         // Users with recent activity in audit logs
-        $retained = User::whereHas('auditLogs', function($q) {
-                $q->where('created_at', '>=', now()->subDays(30));
-            }, '>=', 3)
+        $retained = User::whereHas('auditLogs', function ($q) {
+            $q->where('created_at', '>=', now()->subDays(30));
+        }, '>=', 3)
             ->count();
 
         return round(($retained / $total) * 100, 1);

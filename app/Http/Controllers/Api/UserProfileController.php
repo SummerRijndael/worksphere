@@ -58,10 +58,6 @@ class UserProfileController extends Controller
         // 2. Query Tasks
         // - Assigned to target user
         // - Created by SOMEONE ELSE (not self-assigned)
-        // - Visible to AUTH user (via project membership)
-        // 2. Query Tasks
-        // - Assigned to target user
-        // - Created by SOMEONE ELSE (not self-assigned)
         // - Visible to AUTH user (via project membership OR if admin)
         $query = \App\Models\Task::query()
             ->with(['project', 'creator'])
@@ -82,5 +78,83 @@ class UserProfileController extends Controller
 
         // Use TaskResource if it exists, or simple mapping
         return \App\Http\Resources\TaskResource::collection($tasks);
+    }
+
+    /**
+     * Get projects the user is a member of.
+     */
+    public function projects(Request $request, User $user)
+    {
+        $this->authorize('viewProfile', $user);
+        $authUser = $request->user();
+
+        $query = \App\Models\Project::query()
+            ->whereHas('members', function ($q) use ($user) {
+                $q->where('user_id', $user->id);
+            })
+            ->when(! $authUser->hasRole('administrator') && $authUser->id !== $user->id, function ($q) use ($authUser) {
+                // Only show projects that the auth user also has access to
+                $q->whereHas('members', function ($m) use ($authUser) {
+                    $m->where('user_id', $authUser->id);
+                });
+            })
+            ->withCount(['tasks' => function ($query) {
+                $query->where('status', '!=', \App\Enums\TaskStatus::Archived); // Exclude archived tasks
+            }])
+            ->orderBy('due_date', 'asc');
+
+        $projects = $query->paginate(20);
+
+        return \App\Http\Resources\ProjectResource::collection($projects);
+    }
+
+    /**
+     * Get the user's teammates.
+     */
+    public function teammates(Request $request, User $user, \App\Services\Chat\PresenceService $presenceService)
+    {
+        $this->authorize('viewProfile', $user);
+
+        // Find all teams the user is in
+        $teamIds = $user->teams()->pluck('teams.id');
+
+        if ($teamIds->isEmpty()) {
+            return response()->json(['data' => []]);
+        }
+
+        // Find all users who are in those teams
+        $teammates = User::query()
+            ->whereHas('teams', function ($q) use ($teamIds) {
+                $q->whereIn('teams.id', $teamIds);
+            })
+            ->where('users.id', '!=', $user->id) // exclude the user themselves
+            ->get();
+
+        // Map them and add ownership relationship
+        $mapped = $teammates->map(function ($teammate) use ($user, $teamIds, $presenceService) {
+            $sharedTeams = $teammate->teams()->whereIn('teams.id', $teamIds)->get();
+
+            $isOwned = false;
+            foreach ($sharedTeams as $team) {
+                if ($team->owner_id === $user->id) {
+                    $isOwned = true;
+                    break;
+                }
+            }
+
+            return [
+                'public_id' => $teammate->public_id,
+                'name' => $teammate->name,
+                'username' => $teammate->username,
+                'avatar_url' => $teammate->avatar_url,
+                'initials' => $teammate->initials,
+                'job_title' => $teammate->title,
+                'presence' => $presenceService->presenceStatus($teammate->id),
+                'relationship' => $isOwned ? 'owned' : 'member',
+            ];
+        });
+
+        // Group by relationship if needed or just return flat list
+        return response()->json(['data' => $mapped]);
     }
 }

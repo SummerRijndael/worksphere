@@ -863,11 +863,20 @@ function isOwnMessage(msg: Message): boolean {
 
         <!-- Header -->
         <div
-            class="minichat-window-header"
+            class="minichat-window-header relative"
             :class="{ 'cursor-default!': miniChatStore.isDocked }"
             @mousedown.prevent="handleDragStart"
         >
-            <div class="relative shrink-0">
+            <div
+                v-if="!miniChatStore.isDocked"
+                class="absolute left-1.5 top-1/2 -translate-y-1/2 text-(--text-secondary) pointer-events-none opacity-60 group-hover:opacity-100 transition-opacity"
+            >
+                <Icon name="GripVertical" :size="16" />
+            </div>
+            <div
+                class="relative shrink-0"
+                :class="{ 'ml-4': !miniChatStore.isDocked }"
+            >
                 <Avatar
                     :src="chatAvatarData.url"
                     :alt="chatTitle"
@@ -1185,6 +1194,7 @@ function isOwnMessage(msg: Message): boolean {
 }
 
 .minichat-window-header {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 10px;

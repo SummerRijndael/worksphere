@@ -73,14 +73,14 @@ class PresenceService
             try {
                 UserPresenceChanged::dispatch($userModel, $newStatus);
             } catch (\Throwable $e) {
-                Log::warning('Presence broadcast failed: ' . $e->getMessage());
+                Log::warning('Presence broadcast failed: '.$e->getMessage());
             }
         } elseif ($previousStatus !== null && $previousStatus !== $newStatus) {
             // Status changed, broadcast the new status
             try {
                 UserPresenceChanged::dispatch($userModel, $newStatus);
             } catch (\Throwable $e) {
-                Log::warning('Presence broadcast failed: ' . $e->getMessage());
+                Log::warning('Presence broadcast failed: '.$e->getMessage());
             }
         }
         // If status is the same, no broadcast needed
@@ -92,13 +92,13 @@ class PresenceService
     public function meetingHeartbeat(string $meetingPublicId, string $participantPublicId): void
     {
         $key = "meeting:presence:{$meetingPublicId}";
-        
+
         // Add participant to the set of active users for this meeting
         Redis::zadd($key, now()->timestamp, $participantPublicId);
-        
+
         // Set expiry for the whole set if it's new (e.g. 2 hours)
         Redis::expire($key, 7200);
-        
+
         // Prune participants who haven't sent a heartbeat in 60 seconds
         $threshold = now()->timestamp - 60;
         Redis::zremrangebyscore($key, '-inf', $threshold);
@@ -110,11 +110,11 @@ class PresenceService
     public function getActiveMeetingParticipantIds(string $meetingPublicId): array
     {
         $key = "meeting:presence:{$meetingPublicId}";
-        
+
         // Prune stale before returning
         $threshold = now()->timestamp - 60;
         Redis::zremrangebyscore($key, '-inf', $threshold);
-        
+
         return Redis::zrange($key, 0, -1) ?: [];
     }
 

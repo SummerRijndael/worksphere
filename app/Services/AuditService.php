@@ -519,7 +519,7 @@ class AuditService
         $user = $user ?? auth()->user();
 
         $metadata = $context;
-        
+
         $impersonatorId = \Illuminate\Support\Facades\Session::get('impersonator_id');
         if ($impersonatorId) {
             $metadata['impersonator_id'] = $impersonatorId;

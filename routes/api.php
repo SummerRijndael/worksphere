@@ -147,6 +147,8 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
     Route::prefix('users/{user}')->group(function () {
         Route::get('profile', [\App\Http\Controllers\Api\UserProfileController::class, 'show']);
         Route::get('assigned-tasks', [\App\Http\Controllers\Api\UserProfileController::class, 'assignedTasks']);
+        Route::get('projects', [\App\Http\Controllers\Api\UserProfileController::class, 'projects']);
+        Route::get('teammates', [\App\Http\Controllers\Api\UserProfileController::class, 'teammates']);
     });
 
     // Dashboard
@@ -494,6 +496,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
 
     Route::middleware('permission:users.update')->group(function () {
         Route::put('/users/{user}', [UserController::class, 'update']);
+        Route::delete('/users/{user}/avatar', [UserController::class, 'removeAvatar']);
     });
 
     Route::middleware('permission:users.delete')->group(function () {

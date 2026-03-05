@@ -22,12 +22,15 @@ class MeetingPollVoted implements ShouldBroadcastNow
 
     public int $totalVotes;
 
+    public int $voterCount;
+
     public function __construct(Meeting $meeting, MeetingPoll $poll)
     {
         $this->meetingPublicId = $meeting->public_id;
         $this->pollPublicId = $poll->public_id;
         $this->voteCounts = $poll->getVoteCounts();
         $this->totalVotes = array_sum($this->voteCounts);
+        $this->voterCount = $poll->getVoterCount();
     }
 
     public function broadcastWith(): array
@@ -36,6 +39,7 @@ class MeetingPollVoted implements ShouldBroadcastNow
             'poll_id' => $this->pollPublicId,
             'vote_counts' => $this->voteCounts,
             'total_votes' => $this->totalVotes,
+            'voter_count' => $this->voterCount,
         ];
     }
 

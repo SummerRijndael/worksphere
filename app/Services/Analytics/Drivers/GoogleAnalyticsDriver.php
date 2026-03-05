@@ -8,7 +8,7 @@ use App\Models\Setting;
 class GoogleAnalyticsDriver implements AnalyticsDriver
 {
     /**
-     * @inheritDoc
+     * {@inheritDoc}
      */
     public function track(array $data): void
     {
@@ -18,7 +18,7 @@ class GoogleAnalyticsDriver implements AnalyticsDriver
     }
 
     /**
-     * @inheritDoc
+     * {@inheritDoc}
      */
     public function isEnabled(): bool
     {

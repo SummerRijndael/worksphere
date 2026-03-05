@@ -2,13 +2,13 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
 use App\Enums\AuditAction;
 use App\Enums\AuditCategory;
-use App\Services\AuditService;
+use App\Http\Controllers\Controller;
 use App\Http\Resources\UserResource;
 use App\Models\User;
 use App\Notifications\AccountCreated;
+use App\Services\AuditService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -119,6 +119,13 @@ class UserController extends Controller
 
         // Load related data
         $user->load(['teams', 'roles', 'permissions']);
+        $user->loadCount([
+            'projects',
+            'assignedTasks as completed_tasks_count' => function ($query) {
+                $query->where('status', 'completed');
+            },
+        ]);
+        $user->loadSum('assignedTasks as hours_logged', 'actual_hours');
 
         // Manually load media since it's a trait method, though 'with' often works if model setup correctly.
         // But for clarity and ensuring it's loaded for the resource:
@@ -139,7 +146,7 @@ class UserController extends Controller
         $rules = [
             'name' => ['sometimes', 'string', 'max:255', 'regex:/^[\pL\s\-\']+$/u'],
             'username' => ['sometimes', 'nullable', 'string', 'min:3', 'max:50', 'regex:/^[a-zA-Z0-9_\-\.]+$/', Rule::unique('users')->ignore($user->id)],
-            'phone' => ['sometimes', 'nullable', 'string', 'max:20'],
+            'phone' => ['sometimes', 'nullable', 'string', 'max:20', 'regex:/^([0-9\s\-\+\(\)]*)$/'],
         ];
 
         // Email can only be changed by the user themselves (self-service)
@@ -225,7 +232,7 @@ class UserController extends Controller
             $user->update(['status' => $validated['status']]);
 
             // Log status change with reason
-            $action = match($validated['status']) {
+            $action = match ($validated['status']) {
                 'suspended' => AuditAction::AccountSuspended,
                 'blocked', 'banned' => AuditAction::AccountBanned,
                 default => AuditAction::Updated,
@@ -277,6 +284,7 @@ class UserController extends Controller
             'name' => ['required', 'string', 'max:255', 'regex:/^[\pL\s\-\']+$/u'],
             'email' => ['required', 'string', 'email:rfc', 'max:255', Rule::unique('users')->ignore($user->id)],
             'username' => ['nullable', 'string', 'min:3', 'max:50', 'regex:/^[a-zA-Z0-9_\-\.]+$/', Rule::unique('users')->ignore($user->id)],
+            'phone' => ['nullable', 'string', 'max:20', 'regex:/^([0-9\s\-\+\(\)]*)$/'],
             'title' => ['nullable', 'string', 'max:255'],
             'bio' => ['nullable', 'string', 'max:1000'],
             'location' => ['nullable', 'string', 'max:255'],
@@ -509,6 +517,18 @@ class UserController extends Controller
         });
 
         return response()->json($logs);
+    }
+
+    /**
+     * Remove the user's avatar.
+     */
+    public function removeAvatar(User $user): JsonResponse
+    {
+        $this->authorize('update', $user);
+
+        $user->clearMediaCollection('avatars');
+
+        return response()->json(['message' => 'Avatar removed successfully.']);
     }
 
     /**

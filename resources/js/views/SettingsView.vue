@@ -66,7 +66,10 @@ const profile = ref({
     website: "",
     timezone: "",
     skills: [],
+    phone: "",
 });
+
+const errors = ref({});
 
 const newSkill = ref("");
 
@@ -450,10 +453,11 @@ const initProfile = () => {
             bio: authStore.user.bio || "",
             location: authStore.user.location || "",
             website: authStore.user.website || "",
-            skills: authStore.user.skills ? [...authStore.user.skills] : [],
             timezone:
                 authStore.user.preferences?.timezone ||
                 Intl.DateTimeFormat().resolvedOptions().timeZone,
+            phone: authStore.user.phone || "",
+            skills: authStore.user.skills || [],
         };
 
         // Load preferences from user
@@ -518,9 +522,9 @@ const saveProfile = async () => {
             title: profile.value.title,
             bio: profile.value.bio,
             location: profile.value.location,
-            website: profile.value.website,
             skills: profile.value.skills,
             timezone: profile.value.timezone,
+            phone: profile.value.phone,
         });
 
         await authStore.fetchUser();
@@ -539,6 +543,9 @@ const saveProfile = async () => {
 
         toast.success("Profile updated successfully");
     } catch (error) {
+        if (error.response?.data?.errors) {
+            errors.value = error.response.data.errors;
+        }
         toast.error(
             error.response?.data?.message || "Failed to update profile",
         );
@@ -1435,7 +1442,7 @@ onMounted(() => {
                             >
                                 <div
                                     class="flex flex-wrap gap-2 mb-2"
-                                    v-if="profile.skills.length > 0"
+                                    v-if="profile.skills?.length > 0"
                                 >
                                     <Badge
                                         v-for="(skill, index) in profile.skills"
@@ -1458,9 +1465,9 @@ onMounted(() => {
                                     @keydown.enter.prevent="addSkill"
                                     @keydown.backspace="
                                         newSkill === '' &&
-                                        profile.skills.length > 0
+                                        profile.skills?.length > 0
                                             ? removeSkill(
-                                                  profile.skills.length - 1,
+                                                  profile.skills?.length - 1,
                                               )
                                             : null
                                     "
@@ -1481,23 +1488,24 @@ onMounted(() => {
                             <Input
                                 v-model="profile.email"
                                 type="email"
+                                label="Email Address"
                                 placeholder="Your email"
                                 class="flex-1"
+                                :error="errors.email?.[0]"
                             />
-                            <Badge
-                                v-if="authStore.user?.email_verified_at"
-                                variant="success"
-                                size="sm"
-                            >
-                                <Check class="w-3 h-3 mr-1" /> Verified
-                            </Badge>
-                            <Badge v-else variant="warning" size="sm"
-                                >Unverified</Badge
-                            >
                         </div>
                         <p class="text-xs text-[var(--text-muted)] mt-1">
                             Changing email will require re-verification.
                         </p>
+                    </div>
+
+                    <div class="mt-4">
+                        <Input
+                            v-model="profile.phone"
+                            label="Phone Number"
+                            placeholder="+1 234 567 890"
+                            :error="errors.phone?.[0]"
+                        />
                     </div>
 
                     <!-- Recent Files Management -->

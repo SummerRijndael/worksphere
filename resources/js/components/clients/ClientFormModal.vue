@@ -1,9 +1,12 @@
 <script setup>
-import { ref, watch, onMounted } from "vue";
-import { Button } from "@/components/ui";
+import { ref, watch, onMounted, computed } from "vue";
+import { Button, Input } from "@/components/ui";
 import api from "@/lib/api";
 import { useAuthStore } from "@/stores/auth";
 import { SelectFilter } from "@/components/ui";
+import { useForm } from "vee-validate";
+import { toTypedSchema } from "@vee-validate/zod";
+import * as z from "zod";
 
 const props = defineProps({
     open: Boolean,
@@ -21,12 +24,54 @@ const emit = defineEmits(["close", "saved"]);
 
 const authStore = useAuthStore();
 const isSubmitting = ref(false);
-const errors = ref({});
-
-// Admin Team Selection
+const isLoadingTeams = ref(false);
 const availableTeams = ref([]);
 const selectedTeamId = ref(null);
-const isLoadingTeams = ref(false);
+const errors = ref({});
+const phoneRegex = /^([0-9\s\-\+\(\)]*)$/;
+
+const schema = toTypedSchema(
+    z.object({
+        name: z.string().min(1, "Company Name is required").max(255),
+        email: z
+            .string()
+            .email("Invalid email")
+            .nullable()
+            .optional()
+            .or(z.literal("")),
+        contact_person: z.string().max(255).nullable().optional(),
+        phone: z
+            .string()
+            .max(20, "Phone number cannot exceed 20 characters")
+            .regex(phoneRegex, "Invalid phone number format")
+            .nullable()
+            .optional()
+            .or(z.literal("")),
+        address: z.string().max(1000).nullable().optional(),
+        status: z.enum(["active", "inactive"]),
+        team_id: z.string().optional(),
+    }),
+);
+
+const {
+    handleSubmit,
+    errors: vErrors,
+    setValues,
+    resetForm,
+    defineField,
+} = useForm({
+    validationSchema: schema,
+    initialValues: {
+        status: "active",
+    },
+});
+
+const [name, nameProps] = defineField("name");
+const [email, emailProps] = defineField("email");
+const [contact_person, contactPersonProps] = defineField("contact_person");
+const [phone, phoneProps] = defineField("phone");
+const [address, addressProps] = defineField("address");
+const [status, statusProps] = defineField("status");
 
 const formData = ref({
     name: "",
@@ -111,7 +156,7 @@ watch(
         if (isOpen) {
             if (props.client) {
                 // Edit Mode
-                formData.value = {
+                const initial = {
                     name: props.client.name,
                     email: props.client.email || "",
                     contact_person: props.client.contact_person || "",
@@ -119,11 +164,14 @@ watch(
                     address: props.client.address || "",
                     status: props.client.status,
                 };
+                setValues(initial);
+                formData.value = { ...initial };
                 // Use public_id if team relation is loaded, otherwise team_id (fallback)
                 selectedTeamId.value =
                     props.client.team?.public_id || props.client.team_id;
             } else {
                 // Create Mode
+                resetForm();
                 formData.value = {
                     name: "",
                     email: "",
@@ -134,16 +182,14 @@ watch(
                 };
                 selectedTeamId.value = props.teamId || authStore.currentTeamId; // Default to prop or current team
             }
-            errors.value = {};
         }
     },
 );
 
-const save = async () => {
+const save = handleSubmit(async (values) => {
     isSubmitting.value = true;
-    errors.value = {};
 
-    const data = { ...formData.value };
+    const data = { ...values };
 
     // Append team_id if selection is active
     if (shouldShowTeamSelector()) {
@@ -167,10 +213,8 @@ const save = async () => {
         if (error.response?.data?.errors) {
             errors.value = error.response.data.errors;
         }
-    } finally {
-        isSubmitting.value = false;
     }
-};
+});
 </script>
 
 <template>
@@ -215,17 +259,12 @@ const save = async () => {
                             class="text-sm font-medium text-[var(--text-secondary)]"
                             >Company Name</label
                         >
-                        <input
-                            v-model="formData.name"
-                            type="text"
-                            class="input"
+                        <Input
+                            v-model="name"
+                            v-bind="nameProps"
+                            placeholder="Company Name"
+                            :error="vErrors.name"
                         />
-                        <p
-                            v-if="errors.name"
-                            class="text-xs text-[var(--color-error)]"
-                        >
-                            {{ errors.name[0] }}
-                        </p>
                     </div>
 
                     <div class="space-y-1">
@@ -233,17 +272,12 @@ const save = async () => {
                             class="text-sm font-medium text-[var(--text-secondary)]"
                             >Contact Person</label
                         >
-                        <input
-                            v-model="formData.contact_person"
-                            type="text"
-                            class="input"
+                        <Input
+                            v-model="contact_person"
+                            v-bind="contactPersonProps"
+                            placeholder="John Doe"
+                            :error="vErrors.contact_person"
                         />
-                        <p
-                            v-if="errors.contact_person"
-                            class="text-xs text-[var(--color-error)]"
-                        >
-                            {{ errors.contact_person[0] }}
-                        </p>
                     </div>
 
                     <div class="space-y-1">
@@ -251,17 +285,13 @@ const save = async () => {
                             class="text-sm font-medium text-[var(--text-secondary)]"
                             >Email</label
                         >
-                        <input
-                            v-model="formData.email"
+                        <Input
+                            v-model="email"
+                            v-bind="emailProps"
                             type="email"
-                            class="input"
+                            placeholder="client@example.com"
+                            :error="vErrors.email"
                         />
-                        <p
-                            v-if="errors.email"
-                            class="text-xs text-[var(--color-error)]"
-                        >
-                            {{ errors.email[0] }}
-                        </p>
                     </div>
 
                     <div class="space-y-1">
@@ -269,17 +299,12 @@ const save = async () => {
                             class="text-sm font-medium text-[var(--text-secondary)]"
                             >Phone</label
                         >
-                        <input
-                            v-model="formData.phone"
-                            type="text"
-                            class="input"
+                        <Input
+                            v-model="phone"
+                            v-bind="phoneProps"
+                            placeholder="+1 234 567 890"
+                            :error="vErrors.phone"
                         />
-                        <p
-                            v-if="errors.phone"
-                            class="text-xs text-[var(--color-error)]"
-                        >
-                            {{ errors.phone[0] }}
-                        </p>
                     </div>
 
                     <div class="space-y-1">

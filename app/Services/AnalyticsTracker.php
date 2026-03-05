@@ -104,7 +104,6 @@ class AnalyticsTracker
         }
     }
 
-
     /**
      * Prepare data for analytics.
      */

@@ -275,7 +275,6 @@ class MaintenanceController extends Controller
         return response()->json($result);
     }
 
-
     /**
      * Clear old log files.
      */

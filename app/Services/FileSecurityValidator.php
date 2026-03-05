@@ -102,7 +102,7 @@ class FileSecurityValidator
 
         if (in_array($actualMime, $highRiskMimes, true)) {
             throw ValidationException::withMessages([
-                'file' => "Security violation: High-risk file type spoofing detected.",
+                'file' => 'Security violation: High-risk file type spoofing detected.',
             ]);
         }
 
@@ -130,7 +130,7 @@ class FileSecurityValidator
 
         // Default: Throw if not a known safe mismatch
         throw ValidationException::withMessages([
-            'file' => "File content does not match the file extension provided (MIME spoofing detected).",
+            'file' => 'File content does not match the file extension provided (MIME spoofing detected).',
         ]);
     }
 

@@ -1,12 +1,11 @@
 <template>
     <div class="tile-root" :class="{ 'tile-speaking': isSpeaking }">
         <!-- Core Video Content Box -->
-        <div v-show="actualHasVideo" class="tile-video-container">
+        <div v-if="actualHasVideo" class="tile-video-container">
             <div class="tile-video-content" :style="videoContentStyle">
                 <!-- Local Video (Persistent to avoid iOS Safari play failures) -->
                 <video
                     v-if="isLocal"
-                    v-show="actualHasVideo"
                     autoplay
                     muted
                     playsinline
@@ -17,7 +16,6 @@
                 <!-- Remote Video (Persistent) -->
                 <video
                     v-if="!isLocal"
-                    v-show="actualHasVideo"
                     autoplay
                     muted
                     playsinline
@@ -264,6 +262,9 @@ const initials = computed(() => {
 const localVideo = ref<HTMLVideoElement | null>(null);
 
 const bindLocalVideo = (el: any) => {
+    if (!el && localVideo.value) {
+        localVideo.value.srcObject = null;
+    }
     localVideo.value = el as HTMLVideoElement | null;
     if (el) {
         el.addEventListener("resize", () =>
@@ -302,6 +303,9 @@ const remoteVideo = ref<HTMLVideoElement | null>(null);
 const remoteAudio = ref<HTMLAudioElement | null>(null);
 
 const bindRemoteVideo = (el: any) => {
+    if (!el && remoteVideo.value) {
+        remoteVideo.value.srcObject = null;
+    }
     remoteVideo.value = el as HTMLVideoElement | null;
     if (el) {
         el.addEventListener("resize", () =>

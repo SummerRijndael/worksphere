@@ -20,6 +20,8 @@ export function createRealtimeKitManager(
     let cfMeeting: any = null;
     const isInitializing = ref(false);
     const isSessionActive = ref(false);
+    const networkScore = ref<number>(0); // 0=Good, 1=Fair, 2=Poor
+
 
     /**
      * Join the Realtime Kit meeting using a JWT token from our backend.
@@ -108,6 +110,18 @@ export function createRealtimeKitManager(
                 emitTalkingState(participant.id.toLowerCase(), true);
             }
         });
+
+        // Local network quality
+        cfMeeting.self.on('networkQualityScore', (score: number) => {
+            log('NETWORK', `Local network quality score: ${score}`);
+            // Cloudflare Score mapping (assuming 0-5 where 5 is best)
+            // 5,4 -> 0 (Good)
+            // 3   -> 1 (Fair) 
+            // 2,1,0 -> 2 (Poor)
+            if (score >= 4) networkScore.value = 0;
+            else if (score === 3) networkScore.value = 1;
+            else networkScore.value = 2;
+        });
     }
 
     function setupParticipantListeners(participant: any) {
@@ -129,9 +143,9 @@ export function createRealtimeKitManager(
             log('TRACK', `Remote videoUpdate from ${participant.id}`, { enabled: payload.videoEnabled });
             if (payload.videoEnabled && payload.videoTrack) {
                 handleRemoteTrack(resolvePid(participant), payload.videoTrack, 'video');
-            } else if (!payload.videoEnabled && !participant.audioEnabled) {
-                // If both are disabled, safely clean up (or let audio keep the stream alive)
+            } else {
                 log('TRACK', `Remote video disabled for ${participant.id}`);
+                handleRemoteTrack(resolvePid(participant), null, 'video');
             }
         });
 
@@ -140,6 +154,9 @@ export function createRealtimeKitManager(
             log('TRACK', `Remote audioUpdate from ${participant.id}`, { enabled: payload.audioEnabled });
             if (payload.audioEnabled && payload.audioTrack) {
                 handleRemoteTrack(resolvePid(participant), payload.audioTrack, 'audio');
+            } else {
+                log('TRACK', `Remote audio disabled for ${participant.id}`);
+                handleRemoteTrack(resolvePid(participant), null, 'audio');
             }
         });
 
@@ -163,12 +180,40 @@ export function createRealtimeKitManager(
     }
 
     function handleRemoteTrack(pid: string, track: MediaStreamTrack | null, trackKind?: string) {
-        if (!track) return;
-        
-        log('TRACK', `Handling remote track: ${track.kind} (${track.id}) for ${pid}`, { trackKind });
+        log('TRACK', `Handling remote track update: ${trackKind || 'unknown'} for ${pid}`, { hasTrack: !!track });
 
         const existingStream = remoteStreams.value.get(pid);
 
+        if (!track) {
+            // REMOVAL CASE
+            if (existingStream) {
+                const kind = trackKind?.includes('video') ? 'video' : (trackKind?.includes('audio') ? 'audio' : null);
+                if (kind) {
+                    existingStream.getTracks().forEach(t => {
+                        if (t.kind === kind) {
+                            log('TRACK', `Removing ${kind} track from ${pid}`);
+                            existingStream.removeTrack(t);
+                            t.stop();
+                        }
+                    });
+
+                    // If stream is empty, remove it entirely
+                    if (existingStream.getTracks().length === 0) {
+                        log('TRACK', `Stream empty for ${pid}, removing from map`);
+                        const newMap = new Map(remoteStreams.value);
+                        newMap.delete(pid);
+                        remoteStreams.value = newMap;
+                    } else {
+                        // Re-trigger reactivity for components watching this specific stream
+                        const newMap = new Map(remoteStreams.value);
+                        remoteStreams.value = newMap;
+                    }
+                }
+            }
+            return;
+        }
+
+        // ADDITION / UPDATE CASE
         if (existingStream) {
             // Check if track already exists (avoid duplicates)
             const tracks = existingStream.getTracks();
@@ -177,11 +222,15 @@ export function createRealtimeKitManager(
             if (sameKindTrack && sameKindTrack.id !== track.id) {
                 log('TRACK', `Replacing existing ${track.kind} track for ${pid}`);
                 existingStream.removeTrack(sameKindTrack);
+                sameKindTrack.stop();
                 existingStream.addTrack(track);
             } else if (!sameKindTrack) {
                 log('TRACK', `Adding ${track.kind} track to existing stream for ${pid}`);
                 existingStream.addTrack(track);
             }
+            // Trigger reactivity
+            const newMap = new Map(remoteStreams.value);
+            remoteStreams.value = newMap;
         } else {
             log('TRACK', `Creating new MediaStream for ${pid} with ${track.kind} track`);
             const newStream = new MediaStream([track]);
@@ -307,6 +356,7 @@ export function createRealtimeKitManager(
         remoteStreams,
         sfuConnectionState: ref('connected'),
         sfuSessionId: ref('realtime-kit'),
+        networkScore,
 
         // Actions
         initSDK,

@@ -9,6 +9,7 @@ use Illuminate\Console\Command;
 class GoogleWatchAllCommand extends Command
 {
     protected $signature = 'google:watch-all';
+
     protected $description = 'Safety-net: register watch channels for users who have no active channel yet.';
 
     public function handle(): int
@@ -23,7 +24,7 @@ class GoogleWatchAllCommand extends Command
             ->whereJsonContains('scopes', 'https://www.googleapis.com/auth/calendar.events')
             ->where(function ($q) {
                 $q->whereNull('google_channel_id')
-                  ->orWhere('google_channel_expiration', '<=', now());
+                    ->orWhere('google_channel_expiration', '<=', now());
             })
             ->with('user')
             ->get();

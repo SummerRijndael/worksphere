@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Models\Meeting;
 use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class JoinSocialTest extends TestCase
@@ -12,7 +11,7 @@ class JoinSocialTest extends TestCase
     public function test_social_user_can_join_meeting()
     {
         $user = User::where('email', 'ev.ryann.olaso@gmail.com')->first();
-        if (!$user) {
+        if (! $user) {
             $this->markTestSkipped('Social user not found.');
         }
 
