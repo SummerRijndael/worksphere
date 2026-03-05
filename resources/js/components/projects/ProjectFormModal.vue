@@ -55,19 +55,14 @@ const { setValues, resetForm, errors, handleSubmit, defineField } = useForm({
 });
 
 const [name, nameProps] = defineField("name");
+const [description, descriptionProps] = defineField("description");
+const [team_id, team_idProps] = defineField("team_id");
+const [client_id, client_idProps] = defineField("client_id");
+const [status, statusProps] = defineField("status");
+const [priority, priorityProps] = defineField("priority");
+const [start_date, start_dateProps] = defineField("start_date");
+const [due_date, due_dateProps] = defineField("due_date");
 const [budget, budgetProps] = defineField("budget");
-
-const formValues = ref({
-    name: "",
-    description: "",
-    team_id: "",
-    client_id: "",
-    status: "active",
-    priority: "medium",
-    start_date: "",
-    due_date: "",
-    budget: 0,
-});
 
 const statusOptions = [
     { value: "draft", label: "Draft" },
@@ -88,7 +83,7 @@ const priorityOptions = [
 // Fetch clients
 const fetchClients = async () => {
     try {
-        const teamId = formValues.value.team_id;
+        const teamId = team_id.value;
         if (!teamId) {
             clients.value = [];
             return;
@@ -103,7 +98,7 @@ const fetchClients = async () => {
 };
 
 watch(
-    () => formValues.value.team_id,
+    () => team_id.value,
     (newVal) => {
         if (newVal) {
             // Clear client selection if team changes and client doesn't belong to new team (simple check: just clear it)
@@ -112,7 +107,7 @@ watch(
                 !isEditing.value ||
                 (isEditing.value && newVal !== props.project?.team_id)
             ) {
-                formValues.value.client_id = "";
+                client_id.value = "";
             }
             fetchClients();
         } else {
@@ -154,25 +149,8 @@ watch(
         if (newProject) {
             setValues({
                 name: newProject.name,
-                description: newProject.description,
-                team_id: newProject.team_id,
-                client_id: newProject.client?.public_id || "",
-                status: newProject.status,
-                priority: newProject.priority,
-                start_date: newProject.start_date
-                    ? newProject.start_date.split("T")[0]
-                    : "",
-                due_date: newProject.due_date
-                    ? newProject.due_date.split("T")[0]
-                    : "",
-                budget: Number(newProject.budget) || 0,
-            });
-            name.value = newProject.name;
-            budget.value = Number(newProject.budget) || 0;
-            formValues.value = {
-                name: newProject.name,
                 description: newProject.description || "",
-                team_id: newProject.team_id, // This will trigger the watcher
+                team_id: newProject.team_id,
                 client_id:
                     newProject.client?.id || newProject.client?.public_id || "",
                 status:
@@ -188,17 +166,15 @@ watch(
                     ? newProject.due_date.split("T")[0]
                     : "",
                 budget: Number(newProject.budget) || 0,
-            };
+            });
         } else {
             resetForm();
-            name.value = "";
-            budget.value = 0;
             const defaultTeamId =
                 authStore.currentTeam?.public_id ||
                 (authStore.user?.teams?.length === 1
                     ? authStore.user.teams[0].public_id
                     : "");
-            formValues.value = {
+            setValues({
                 name: "",
                 description: "",
                 team_id: defaultTeamId,
@@ -208,7 +184,7 @@ watch(
                 start_date: "",
                 due_date: "",
                 budget: 0,
-            };
+            });
         }
     },
     { immediate: true },
@@ -299,7 +275,7 @@ const onSubmit = handleSubmit(async (values) => {
                     >
                     <Input
                         v-bind="nameProps"
-                        v-model="formValues.name"
+                        v-model="name"
                         placeholder="Enter project name"
                         :error="errors.name"
                     />
@@ -311,7 +287,8 @@ const onSubmit = handleSubmit(async (values) => {
                         >Description</label
                     >
                     <Textarea
-                        v-model="formValues.description"
+                        v-bind="descriptionProps"
+                        v-model="description"
                         placeholder="Describe the project..."
                         rows="3"
                     />
@@ -326,7 +303,8 @@ const onSubmit = handleSubmit(async (values) => {
                         >Team <span class="text-red-500">*</span></label
                     >
                     <SelectFilter
-                        v-model="formValues.team_id"
+                        v-bind="team_idProps"
+                        v-model="team_id"
                         :options="teamOptions"
                         placeholder="Select team"
                     />
@@ -339,7 +317,8 @@ const onSubmit = handleSubmit(async (values) => {
                             >Client</label
                         >
                         <SelectFilter
-                            v-model="formValues.client_id"
+                            v-bind="client_idProps"
+                            v-model="client_id"
                             :options="clientOptions"
                             placeholder="Select client"
                             searchable
@@ -353,7 +332,7 @@ const onSubmit = handleSubmit(async (values) => {
                         <Input
                             v-bind="budgetProps"
                             type="number"
-                            v-model="formValues.budget"
+                            v-model="budget"
                             placeholder="0.00"
                             :error="errors.budget"
                         />
@@ -367,7 +346,8 @@ const onSubmit = handleSubmit(async (values) => {
                             >Status</label
                         >
                         <SelectFilter
-                            v-model="formValues.status"
+                            v-bind="statusProps"
+                            v-model="status"
                             :options="statusOptions"
                             placeholder="Select status"
                         />
@@ -378,7 +358,8 @@ const onSubmit = handleSubmit(async (values) => {
                             >Priority</label
                         >
                         <SelectFilter
-                            v-model="formValues.priority"
+                            v-bind="priorityProps"
+                            v-model="priority"
                             :options="priorityOptions"
                             placeholder="Select priority"
                         />
@@ -391,14 +372,22 @@ const onSubmit = handleSubmit(async (values) => {
                             class="block text-sm font-medium text-[var(--text-primary)]"
                             >Start Date</label
                         >
-                        <Input type="date" v-model="formValues.start_date" />
+                        <Input
+                            v-bind="start_dateProps"
+                            type="date"
+                            v-model="start_date"
+                        />
                     </div>
                     <div class="space-y-2">
                         <label
                             class="block text-sm font-medium text-[var(--text-primary)]"
                             >Due Date</label
                         >
-                        <Input type="date" v-model="formValues.due_date" />
+                        <Input
+                            v-bind="due_dateProps"
+                            type="date"
+                            v-model="due_date"
+                        />
                     </div>
                 </div>
             </form>

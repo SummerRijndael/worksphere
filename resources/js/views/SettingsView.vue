@@ -1442,7 +1442,7 @@ onMounted(() => {
                             >
                                 <div
                                     class="flex flex-wrap gap-2 mb-2"
-                                    v-if="profile.skills.length > 0"
+                                    v-if="profile.skills?.length > 0"
                                 >
                                     <Badge
                                         v-for="(skill, index) in profile.skills"
@@ -1465,9 +1465,9 @@ onMounted(() => {
                                     @keydown.enter.prevent="addSkill"
                                     @keydown.backspace="
                                         newSkill === '' &&
-                                        profile.skills.length > 0
+                                        profile.skills?.length > 0
                                             ? removeSkill(
-                                                  profile.skills.length - 1,
+                                                  profile.skills?.length - 1,
                                               )
                                             : null
                                     "
