@@ -5,11 +5,10 @@ $app = require_once __DIR__.'/../bootstrap/app.php';
 $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
 $kernel->bootstrap();
 
-use App\Models\User;
-use App\Models\Meeting;
 use App\Models\Event;
-use Illuminate\Support\Facades\Auth;
+use App\Models\User;
 use App\Services\MeetingService;
+use Illuminate\Support\Facades\Auth;
 
 $user = User::first();
 Auth::login($user);
@@ -27,16 +26,16 @@ try {
         ],
         'save_to_calendar' => true,
         'participants' => [
-            ['type' => 'email', 'email' => 'external@example.com']
-        ]
+            ['type' => 'email', 'email' => 'external@example.com'],
+        ],
     ];
 
     $meeting = $service->createMeeting($user, $data);
-    echo "✅ Meeting created: " . $meeting->public_id . "\n";
+    echo '✅ Meeting created: '.$meeting->public_id."\n";
 
     $event = Event::where('meeting_id', $meeting->id)->first();
     if ($event) {
-        echo "✅ Calendar Event created: " . $event->public_id . "\n";
+        echo '✅ Calendar Event created: '.$event->public_id."\n";
         if (in_array('external@example.com', $event->external_attendees)) {
             echo "✅ External attendee found in event\n";
         } else {
@@ -46,7 +45,7 @@ try {
         echo "❌ Calendar Event NOT created\n";
     }
 } catch (\Exception $e) {
-    echo "❌ Test 1 Failed: " . $e->getMessage() . "\n";
+    echo '❌ Test 1 Failed: '.$e->getMessage()."\n";
 }
 
 echo "\n--- Test 2: Reject External Guest when guest_access is OFF ---\n";
@@ -58,16 +57,16 @@ try {
             'guest_access' => false,
         ],
         'participants' => [
-            ['type' => 'email', 'email' => 'forbidden@example.com']
-        ]
+            ['type' => 'email', 'email' => 'forbidden@example.com'],
+        ],
     ];
 
     $service->createMeeting($user, $data);
     echo "❌ Test 2 Failed: Should have rejected the external guest\n";
 } catch (\Illuminate\Validation\ValidationException $e) {
-    echo "✅ Successfully rejected external guest: " . $e->getMessage() . "\n";
+    echo '✅ Successfully rejected external guest: '.$e->getMessage()."\n";
 } catch (\Exception $e) {
-    echo "❌ Test 2 Failed with unexpected error: " . $e->getMessage() . "\n";
+    echo '❌ Test 2 Failed with unexpected error: '.$e->getMessage()."\n";
 }
 
 echo "\nVerification complete.\n";

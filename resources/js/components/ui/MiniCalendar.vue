@@ -184,27 +184,28 @@ function today() {
 
 <style>
 .mini-calendar .fc {
-    font-family: inherit;
-    font-size: 0.75rem;
+    --fc-page-bg-color: transparent !important;
+    --fc-neutral-bg-color: transparent !important;
+    --fc-border-color: var(--border-default) !important;
 }
 
-.mini-calendar .fc-theme-standard td,
-.mini-calendar .fc-theme-standard th {
-    border-color: var(--border-default);
-}
-
-.mini-calendar .fc-theme-standard .fc-scrollgrid {
-    border: none;
+.mini-calendar .fc-col-header,
+.mini-calendar .fc-scrollgrid-section-header,
+.mini-calendar .fc-scrollgrid-section-header table,
+.mini-calendar .fc-theme-standard thead,
+.mini-calendar .fc-theme-standard th,
+.mini-calendar .fc-theme-standard td {
+    background: transparent !important;
 }
 
 .mini-calendar .fc-col-header-cell {
     padding: 0.5rem 0;
-    font-weight: 500;
-    color: var(--text-tertiary);
+    font-weight: 600;
+    color: var(--text-secondary);
     text-transform: uppercase;
     font-size: 0.65rem;
     border: none !important;
-    background: transparent;
+    background: transparent !important;
 }
 
 .mini-calendar .fc-daygrid-day {

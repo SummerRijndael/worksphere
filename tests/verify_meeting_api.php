@@ -6,8 +6,8 @@ $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
 $kernel->bootstrap();
 
 use App\Models\User;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 $user = User::first();
 Auth::login($user);
@@ -22,23 +22,23 @@ try {
         'save_to_calendar' => true,
         'settings' => ['guest_access' => true],
         'participants' => [
-            ['type' => 'email', 'email' => 'api-test@example.com', 'name' => 'API Test']
-        ]
+            ['type' => 'email', 'email' => 'api-test@example.com', 'name' => 'API Test'],
+        ],
     ]);
-    
+
     // Set the user on the request
-    $request->setUserResolver(fn() => $user);
+    $request->setUserResolver(fn () => $user);
 
     $response = $controller->store($request);
-    
+
     if ($response instanceof \App\Http\Resources\MeetingResource) {
         echo "✅ API Request Successful\n";
     } else {
-        echo "❌ API Request Failed. Response type: " . get_class($response) . "\n";
-        echo "Response data: " . json_encode($response->getData()) . "\n";
+        echo '❌ API Request Failed. Response type: '.get_class($response)."\n";
+        echo 'Response data: '.json_encode($response->getData())."\n";
     }
 } catch (\Exception $e) {
-    echo "❌ Test 3 Failed: " . $e->getMessage() . "\n";
+    echo '❌ Test 3 Failed: '.$e->getMessage()."\n";
 }
 
 echo "\n--- Test 4: API store rejection (external guest with guest_access OFF) ---\n";
@@ -49,26 +49,26 @@ try {
         'save_to_calendar' => true,
         'settings' => ['guest_access' => false],
         'participants' => [
-            ['type' => 'email', 'email' => 'api-forbidden@example.com', 'name' => 'Forbidden']
-        ]
+            ['type' => 'email', 'email' => 'api-forbidden@example.com', 'name' => 'Forbidden'],
+        ],
     ]);
-    
-    $request->setUserResolver(fn() => $user);
+
+    $request->setUserResolver(fn () => $user);
 
     $response = $controller->store($request);
-    
+
     if ($response instanceof \Illuminate\Http\JsonResponse) {
         $data = $response->getData(true);
         if ($response->getStatusCode() === 422) {
-            echo "✅ API correctly rejected request with 422: " . $data['message'] . "\n";
+            echo '✅ API correctly rejected request with 422: '.$data['message']."\n";
         } else {
-            echo "❌ API returned unexpected status code: " . $response->getStatusCode() . "\n";
+            echo '❌ API returned unexpected status code: '.$response->getStatusCode()."\n";
         }
     } else {
-        echo "❌ API did NOT return JsonResponse for error. Got: " . get_class($response) . "\n";
+        echo '❌ API did NOT return JsonResponse for error. Got: '.get_class($response)."\n";
     }
 } catch (\Exception $e) {
-    echo "❌ Test 4 Failed: " . $e->getMessage() . "\n";
+    echo '❌ Test 4 Failed: '.$e->getMessage()."\n";
 }
 
 echo "\nVerification complete.\n";

@@ -111,7 +111,7 @@ class UserProfileController extends Controller
     /**
      * Get the user's teammates.
      */
-    public function teammates(Request $request, User $user)
+    public function teammates(Request $request, User $user, \App\Services\Chat\PresenceService $presenceService)
     {
         $this->authorize('viewProfile', $user);
 
@@ -131,9 +131,9 @@ class UserProfileController extends Controller
             ->get();
 
         // Map them and add ownership relationship
-        $mapped = $teammates->map(function ($teammate) use ($user, $teamIds) {
+        $mapped = $teammates->map(function ($teammate) use ($user, $teamIds, $presenceService) {
             $sharedTeams = $teammate->teams()->whereIn('teams.id', $teamIds)->get();
-            
+
             $isOwned = false;
             foreach ($sharedTeams as $team) {
                 if ($team->owner_id === $user->id) {
@@ -149,7 +149,7 @@ class UserProfileController extends Controller
                 'avatar_url' => $teammate->avatar_url,
                 'initials' => $teammate->initials,
                 'job_title' => $teammate->title,
-                'presence' => $teammate->last_login_at && $teammate->last_login_at->diffInMinutes(now()) < 5 ? 'online' : 'offline',
+                'presence' => $presenceService->presenceStatus($teammate->id),
                 'relationship' => $isOwned ? 'owned' : 'member',
             ];
         });

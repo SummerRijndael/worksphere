@@ -38,13 +38,13 @@ class CalendarExportService
         // Add meeting details to description if attached
         if ($event instanceof \App\Models\Event && $event->meeting) {
             $meetingInfo = "\n\n--- Video Meeting Details ---\n";
-            $meetingInfo .= "Join URL: " . config('app.url') . "/meetings/" . $event->meeting->public_id . "/join\n";
-            $meetingInfo .= "Meeting ID: " . $event->meeting->public_id . "\n";
+            $meetingInfo .= 'Join URL: '.config('app.url').'/meetings/'.$event->meeting->public_id."/join\n";
+            $meetingInfo .= 'Meeting ID: '.$event->meeting->public_id."\n";
             if ($event->meeting->password) {
-                $meetingInfo .= "Password: " . $event->meeting->password . "\n";
+                $meetingInfo .= 'Password: '.$event->meeting->password."\n";
             }
             $meetingInfo .= "---------------------------\n";
-            $description = $description . $meetingInfo;
+            $description = $description.$meetingInfo;
         }
 
         if ($description) {
@@ -113,13 +113,13 @@ class CalendarExportService
 
             if ($event instanceof \App\Models\Event && $event->meeting) {
                 $meetingInfo = "\n\n--- Video Meeting Details ---\n";
-                $meetingInfo .= "Join URL: " . config('app.url') . "/meetings/" . $event->meeting->public_id . "/join\n";
-                $meetingInfo .= "Meeting ID: " . $event->meeting->public_id . "\n";
+                $meetingInfo .= 'Join URL: '.config('app.url').'/meetings/'.$event->meeting->public_id."/join\n";
+                $meetingInfo .= 'Meeting ID: '.$event->meeting->public_id."\n";
                 if ($event->meeting->password) {
-                    $meetingInfo .= "Password: " . $event->meeting->password . "\n";
+                    $meetingInfo .= 'Password: '.$event->meeting->password."\n";
                 }
                 $meetingInfo .= "---------------------------\n";
-                $description = $description . $meetingInfo;
+                $description = $description.$meetingInfo;
             }
 
             if ($description) {

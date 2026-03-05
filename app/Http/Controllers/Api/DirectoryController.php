@@ -30,7 +30,7 @@ class DirectoryController extends Controller
                 $q->whereIn('teams.id', $teamIds);
             });
 
-        if (!empty($query)) {
+        if (! empty($query)) {
             $usersQuery->where(function ($q) use ($query) {
                 $q->where('name', 'like', "%{$query}%")
                     ->orWhere('email', 'like', "%{$query}%");

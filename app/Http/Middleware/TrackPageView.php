@@ -48,8 +48,8 @@ class TrackPageView
     {
         $path = $request->path();
         $ignoredExtensions = [
-            '.map', '.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', 
-            '.json', '.txt', '.xml', '.webmanifest', '.woff', '.woff2', '.ttf'
+            '.map', '.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico',
+            '.json', '.txt', '.xml', '.webmanifest', '.woff', '.woff2', '.ttf',
         ];
 
         foreach ($ignoredExtensions as $ext) {

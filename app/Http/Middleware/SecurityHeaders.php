@@ -124,8 +124,8 @@ class SecurityHeaders
             "style-src {$styleSrc}",
             "font-src {$fontSrc}",
             "img-src {$imgSrc}",
-            "connect-src {$connectSrc} https://www.google.com https://www.google-analytics.com https://www.googletagmanager.com https://cdn.jsdelivr.net https://storage.googleapis.com https://static.cloudflareinsights.com https://cloudflareinsights.com" .
-            " https://*.dyte.io https://*.dyte.in https://*.flagsmith.com wss://*.dyte.io wss://*.dyte.in",
+            "connect-src {$connectSrc} https://www.google.com https://www.google-analytics.com https://www.googletagmanager.com https://cdn.jsdelivr.net https://storage.googleapis.com https://static.cloudflareinsights.com https://cloudflareinsights.com".
+            ' https://*.dyte.io https://*.dyte.in https://*.flagsmith.com wss://*.dyte.io wss://*.dyte.in',
             "worker-src 'self' blob:",
             "frame-src 'self' https://www.google.com https://www.gstatic.com",
             "frame-ancestors 'self'",

@@ -8,7 +8,7 @@ use App\Models\PageView;
 class InternalDriver implements AnalyticsDriver
 {
     /**
-     * @inheritDoc
+     * {@inheritDoc}
      */
     public function track(array $data): void
     {
@@ -16,7 +16,7 @@ class InternalDriver implements AnalyticsDriver
     }
 
     /**
-     * @inheritDoc
+     * {@inheritDoc}
      */
     public function isEnabled(): bool
     {

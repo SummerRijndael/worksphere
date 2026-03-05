@@ -101,7 +101,6 @@ enum AuditAction: string
     case HorizonRestarted = 'horizon_restarted';
     case ReverbRestarted = 'reverb_restarted';
 
-
     /**
      * Get the human-readable label for the action.
      */

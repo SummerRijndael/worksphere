@@ -2,13 +2,13 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
 use App\Enums\AuditAction;
 use App\Enums\AuditCategory;
-use App\Services\AuditService;
+use App\Http\Controllers\Controller;
 use App\Http\Resources\UserResource;
 use App\Models\User;
 use App\Notifications\AccountCreated;
+use App\Services\AuditService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -123,7 +123,7 @@ class UserController extends Controller
             'projects',
             'assignedTasks as completed_tasks_count' => function ($query) {
                 $query->where('status', 'completed');
-            }
+            },
         ]);
         $user->loadSum('assignedTasks as hours_logged', 'actual_hours');
 
@@ -232,7 +232,7 @@ class UserController extends Controller
             $user->update(['status' => $validated['status']]);
 
             // Log status change with reason
-            $action = match($validated['status']) {
+            $action = match ($validated['status']) {
                 'suspended' => AuditAction::AccountSuspended,
                 'blocked', 'banned' => AuditAction::AccountBanned,
                 default => AuditAction::Updated,
@@ -517,6 +517,18 @@ class UserController extends Controller
         });
 
         return response()->json($logs);
+    }
+
+    /**
+     * Remove the user's avatar.
+     */
+    public function removeAvatar(User $user): JsonResponse
+    {
+        $this->authorize('update', $user);
+
+        $user->clearMediaCollection('avatars');
+
+        return response()->json(['message' => 'Avatar removed successfully.']);
     }
 
     /**

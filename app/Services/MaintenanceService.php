@@ -1168,7 +1168,6 @@ class MaintenanceService
         }
     }
 
-
     // =========================================================================
     // Log Operations
     // =========================================================================
@@ -1801,7 +1800,7 @@ class MaintenanceService
                 ->orderBy('bucket', 'desc')
                 ->limit($hours * 60)
                 ->get()
-                ->map(fn($row) => [
+                ->map(fn ($row) => [
                     'timestamp' => $row->bucket,
                     'value' => (float) $row->value,
                 ]);
@@ -1812,7 +1811,7 @@ class MaintenanceService
                 ->orderBy('bucket', 'desc')
                 ->limit($hours * 60)
                 ->get()
-                ->map(fn($row) => [
+                ->map(fn ($row) => [
                     'timestamp' => $row->bucket,
                     'value' => (float) $row->value,
                 ]);
@@ -1824,7 +1823,7 @@ class MaintenanceService
                 ->orderBy('bucket', 'desc')
                 ->limit($hours * 60)
                 ->get()
-                ->map(fn($row) => [
+                ->map(fn ($row) => [
                     'timestamp' => $row->bucket,
                     'value' => (float) $row->value,
                 ]);
@@ -1839,6 +1838,7 @@ class MaintenanceService
             ];
         } catch (Throwable $e) {
             Log::warning('Failed to get Reverb stats from Pulse', ['error' => $e->getMessage()]);
+
             return [
                 'current_connections' => 0,
                 'history' => [

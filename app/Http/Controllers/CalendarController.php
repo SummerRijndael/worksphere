@@ -2,14 +2,13 @@
 
 namespace App\Http\Controllers;
 
-use App\Mail\EventInvitation;
 use App\Mail\EventCancelled;
+use App\Mail\EventInvitation;
 use App\Models\Event;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Str;
 
 class CalendarController extends Controller
 {

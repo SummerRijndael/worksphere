@@ -28,7 +28,7 @@ return new class extends Migration
 
             // Recording lifecycle
             $table->enum('status', ['pending', 'recording', 'processing', 'completed', 'failed'])
-                  ->default('pending');
+                ->default('pending');
 
             // Download URL provided by Cloudflare after recording completes (valid ~7 days)
             $table->string('download_url', 1024)->nullable();

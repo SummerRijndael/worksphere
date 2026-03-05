@@ -496,6 +496,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
 
     Route::middleware('permission:users.update')->group(function () {
         Route::put('/users/{user}', [UserController::class, 'update']);
+        Route::delete('/users/{user}/avatar', [UserController::class, 'removeAvatar']);
     });
 
     Route::middleware('permission:users.delete')->group(function () {

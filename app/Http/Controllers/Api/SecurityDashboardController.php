@@ -67,7 +67,7 @@ class SecurityDashboardController extends Controller
         $ip = $request->query('ip');
 
         $logs = FirewallLog::with('user')
-            ->when($ip, fn($q) => $q->where('ip', $ip))
+            ->when($ip, fn ($q) => $q->where('ip', $ip))
             ->latest()
             ->paginate($limit);
 

@@ -13,7 +13,7 @@ return [
         // If false, it falls back to the legacy free tier limits (25 max).
         // Using MEETING_RECORDING_ENABLED as the global pro tier toggle.
         'pro_mode' => env('MEETING_RECORDING_ENABLED', false),
-        
+
         'limits' => [
             'free_max_participants' => 25,
             'pro_max_participants' => 50,
