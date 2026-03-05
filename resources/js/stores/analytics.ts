@@ -36,6 +36,14 @@ export const useAnalyticsStore = defineStore('analytics', () => {
         }
     }
 
+    async function exportData(type: 'traffic' | 'pages' | 'sources') {
+        try {
+            await analyticsService.exportData(type, period.value);
+        } catch (error) {
+            console.error(`Failed to export ${type} analytics:`, error);
+        }
+    }
+
     return {
         period,
         loading,
@@ -45,6 +53,7 @@ export const useAnalyticsStore = defineStore('analytics', () => {
         sources,
         demographics,
         geoStats,
-        fetchAll
+        fetchAll,
+        exportData
     };
 });

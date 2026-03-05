@@ -84,4 +84,23 @@ class AnalyticsController extends Controller
             'data' => $this->analyticsService->getGeoStats($period),
         ]);
     }
+
+    public function export(Request $request)
+    {
+        $type = $request->input('type', 'traffic');
+        $period = $request->input('period', '7d');
+
+        $csv = match ($type) {
+            'pages' => $this->analyticsService->exportTopPages($period),
+            'sources' => $this->analyticsService->exportSources($period),
+            default => $this->analyticsService->exportTraffic($period),
+        };
+
+        $filename = "analytics_{$type}_{$period}_".date('Ymd').'.csv';
+
+        return response($csv)
+            ->header('Content-Type', 'text/csv')
+            ->header('Content-Disposition', "attachment; filename=\"{$filename}\"");
+    }
 }
+

@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import PublicLayout from '@/layouts/PublicLayout.vue';
-import { Card, Button } from '@/components/ui';
-import { Send, CheckCircle2, AlertCircle } from 'lucide-vue-next';
-import axios from 'axios';
-import useRecaptcha from '@/composables/useRecaptcha';
-import useFingerprint from '@/composables/useFingerprint';
-import RecaptchaChallengeModal from '@/components/common/RecaptchaChallengeModal.vue';
-import { escapeHtml } from '@/utils/sanitize';
+import { ref } from "vue";
+import PublicLayout from "@/layouts/PublicLayout.vue";
+import { Card, Button } from "@/components/ui";
+import { Send, CheckCircle2, AlertCircle } from "lucide-vue-next";
+import axios from "axios";
+import useRecaptcha from "@/composables/useRecaptcha";
+import useFingerprint from "@/composables/useFingerprint";
+import RecaptchaChallengeModal from "@/components/common/RecaptchaChallengeModal.vue";
+import { escapeHtml } from "@/utils/sanitize";
 
 const { executeRecaptcha } = useRecaptcha();
 const { getFingerprint } = useFingerprint();
@@ -19,12 +19,12 @@ const error = ref<string | null>(null);
 const result = ref<any>(null);
 
 const form = ref({
-    name: '',
-    email: '',
-    title: '',
-    category: '', // Optional, frontend select
-    description: '',
-    website_url: '', // Honeypot
+    name: "",
+    email: "",
+    title: "",
+    category: "", // Optional, frontend select
+    description: "",
+    website_url: "", // Honeypot
 });
 
 const submitTicket = async () => {
@@ -32,33 +32,46 @@ const submitTicket = async () => {
     error.value = null;
     try {
         const [token, fingerprint] = await Promise.all([
-            executeRecaptcha('support_ticket'),
-            getFingerprint()
+            executeRecaptcha("support_ticket"),
+            getFingerprint(),
         ]);
 
         if (!token) {
-            error.value = 'Security check failed. Please refresh and try again. (RC)';
+            error.value =
+                "Security check failed. Please refresh and try again. (RC)";
             return;
         }
 
-        let finalDescription = escapeHtml(form.value.description).replace(/\n/g, '<br>');
+        let finalDescription = escapeHtml(form.value.description).replace(
+            /\n/g,
+            "<br>",
+        );
 
-        const response = await axios.post('/api/public/tickets', {
+        const response = await axios.post("/api/public/tickets", {
             ...form.value,
             description: finalDescription,
             recaptcha_token: token,
-            fingerprint: fingerprint
+            fingerprint: fingerprint,
         });
         result.value = response.data;
         isSuccess.value = true;
         // Reset form
-        form.value = { name: '', email: '', title: '', category: '', description: '', website_url: '' };
+        form.value = {
+            name: "",
+            email: "",
+            title: "",
+            category: "",
+            description: "",
+            website_url: "",
+        };
     } catch (e: any) {
         if (e.response?.data?.requires_challenge) {
             showChallenge.value = true;
             return;
         }
-        error.value = e.response?.data?.message || 'Failed to submit ticket. Please try again.';
+        error.value =
+            e.response?.data?.message ||
+            "Failed to submit ticket. Please try again.";
     } finally {
         isLoading.value = false;
     }
@@ -71,20 +84,32 @@ const handleChallengeVerified = async (v2Token: string) => {
     try {
         const fingerprint = await getFingerprint();
 
-        let finalDescription = escapeHtml(form.value.description).replace(/\n/g, '<br>');
+        let finalDescription = escapeHtml(form.value.description).replace(
+            /\n/g,
+            "<br>",
+        );
 
-        const response = await axios.post('/api/public/tickets', {
+        const response = await axios.post("/api/public/tickets", {
             ...form.value,
             description: finalDescription,
-            recaptcha_token: 'fallback-initiated',
+            recaptcha_token: "fallback-initiated",
             recaptcha_v2_token: v2Token,
-            fingerprint: fingerprint
+            fingerprint: fingerprint,
         });
         result.value = response.data;
         isSuccess.value = true;
-        form.value = { name: '', email: '', title: '', category: '', description: '', website_url: '' };
+        form.value = {
+            name: "",
+            email: "",
+            title: "",
+            category: "",
+            description: "",
+            website_url: "",
+        };
     } catch (e: any) {
-        error.value = e.response?.data?.message || 'Failed to submit ticket (challenge failed).';
+        error.value =
+            e.response?.data?.message ||
+            "Failed to submit ticket (challenge failed).";
     } finally {
         isLoading.value = false;
     }
@@ -95,47 +120,91 @@ const handleChallengeVerified = async (v2Token: string) => {
     <PublicLayout>
         <div class="max-w-2xl mx-auto px-4 py-16">
             <div class="text-center mb-12">
-                <h1 class="text-3xl font-bold text-[var(--text-primary)] mb-4">Submit a Request</h1>
+                <h1 class="text-3xl font-bold text-[var(--text-primary)] mb-4">
+                    Submit a Request
+                </h1>
                 <p class="text-[var(--text-secondary)]">
-                    We're here to help! Fill out the form below and we'll get back to you as soon as possible.
+                    We're here to help! Fill out the form below and we'll get
+                    back to you as soon as possible.
                 </p>
             </div>
 
             <Card padding="lg" class="relative overflow-hidden">
                 <!-- Success State -->
                 <div v-if="isSuccess" class="text-center py-12">
-                    <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 text-green-600 mb-6">
+                    <div
+                        class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 text-green-600 mb-6"
+                    >
                         <CheckCircle2 class="h-8 w-8" />
                     </div>
-                    <h2 class="text-2xl font-bold text-[var(--text-primary)] mb-2">Request Submitted!</h2>
+                    <h2
+                        class="text-2xl font-bold text-[var(--text-primary)] mb-2"
+                    >
+                        Request Submitted!
+                    </h2>
                     <p class="text-[var(--text-secondary)] mb-6">
-                        Your ticket number is <span class="font-mono font-bold text-[var(--text-primary)]">#{{ result?.ticket_number }}</span>. <br>
+                        Your ticket number is
+                        <span
+                            class="font-mono font-bold text-[var(--text-primary)]"
+                            >#{{ result?.ticket_number }}</span
+                        >. <br />
                         We've sent a confirmation email to you.
                     </p>
-                    <Button @click="isSuccess = false">Submit Another Request</Button>
+                    <Button @click="isSuccess = false"
+                        >Submit Another Request</Button
+                    >
                 </div>
 
                 <!-- Form State -->
                 <form v-else @submit.prevent="submitTicket" class="space-y-6">
-                    <div v-if="error" class="p-4 rounded-lg bg-red-50 text-red-600 flex items-center gap-2">
+                    <div
+                        v-if="error"
+                        class="p-4 rounded-lg bg-red-50 text-red-600 flex items-center gap-2"
+                    >
                         <AlertCircle class="h-5 w-5" />
                         <span>{{ error }}</span>
                     </div>
 
                     <div class="grid sm:grid-cols-2 gap-6">
                         <div>
-                            <label class="block text-sm font-medium text-[var(--text-primary)] mb-1.5">Your Name</label>
-                            <input v-model="form.name" type="text" required maxlength="255" class="input" placeholder="John Doe" />
+                            <label
+                                class="block text-sm font-medium text-[var(--text-primary)] mb-1.5"
+                                >Your Name</label
+                            >
+                            <input
+                                v-model="form.name"
+                                type="text"
+                                required
+                                maxlength="255"
+                                class="input"
+                                placeholder="John Doe"
+                            />
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-[var(--text-primary)] mb-1.5">Email Address</label>
-                            <input v-model="form.email" type="email" required maxlength="255" class="input" placeholder="john@example.com" />
+                            <label
+                                class="block text-sm font-medium text-[var(--text-primary)] mb-1.5"
+                                >Email Address</label
+                            >
+                            <input
+                                v-model="form.email"
+                                type="email"
+                                required
+                                maxlength="255"
+                                class="input"
+                                placeholder="john@example.com"
+                            />
                         </div>
                     </div>
 
                     <div>
-                        <label class="block text-sm font-medium text-[var(--text-primary)] mb-1.5">Category</label>
-                        <select v-model="form.category" class="input w-full bg-[var(--surface-primary)] text-[var(--text-primary)]">
+                        <label
+                            class="block text-sm font-medium text-[var(--text-primary)] mb-1.5"
+                            >Category</label
+                        >
+                        <select
+                            v-model="form.category"
+                            class="input w-full bg-[var(--surface-primary)] text-[var(--text-primary)]"
+                        >
                             <option value="">General Inquiry</option>
                             <option value="bug">Bug Report</option>
                             <option value="feature">Feature Request</option>
@@ -144,27 +213,86 @@ const handleChallengeVerified = async (v2Token: string) => {
                     </div>
 
                     <div>
-                        <label class="block text-sm font-medium text-[var(--text-primary)] mb-1.5">Subject</label>
-                        <input v-model="form.title" type="text" required maxlength="255" class="input" placeholder="Briefly describe your issue" />
+                        <label
+                            class="block text-sm font-medium text-[var(--text-primary)] mb-1.5"
+                            >Subject</label
+                        >
+                        <input
+                            v-model="form.title"
+                            type="text"
+                            required
+                            maxlength="255"
+                            class="input"
+                            placeholder="Briefly describe your issue"
+                        />
                     </div>
-                    
+
                     <div>
                         <div class="flex justify-between items-center mb-1.5">
-                            <label class="block text-sm font-medium text-[var(--text-primary)]">Description</label>
-                            <span :class="['text-xs', form.description.length > 9500 ? 'text-red-500 font-medium' : 'text-[var(--text-secondary)]']">
-                                {{ form.description.length.toLocaleString() }} / 10,000
+                            <label
+                                class="block text-sm font-medium text-[var(--text-primary)]"
+                                >Description</label
+                            >
+                            <span
+                                :class="[
+                                    'text-xs',
+                                    form.description.length > 9500
+                                        ? 'text-red-500 font-medium'
+                                        : 'text-[var(--text-secondary)]',
+                                ]"
+                            >
+                                {{ form.description.length.toLocaleString() }} /
+                                10,000
                             </span>
                         </div>
-                        <textarea v-model="form.description" required rows="5" maxlength="10000" class="input resize-none" placeholder="Please provide as much detail as possible..."></textarea>
+                        <textarea
+                            v-model="form.description"
+                            required
+                            rows="5"
+                            maxlength="10000"
+                            class="input resize-none"
+                            placeholder="Please provide as much detail as possible..."
+                        ></textarea>
                     </div>
 
                     <!-- Honeypot field - hidden from users -->
-                    <div style="display: none;" aria-hidden="true">
-                        <input v-model="form.website_url" type="text" name="website_url" tabindex="-1" autocomplete="off" />
+                    <div style="display: none" aria-hidden="true">
+                        <input
+                            v-model="form.website_url"
+                            type="text"
+                            name="website_url"
+                            tabindex="-1"
+                            autocomplete="off"
+                        />
+                    </div>
+
+                    <div class="text-xs text-[var(--text-secondary)]">
+                        This site is protected by reCAPTCHA and the Google
+                        <a
+                            href="https://policies.google.com/privacy"
+                            class="text-[var(--accent)] hover:underline"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            >Privacy Policy</a
+                        >
+                        and
+                        <a
+                            href="https://policies.google.com/terms"
+                            class="text-[var(--accent)] hover:underline"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            >Terms of Service</a
+                        >
+                        apply.
                     </div>
 
                     <div class="flex justify-end">
-                        <Button type="submit" :loading="isLoading" size="lg" class="w-full sm:w-auto">
+                        <Button
+                            type="submit"
+                            :loading="isLoading"
+                            size="lg"
+                            class="w-full sm:w-auto"
+                        >
                             Submit Request
                             <Send class="h-4 w-4 ml-2" />
                         </Button>
@@ -173,9 +301,9 @@ const handleChallengeVerified = async (v2Token: string) => {
             </Card>
         </div>
     </PublicLayout>
-    
-    <RecaptchaChallengeModal 
-        :show="showChallenge" 
+
+    <RecaptchaChallengeModal
+        :show="showChallenge"
         @close="showChallenge = false"
         @verified="handleChallengeVerified"
     />

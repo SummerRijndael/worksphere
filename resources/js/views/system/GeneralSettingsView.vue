@@ -113,6 +113,13 @@ const settings = ref({
     "tickets.sla.default_resolution_hours.high": 8,
     "tickets.sla.default_resolution_hours.medium": 24,
     "tickets.sla.default_resolution_hours.low": 48,
+    // Analytics
+    "analytics_ga_enabled": false,
+    "analytics_ga_measurement_id": "",
+    // Social Links
+    "contact.social.twitter": "",
+    "contact.social.github": "",
+    "contact.social.linkedin": "",
 });
 
 // Sensitive fields that should be masked
@@ -148,6 +155,7 @@ const criticalSettings = [
     "twilio.auth_token",
     "twilio.verify_sid",
     "openai.api_key",
+    "analytics_ga_measurement_id",
 ];
 
 const showCriticalConfirmation = ref(false);
@@ -886,6 +894,29 @@ onMounted(async () => {
                                 type="email"
                                 placeholder="privacy@example.com"
                             />
+                        </div>
+                    </div>
+
+                    <div class="mt-8 mb-4 border-t border-[var(--border-default)] pt-6">
+                        <h4 class="font-medium text-[var(--text-primary)] mb-4">
+                            Social Media Links
+                        </h4>
+                        <p class="text-sm text-[var(--text-secondary)] mb-4">
+                            These links will be displayed in the public footer. Leave blank to hide the icon.
+                        </p>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div class="space-y-1.5">
+                                <label class="text-sm font-medium text-[var(--text-secondary)]">Twitter/X Profile</label>
+                                <Input v-model="settings['contact.social.twitter']" type="url" placeholder="https://twitter.com/..." />
+                            </div>
+                            <div class="space-y-1.5">
+                                <label class="text-sm font-medium text-[var(--text-secondary)]">GitHub Profile</label>
+                                <Input v-model="settings['contact.social.github']" type="url" placeholder="https://github.com/..." />
+                            </div>
+                            <div class="space-y-1.5">
+                                <label class="text-sm font-medium text-[var(--text-secondary)]">LinkedIn Profile</label>
+                                <Input v-model="settings['contact.social.linkedin']" type="url" placeholder="https://linkedin.com/in/..." />
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1886,6 +1917,45 @@ onMounted(async () => {
                             </div>
                         </div>
                     </div>
+
+                    <!-- Google Analytics -->
+                    <div
+                        class="p-4 rounded-lg border border-[var(--border-default)] bg-[var(--surface-secondary)]"
+                    >
+                        <div class="flex items-center justify-between mb-4">
+                            <h4
+                                class="text-sm font-medium text-[var(--text-primary)] flex items-center gap-2"
+                            >
+                                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9L16 12l-5 4.5z"/>
+                                </svg>
+                                Google Analytics (GA4)
+                            </h4>
+                            <Switch v-model="settings['analytics_ga_enabled']" />
+                        </div>
+                        <div
+                            class="space-y-4"
+                            :class="{
+                                'opacity-50 pointer-events-none':
+                                    !settings['analytics_ga_enabled'],
+                            }"
+                        >
+                            <div class="space-y-1.5">
+                                <label
+                                    class="text-sm text-[var(--text-secondary)]"
+                                    >Measurement ID (G-XXXXXXXXXX)</label
+                                >
+                                <Input
+                                    v-model="settings['analytics_ga_measurement_id']"
+                                    placeholder="G-XXXXXXXXXX"
+                                />
+                                <p class="text-xs text-[var(--text-muted)] mt-1">
+                                    Your Google Analytics 4 Measurement ID.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Twilio -->
                     <div>
                         <h4

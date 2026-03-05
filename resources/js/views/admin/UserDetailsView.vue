@@ -45,7 +45,8 @@ import {
     FileText,
     Loader2,
     ExternalLink,
-    Plus
+    Plus,
+    ShieldAlert
 } from 'lucide-vue-next';
 import { toast } from 'vue-sonner';
 
@@ -91,6 +92,15 @@ const isRevokingSessions = ref(false);
 const isImpersonatingUser = ref(false);
 const showImpersonateModal = ref(false);
 const impersonateError = ref('');
+
+// Security Confirmation Modal State
+const showConfirmUpdateModal = ref(false);
+const isConfirmingUpdate = ref(false);
+const confirmUpdateForm = ref({
+    password: '',
+    reason: ''
+});
+const pendingUpdatePayload = ref(null);
 
 // Permission overrides state
 const {
@@ -181,14 +191,14 @@ const executeImpersonate = async (password) => {
     isImpersonatingUser.value = true;
     impersonateError.value = '';
     try {
-        await api.post(`/api/admin/users/${userId}/impersonate`, { password });
+        const response = await api.post(`/api/admin/users/${userId}/impersonate`, { password });
         toast.success(`Now impersonating ${user.value.name}`);
         showImpersonateModal.value = false;
         // Give time for toast and state to settle before full redirect
         setTimeout(() => {
             // Wipe persisted state so the reload doesn't flash the original user's name
             localStorage.removeItem('worksphere-auth');
-            window.location.href = '/';
+            window.location.href = response.data?.redirect || '/dashboard';
         }, 500);
     } catch (error) {
         console.error('Failed to impersonate:', error);
@@ -202,33 +212,51 @@ const executeImpersonate = async (password) => {
     }
 };
 
-const saveUser = async () => {
+const saveUser = async (isConfirmed = false) => {
+    // Construct the standard update payload
+    const payload = {
+        name: editForm.value.name,
+        username: editForm.value.username,
+        phone: editForm.value.phone,
+        title: editForm.value.title,
+        bio: editForm.value.bio,
+        location: editForm.value.location,
+        website: editForm.value.website,
+        skills: editForm.value.skills,
+    };
+    
+    // Check for critical changes that require security confirmation
+    const roleChanged = canManageRoles() && editForm.value.role !== (user.value.roles?.[0]?.name || null);
+    const statusChanged = canManageStatus() && editForm.value.status !== user.value.status;
+
+    if ((roleChanged || statusChanged) && !isConfirmed) {
+        pendingUpdatePayload.value = payload;
+        confirmUpdateForm.value.password = '';
+        confirmUpdateForm.value.reason = '';
+        showConfirmUpdateModal.value = true;
+        return;
+    }
+
     isSaving.value = true;
     try {
-        const payload = {
-            name: editForm.value.name,
-            username: editForm.value.username,
-            phone: editForm.value.phone,
-            title: editForm.value.title,
-            bio: editForm.value.bio,
-            location: editForm.value.location,
-            website: editForm.value.website,
-            skills: editForm.value.skills,
-        };
-        
-        // Only include role if user has permission and it changed
-        if (canManageRoles() && editForm.value.role !== user.value.roles?.[0]?.name) {
+        if (roleChanged) {
             payload.role = editForm.value.role;
         }
         
-        // Only include status if user has permission and it changed
-        if (canManageStatus() && editForm.value.status !== user.value.status) {
+        if (statusChanged) {
             payload.status = editForm.value.status;
+        }
+
+        // Add confirmation details if applicable
+        if (isConfirmed) {
+            payload.admin_password = confirmUpdateForm.value.password;
+            payload.reason = confirmUpdateForm.value.reason;
         }
         
         await api.put(`/api/users/${userId}`, payload);
         toast.success('User updated successfully');
         isEditing.value = false;
+        showConfirmUpdateModal.value = false;
         await fetchUser();
     } catch (error) {
         console.error('Failed to update user:', error);
@@ -236,6 +264,14 @@ const saveUser = async () => {
     } finally {
         isSaving.value = false;
     }
+};
+
+const handleConfirmUpdate = () => {
+    if (!confirmUpdateForm.value.password || !confirmUpdateForm.value.reason) {
+        toast.error('Password and reason are required');
+        return;
+    }
+    saveUser(true);
 };
 
 
@@ -1243,6 +1279,52 @@ onMounted(async () => {
                             <Button variant="outline" @click="showLogDetailModal = false">Close</Button>
                         </div>
                     </template>
+                </Modal>
+
+                <!-- Security Confirmation Modal -->
+                <Modal v-model:open="showConfirmUpdateModal" title="Security Confirmation" size="md">
+                    <div class="space-y-4">
+                        <div class="p-3 bg-amber-500/10 border border-amber-200 dark:border-amber-800 rounded-lg flex gap-3">
+                            <ShieldAlert class="w-5 h-5 text-amber-600 shrink-0" />
+                            <div class="text-sm text-amber-800 dark:text-amber-400">
+                                You are performing a critical action (changing user role or status). 
+                                Please confirm your identity and provide a reason for this change.
+                            </div>
+                        </div>
+
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-[var(--text-primary)] mb-1">
+                                    Your Administrator Password
+                                </label>
+                                <input 
+                                    v-model="confirmUpdateForm.password" 
+                                    type="password" 
+                                    class="w-full px-3 py-2 rounded-lg border border-[var(--border-default)] bg-[var(--surface-primary)] text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--interactive-primary)] outline-none"
+                                    placeholder="Enter your password"
+                                    @keyup.enter="handleConfirmUpdate"
+                                />
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-[var(--text-primary)] mb-1">
+                                    Reason for Change
+                                </label>
+                                <textarea 
+                                    v-model="confirmUpdateForm.reason" 
+                                    rows="3"
+                                    class="w-full px-3 py-2 rounded-lg border border-[var(--border-default)] bg-[var(--surface-primary)] text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--interactive-primary)] outline-none resize-none"
+                                    placeholder="Provide a reason for the audit trail..."
+                                ></textarea>
+                            </div>
+                        </div>
+
+                        <div class="flex justify-end gap-3 pt-4 border-t border-[var(--border-default)]">
+                            <Button variant="ghost" @click="showConfirmUpdateModal = false">Cancel</Button>
+                            <Button variant="primary" @click="handleConfirmUpdate" :loading="isSaving">
+                                Confirm & Save
+                            </Button>
+                        </div>
+                    </div>
                 </Modal>
             </div>
         </div>

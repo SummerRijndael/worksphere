@@ -46,6 +46,8 @@ class UserResource extends JsonResource
             $data = array_merge($data, [
                 'email' => $this->email,
                 'status' => $this->status,
+                'status_reason' => $this->status_reason,
+                'suspended_until' => $this->suspended_until?->toISOString(),
                 'preferences' => $this->preferences ?? [],
                 'email_verified' => $this->hasVerifiedEmail(),
                 'email_verified_at' => $this->email_verified_at?->toISOString(),

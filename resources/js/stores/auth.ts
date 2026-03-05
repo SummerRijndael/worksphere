@@ -766,12 +766,12 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function stopImpersonating(): Promise<void> {
     try {
-        await api.post('/api/impersonation/stop');
+        const response = await api.post('/api/impersonation/stop');
         isImpersonating.value = false;
         
         // Wipe persisted state so the reload doesn't flash the impersonated user's name
         localStorage.removeItem('worksphere-auth');
-        window.location.href = '/';
+        window.location.href = response.data.redirect || '/admin/users';
     } catch (e) {
         console.error('Failed to stop impersonating', e);
     }

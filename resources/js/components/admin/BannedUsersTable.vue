@@ -74,9 +74,17 @@ const getStatusBadgeClass = (status) => {
                             </td>
                             <td class="px-6 py-4 text-[var(--text-secondary)]">{{ user.email }}</td>
                             <td class="px-6 py-4">
-                                <span class="px-3 py-1 rounded-full text-xs font-semibold capitalize" :class="getStatusBadgeClass(user.status)">
-                                    {{ user.status }}
-                                </span>
+                                <div class="flex flex-col gap-1">
+                                    <span class="px-3 py-1 rounded-full text-xs font-semibold capitalize w-fit" :class="getStatusBadgeClass(user.status)">
+                                        {{ user.status }}
+                                    </span>
+                                    <div v-if="user.status_reason" class="text-[10px] text-[var(--text-secondary)] italic max-w-[150px] truncate" :title="user.status_reason">
+                                        {{ user.status_reason }}
+                                    </div>
+                                    <div v-if="user.status === 'suspended' && user.suspended_until" class="text-[10px] text-amber-600 dark:text-amber-400 font-medium whitespace-nowrap">
+                                        Lifted: {{ formatDate(user.suspended_until) }}
+                                    </div>
+                                </div>
                             </td>
                             <td class="px-6 py-4 text-[var(--text-secondary)]">
                                 {{ formatDate(user.created_at) }}

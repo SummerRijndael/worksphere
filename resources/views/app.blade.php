@@ -44,6 +44,21 @@
     <!-- Vite -->
     @vite(['resources/css/app.css', 'resources/js/app.ts'])
 
+    <!-- Google Analytics -->
+    @php
+        $gaEnabled = app(\App\Services\AppSettingsService::class)->get('analytics_ga_enabled', false);
+        $gaId = app(\App\Services\AppSettingsService::class)->get('analytics_ga_measurement_id');
+    @endphp
+    @if($gaEnabled && $gaId)
+        <script async src="https://www.googletagmanager.com/gtag/js?id={{ $gaId }}"></script>
+        <script nonce="{{ app(\App\Services\CSPService::class)->getNonce() }}">
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', '{{ $gaId }}');
+        </script>
+    @endif
+
     <!-- Runtime Config -->
     <script nonce="{{ app(\App\Services\CSPService::class)->getNonce() }}">
         window.WorkSphere = {
@@ -51,6 +66,11 @@
             url: "{{ config('app.url') }}",
             features: {
                 public_pricing_page_enabled: {{ app(\App\Services\AppSettingsService::class)->get('features.public_pricing_page.enabled', true) ? 'true' : 'false' }}
+            },
+            social: {
+                twitter: "{{ app(\App\Services\AppSettingsService::class)->get('contact.social.twitter') }}",
+                github: "{{ app(\App\Services\AppSettingsService::class)->get('contact.social.github') }}",
+                linkedin: "{{ app(\App\Services\AppSettingsService::class)->get('contact.social.linkedin') }}"
             }
         };
         // Legacy support
