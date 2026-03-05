@@ -95,7 +95,21 @@ const processQueue = (error: any = null) => {
 };
 
 api.interceptors.response.use(
-    (response) => response,
+    (response) => {
+        try {
+            import('@/stores/auth').then(({ useAuthStore }) => {
+                const authStore = useAuthStore();
+                if (response.headers['x-impersonating'] === 'true') {
+                    authStore.isImpersonating = true;
+                } else {
+                    authStore.isImpersonating = false;
+                }
+            });
+        } catch (e) {
+            // Ignore
+        }
+        return response;
+    },
     async (error: AxiosError) => {
         const originalRequest = error.config as ExtendedAxiosRequestConfig;
 

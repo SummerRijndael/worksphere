@@ -7,6 +7,7 @@ import axios from 'axios';
 import useRecaptcha from '@/composables/useRecaptcha';
 import useFingerprint from '@/composables/useFingerprint';
 import RecaptchaChallengeModal from '@/components/common/RecaptchaChallengeModal.vue';
+import { escapeHtml } from '@/utils/sanitize';
 
 const { executeRecaptcha } = useRecaptcha();
 const { getFingerprint } = useFingerprint();
@@ -40,8 +41,11 @@ const submitTicket = async () => {
             return;
         }
 
+        let finalDescription = escapeHtml(form.value.description).replace(/\n/g, '<br>');
+
         const response = await axios.post('/api/public/tickets', {
             ...form.value,
+            description: finalDescription,
             recaptcha_token: token,
             fingerprint: fingerprint
         });
@@ -66,8 +70,12 @@ const handleChallengeVerified = async (v2Token: string) => {
     error.value = null;
     try {
         const fingerprint = await getFingerprint();
+
+        let finalDescription = escapeHtml(form.value.description).replace(/\n/g, '<br>');
+
         const response = await axios.post('/api/public/tickets', {
             ...form.value,
+            description: finalDescription,
             recaptcha_token: 'fallback-initiated',
             recaptcha_v2_token: v2Token,
             fingerprint: fingerprint
@@ -123,6 +131,16 @@ const handleChallengeVerified = async (v2Token: string) => {
                             <label class="block text-sm font-medium text-[var(--text-primary)] mb-1.5">Email Address</label>
                             <input v-model="form.email" type="email" required maxlength="255" class="input" placeholder="john@example.com" />
                         </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-[var(--text-primary)] mb-1.5">Category</label>
+                        <select v-model="form.category" class="input w-full bg-[var(--surface-primary)] text-[var(--text-primary)]">
+                            <option value="">General Inquiry</option>
+                            <option value="bug">Bug Report</option>
+                            <option value="feature">Feature Request</option>
+                            <option value="billing">Billing / Account</option>
+                        </select>
                     </div>
 
                     <div>

@@ -860,12 +860,16 @@ onBeforeUnmount(() => {
                             <div
                                 class="space-y-4 pt-4 border-t border-(--border-subtle)"
                             >
-                                <label
-                                    class="text-xs font-semibold uppercase tracking-wider text-(--text-tertiary)"
-                                    >Background Effects</label
-                                >
+                                <div class="flex items-center justify-between">
+                                    <label
+                                        class="text-xs font-semibold uppercase tracking-wider text-(--text-tertiary)"
+                                        >Background Effects</label
+                                    >
+                                    <span v-if="!backgroundBlur.isSupported.value" class="text-[10px] font-medium text-red-500 bg-red-500/10 px-2 py-0.5 rounded">Device Unsupported</span>
+                                </div>
                                 <div
                                     class="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 gap-3"
+                                    :class="{ 'opacity-50 pointer-events-none grayscale': !backgroundBlur.isSupported.value }"
                                 >
                                     <!-- None -->
                                     <button

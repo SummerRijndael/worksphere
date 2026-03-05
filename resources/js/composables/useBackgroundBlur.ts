@@ -9,6 +9,7 @@ export function useBackgroundBlur() {
     const segmenter = shallowRef<ImageSegmenter | null>(null);
     const isLoaded = ref(false);
     const isLoading = ref(false);
+    const isSupported = ref(true); // Default true, set to false if model completely fails
     const error = ref<string | null>(null);
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     const cpuCores = navigator.hardwareConcurrency || 4;
@@ -67,6 +68,32 @@ export function useBackgroundBlur() {
     let hasDowngraded = false;
     let isDowngrading = false;
     
+    // Hardware Support Verification
+    function checkWebGLSupport(): boolean {
+        try {
+            const canvas = document.createElement('canvas');
+            const gl = canvas.getContext('webgl2') as WebGL2RenderingContext | null;
+            if (!gl) {
+                console.warn("[BackgroundBlur] WebGL2 not supported.");
+                return false;
+            }
+            
+            // MediaPipe GPU delegate strictly requires rendering to float32 or float16 textures
+            const extColorBufferFloat = gl.getExtension('EXT_color_buffer_float');
+            const extColorBufferHalfFloat = gl.getExtension('EXT_color_buffer_half_float');
+            
+            if (!extColorBufferFloat && !extColorBufferHalfFloat) {
+                console.warn("[BackgroundBlur] GPU lacks EXT_color_buffer_float / half_float. Forcing CPU mode.");
+                return false;
+            }
+            
+            return true;
+        } catch (e) {
+            console.warn("[BackgroundBlur] WebGL capability check failed:", e);
+            return false;
+        }
+    }
+
     async function loadModel() {
         if (isLoaded.value || isLoading.value) return;
         isLoading.value = true;
@@ -80,27 +107,33 @@ export function useBackgroundBlur() {
                 ? "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter_landscape/float16/latest/selfie_segmenter_landscape.tflite"
                 : "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite";
 
-            segmenter.value = await ImageSegmenter.createFromOptions(vision, {
-                baseOptions: {
-                    modelAssetPath: modelPath,
-                    delegate: "GPU",
-                },
-                runningMode: "VIDEO" as const,
-                outputCategoryMask: false, 
-                outputConfidenceMasks: true,
-            });
-            isLoaded.value = true;
-            currentRunningMode = 'VIDEO';
-            console.log("[BackgroundBlur] Model loaded (GPU)");
+            const gpuSupported = checkWebGLSupport();
+            
+            if (gpuSupported) {
+                segmenter.value = await ImageSegmenter.createFromOptions(vision, {
+                    baseOptions: {
+                        modelAssetPath: modelPath,
+                        delegate: "GPU",
+                    },
+                    runningMode: "VIDEO" as const,
+                    outputCategoryMask: false, 
+                    outputConfidenceMasks: true,
+                });
+                isLoaded.value = true;
+                currentRunningMode = 'VIDEO';
+                console.log("[BackgroundBlur] Model loaded (GPU)");
+            } else {
+                throw new Error("GPU Requirements unmet. Throwing to CPU fallback explicitly.");
+            }
         } catch(e) {
-            console.warn("GPU Failed, trying CPU", e);
+            console.warn("GPU setup bypassed or failed, trying CPU", e);
              try {
                     const vision = await FilesetResolver.forVisionTasks(
                         "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
                     );
-                    // Fallback to CPU + int8 quantized model for absolute potato devices
+                    // Fallback to CPU model for devices lacking float16 WebGL rendering
                     const modelPath = isLowEnd 
-                        ? "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter_landscape/float16/latest/selfie_segmenter_landscape.tflite" // MediaPipe doesn't have public direct int8 URLs easily, sticking to landscape float16 as safest.
+                        ? "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter_landscape/float16/latest/selfie_segmenter_landscape.tflite"
                         : "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite";
 
                     segmenter.value = await ImageSegmenter.createFromOptions(vision, {
@@ -114,9 +147,10 @@ export function useBackgroundBlur() {
                     });
                      isLoaded.value = true;
                      currentRunningMode = 'VIDEO';
-                     console.log("[BackgroundBlur] Model loaded (CPU - Lightweight)");
+                     console.log("[BackgroundBlur] Model loaded (CPU - Fallback)");
              } catch (retryError) {
-                 error.value = "Failed to load blur model";
+                 isSupported.value = false;
+                 error.value = "Failed to load blur model entirely. Device may be unsupported.";
                  console.error(retryError);
              }
         } finally {
@@ -916,6 +950,7 @@ export function useBackgroundBlur() {
         autoDetectGreenScreenColor,
         isLoaded,
         isLoading,
+        isSupported,
         error
     };
 }

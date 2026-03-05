@@ -4,7 +4,7 @@ import { useDate } from '@/composables/useDate';
 const { formatDate, formatDateTime } = useDate();
 import { useRoute, useRouter } from 'vue-router';
 import api from '@/lib/api';
-import { Button, Badge, Modal, SelectFilter } from '@/components/ui';
+import { Button, Badge, Modal, SelectFilter, ConfirmPasswordModal } from '@/components/ui';
 import { usePermissions } from '@/composables/usePermissions.ts';
 import PermissionOverridesList from '@/components/permissions/PermissionOverridesList.vue';
 import PermissionOverrideModal from '@/components/permissions/PermissionOverrideModal.vue';
@@ -88,6 +88,9 @@ const isSessionsLoading = ref(true);
 const isResettingPassword = ref(false);
 const isResendingVerification = ref(false);
 const isRevokingSessions = ref(false);
+const isImpersonatingUser = ref(false);
+const showImpersonateModal = ref(false);
+const impersonateError = ref('');
 
 // Permission overrides state
 const {
@@ -167,6 +170,36 @@ const startEditing = () => {
 const cancelEditing = () => {
     isEditing.value = false;
     editForm.value = { name: '', username: '', email: '', phone: '', role: '', status: '', bio: '', location: '', website: '' };
+};
+
+const confirmImpersonate = () => {
+    showImpersonateModal.value = true;
+    impersonateError.value = '';
+};
+
+const executeImpersonate = async (password) => {
+    isImpersonatingUser.value = true;
+    impersonateError.value = '';
+    try {
+        await api.post(`/api/admin/users/${userId}/impersonate`, { password });
+        toast.success(`Now impersonating ${user.value.name}`);
+        showImpersonateModal.value = false;
+        // Give time for toast and state to settle before full redirect
+        setTimeout(() => {
+            // Wipe persisted state so the reload doesn't flash the original user's name
+            localStorage.removeItem('worksphere-auth');
+            window.location.href = '/';
+        }, 500);
+    } catch (error) {
+        console.error('Failed to impersonate:', error);
+        if (error.response?.status === 422 && error.response.data?.errors?.password) {
+            impersonateError.value = error.response.data.errors.password[0];
+        } else {
+            impersonateError.value = error.response?.data?.message || 'Failed to impersonate user';
+        }
+    } finally {
+        isImpersonatingUser.value = false;
+    }
 };
 
 const saveUser = async () => {
@@ -557,6 +590,10 @@ onMounted(async () => {
                             </Button>
                         </template>
                         <template v-else>
+                            <Button v-if="canManageRoles() && user.id !== authStore.user?.id && !user.roles?.some(r => r.name === 'administrator')" variant="outline" @click="confirmImpersonate" class="bg-yellow-500/10 text-yellow-600 border-yellow-200 hover:bg-yellow-500/20 dark:border-yellow-800 dark:text-yellow-400">
+                                <User class="w-4 h-4 mr-2" />
+                                Impersonate
+                            </Button>
                             <Button v-if="canEdit()" variant="outline" @click="startEditing">
                                 Edit Profile
                             </Button>
@@ -1233,6 +1270,19 @@ onMounted(async () => {
             :override="selectedOverride"
             :loading="overrideActionLoading"
             @submit="handleRenewOverride"
+        />
+
+        <ConfirmPasswordModal
+            v-if="user"
+            v-model:open="showImpersonateModal"
+            title="Confirm Impersonation"
+            :description="`Please enter your password to securely impersonate ${user.name}.`"
+            :loading="isImpersonatingUser"
+            submit-text="Impersonate"
+            submit-variant="primary"
+            :external-error="impersonateError"
+            @confirm="executeImpersonate"
+            @cancel="showImpersonateModal = false"
         />
     </div>
 </template>

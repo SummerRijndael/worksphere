@@ -24,6 +24,9 @@ import {
     Filter,
     MoreVertical,
     Check,
+    ShieldCheck,
+    ShieldAlert,
+    Clock,
 } from "lucide-vue-next";
 import { useRoles } from "@/composables/useRoles";
 import { usePresence } from "@/composables/usePresence";
@@ -401,12 +404,22 @@ onMounted(() => {
                                         <th
                                             class="px-6 py-4 font-semibold text-[var(--text-secondary)]"
                                         >
+                                            Username
+                                        </th>
+                                        <th
+                                            class="px-6 py-4 font-semibold text-[var(--text-secondary)]"
+                                        >
                                             Role
                                         </th>
                                         <th
                                             class="px-6 py-4 font-semibold text-[var(--text-secondary)]"
                                         >
                                             Status
+                                        </th>
+                                        <th
+                                            class="px-6 py-4 font-semibold text-[var(--text-secondary)]"
+                                        >
+                                            2FA
                                         </th>
                                         <th
                                             class="px-6 py-4 font-semibold text-[var(--text-secondary)]"
@@ -476,6 +489,9 @@ onMounted(() => {
                                             </div>
                                         </td>
                                         <td class="px-6 py-4">
+                                            <span class="text-sm font-mono text-[var(--text-secondary)]">@{{ user.username }}</span>
+                                        </td>
+                                        <td class="px-6 py-4">
                                             <span
                                                 class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-[var(--surface-secondary)] text-[var(--text-secondary)] border border-[var(--border-default)] capitalize"
                                             >
@@ -509,31 +525,47 @@ onMounted(() => {
                                                 >
                                             </div>
                                         </td>
+                                        <td class="px-6 py-4">
+                                            <div class="flex flex-col gap-1">
+                                                <div v-if="user.has_2fa_enabled" class="flex items-center gap-1.5 text-green-600 dark:text-green-400">
+                                                    <ShieldCheck class="w-3.5 h-3.5" />
+                                                    <span class="text-xs font-medium">Enabled</span>
+                                                </div>
+                                                <div v-else class="flex items-center gap-1.5 text-[var(--text-tertiary)]">
+                                                    <ShieldAlert class="w-3.5 h-3.5" />
+                                                    <span class="text-xs">Disabled</span>
+                                                </div>
+                                                
+                                                <!-- Enforcement Info -->
+                                                <div v-if="user.two_factor_requirement" class="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200/50 w-fit">
+                                                    Required by {{ user.two_factor_requirement.source === 'role' ? 'Role (' + user.two_factor_requirement.role + ')' : 'Account' }}
+                                                </div>
+                                                <div v-else-if="user.two_factor_enforced" class="text-[10px] px-1.5 py-0.5 rounded bg-[var(--surface-secondary)] text-[var(--text-tertiary)] border border-[var(--border-default)] w-fit">
+                                                    Optional
+                                                </div>
+                                            </div>
+                                        </td>
                                         <td
                                             class="px-6 py-4 text-[var(--text-tertiary)]"
                                         >
-                                            <div class="flex flex-col text-xs">
-                                                <span
-                                                    >Joined:
-                                                    {{
-                                                        formatDate(
-                                                            user.created_at,
-                                                        )
-                                                    }}</span
-                                                >
-                                                <span v-if="user.last_active_at"
-                                                    >Last seen:
-                                                    {{
-                                                        formatRelativeTime(
-                                                            user.last_active_at,
-                                                        )
-                                                    }}</span
-                                                >
+                                            <div class="flex flex-col gap-1.5 text-[10px]">
+                                                <div class="flex items-center gap-1.5">
+                                                    <Plus class="w-3 h-3" />
+                                                    <span>Joined: {{ formatDate(user.created_at) }}</span>
+                                                </div>
+                                                <div v-if="user.last_login_at" class="flex items-center gap-1.5">
+                                                    <Clock class="w-3 h-3" />
+                                                    <span>Login: {{ formatRelativeTime(user.last_login_at) }}</span>
+                                                </div>
+                                                <div v-if="user.updated_at" class="flex items-center gap-1.5 opacity-60">
+                                                    <Edit2 class="w-3 h-3" />
+                                                    <span>Updated: {{ formatRelativeTime(user.updated_at) }}</span>
+                                                </div>
                                             </div>
                                         </td>
                                         <td class="px-6 py-4 text-right">
                                             <div
-                                                class="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                class="flex justify-end gap-2 transition-opacity"
                                             >
                                                 <button
                                                     @click="openEditModal(user)"
@@ -623,15 +655,18 @@ onMounted(() => {
 
                             <!-- Info -->
                             <h3
-                                class="font-bold text-[var(--text-primary)] text-lg mb-1 text-center"
+                                class="font-bold text-[var(--text-primary)] text-lg mb-0.5 text-center"
                             >
                                 {{ user.name }}
                             </h3>
-                            <p
-                                class="text-sm text-[var(--text-secondary)] mb-3 text-center truncate w-full px-2"
-                            >
-                                {{ user.email }}
-                            </p>
+                            <div class="flex flex-col items-center mb-4 overflow-hidden w-full">
+                                <p class="text-xs text-[var(--text-secondary)] truncate w-full px-2 text-center">
+                                    {{ user.email }}
+                                </p>
+                                <p class="text-[10px] font-mono text-[var(--text-tertiary)]">
+                                    @{{ user.username }}
+                                </p>
+                            </div>
 
                             <!-- Badges -->
                             <div
@@ -657,12 +692,17 @@ onMounted(() => {
                                 </span>
                             </div>
 
-                            <!-- Footer -->
                             <div
-                                class="w-full pt-4 border-t border-[var(--border-default)] flex justify-between text-xs text-[var(--text-tertiary)]"
+                                class="w-full pt-4 border-t border-[var(--border-default)] space-y-1.5 text-[10px] text-[var(--text-tertiary)]"
                             >
-                                <span>Joined</span>
-                                <span>{{ formatDate(user.created_at) }}</span>
+                                <div class="flex justify-between items-center">
+                                    <span class="flex items-center gap-1"><Plus class="w-2.5 h-2.5" /> Joined</span>
+                                    <span>{{ formatDate(user.created_at) }}</span>
+                                </div>
+                                <div v-if="user.last_login_at" class="flex justify-between items-center">
+                                    <span class="flex items-center gap-1"><Clock class="w-2.5 h-2.5" /> Login</span>
+                                    <span>{{ formatRelativeTime(user.last_login_at) }}</span>
+                                </div>
                             </div>
                         </div>
                     </div>

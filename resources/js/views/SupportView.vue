@@ -4,7 +4,7 @@ import { useRouter, useRoute } from "vue-router";
 import { useToast } from "@/composables/useToast.ts";
 import api from "@/lib/api";
 import { useDate } from "@/composables/useDate";
-
+import { escapeHtml } from "@/utils/sanitize";
 const { formatRelativeTime } = useDate();
 import {
     Card,
@@ -178,9 +178,11 @@ async function handleSubmitTicket() {
     isSubmitting.value = true;
 
     try {
+        let finalDescription = escapeHtml(newTicket.value.description).replace(/\n/g, '<br>');
+
         await api.post("/api/tickets", {
             title: newTicket.value.title,
-            description: newTicket.value.description,
+            description: finalDescription,
             type: newTicket.value.type,
             tags: newTicket.value.tags,
         });

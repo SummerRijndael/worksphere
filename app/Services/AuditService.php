@@ -519,16 +519,27 @@ class AuditService
         $user = $user ?? auth()->user();
 
         $metadata = $context;
+        
+        $impersonatorId = \Illuminate\Support\Facades\Session::get('impersonator_id');
+        if ($impersonatorId) {
+            $metadata['impersonator_id'] = $impersonatorId;
+            $metadata['impersonated_user_id'] = $user?->id;
+        }
 
         if (config('audit.parse_user_agent', true) && $request->userAgent()) {
             $metadata['user_agent_parsed'] = $this->parseUserAgent($request->userAgent());
         }
 
+        $userName = $context['user_name'] ?? $context['name'] ?? $user?->name;
+        if ($impersonatorId && $userName) {
+            $userName .= " (Impersonated by Admin ID: {$impersonatorId})";
+        }
+
         return [
             'public_id' => (string) Str::uuid(),
-            'user_id' => $user?->id,
-            'user_name' => $user?->name ?? $context['user_name'] ?? $context['name'] ?? null,
-            'user_email' => $user?->email ?? $context['user_email'] ?? $context['email'] ?? $context['credentials']['email'] ?? null,
+            'user_id' => $impersonatorId ?? $user?->id, // Attribute action to impersonator if active
+            'user_name' => $userName,
+            'user_email' => $context['user_email'] ?? $context['email'] ?? $context['credentials']['email'] ?? $user?->email,
             'team_id' => $context['team_id'] ?? null,
             'action' => $action->value,
             'category' => $category->value,

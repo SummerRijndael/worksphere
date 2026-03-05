@@ -285,7 +285,13 @@ const getStatusVariant = (status: any) => {
                         </td>
                         <td class="px-6 py-4">
                             <div class="flex items-center gap-2.5">
-                                <img v-if="ticket.assignee" :src="ticket.assignee.avatar_thumb_url" class="w-6 h-6 rounded-full ring-2 ring-[var(--border-default)]" />
+                                <Avatar 
+                                    v-if="ticket.assignee" 
+                                    :src="ticket.assignee.avatar_thumb_url" 
+                                    :name="ticket.assignee.name" 
+                                    size="xs" 
+                                    class="ring-2 ring-[var(--border-default)]" 
+                                />
                                 <span class="text-[var(--text-primary)] font-medium">{{ ticket.assignee?.name || 'Unassigned' }}</span>
                             </div>
                         </td>

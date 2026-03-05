@@ -61,7 +61,14 @@ onUnmounted(() => {
                 <Menu class="h-5 w-5" />
             </Button>
 
-           
+            <!-- Impersonation Banner -->
+            <div v-if="authStore.isImpersonating" class="hidden md:flex items-center gap-2 bg-yellow-500/10 text-yellow-600 border border-yellow-500/20 px-3 py-1.5 rounded-lg text-sm font-medium">
+                <User class="w-4 h-4" />
+                <span>Impersonating {{ authStore.displayName }}</span>
+                <Button variant="ghost" size="sm" class="h-6 px-2 ml-2 text-yellow-700 hover:bg-yellow-500/20" @click="authStore.stopImpersonating()">
+                    Stop
+                </Button>
+            </div>
         </div>
 
         <!-- Right Section -->

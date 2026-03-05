@@ -1457,9 +1457,13 @@ router.onError((error, to) => {
 });
 
 import { analyticsService } from "@/services/analytics.service";
+import { logManager } from "@/utils/LogManager";
 
 router.afterEach(async (to) => {
     NProgress.done();
+    
+    // Log navigation for diagnostic purposes
+    logManager.logNavigation(to.fullPath);
 
     // Track page visit in SPA
     // Dynamically import to split code

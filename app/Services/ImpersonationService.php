@@ -35,8 +35,17 @@ class ImpersonationService
         // Store the original user ID in the session
         Session::put('impersonator_id', $impersonator->id);
 
+        \Illuminate\Support\Facades\Log::info("IMPERSONATE START - Put impersonator_id: " . Session::get('impersonator_id'));
+
         // Log the user in as the target
-        Auth::login($target);
+        Auth::guard('web')->login($target);
+
+        \Illuminate\Support\Facades\Log::info("IMPERSONATE START - Auth user ID is now: " . Auth::guard('web')->id());
+
+        // Regenerate the session to prevent session fixation and concurrent request clobbering
+        Session::regenerate();
+        
+        \Illuminate\Support\Facades\Log::info("IMPERSONATE START - Session regenerated. New ID: " . Session::getId() . " impersonator_id: " . Session::get('impersonator_id'));
 
         // Audit Log
         $this->auditService->log(
@@ -55,7 +64,10 @@ class ImpersonationService
      */
     public function stopImpersonating(): void
     {
+        \Illuminate\Support\Facades\Log::info("IMPERSONATE STOP - Session ID: " . Session::getId() . " impersonator_id: " . Session::get('impersonator_id') . " Auth ID: " . Auth::guard('web')->id());
+
         if (! $this->isImpersonating()) {
+            \Illuminate\Support\Facades\Log::error("IMPERSONATE STOP FAILED - No impersonator_id in session!");
             throw new \RuntimeException('No active impersonation session found.');
         }
 
@@ -64,12 +76,13 @@ class ImpersonationService
 
         if (! $impersonator) {
             // Fallback safety: Logout if original user not found
-            Auth::logout();
+            Auth::guard('web')->logout();
             Session::forget('impersonator_id');
+            Session::regenerate();
             throw new \RuntimeException('Original user not found. You have been logged out.');
         }
 
-        $target = Auth::user();
+        $target = Auth::guard('web')->user() ?? Auth::user();
 
         // Audit Log (before switching back)
         if ($target) {
@@ -85,8 +98,9 @@ class ImpersonationService
         }
 
         // Restore original session
-        Auth::login($impersonator);
+        Auth::guard('web')->login($impersonator);
         Session::forget('impersonator_id');
+        Session::regenerate();
     }
 
     /**
