@@ -91,6 +91,7 @@ export const useAuthStore = defineStore('auth', () => {
   const statusChangeEvent: Ref<StatusChangeEvent | null> = ref(null);
   const showBlockedModal = ref(false);
   const isSessionVerified = ref(false);
+  const isImpersonating = ref(false);
 
   // Real-time role change state
   const roleChangeEvent: Ref<RoleChangeEvent | null> = ref(null);
@@ -763,6 +764,19 @@ export const useAuthStore = defineStore('auth', () => {
     twoFactorEnforcementEvent.value = null;
   }
 
+  async function stopImpersonating(): Promise<void> {
+    try {
+        const response = await api.post('/api/impersonation/stop');
+        isImpersonating.value = false;
+        
+        // Wipe persisted state so the reload doesn't flash the impersonated user's name
+        localStorage.removeItem('worksphere-auth');
+        window.location.href = response.data.redirect || '/admin/users';
+    } catch (e) {
+        console.error('Failed to stop impersonating', e);
+    }
+  }
+
   return {
     // State
     user,
@@ -822,10 +836,12 @@ export const useAuthStore = defineStore('auth', () => {
     handleBlockedLogout,
     clear2FAEnforcementState,
     isSessionVerified,
+    isImpersonating,
+    stopImpersonating,
   };
 }, {
   persist: {
     key: 'worksphere-auth',
-    paths: ['user', 'userHints', 'currentTeamId'], // Only userHints persisted, NOT fetchedHints (loaded on demand)
+    paths: ['user', 'userHints', 'currentTeamId'], // Only userHints persisted, NOT fetchedHints (loaded on demand). isImpersonating is explicitly NOT persisted so it relies on backend state
   },
 });

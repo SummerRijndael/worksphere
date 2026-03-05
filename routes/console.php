@@ -184,3 +184,19 @@ Schedule::command('firewall:escalate')
     ->name('firewall-escalate')
     ->withoutOverlapping()
     ->onOneServer();
+
+// Prune expired database sessions daily
+Schedule::call(function () {
+    if (config('session.driver') === 'database') {
+        \Illuminate\Support\Facades\DB::table(config('session.table', 'sessions'))
+            ->where('last_activity', '<=', now()->subMinutes(config('session.lifetime'))->getTimestamp())
+            ->delete();
+    }
+})->dailyAt('02:15')->name('prune-expired-sessions')->onOneServer();
+
+// Prune expired sanctum tokens daily
+Schedule::command('sanctum:prune-expired --hours=24')
+    ->dailyAt('02:20')
+    ->name('prune-sanctum-tokens')
+    ->withoutOverlapping()
+    ->onOneServer();

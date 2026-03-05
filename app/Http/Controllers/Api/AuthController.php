@@ -174,6 +174,12 @@ class AuthController extends Controller
      */
     public function login(LoginRequest $request): JsonResponse
     {
+        if (app(\App\Services\ImpersonationService::class)->isImpersonating()) {
+            return response()->json([
+                'message' => 'You cannot log in while impersonating another user. Please stop impersonating first.',
+            ], 403);
+        }
+
         // ReCAPTCHA Verification
         if (config('recaptcha.enabled')) {
             $token = $request->input('recaptcha_token');

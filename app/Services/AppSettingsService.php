@@ -45,6 +45,7 @@ class AppSettingsService
         'twilio.auth_token',
         'twilio.verify_sid',
         'openai.api_key',
+        'analytics_ga_measurement_id',
     ];
 
     /**
@@ -102,6 +103,18 @@ class AppSettingsService
         'teams.deletion_grace_days' => ['config' => 'teams.health.deletion_grace_days', 'default' => 30],
         'teams.auto_delete' => ['config' => 'teams.health.auto_delete_enabled', 'default' => false],
         'teams.require_approval' => ['config' => 'teams.limits.require_approval', 'default' => false],
+        // Contact Information
+        'contact.support' => ['config' => 'contact.support'],
+        'contact.legal' => ['config' => 'contact.legal'],
+        'contact.dmca' => ['config' => 'contact.dmca'],
+        'contact.privacy' => ['config' => 'contact.privacy'],
+        // Social Media Links
+        'contact.social.twitter' => ['config' => 'contact.social.twitter', 'default' => 'https://twitter.com'],
+        'contact.social.github' => ['config' => 'contact.social.github', 'default' => 'https://github.com'],
+        'contact.social.linkedin' => ['config' => 'contact.social.linkedin', 'default' => 'https://linkedin.com'],
+        // Analytics
+        'analytics_ga_enabled' => ['config' => 'analytics.ga_enabled', 'default' => false],
+        'analytics_ga_measurement_id' => ['config' => 'analytics.ga_measurement_id'],
     ];
 
     /**
@@ -448,6 +461,57 @@ class AppSettingsService
                     'description' => 'tls / ssl / null',
                 ],
             ],
+            'contact' => [
+                [
+                    'key' => 'contact.support',
+                    'label' => 'Support Email',
+                    'type' => 'string',
+                    'value' => $this->get('contact.support'),
+                    'description' => 'Support email address',
+                ],
+                [
+                    'key' => 'contact.legal',
+                    'label' => 'Legal Email',
+                    'type' => 'string',
+                    'value' => $this->get('contact.legal'),
+                    'description' => 'Legal inquiries email',
+                ],
+                [
+                    'key' => 'contact.dmca',
+                    'label' => 'DMCA / Copyright Email',
+                    'type' => 'string',
+                    'value' => $this->get('contact.dmca'),
+                    'description' => 'DMCA inquiries email',
+                ],
+                [
+                    'key' => 'contact.privacy',
+                    'label' => 'Privacy Officer Email',
+                    'type' => 'string',
+                    'value' => $this->get('contact.privacy'),
+                    'description' => 'Privacy officer email',
+                ],
+                [
+                    'key' => 'contact.social.twitter',
+                    'label' => 'Twitter/X Profile URL',
+                    'type' => 'string',
+                    'value' => $this->get('contact.social.twitter', 'https://twitter.com'),
+                    'description' => 'Link to your Twitter/X profile',
+                ],
+                [
+                    'key' => 'contact.social.github',
+                    'label' => 'GitHub Profile URL',
+                    'type' => 'string',
+                    'value' => $this->get('contact.social.github', 'https://github.com'),
+                    'description' => 'Link to your GitHub profile',
+                ],
+                [
+                    'key' => 'contact.social.linkedin',
+                    'label' => 'LinkedIn Profile URL',
+                    'type' => 'string',
+                    'value' => $this->get('contact.social.linkedin', 'https://linkedin.com'),
+                    'description' => 'Link to your LinkedIn profile',
+                ],
+            ],
             'social' => [
                 [
                     'key' => 'auth.social_login_enabled',
@@ -660,6 +724,22 @@ class AppSettingsService
                     'type' => 'integer',
                     'value' => $this->get('tickets.sla.default_resolution_hours.low', 48),
                     'description' => 'Default resolution time for Low priority (hours)',
+                ],
+            ],
+            'analytics' => [
+                [
+                    'key' => 'analytics_ga_enabled',
+                    'label' => 'Enable Google Analytics',
+                    'type' => 'boolean',
+                    'value' => $this->get('analytics_ga_enabled', false),
+                    'description' => 'Enable or disable Google Analytics 4 tracking',
+                ],
+                [
+                    'key' => 'analytics_ga_measurement_id',
+                    'label' => 'Measurement ID',
+                    'type' => 'string',
+                    'value' => $this->get('analytics_ga_measurement_id'),
+                    'description' => 'Your GA4 Measurement ID (G-XXXXXXXXXX)',
                 ],
             ],
         ];

@@ -13,7 +13,7 @@ import {
     Calendar,
     Eye
 } from "lucide-vue-next";
-import { Button } from "@/components/ui";
+import { Button, Avatar } from "@/components/ui";
 import { toast } from "vue-sonner";
 
 const props = defineProps({
@@ -139,10 +139,7 @@ watch(() => props.articleId, (newId) => {
                     >
                         <!-- Avatar -->
                         <div class="shrink-0">
-                            <div class="w-9 h-9 rounded-full bg-[var(--surface-muted)] flex items-center justify-center overflow-hidden border border-[var(--border-subtle)]">
-                                 <img v-if="version.author?.avatar_url" :src="version.author.avatar_url" class="w-full h-full object-cover">
-                                 <User v-else class="w-4 h-4 text-[var(--text-muted)]" />
-                            </div>
+                            <Avatar :src="version.author?.avatar_url" :name="version.author?.name || 'Unknown'" size="sm" class="border border-[var(--border-subtle)]" />
                         </div>
 
                         <!-- Content -->
@@ -204,10 +201,7 @@ watch(() => props.articleId, (newId) => {
                 <!-- Preview Header -->
                 <div class="p-4 border-b border-[var(--border-default)] flex items-center justify-between bg-[var(--surface-elevated)] shrink-0">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-full bg-[var(--surface-muted)] flex items-center justify-center overflow-hidden text-[var(--text-muted)] border border-[var(--border-subtle)]">
-                             <img v-if="selectedVersion.author?.avatar_url" :src="selectedVersion.author.avatar_url" class="w-full h-full object-cover">
-                             <User v-else class="w-5 h-5" />
-                        </div>
+                        <Avatar :src="selectedVersion.author?.avatar_url" :name="selectedVersion.author?.name || 'Unknown'" size="md" class="border border-[var(--border-subtle)]" />
                         <div>
                             <p class="font-medium text-[var(--text-primary)]">
                                 {{ selectedVersion.author?.name || 'Unknown' }}

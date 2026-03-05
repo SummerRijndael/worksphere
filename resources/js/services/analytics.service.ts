@@ -56,5 +56,21 @@ export const analyticsService = {
             demographics: demographics.data.data,
             geoStats: geoStats.data.data
         };
+    },
+
+    async exportData(type: 'traffic' | 'pages' | 'sources', period: AnalyticsPeriod) {
+        const response = await axios.get(`${BASE_URL}/export`, {
+            params: { type, period },
+            responseType: 'blob'
+        });
+
+        const url = window.URL.createObjectURL(new Blob([response.data]));
+        const link = document.createElement('a');
+        link.href = url;
+        const filename = `analytics_${type}_${period}_${new Date().toISOString().split('T')[0]}.csv`;
+        link.setAttribute('download', filename);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     }
 };

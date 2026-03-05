@@ -413,4 +413,86 @@ class AnalyticsService
 
         return $sign.round($percent, 1).'%';
     }
+
+    /**
+     * Export traffic data as CSV content.
+     */
+    public function exportTraffic(string $period): string
+    {
+        $startDate = $this->getStartDate($period);
+        $driver = DB::getDriverName();
+
+        if ($driver === 'sqlite') {
+            $dateFormat = $period === '24h' ? "strftime('%Y-%m-%d %H:00:00', created_at)" : 'date(created_at)';
+        } else {
+            $dateFormat = $period === '24h' ? "DATE_FORMAT(created_at, '%Y-%m-%d %H:00:00')" : 'DATE(created_at)';
+        }
+
+        $views = PageView::query()->select([
+            DB::raw($dateFormat.' as date'),
+            DB::raw('count(*) as views'),
+            DB::raw('count(distinct session_id) as uniques'),
+        ])
+            ->where('created_at', '>=', $startDate)
+            ->groupBy('date')
+            ->orderBy('date')
+            ->get();
+
+        $csv = "Date,Views,Unique Visitors\n";
+        foreach ($views as $view) {
+            $csv .= "{$view->date},{$view->views},{$view->uniques}\n";
+        }
+
+        return $csv;
+    }
+
+    /**
+     * Export top pages data as CSV content.
+     */
+    public function exportTopPages(string $period): string
+    {
+        $startDate = $this->getStartDate($period);
+        $pages = PageView::query()->select([
+            'path',
+            DB::raw('count(*) as views'),
+            DB::raw('count(distinct session_id) as unique_visits'),
+        ])
+            ->where('created_at', '>=', $startDate)
+            ->groupBy('path')
+            ->orderByDesc('views')
+            ->get();
+
+        $csv = "Path,Views,Unique Visits\n";
+        foreach ($pages as $page) {
+            $csv .= "{$page->path},{$page->views},{$page->unique_visits}\n";
+        }
+
+        return $csv;
+    }
+
+    /**
+     * Export traffic sources as CSV content.
+     */
+    public function exportSources(string $period): string
+    {
+        $startDate = $this->getStartDate($period);
+        $sources = PageView::query()->select([
+            'referer',
+            DB::raw('count(*) as visits'),
+        ])
+            ->where('created_at', '>=', $startDate)
+            ->whereNotNull('referer')
+            ->groupBy('referer')
+            ->orderByDesc('visits')
+            ->get();
+
+        $csv = "Source Domain,Visits\n";
+        foreach ($sources as $s) {
+            $domain = parse_url($s->referer, PHP_URL_HOST) ?? 'Direct/Unknown';
+            $csv .= "{$domain},{$s->visits}\n";
+        }
+
+        return $csv;
+    }
 }
+

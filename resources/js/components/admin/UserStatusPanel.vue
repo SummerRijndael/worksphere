@@ -15,6 +15,7 @@ import {
     UserCog,
     History,
     ChevronDown,
+    ShieldAlert,
 } from 'lucide-vue-next';
 import { useRoles } from '@/composables/useRoles';
 
@@ -212,17 +213,37 @@ function getMinDateTime() {
             <div class="flex items-center justify-between">
                 <div>
                     <p class="text-sm text-[var(--text-muted)] mb-1">Account Status</p>
-                    <div class="flex items-center gap-2">
-                        <Badge :variant="statusBadgeVariant">
+                    <div class="flex items-center gap-2 mb-2">
+                        <Badge :variant="statusBadgeVariant" size="lg" class="capitalize">
                             {{ user.status }}
                         </Badge>
-                        <span v-if="user.status_reason" class="text-sm text-[var(--text-secondary)]">
-                            - {{ user.status_reason }}
-                        </span>
                     </div>
-                    <p v-if="user.suspended_until" class="text-xs text-[var(--text-muted)] mt-1">
-                        Until: {{ formatDate(user.suspended_until) }}
-                    </p>
+
+                    <!-- Critical Status Info -->
+                    <div v-if="['blocked', 'suspended'].includes(user.status)" 
+                         class="mt-2 p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-800/30 rounded-lg space-y-2 max-w-md"
+                    >
+                        <div v-if="user.status_reason" class="flex gap-2 text-sm text-amber-900 dark:text-amber-200">
+                            <ShieldAlert class="w-4 h-4 mt-0.5 shrink-0" />
+                            <div>
+                                <span class="font-medium">Reason:</span>
+                                <span class="ml-1 opacity-90">{{ user.status_reason }}</span>
+                            </div>
+                        </div>
+
+                        <div v-if="user.status === 'suspended' && user.suspended_until" 
+                             class="flex gap-2 text-xs text-amber-800 dark:text-amber-400"
+                        >
+                            <Clock class="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                            <div>
+                                <span class="font-medium">Lifted on:</span>
+                                <span class="ml-1">{{ formatDateTime(user.suspended_until) }}</span>
+                                <span class="ml-2 px-1.5 py-0.5 bg-amber-100 dark:bg-amber-800/40 rounded text-[10px] uppercase font-bold tracking-wider">
+                                    {{ formatRelativeTime(user.suspended_until) }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="flex items-center gap-2">
                     <Button variant="ghost" size="sm" @click="loadStatusHistory">
@@ -292,7 +313,6 @@ function getMinDateTime() {
                 </div>
 
                 <Alert v-if="['blocked', 'suspended'].includes(selectedStatus)" variant="warning">
-                    <AlertTriangle class="w-4 h-4" />
                     <span>This will immediately log out the user and prevent them from accessing the system.</span>
                 </Alert>
 
@@ -413,9 +433,17 @@ function getMinDateTime() {
                         <div class="flex items-center gap-2">
                             <Badge variant="secondary" size="sm">{{ entry.from_status }}</Badge>
                             <span class="text-[var(--text-muted)]">→</span>
-                            <Badge :variant="entry.to_status === 'active' ? 'success' : 'warning'" size="sm">
-                                {{ entry.to_status }}
-                            </Badge>
+                            <div class="flex flex-col gap-1">
+                                <Badge :variant="entry.to_status === 'active' ? 'success' : 'warning'" size="sm">
+                                    {{ entry.to_status }}
+                                </Badge>
+                                <div v-if="entry.reason" class="text-[10px] text-[var(--text-secondary)] italic max-w-[150px] truncate" :title="entry.reason">
+                                    {{ entry.reason }}
+                                </div>
+                                <div v-if="entry.to_status === 'suspended' && entry.suspended_until" class="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
+                                    Lifted: {{ formatDate(entry.suspended_until) }}
+                                </div>
+                            </div>
                         </div>
                         <span class="text-xs text-[var(--text-muted)]">
                             {{ formatDate(entry.created_at) }}

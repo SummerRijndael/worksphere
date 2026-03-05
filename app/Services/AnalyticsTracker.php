@@ -10,6 +10,27 @@ use Jenssegers\Agent\Agent;
 class AnalyticsTracker
 {
     /**
+     * @var \App\Contracts\AnalyticsDriver[]
+     */
+    protected array $drivers = [];
+
+    public function __construct()
+    {
+        $this->registerDrivers();
+    }
+
+    /**
+     * Register available analytics drivers.
+     */
+    protected function registerDrivers(): void
+    {
+        $this->drivers = [
+            app(\App\Services\Analytics\Drivers\InternalDriver::class),
+            app(\App\Services\Analytics\Drivers\GoogleAnalyticsDriver::class),
+        ];
+    }
+
+    /**
      * Track a page view from a request.
      */
     public function trackRequest(Request $request): void
@@ -34,7 +55,7 @@ class AnalyticsTracker
 
         $data = $this->prepareData($request, $agent, $user);
 
-        ProcessAnalyticsJob::dispatch($data);
+        $this->dispatchToDrivers($data);
     }
 
     /**
@@ -62,8 +83,27 @@ class AnalyticsTracker
 
         $data = $this->prepareData($request, $agent, $user, $attributes);
 
-        ProcessAnalyticsJob::dispatch($data);
+        $this->dispatchToDrivers($data);
     }
+
+    /**
+     * Dispatch tracking data to all enabled drivers.
+     */
+    protected function dispatchToDrivers(array $data): void
+    {
+        foreach ($this->drivers as $driver) {
+            if ($driver->isEnabled()) {
+                // If it's the internal driver, we use the job for async processing
+                // For others, it depends on their implementation
+                if ($driver instanceof \App\Services\Analytics\Drivers\InternalDriver) {
+                    ProcessAnalyticsJob::dispatch($data);
+                } else {
+                    $driver->track($data);
+                }
+            }
+        }
+    }
+
 
     /**
      * Prepare data for analytics.

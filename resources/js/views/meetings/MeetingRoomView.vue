@@ -1102,107 +1102,167 @@
                     </button>
 
                     <!-- Activities Menu (Desktop) -->
-                    <DropdownMenuRoot>
-                        <DropdownMenuTrigger as-child>
-                            <button
-                                class="ctrl-btn hidden lg:flex"
-                                :class="{
-                                    'ctrl-btn--active':
-                                        whiteboardStore.isVisible ||
-                                        showPollPanel ||
-                                        meetingStore.showBreakoutManager,
-                                }"
-                                title="Activities"
-                            >
-                                <Icon name="grid" size="20" />
-                            </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuPortal>
-                            <DropdownMenuContent
-                                side="top"
-                                align="center"
-                                :side-offset="16"
-                                class="z-1000 w-64 bg-surface-elevated/95 backdrop-blur-xl border border-default rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 data-[side=top]:slide-in-from-bottom-4 duration-200"
-                            >
-                                <div class="p-1.5 space-y-0.5">
-                                    <DropdownMenuItem
-                                        @click="togglePollPanel"
-                                        class="menu-action-item px-3 py-2 rounded-xl flex items-center transition-colors cursor-pointer outline-none hover:bg-white/5 data-highlighted:bg-white/5 text-white"
-                                    >
-                                        <Icon
-                                            name="bar-chart-2"
-                                            size="18"
-                                            class="mr-3 text-white/70"
-                                        />
-                                        <span class="font-medium text-sm">Polls</span>
-                                    </DropdownMenuItem>
+                    <div
+                        class="relative hidden lg:flex"
+                        v-click-outside="() => (showActivitiesMenu = false)"
+                    >
+                        <button
+                            class="ctrl-btn"
+                            :class="{
+                                'ctrl-btn--active':
+                                    whiteboardStore.isVisible ||
+                                    showPollPanel ||
+                                    meetingStore.showBreakoutManager,
+                            }"
+                            title="Activities"
+                            @click="showActivitiesMenu = !showActivitiesMenu"
+                        >
+                            <Icon name="shapes" size="20" />
+                        </button>
 
-                                    <DropdownMenuItem
-                                        @click="
-                                            whiteboardStore.isVisible = !whiteboardStore.isVisible;
-                                            showMoreMenu = false;
-                                        "
-                                        class="menu-action-item px-3 py-2 rounded-xl flex items-center transition-colors cursor-pointer outline-none hover:bg-white/5 data-highlighted:bg-white/5 text-white"
+                        <Transition
+                            enter-active-class="transition duration-200 ease-out"
+                            enter-from-class="opacity-0 scale-95 translate-y-2"
+                            enter-to-class="opacity-100 scale-100 translate-y-0"
+                            leave-active-class="transition duration-150 ease-in"
+                            leave-from-class="opacity-100 scale-100 translate-y-0"
+                            leave-to-class="opacity-0 scale-95 translate-y-2"
+                        >
+                            <div
+                                v-if="showActivitiesMenu"
+                                ref="activitiesMenuRef"
+                                class="layout-menu shadow-2xl z-[1000]"
+                            >
+                                <div class="px-4 pt-4 pb-2 border-none">
+                                    <h3
+                                        class="text-[14px] font-bold tracking-wider text-white"
                                     >
-                                        <Icon
-                                            name="edit-3"
-                                            size="18"
-                                            class="mr-3 text-white/70"
-                                        />
-                                        <span class="font-medium text-sm">Whiteboard</span>
-                                    </DropdownMenuItem>
+                                        ACTIVITIES
+                                    </h3>
+                                </div>
+                                <div class="p-2 flex flex-col gap-1">
+                                    <button
+                                        @click="
+                                            togglePollPanel();
+                                            showActivitiesMenu = false;
+                                        "
+                                        class="p-3 rounded-xl flex items-center transition-all cursor-pointer outline-none hover:bg-white/5 text-white/90 group w-full border-none bg-transparent"
+                                    >
+                                        <div
+                                            class="w-10 h-10 flex items-center justify-center rounded-[10px] bg-white/5 group-hover:bg-white/10 transition-colors mr-3 shrink-0 text-white/60 group-hover:text-white/90"
+                                        >
+                                            <Icon
+                                                name="bar-chart-2"
+                                                size="20"
+                                            />
+                                        </div>
+                                        <div class="flex flex-col text-left">
+                                            <span class="text-[14px] mb-[2px]"
+                                                >Polls</span
+                                            >
+                                            <span
+                                                class="text-[12px] text-white/50"
+                                                >Engage with participants</span
+                                            >
+                                        </div>
+                                    </button>
+
+                                    <button
+                                        @click="
+                                            whiteboardStore.isVisible =
+                                                !whiteboardStore.isVisible;
+                                            showMoreMenu = false;
+                                            showActivitiesMenu = false;
+                                        "
+                                        class="p-3 rounded-xl flex items-center transition-all cursor-pointer outline-none hover:bg-white/5 text-white/90 group w-full border-none bg-transparent"
+                                    >
+                                        <div
+                                            class="w-10 h-10 flex items-center justify-center rounded-[10px] bg-white/5 group-hover:bg-white/10 transition-colors mr-3 shrink-0 text-white/60 group-hover:text-white/90"
+                                        >
+                                            <Icon name="edit-3" size="20" />
+                                        </div>
+                                        <div class="flex flex-col text-left">
+                                            <span class="text-[14px] mb-[2px]"
+                                                >Whiteboard</span
+                                            >
+                                            <span
+                                                class="text-[12px] text-white/50"
+                                                >Collaborate visually</span
+                                            >
+                                        </div>
+                                    </button>
 
                                     <template v-if="meetingStore.isHost">
-                                        <DropdownMenuSeparator class="h-px bg-white/10 mx-2 my-1" />
-                                        
-                                        <DropdownMenuItem
-                                            v-if="recordingEnabled"
-                                            @click="toggleRecording"
-                                            :disabled="isRecordingStarting || isRecordingStopping"
-                                            class="menu-action-item px-3 py-2 rounded-xl flex items-center transition-colors cursor-pointer outline-none hover:bg-white/5 data-highlighted:bg-white/5 text-white"
+                                        <div
+                                            class="h-px bg-white/10 my-2 mx-2"
+                                        ></div>
+                                        <button
+                                            @click="
+                                                meetingStore.showBreakoutManager = true;
+                                                showActivitiesMenu = false;
+                                            "
+                                            class="p-3 rounded-xl flex items-center transition-all cursor-pointer outline-none hover:bg-white/5 text-white/90 group w-full border-none bg-transparent"
                                         >
-                                            <Icon
-                                                :name="isRecording ? 'circle-stop' : 'circle-dot'"
-                                                size="18"
-                                                class="mr-3"
-                                                :class="isRecording ? 'text-red-500' : 'text-white/70'"
-                                            />
-                                            <span class="font-medium text-sm">
-                                                {{ isRecording ? 'Stop Recording' : 'Start Recording' }}
-                                            </span>
-                                        </DropdownMenuItem>
-
-                                        <DropdownMenuItem
-                                            @click="meetingStore.showBreakoutManager = true"
-                                            class="menu-action-item px-3 py-2 rounded-xl flex items-center transition-colors cursor-pointer outline-none hover:bg-white/5 data-highlighted:bg-white/5 text-white"
-                                        >
-                                            <Icon
-                                                name="layout-grid"
-                                                size="18"
-                                                class="mr-3 text-white/70"
-                                            />
-                                            <span class="font-medium text-sm">Breakout Rooms</span>
-                                        </DropdownMenuItem>
+                                            <div
+                                                class="w-10 h-10 flex items-center justify-center rounded-[10px] bg-white/5 group-hover:bg-white/10 transition-colors mr-3 shrink-0 text-white/60 group-hover:text-white/90"
+                                            >
+                                                <Icon
+                                                    name="layout-grid"
+                                                    size="20"
+                                                />
+                                            </div>
+                                            <div
+                                                class="flex flex-col text-left"
+                                            >
+                                                <span
+                                                    class="text-[14px] mb-[2px]"
+                                                    >Breakout Rooms</span
+                                                >
+                                                <span
+                                                    class="text-[12px] text-white/50"
+                                                    >Split into smaller
+                                                    groups</span
+                                                >
+                                            </div>
+                                        </button>
                                     </template>
 
-                                    <template v-if="meetingStore.isModerator && meetingStore.waitingParticipants.length > 0">
-                                        <DropdownMenuSeparator class="h-px bg-white/10 mx-2 my-1" />
-                                        <DropdownMenuItem
-                                            @click="openRequestsPanel(); showMoreMenu = false;"
-                                            class="menu-action-item px-3 py-2 rounded-xl flex items-center transition-colors cursor-pointer outline-none bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white"
+                                    <template
+                                        v-if="
+                                            meetingStore.isModerator &&
+                                            meetingStore.waitingParticipants
+                                                .length > 0
+                                        "
+                                    >
+                                        <div
+                                            class="h-px bg-white/10 mx-2 my-1"
+                                        ></div>
+                                        <button
+                                            @click="
+                                                openRequestsPanel();
+                                                showMoreMenu = false;
+                                                showActivitiesMenu = false;
+                                            "
+                                            class="menu-action-item px-3 py-2 rounded-xl flex items-center transition-colors cursor-pointer outline-none bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white w-full border-none"
                                         >
                                             <Icon
                                                 name="user-plus"
                                                 size="18"
                                                 class="mr-3"
                                             />
-                                            <span class="font-medium text-sm">Waiting Requests ({{ meetingStore.waitingParticipants.length }})</span>
-                                        </DropdownMenuItem>
+                                            <span class="font-medium text-sm"
+                                                >Waiting Requests ({{
+                                                    meetingStore
+                                                        .waitingParticipants
+                                                        .length
+                                                }})</span
+                                            >
+                                        </button>
                                     </template>
                                 </div>
-                            </DropdownMenuContent>
-                        </DropdownMenuPortal>
-                    </DropdownMenuRoot>
+                            </div>
+                        </Transition>
+                    </div>
 
                     <MeetingLayoutSelector />
 
@@ -1263,59 +1323,53 @@
                             class="modern-more-menu shadow-2xl"
                         >
                             <div
-                                class="p-1.5 space-y-0.5 max-h-[70dvh] overflow-y-auto custom-scrollbar"
+                                class="p-4 border-b border-white/10 flex items-center justify-between bg-white/5"
+                            >
+                                <h3 class="text-sm font-semibold text-white/90">
+                                    Meeting options
+                                </h3>
+                                <button
+                                    @click="showMoreMenu = false"
+                                    class="text-white/40 hover:text-white transition-colors"
+                                >
+                                    <Icon name="x" size="18" />
+                                </button>
+                            </div>
+
+                            <div
+                                class="p-2 space-y-1 max-h-[70dvh] overflow-y-auto custom-scrollbar"
                             >
                                 <button
                                     @click="
                                         toggleParticipantsPanel();
                                         showMoreMenu = false;
                                     "
-                                    class="menu-action-item px-3 py-2.5 rounded-xl flex items-center gap-3 transition-all cursor-pointer outline-none hover:bg-white/5"
-                                    :class="
-                                        showParticipantsPanel
-                                            ? 'bg-blue-600/10! text-blue-400'
-                                            : 'text-white'
-                                    "
+                                    class="w-full p-3 rounded-xl flex items-center gap-4 transition-all hover:bg-white/5 active:bg-white/10 group"
                                 >
                                     <div
-                                        class="w-10 h-10 flex items-center justify-center rounded-xl transition-colors shrink-0"
-                                        :class="
-                                            showParticipantsPanel
-                                                ? 'bg-blue-600/20'
-                                                : 'bg-surface-secondary'
-                                        "
+                                        class="w-10 h-10 flex items-center justify-center rounded-xl bg-surface-secondary group-hover:bg-surface-tertiary transition-colors shrink-0"
                                     >
                                         <Icon
                                             name="users"
                                             size="20"
-                                            :class="
-                                                showParticipantsPanel
-                                                    ? 'text-blue-400'
-                                                    : 'text-white/70'
-                                            "
+                                            class="text-white/70"
                                         />
                                     </div>
-                                    <div class="grow min-w-0 text-left">
-                                        <div
-                                            class="flex items-center justify-between"
+                                    <div class="flex flex-col text-left">
+                                        <span
+                                            class="font-semibold text-sm text-white/90"
+                                            >Participants</span
                                         >
-                                            <span class="font-medium text-sm"
-                                                >Participants</span
-                                            >
-                                            <span
-                                                class="bg-white/10 px-1.5 py-0.5 rounded-lg text-[10px] font-bold text-white/60"
-                                            >
-                                                {{
-                                                    meetingStore.allParticipants
-                                                        .length
-                                                }}
-                                            </span>
-                                        </div>
-                                        <div
-                                            class="text-[10px] text-white/40 truncate"
+                                        <span class="text-[10px] text-white/40"
+                                            >Manage meeting attendees</span
                                         >
-                                            Manage meeting attendees
-                                        </div>
+                                    </div>
+                                    <div
+                                        class="ml-auto bg-white/10 px-2 py-0.5 rounded-lg text-[10px] font-bold text-white/60"
+                                    >
+                                        {{
+                                            meetingStore.allParticipants.length
+                                        }}
                                     </div>
                                 </button>
 
@@ -1324,40 +1378,25 @@
                                         toggleChatPanel();
                                         showMoreMenu = false;
                                     "
-                                    class="menu-action-item px-3 py-2.5 rounded-xl flex items-center gap-3 transition-all cursor-pointer outline-none hover:bg-white/5"
-                                    :class="
-                                        showChatPanel
-                                            ? 'bg-blue-600/10! text-blue-400'
-                                            : 'text-white'
-                                    "
+                                    class="w-full p-3 rounded-xl flex items-center gap-4 transition-all hover:bg-white/5 active:bg-white/10 group"
                                 >
                                     <div
-                                        class="w-10 h-10 flex items-center justify-center rounded-xl transition-colors shrink-0"
-                                        :class="
-                                            showChatPanel
-                                                ? 'bg-blue-600/20'
-                                                : 'bg-surface-secondary'
-                                        "
+                                        class="w-10 h-10 flex items-center justify-center rounded-xl bg-surface-secondary group-hover:bg-surface-tertiary transition-colors shrink-0"
                                     >
                                         <Icon
                                             name="message-square"
                                             size="20"
-                                            :class="
-                                                showChatPanel
-                                                    ? 'text-blue-400'
-                                                    : 'text-white/70'
-                                            "
+                                            class="text-white/70"
                                         />
                                     </div>
-                                    <div class="grow min-w-0 text-left">
-                                        <div class="font-medium text-sm">
-                                            Chat
-                                        </div>
-                                        <div
-                                            class="text-[10px] text-white/40 truncate"
+                                    <div class="flex flex-col text-left">
+                                        <span
+                                            class="font-semibold text-sm text-white/90"
+                                            >Chat</span
                                         >
-                                            Send messages to everyone
-                                        </div>
+                                        <span class="text-[10px] text-white/40"
+                                            >Send messages to everyone</span
+                                        >
                                     </div>
                                 </button>
 
@@ -1366,40 +1405,25 @@
                                         togglePollPanel();
                                         showMoreMenu = false;
                                     "
-                                    class="menu-action-item px-3 py-2.5 rounded-xl flex items-center gap-3 transition-all cursor-pointer outline-none hover:bg-white/5"
-                                    :class="
-                                        showPollPanel
-                                            ? 'bg-blue-600/10! text-blue-400'
-                                            : 'text-white'
-                                    "
+                                    class="w-full p-3 rounded-xl flex items-center gap-4 transition-all hover:bg-white/5 active:bg-white/10 group"
                                 >
                                     <div
-                                        class="w-10 h-10 flex items-center justify-center rounded-xl transition-colors shrink-0"
-                                        :class="
-                                            showPollPanel
-                                                ? 'bg-blue-600/20'
-                                                : 'bg-surface-secondary'
-                                        "
+                                        class="w-10 h-10 flex items-center justify-center rounded-xl bg-surface-secondary group-hover:bg-surface-tertiary transition-colors shrink-0"
                                     >
                                         <Icon
                                             name="bar-chart-2"
                                             size="20"
-                                            :class="
-                                                showPollPanel
-                                                    ? 'text-blue-400'
-                                                    : 'text-white/70'
-                                            "
+                                            class="text-white/70"
                                         />
                                     </div>
-                                    <div class="grow min-w-0 text-left">
-                                        <div class="font-medium text-sm">
-                                            Polls
-                                        </div>
-                                        <div
-                                            class="text-[10px] text-white/40 truncate"
+                                    <div class="flex flex-col text-left">
+                                        <span
+                                            class="font-semibold text-sm text-white/90"
+                                            >Polls</span
                                         >
-                                            Create and vote on polls
-                                        </div>
+                                        <span class="text-[10px] text-white/40"
+                                            >Create and vote on polls</span
+                                        >
                                     </div>
                                 </button>
 
@@ -1409,65 +1433,68 @@
                                             !whiteboardStore.isVisible;
                                         showMoreMenu = false;
                                     "
-                                    class="menu-action-item px-3 py-2.5 rounded-xl flex items-center gap-3 transition-all cursor-pointer outline-none hover:bg-white/5"
-                                    :class="
-                                        whiteboardStore.isVisible
-                                            ? 'bg-blue-600/10! text-blue-400'
-                                            : 'text-white'
-                                    "
+                                    class="w-full p-3 rounded-xl flex items-center gap-4 transition-all hover:bg-white/5 active:bg-white/10 group"
                                 >
                                     <div
-                                        class="w-10 h-10 flex items-center justify-center rounded-xl transition-colors shrink-0"
-                                        :class="
-                                            whiteboardStore.isVisible
-                                                ? 'bg-blue-600/20'
-                                                : 'bg-surface-secondary'
-                                        "
+                                        class="w-10 h-10 flex items-center justify-center rounded-xl bg-surface-secondary group-hover:bg-surface-tertiary transition-colors shrink-0"
                                     >
                                         <Icon
                                             name="edit-3"
                                             size="20"
-                                            :class="
-                                                whiteboardStore.isVisible
-                                                    ? 'text-blue-400'
-                                                    : 'text-white/70'
-                                            "
+                                            class="text-white/70"
                                         />
                                     </div>
-                                    <div class="grow min-w-0 text-left">
-                                        <div class="font-medium text-sm">
-                                            Whiteboard
-                                        </div>
-                                        <div
-                                            class="text-[10px] text-white/40 truncate"
+                                    <div class="flex flex-col text-left">
+                                        <span
+                                            class="font-semibold text-sm text-white/90"
+                                            >Whiteboard</span
                                         >
-                                            Collaborate on a canvas
-                                        </div>
+                                        <span class="text-[10px] text-white/40"
+                                            >Collaborate on a canvas</span
+                                        >
                                     </div>
                                 </button>
 
-                                <!-- Layout Selector (Mobile) Section -->
-                                <div
-                                    class="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white/50 flex items-center gap-2 mt-1"
+                                <!-- Change Layout (Mobile Integrated) -->
+                                <button
+                                    @click="
+                                        if (layoutSelectorRef)
+                                            layoutSelectorRef.showMenu = true;
+                                        showMoreMenu = false;
+                                    "
+                                    class="w-full p-3 rounded-xl flex items-center gap-4 transition-all hover:bg-white/5 active:bg-white/10 group"
                                 >
-                                    <Icon name="layout" size="12" />
-                                    <span>Layout Mode</span>
-                                </div>
-                                <div class="px-2 pb-2">
-                                    <MeetingLayoutSelector />
-                                </div>
+                                    <div
+                                        class="w-10 h-10 flex items-center justify-center rounded-xl bg-surface-secondary group-hover:bg-surface-tertiary transition-colors shrink-0"
+                                    >
+                                        <Icon
+                                            name="sparkles"
+                                            size="20"
+                                            class="text-white/70"
+                                        />
+                                    </div>
+                                    <div class="flex flex-col text-left">
+                                        <span
+                                            class="font-semibold text-sm text-white/90"
+                                            >Change layout</span
+                                        >
+                                        <span class="text-[10px] text-white/40"
+                                            >Adjust your view</span
+                                        >
+                                    </div>
+                                </button>
 
-                                <div class="h-px bg-white/10 mx-2 my-1.5"></div>
+                                <div class="h-px bg-white/10 my-2 mx-2"></div>
 
                                 <button
                                     @click="
                                         showSettings = true;
                                         showMoreMenu = false;
                                     "
-                                    class="menu-action-item px-3 py-2.5 rounded-xl flex items-center gap-3 transition-all cursor-pointer outline-none hover:bg-white/5 text-white"
+                                    class="w-full p-3 rounded-xl flex items-center gap-4 transition-all hover:bg-white/5 active:bg-white/10 group text-white"
                                 >
                                     <div
-                                        class="w-10 h-10 flex items-center justify-center rounded-xl bg-surface-secondary shrink-0"
+                                        class="w-10 h-10 flex items-center justify-center rounded-xl bg-surface-secondary group-hover:bg-surface-tertiary transition-colors shrink-0"
                                     >
                                         <Icon
                                             name="settings"
@@ -1475,15 +1502,14 @@
                                             class="text-white/70"
                                         />
                                     </div>
-                                    <div class="grow min-w-0 text-left">
-                                        <div class="font-medium text-sm">
-                                            Settings
-                                        </div>
-                                        <div
-                                            class="text-[10px] text-white/40 truncate"
+                                    <div class="flex flex-col text-left">
+                                        <span
+                                            class="font-semibold text-sm text-white/90"
+                                            >Settings</span
                                         >
-                                            Audio, video and more
-                                        </div>
+                                        <span class="text-[10px] text-white/40"
+                                            >Audio, video and more</span
+                                        >
                                     </div>
                                 </button>
 
@@ -1493,15 +1519,10 @@
                                             meetingStore.toggleLock();
                                             showMoreMenu = false;
                                         "
-                                        class="menu-action-item px-3 py-2.5 rounded-xl flex items-center gap-3 transition-all cursor-pointer outline-none hover:bg-white/5 text-white"
-                                        :class="
-                                            meetingStore.isLocked
-                                                ? 'text-red-400!'
-                                                : ''
-                                        "
+                                        class="w-full p-3 rounded-xl flex items-center gap-4 transition-all hover:bg-white/5 active:bg-white/10 group text-white"
                                     >
                                         <div
-                                            class="w-10 h-10 flex items-center justify-center rounded-xl transition-colors shrink-0"
+                                            class="w-10 h-10 flex items-center justify-center rounded-xl group-hover:bg-surface-tertiary transition-colors shrink-0"
                                             :class="
                                                 meetingStore.isLocked
                                                     ? 'bg-red-500/20'
@@ -1522,23 +1543,23 @@
                                                 "
                                             />
                                         </div>
-                                        <div class="grow min-w-0 text-left">
-                                            <div class="font-medium text-sm">
-                                                {{
+                                        <div class="flex flex-col text-left">
+                                            <span
+                                                class="font-semibold text-sm text-white/90"
+                                                >{{
                                                     meetingStore.isLocked
                                                         ? "Unlock Room"
                                                         : "Lock Room"
-                                                }}
-                                            </div>
-                                            <div
-                                                class="text-[10px] text-white/40 truncate"
+                                                }}</span
                                             >
-                                                {{
+                                            <span
+                                                class="text-[10px] text-white/40"
+                                                >{{
                                                     meetingStore.isLocked
                                                         ? "Allow anyone to join"
                                                         : "Require approval to join"
-                                                }}
-                                            </div>
+                                                }}</span
+                                            >
                                         </div>
                                     </button>
 
@@ -1552,13 +1573,10 @@
                                             isRecordingStarting ||
                                             isRecordingStopping
                                         "
-                                        class="menu-action-item px-3 py-2.5 rounded-xl flex items-center gap-3 transition-all cursor-pointer outline-none hover:bg-white/5 text-white"
-                                        :class="
-                                            isRecording ? 'text-red-500!' : ''
-                                        "
+                                        class="w-full p-3 rounded-xl flex items-center gap-4 transition-all hover:bg-white/5 active:bg-white/10 group text-white disabled:opacity-50"
                                     >
                                         <div
-                                            class="w-10 h-10 flex items-center justify-center rounded-xl transition-colors shrink-0"
+                                            class="w-10 h-10 flex items-center justify-center rounded-xl group-hover:bg-surface-tertiary transition-colors shrink-0"
                                             :class="
                                                 isRecording
                                                     ? 'bg-red-500/20 animation-pulse'
@@ -1579,19 +1597,55 @@
                                                 "
                                             />
                                         </div>
-                                        <div class="grow min-w-0 text-left">
-                                            <div class="font-medium text-sm">
-                                                {{
+                                        <div class="flex flex-col text-left">
+                                            <span
+                                                class="font-semibold text-sm text-white/90"
+                                                >{{
                                                     isRecording
                                                         ? "Stop Recording"
                                                         : "Start Recording"
-                                                }}
-                                            </div>
-                                            <div
-                                                class="text-[10px] text-white/40 truncate"
+                                                }}</span
                                             >
-                                                Save this meeting to cloud
-                                            </div>
+                                            <span
+                                                class="text-[10px] text-white/40"
+                                                >{{
+                                                    isRecordingStarting
+                                                        ? "Starting..."
+                                                        : isRecordingStopping
+                                                          ? "Stopping..."
+                                                          : isRecording
+                                                            ? "Save this session"
+                                                            : "Record for later"
+                                                }}</span
+                                            >
+                                        </div>
+                                    </button>
+
+                                    <button
+                                        @click="
+                                            meetingStore.showBreakoutManager = true;
+                                            showMoreMenu = false;
+                                        "
+                                        class="w-full p-3 rounded-xl flex items-center gap-4 transition-all hover:bg-white/5 active:bg-white/10 group text-white"
+                                    >
+                                        <div
+                                            class="w-10 h-10 flex items-center justify-center rounded-xl bg-surface-secondary group-hover:bg-surface-tertiary transition-colors shrink-0"
+                                        >
+                                            <Icon
+                                                name="layout-grid"
+                                                size="20"
+                                                class="text-white/70"
+                                            />
+                                        </div>
+                                        <div class="flex flex-col text-left">
+                                            <span
+                                                class="font-semibold text-sm text-white/90"
+                                                >Breakout Rooms</span
+                                            >
+                                            <span
+                                                class="text-[10px] text-white/40"
+                                                >Split into smaller groups</span
+                                            >
                                         </div>
                                     </button>
                                 </template>
@@ -1604,27 +1658,32 @@
                                     "
                                 >
                                     <div
-                                        class="h-px bg-white/10 mx-2 my-1.5"
+                                        class="h-px bg-white/10 my-2 mx-2"
                                     ></div>
                                     <button
                                         @click="
                                             openRequestsPanel();
                                             showMoreMenu = false;
                                         "
-                                        class="menu-action-item px-4 py-3 rounded-xl flex items-center justify-between transition-colors cursor-pointer outline-none bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white"
+                                        class="w-full p-3 rounded-xl flex items-center gap-4 transition-all cursor-pointer outline-none bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white"
                                     >
-                                        <div class="flex items-center">
-                                            <Icon
-                                                name="user-plus"
-                                                size="18"
-                                                class="mr-3"
-                                            />
-                                            <span class="font-medium"
+                                        <div
+                                            class="w-10 h-10 flex items-center justify-center rounded-xl bg-red-500/20 group-hover:bg-red-500/30 transition-colors shrink-0"
+                                        >
+                                            <Icon name="user-plus" size="18" />
+                                        </div>
+                                        <div class="flex flex-col text-left">
+                                            <span
+                                                class="font-semibold text-sm text-white/90"
                                                 >Waiting Room</span
+                                            >
+                                            <span
+                                                class="text-[10px] text-white/40"
+                                                >Handle join requests</span
                                             >
                                         </div>
                                         <span
-                                            class="ml-auto bg-red-500 text-white px-1.5 py-0.5 rounded text-[10px]"
+                                            class="ml-auto bg-red-500 text-white px-2 py-0.5 rounded text-[10px] font-bold"
                                         >
                                             {{
                                                 meetingStore.waitingParticipants
@@ -1636,6 +1695,10 @@
                             </div>
                         </div>
                     </Transition>
+                    <MeetingLayoutSelector
+                        ref="layoutSelectorRef"
+                        :hide-trigger="true"
+                    />
                 </div>
             </div>
         </footer>
@@ -1728,12 +1791,15 @@ const isCameraOn = ref(false);
 const isMicOn = ref(false);
 const backgroundBlur = useBackgroundBlur();
 const showSettings = ref(false);
+const showActivitiesMenu = ref(false);
+const activitiesMenuRef = ref(null);
 const showParticipantsPanel = ref(false);
 const showChatPanel = ref(false);
 const showPollPanel = ref(false);
 const showReactionPicker = ref(false);
 const showMeetingDetails = ref(false);
 const showMoreMenu = ref(false);
+const layoutSelectorRef = ref<any>(null);
 const showDevTool = ref(false);
 const initializing = ref(true);
 const activeParticipantTab = ref<"members" | "waiting">("members");
@@ -1994,9 +2060,22 @@ const spotlightTile = computed(() => {
 
     // 3. Fallback: Active speaker (camera tile)
     if (meetingStore.activeSpeakerId) {
-        return renderedTiles.value.find(
+        const speaker = renderedTiles.value.find(
             (t) => t.id === meetingStore.activeSpeakerId && !t.isScreen,
         );
+        if (speaker) return speaker;
+    }
+
+    // 4. Ultimate Fallback: If user explicitly requested spotlight/sidebar but scene is silent
+    if (
+        meetingStore.preferredLayout === "spotlight" ||
+        meetingStore.preferredLayout === "sidebar"
+    ) {
+        // Try getting the first remote participant (renderedTiles already excludes local user)
+        const firstRemote = renderedTiles.value[0];
+        if (firstRemote) return firstRemote;
+        // If entirely alone, just spotlight yourself
+        if (localCameraTile.value) return localCameraTile.value;
     }
 
     return null;
@@ -2004,11 +2083,18 @@ const spotlightTile = computed(() => {
 
 const isSpotlightMode = computed(() => {
     if (meetingStore.preferredLayout === "tiled") return false;
+    // Force true if explicitly requested so we don't accidentally fall back
+    if (
+        meetingStore.preferredLayout === "spotlight" ||
+        meetingStore.preferredLayout === "sidebar"
+    )
+        return true;
     return !!spotlightTile.value;
 });
 
 const unspotlightedTiles = computed(() => {
-    if (!spotlightTile.value) return renderedTiles.value;
+    if (!spotlightTile.value || !isSpotlightMode.value)
+        return renderedTiles.value;
     return renderedTiles.value.filter((t) => t.id !== spotlightTile.value?.id);
 });
 
@@ -4881,8 +4967,14 @@ onBeforeUnmount(() => {
 }
 
 .more-menu-wrapper {
-    display: flex;
+    display: none;
     align-items: center;
+}
+
+@media (max-width: 1023px) {
+    .more-menu-wrapper {
+        display: flex;
+    }
 }
 
 .custom-scrollbar::-webkit-scrollbar {

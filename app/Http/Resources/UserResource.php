@@ -26,8 +26,8 @@ class UserResource extends JsonResource
             'display_name' => $this->display_name,
             'initials' => $this->initials,
             'avatar' => $this->avatar,
-            'avatar_url' => $this->getAvatarData()->url,
-            'avatar_thumb_url' => $this->getAvatarData('thumb')->url,
+            'avatar_url' => $this->getAvatarData()->getUrl(),
+            'avatar_thumb_url' => $this->getAvatarData('thumb')->getUrl(),
             'cover_photo_url' => $this->cover_photo_url,
             'cover_photo_offset' => $this->preferences['appearance']['cover_offset'] ?? 50,
             'title' => $this->title,
@@ -37,6 +37,7 @@ class UserResource extends JsonResource
             'skills' => $this->skills ?? [],
             'is_public' => $this->is_public,
             'created_at' => $this->created_at?->toISOString(), // Joined date
+            'updated_at' => $this->updated_at?->toISOString(),
             'presence' => $this->last_login_at && $this->last_login_at->diffInMinutes(now()) < 5 ? 'online' : 'offline',
         ];
 
@@ -45,6 +46,8 @@ class UserResource extends JsonResource
             $data = array_merge($data, [
                 'email' => $this->email,
                 'status' => $this->status,
+                'status_reason' => $this->status_reason,
+                'suspended_until' => $this->suspended_until?->toISOString(),
                 'preferences' => $this->preferences ?? [],
                 'email_verified' => $this->hasVerifiedEmail(),
                 'email_verified_at' => $this->email_verified_at?->toISOString(),
@@ -102,6 +105,7 @@ class UserResource extends JsonResource
                 'password_last_updated_at' => $this->password_last_updated_at?->toISOString(),
                 'two_factor_enforced' => $this->two_factor_enforced,
                 'has_2fa_enabled' => $this->has2FAConfigured(),
+                'two_factor_requirement' => $this->requires2FASetup(), // Returns false OR {required, source, methods, role}
                 'requires_2fa_setup' => (bool) $this->requires2FASetup(), // Checks BOTH user and role-level enforcement
                 'two_factor_confirmed_at' => $this->two_factor_confirmed_at?->toISOString(),
                 'two_factor_allowed_methods' => $this->two_factor_allowed_methods,

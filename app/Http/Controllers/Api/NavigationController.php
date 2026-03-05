@@ -289,6 +289,11 @@ class NavigationController extends Controller
                             }
                         }
                     }
+
+                    // Fallback: If it's a team permission but granted globally (e.g. via base user role), allow it
+                    if ($this->permissionService->hasPermission($user, $permission)) {
+                        return true;
+                    }
                 }
 
                 return false;

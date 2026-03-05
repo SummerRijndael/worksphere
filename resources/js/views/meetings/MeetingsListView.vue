@@ -286,7 +286,7 @@
                                 <DropdownItem
                                     v-if="isOwner(meeting)"
                                     destructive
-                                    @select="cancelMeeting(meeting)"
+                                    @select="confirmCancelMeeting(meeting)"
                                 >
                                     <Icon
                                         name="trash-2"
@@ -453,6 +453,18 @@
                 </div>
             </div>
         </div>
+
+        <!-- Cancel Confirmation Modal -->
+        <ConfirmationModal
+            :open="showCancelConfirm"
+            @update:open="handleCancelConfirmUpdate"
+            title="Cancel Meeting"
+            message="Are you sure you want to cancel this meeting?"
+            description="This action cannot be undone. All participants will lose access to the meeting room."
+            confirm-label="Cancel Meeting"
+            confirm-variant="danger"
+            @confirm="executeCancelMeeting"
+        />
     </div>
 </template>
 
@@ -463,6 +475,7 @@ import { meetingService, type Meeting } from "@/services/meeting.service";
 import MeetingCreateModal from "./components/MeetingCreateModal.vue";
 import MeetingEditModal from "./components/MeetingEditModal.vue";
 import { Icon, Dropdown, DropdownItem, Avatar } from "@/components/ui";
+import ConfirmationModal from "@/components/ui/ConfirmationModal.vue";
 import { toast } from "vue-sonner";
 import dayjs from "dayjs";
 import { useAuthStore } from "@/stores/auth";
@@ -636,15 +649,33 @@ const isOwner = (meeting: any) => {
     return meeting.host_public_id === authStore.user.public_id;
 };
 
-const cancelMeeting = async (meeting: Meeting) => {
-    if (!confirm("Are you sure you want to cancel this meeting?")) return;
+const showCancelConfirm = ref(false);
+const meetingToCancel = ref<Meeting | null>(null);
+
+const confirmCancelMeeting = (meeting: Meeting) => {
+    meetingToCancel.value = meeting;
+    showCancelConfirm.value = true;
+};
+
+const handleCancelConfirmUpdate = (val: boolean) => {
+    showCancelConfirm.value = val;
+    if (!val) {
+        meetingToCancel.value = null;
+    }
+};
+
+const executeCancelMeeting = async () => {
+    if (!meetingToCancel.value) return;
 
     try {
-        await meetingService.deleteMeeting(meeting.public_id);
+        await meetingService.deleteMeeting(meetingToCancel.value.public_id);
         toast.success("Meeting cancelled");
         fetchMeetings();
     } catch (error) {
         toast.error("Failed to cancel meeting");
+    } finally {
+        showCancelConfirm.value = false;
+        meetingToCancel.value = null;
     }
 };
 

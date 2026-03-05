@@ -3,6 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Enums\AuditAction;
+use App\Enums\AuditCategory;
+use App\Services\AuditService;
 use App\Http\Resources\UserResource;
 use App\Models\User;
 use App\Notifications\AccountCreated;
@@ -145,16 +148,34 @@ class UserController extends Controller
         }
 
         // Role changes require users.manage_roles permission
+        $currentRoleModel = $user->roles->first();
+        $isChangingRole = $request->has('role') && $request->role !== ($currentRoleModel ? $currentRoleModel->name : null);
         if ($authUser->can('users.manage_roles')) {
             $rules['role'] = ['sometimes', 'string', 'exists:roles,name'];
         }
 
         // Status changes require users.manage_status permission
+        $isChangingStatus = $request->has('status') && $request->status !== $user->status;
         if ($authUser->can('users.manage_status')) {
             $rules['status'] = ['sometimes', 'string', 'in:active,inactive,suspended,pending,blocked,disabled'];
         }
 
+        // Require password confirmation and reason for critical admin actions
+        if (($isChangingRole || $isChangingStatus) && ! $authUser->is($user)) {
+            $rules['admin_password'] = ['required', 'string'];
+            $rules['reason'] = ['required', 'string', 'max:500'];
+        }
+
         $validated = $request->validate($rules);
+
+        // Verify admin password if performing critical updates
+        if (isset($validated['admin_password'])) {
+            if (! Hash::check($validated['admin_password'], $authUser->password)) {
+                throw ValidationException::withMessages([
+                    'admin_password' => ['The provided password is incorrect.'],
+                ]);
+            }
+        }
 
         // Block email change attempt by admin
         if ($request->has('email') && ! $authUser->is($user)) {
@@ -179,7 +200,20 @@ class UserController extends Controller
 
         // Handle role update
         if (isset($validated['role'])) {
+            $userOldRoleModel = $user->roles->first();
+            $oldRole = $userOldRoleModel ? $userOldRoleModel->name : null;
             $user->syncRoles([$validated['role']]);
+
+            // Manual Audit because syncRoles doesn't trigger Eloquent events
+            app(AuditService::class)->log(
+                AuditAction::RoleAssigned,
+                AuditCategory::Authorization,
+                $user,
+                $authUser,
+                ['role' => $oldRole],
+                ['role' => $validated['role']],
+                ['reason' => $validated['reason'] ?? 'Administrator action']
+            );
 
             // Broadcast permission update to the affected user
             \App\Events\UserPermissionsUpdated::dispatch($user, 'role_changed');
@@ -187,7 +221,27 @@ class UserController extends Controller
 
         // Handle status update
         if (isset($validated['status'])) {
+            $oldStatus = $user->status;
             $user->update(['status' => $validated['status']]);
+
+            // Log status change with reason
+            $action = match($validated['status']) {
+                'suspended' => AuditAction::AccountSuspended,
+                'blocked', 'banned' => AuditAction::AccountBanned,
+                default => AuditAction::Updated,
+            };
+
+            if ($action !== AuditAction::Updated || $oldStatus !== $validated['status']) {
+                app(AuditService::class)->log(
+                    $action,
+                    AuditCategory::UserManagement,
+                    $user,
+                    $authUser,
+                    ['status' => $oldStatus],
+                    ['status' => $validated['status']],
+                    ['reason' => $validated['reason'] ?? 'Administrator action']
+                );
+            }
         }
 
         return response()->json(new UserResource($user));

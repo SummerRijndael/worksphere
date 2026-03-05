@@ -1,6 +1,10 @@
 <template>
-    <div class="layout-selector">
+    <div
+        class="layout-selector"
+        :class="{ 'pointer-events-none': hideTrigger }"
+    >
         <button
+            v-if="!hideTrigger"
             class="ctrl-btn"
             :class="{ 'ctrl-btn--active': showMenu }"
             @click="showMenu = !showMenu"
@@ -58,6 +62,10 @@
 
 <script setup lang="ts">
 import { ref, computed } from "vue";
+
+defineProps<{
+    hideTrigger?: boolean;
+}>();
 import { onClickOutside } from "@vueuse/core";
 import { useMeetingStore } from "@/stores/meeting";
 import { Icon } from "@/components/ui";

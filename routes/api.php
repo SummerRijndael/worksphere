@@ -650,6 +650,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
             Route::get('/sources', [\App\Http\Controllers\Api\AnalyticsController::class, 'sources']);
             Route::get('/demographics', [\App\Http\Controllers\Api\AnalyticsController::class, 'demographics']);
             Route::get('/geo-stats', [\App\Http\Controllers\Api\AnalyticsController::class, 'geoStats']);
+            Route::get('/export', [\App\Http\Controllers\Api\AnalyticsController::class, 'export']);
 
             // Sentiment & Engagement Dashboard
             Route::get('/sentiment', [\App\Http\Controllers\Api\EngagementController::class, 'sentiment']);

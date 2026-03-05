@@ -9,6 +9,7 @@ export function useBackgroundBlur() {
     const segmenter = shallowRef<ImageSegmenter | null>(null);
     const isLoaded = ref(false);
     const isLoading = ref(false);
+    const isSupported = ref(true); // Default true, set to false if model completely fails
     const error = ref<string | null>(null);
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     const cpuCores = navigator.hardwareConcurrency || 4;
@@ -67,6 +68,32 @@ export function useBackgroundBlur() {
     let hasDowngraded = false;
     let isDowngrading = false;
     
+    // Hardware Support Verification
+    function checkWebGLSupport(): boolean {
+        try {
+            const canvas = document.createElement('canvas');
+            const gl = canvas.getContext('webgl2') as WebGL2RenderingContext | null;
+            if (!gl) {
+                console.warn("[BackgroundBlur] WebGL2 not supported.");
+                return false;
+            }
+            
+            // MediaPipe GPU delegate strictly requires rendering to float32 or float16 textures
+            const extColorBufferFloat = gl.getExtension('EXT_color_buffer_float');
+            const extColorBufferHalfFloat = gl.getExtension('EXT_color_buffer_half_float');
+            
+            if (!extColorBufferFloat && !extColorBufferHalfFloat) {
+                console.warn("[BackgroundBlur] GPU lacks EXT_color_buffer_float / half_float. Forcing CPU mode.");
+                return false;
+            }
+            
+            return true;
+        } catch (e) {
+            console.warn("[BackgroundBlur] WebGL capability check failed:", e);
+            return false;
+        }
+    }
+
     async function loadModel() {
         if (isLoaded.value || isLoading.value) return;
         isLoading.value = true;
@@ -80,27 +107,33 @@ export function useBackgroundBlur() {
                 ? "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter_landscape/float16/latest/selfie_segmenter_landscape.tflite"
                 : "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite";
 
-            segmenter.value = await ImageSegmenter.createFromOptions(vision, {
-                baseOptions: {
-                    modelAssetPath: modelPath,
-                    delegate: "GPU",
-                },
-                runningMode: "VIDEO" as const,
-                outputCategoryMask: false, 
-                outputConfidenceMasks: true,
-            });
-            isLoaded.value = true;
-            currentRunningMode = 'VIDEO';
-            console.log("[BackgroundBlur] Model loaded (GPU)");
+            const gpuSupported = checkWebGLSupport();
+            
+            if (gpuSupported) {
+                segmenter.value = await ImageSegmenter.createFromOptions(vision, {
+                    baseOptions: {
+                        modelAssetPath: modelPath,
+                        delegate: "GPU",
+                    },
+                    runningMode: "VIDEO" as const,
+                    outputCategoryMask: false, 
+                    outputConfidenceMasks: true,
+                });
+                isLoaded.value = true;
+                currentRunningMode = 'VIDEO';
+                console.log("[BackgroundBlur] Model loaded (GPU)");
+            } else {
+                throw new Error("GPU Requirements unmet. Throwing to CPU fallback explicitly.");
+            }
         } catch(e) {
-            console.warn("GPU Failed, trying CPU", e);
+            console.warn("GPU setup bypassed or failed, trying CPU", e);
              try {
                     const vision = await FilesetResolver.forVisionTasks(
                         "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
                     );
-                    // Fallback to CPU + int8 quantized model for absolute potato devices
+                    // Fallback to CPU model for devices lacking float16 WebGL rendering
                     const modelPath = isLowEnd 
-                        ? "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter_landscape/float16/latest/selfie_segmenter_landscape.tflite" // MediaPipe doesn't have public direct int8 URLs easily, sticking to landscape float16 as safest.
+                        ? "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter_landscape/float16/latest/selfie_segmenter_landscape.tflite"
                         : "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite";
 
                     segmenter.value = await ImageSegmenter.createFromOptions(vision, {
@@ -114,9 +147,10 @@ export function useBackgroundBlur() {
                     });
                      isLoaded.value = true;
                      currentRunningMode = 'VIDEO';
-                     console.log("[BackgroundBlur] Model loaded (CPU - Lightweight)");
+                     console.log("[BackgroundBlur] Model loaded (CPU - Fallback)");
              } catch (retryError) {
-                 error.value = "Failed to load blur model";
+                 isSupported.value = false;
+                 error.value = "Failed to load blur model entirely. Device may be unsupported.";
                  console.error(retryError);
              }
         } finally {
@@ -231,17 +265,24 @@ export function useBackgroundBlur() {
         
         // Setup offscreen canvases
         if (!blurCanvas) blurCanvas = document.createElement("canvas");
-        const blurDownsample = isMobile ? 12 : 8;
+        const blurDownsample = isMobile ? 12 : 8; // Heavier downsample for a massive Gaussian effect
         // Blur canvas is even smaller for performance
         blurCanvas.width = Math.round(targetWidth / blurDownsample); 
         blurCanvas.height = Math.round(targetHeight / blurDownsample);
-        blurCtx = blurCanvas.getContext("2d");
-
+        blurCtx = blurCanvas.getContext("2d", { alpha: false, willReadFrequently: true });
+        if (blurCtx) {
+            blurCtx.imageSmoothingEnabled = true;
+            blurCtx.imageSmoothingQuality = 'high';
+        }
 
         if (!personCanvas) personCanvas = document.createElement("canvas");
         personCanvas.width = targetWidth;
         personCanvas.height = targetHeight;
-        personCtx = personCanvas.getContext("2d");
+        personCtx = personCanvas.getContext("2d", { willReadFrequently: true });
+        if (personCtx) {
+            personCtx.imageSmoothingEnabled = true;
+            personCtx.imageSmoothingQuality = 'high';
+        }
 
         console.log(`[BackgroundBlur] Processing dimensions: ${targetWidth}x${targetHeight} (Source: ${video.videoWidth}x${video.videoHeight}), mode: ${currentRunningMode}`);
 
@@ -296,18 +337,26 @@ export function useBackgroundBlur() {
                     
                     if (ctx) {
                         ctx.imageSmoothingEnabled = true;
-                        ctx.imageSmoothingQuality = 'medium';
+                        ctx.imageSmoothingQuality = 'high';
                     }
                     
                     if (blurCanvas) {
                         const blurDownsample = isMobile ? 12 : 8;
                         blurCanvas.width = Math.round(newTargetWidth / blurDownsample);
                         blurCanvas.height = Math.round(newTargetHeight / blurDownsample);
+                        if (blurCtx) {
+                            blurCtx.imageSmoothingEnabled = true;
+                            blurCtx.imageSmoothingQuality = 'high';
+                        }
                     }
     
                     if (personCanvas) {
                         personCanvas.width = newTargetWidth;
                         personCanvas.height = newTargetHeight;
+                        if (personCtx) {
+                            personCtx.imageSmoothingEnabled = true;
+                            personCtx.imageSmoothingQuality = 'high';
+                        }
                     }
                     if (currentEffect === 'image' && currentImageUrl) {
                         updateBackgroundImage(currentImageUrl, canvas.width, canvas.height);
@@ -360,8 +409,8 @@ export function useBackgroundBlur() {
                     if (ctx) ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                     animationFrameId = requestAnimationFrame(draw);
                 }
-            } catch (e) {
-                console.error("Segmentation error:", e);
+            } catch (e: any) {
+                console.error("Segmentation error:", e && e.message ? e.message : String(e), e && e.stack ? e.stack : "");
                 // Resilient fallback: Always show at least the raw video
                 if (ctx && canvas && video) {
                     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -399,8 +448,42 @@ export function useBackgroundBlur() {
             return mask;
         };
 
+        function fastBoxBlur(data: Float32Array, width: number, height: number, radius: number) {
+            if (radius < 1) return;
+            const temp = new Float32Array(data.length);
+            
+            // Horizontal
+            for (let y = 0; y < height; y++) {
+                let sum = 0;
+                for (let i = -radius; i <= radius; i++) {
+                    const x = Math.min(Math.max(i, 0), width - 1);
+                    sum += data[y * width + x];
+                }
+                for (let x = 0; x < width; x++) {
+                    temp[y * width + x] = sum / (2 * radius + 1);
+                    const nextX = Math.min(x + radius + 1, width - 1);
+                    const prevX = Math.max(x - radius, 0);
+                    sum += data[y * width + nextX] - data[y * width + prevX];
+                }
+            }
+            // Vertical
+            for (let x = 0; x < width; x++) {
+                let sum = 0;
+                for (let i = -radius; i <= radius; i++) {
+                    const y = Math.min(Math.max(i, 0), height - 1);
+                    sum += temp[y * width + x];
+                }
+                for (let y = 0; y < height; y++) {
+                    data[y * width + x] = sum / (2 * radius + 1);
+                    const nextY = Math.min(y + radius + 1, height - 1);
+                    const prevY = Math.max(y - radius, 0);
+                    sum += temp[nextY * width + x] - temp[prevY * width + x];
+                }
+            }
+        }
+
         const renderChromaKeyResult = (maskData: Float32Array, width: number, height: number) => {
-            lastSuccessfulFrameTime = performance.now();
+            fastBoxBlur(maskData, width, height, isMobile ? 2 : 3);
             
             if (!maskImageData || maskImageDataWidth !== width || maskImageDataHeight !== height) {
                 maskImageData = new ImageData(width, height);
@@ -447,12 +530,25 @@ export function useBackgroundBlur() {
             }
 
             if (result.confidenceMasks && result.confidenceMasks.length > 0) {
-                 lastSuccessfulFrameTime = performance.now();
                  // Confidence mask: getAsFloat32Array returns values [0,1] per pixel
                  const mask = result.confidenceMasks[0];
                  const width = mask.width;
                  const height = mask.height;
-                 const maskData = mask.getAsFloat32Array();
+                 let maskData: Float32Array;
+
+                 try {
+                     maskData = mask.getAsFloat32Array();
+                 } catch (err: any) {
+                     // WebGL ReadPixels crash (Format/Type incompatible) on Firefox/Chromium
+                     console.warn("[BackgroundBlur] Hardware GPU Mask extraction failed. Forcing CPU downgrade.", err);
+                     if (!isDowngrading) downgradeToLiteModel();
+                     if (ctx && canvas && video) ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                     animationFrameId = requestAnimationFrame(draw);
+                     return;
+                 }
+
+                 // Software blur on the float mask data directly for superior soft-edge rendering
+                 fastBoxBlur(maskData, width, height, isMobile ? 2 : 3);
 
                  // Reuse or create ImageData for mask
                  if (!maskImageData || maskImageDataWidth !== width || maskImageDataHeight !== height) {
@@ -491,17 +587,33 @@ export function useBackgroundBlur() {
                  const mask = result.categoryMask;
                  const width = mask.width;
                  const height = mask.height;
-                 const maskData = mask.getAsUint8Array();
+                 let maskData: Uint8Array;
+                 try {
+                     maskData = mask.getAsUint8Array();
+                 } catch (err: any) {
+                     console.warn("[BackgroundBlur] Hardware GPU CategoryMask extraction failed. Forcing CPU downgrade.", err);
+                     if (!isDowngrading) downgradeToLiteModel();
+                     if (ctx && canvas && video) ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                     animationFrameId = requestAnimationFrame(draw);
+                     return;
+                 }
                  
+                 const floatMaskData = new Float32Array(maskData.length);
+                 for (let i = 0; i < maskData.length; i++) {
+                     floatMaskData[i] = maskData[i] > 0 ? 1.0 : 0.0;
+                 }
+                 
+                 // Apply software blur for Category mask
+                 fastBoxBlur(floatMaskData, width, height, isMobile ? 2 : 3);
+
                  if (!maskImageData || maskImageDataWidth !== width || maskImageDataHeight !== height) {
                      maskImageData = new ImageData(width, height);
                      maskImageDataWidth = width;
                      maskImageDataHeight = height;
                  }
                  const data = maskImageData.data;
-                 for (let i = 0; i < maskData.length; i++) {
-                     const val = maskData[i]; // Class index
-                     const alpha = val > 0 ? 255 : 0; // 0 = background
+                 for (let i = 0; i < floatMaskData.length; i++) {
+                     const alpha = Math.round(floatMaskData[i] * 255);
                      
                      const j = i * 4;
                      data[j] = 255;       // R
@@ -511,11 +623,6 @@ export function useBackgroundBlur() {
                  }
                  
                  if (isAutoFramingEnabled) {
-                     // Convert Uint8Array to Float32Array for updateFraming
-                     const floatMaskData = new Float32Array(maskData.length);
-                     for (let i = 0; i < maskData.length; i++) {
-                         floatMaskData[i] = maskData[i] > 0 ? 1.0 : 0.0;
-                     }
                      updateFraming(floatMaskData, width, height);
                  }
 
@@ -537,7 +644,7 @@ export function useBackgroundBlur() {
         
         const drawComposition = (mask: ImageBitmap, shouldClose: boolean) => {
              if (!ctx || !canvas || !video || !blurCtx || !personCtx || !blurCanvas || !personCanvas) {
-                 if (shouldClose) mask.close();
+                 if (shouldClose && mask instanceof ImageBitmap) mask.close();
                  // Even if we can't draw the composition, we MUST trigger the next frame
                  animationFrameId = requestAnimationFrame(draw);
                  return;
@@ -587,14 +694,19 @@ export function useBackgroundBlur() {
               };
 
              // 1. Prepare blurred background (on small canvas)
-             blurCtx.filter = 'blur(4px)';
+             if (currentEffect === 'blur') {
+                 blurCtx.filter = isMobile ? 'blur(8px)' : 'blur(16px)'; // Strong Gaussian-like distribution
+             } else {
+                 blurCtx.filter = 'none';
+             }
              drawOptimized(blurCtx, video, blurCanvas.width, blurCanvas.height);
              blurCtx.filter = 'none';
 
              // 2. Prepare person with mask feathering — single draw, no redundant pass
              personCtx.clearRect(0, 0, w, h);
              personCtx.save();
-             personCtx.filter = 'blur(8px)';
+             // Mask is already mathematically feathered. No CSS filter required here.
+             personCtx.filter = 'none';
              drawOptimized(personCtx, mask, w, h);
              personCtx.restore();
              
@@ -613,7 +725,7 @@ export function useBackgroundBlur() {
              
              ctx.drawImage(personCanvas, 0, 0, w, h);
              
-             if (shouldClose) {
+             if (shouldClose && mask instanceof ImageBitmap) {
                 mask.close();
              }
              
@@ -838,6 +950,7 @@ export function useBackgroundBlur() {
         autoDetectGreenScreenColor,
         isLoaded,
         isLoading,
+        isSupported,
         error
     };
 }

@@ -8,7 +8,9 @@ import {
     ChevronDownIcon,
     ChevronUpIcon,
     DocumentMagnifyingGlassIcon,
+    DocumentDuplicateIcon,
 } from "@heroicons/vue/24/outline";
+import { toast } from "vue-sonner";
 import Modal from "@/components/ui/Modal.vue";
 import api from "@/lib/api";
 import { useDate } from "@/composables/useDate";
@@ -63,6 +65,16 @@ const formatRequestData = (data) => {
         return JSON.stringify(parsed, null, 2);
     } catch (e) {
         return data;
+    }
+};
+
+const copyToClipboard = async (text) => {
+    try {
+        await navigator.clipboard.writeText(text);
+        toast.success("Payload copied to clipboard");
+    } catch (err) {
+        toast.error("Failed to copy text");
+        console.error("Clipboard write error:", err);
     }
 };
 </script>
@@ -200,13 +212,23 @@ const formatRequestData = (data) => {
                                 >
                                     <div class="space-y-3">
                                         <div
-                                            class="flex items-center gap-2 text-xs font-bold text-(--text-tertiary) border-b border-(--border-default) pb-1"
+                                            class="flex items-center justify-between text-xs font-bold text-(--text-tertiary) border-b border-(--border-default) pb-1"
                                         >
-                                            <GlobeAltIcon class="w-3.5 h-3.5" />
-                                            FULL REQUEST PAYLOAD
+                                            <div class="flex items-center gap-2">
+                                                <GlobeAltIcon class="w-3.5 h-3.5" />
+                                                FULL REQUEST PAYLOAD
+                                            </div>
+                                            <button
+                                                @click.stop="copyToClipboard(formatRequestData(log.request))"
+                                                class="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-(--text-secondary) bg-(--surface-primary) hover:bg-(--surface-tertiary) hover:text-(--interactive-primary) border border-(--border-subtle) rounded-md transition-colors shadow-xs"
+                                                title="Copy to clipboard"
+                                            >
+                                                <DocumentDuplicateIcon class="w-3.5 h-3.5" />
+                                                <span>Copy</span>
+                                            </button>
                                         </div>
                                         <pre
-                                            class="text-[10px] font-mono p-4 bg-black/90 text-green-400 rounded-lg overflow-x-auto border border-white/5 shadow-inner leading-relaxed"
+                                            class="text-[10px] whitespace-pre-wrap break-all font-mono p-4 bg-black/90 text-green-400 rounded-lg overflow-x-hidden border border-white/5 shadow-inner leading-relaxed"
                                             >{{
                                                 formatRequestData(log.request)
                                             }}

@@ -104,16 +104,30 @@ onMounted(() => {
                     Monitor your application performance and user engagement.
                 </p>
             </div>
-            <div class="flex gap-2">
+            <div class="flex flex-wrap items-center gap-3">
+                <div class="flex items-center gap-1 bg-(--surface-secondary) p-1 rounded-lg border border-(--border-default)">
+                    <Button
+                        v-for="p in periods"
+                        :key="p"
+                        :variant="store.period === p ? 'secondary' : 'ghost'"
+                        size="xs"
+                        class="h-7 px-3"
+                        :disabled="store.loading"
+                        @click="store.fetchAll(p)"
+                    >
+                        {{ p }}
+                    </Button>
+                </div>
+                <div class="h-6 w-px bg-(--border-default) hidden sm:block"></div>
                 <Button
-                    v-for="p in periods"
-                    :key="p"
-                    :variant="store.period === p ? 'secondary' : 'ghost'"
+                    variant="outline"
                     size="sm"
+                    @click="store.exportData('traffic')"
                     :disabled="store.loading"
-                    @click="store.fetchAll(p)"
+                    class="shadow-sm"
                 >
-                    {{ p }}
+                    <ArrowUpRight class="w-4 h-4 mr-2" />
+                    Download Report
                 </Button>
             </div>
         </div>
@@ -197,9 +211,15 @@ onMounted(() => {
 
             <!-- Traffic Sources -->
             <Card padding="lg">
-                <h2 class="text-lg font-semibold text-(--text-primary) mb-4">
-                    Traffic Sources
-                </h2>
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-semibold text-(--text-primary)">
+                        Traffic Sources
+                    </h2>
+                    <Button variant="ghost" size="xs" @click="store.exportData('sources')" :disabled="store.loading">
+                        <ArrowUpRight class="w-3 h-3 mr-1" />
+                        Export
+                    </Button>
+                </div>
                 <div class="space-y-4">
                     <div v-for="source in store.sources" :key="source.source">
                         <div class="flex items-center justify-between mb-1.5">
@@ -242,10 +262,14 @@ onMounted(() => {
 
         <!-- Top Pages -->
         <Card padding="none">
-            <div class="p-5 border-b border-(--border-default)">
+            <div class="p-5 border-b border-(--border-default) flex items-center justify-between">
                 <h2 class="text-lg font-semibold text-(--text-primary)">
                     Top Pages
                 </h2>
+                <Button variant="ghost" size="sm" @click="store.exportData('pages')" :disabled="store.loading">
+                    <ArrowUpRight class="w-4 h-4 mr-2" />
+                    Export CSV
+                </Button>
             </div>
             <div class="overflow-x-auto">
                 <table class="w-full">
