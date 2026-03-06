@@ -13,6 +13,7 @@ import {
     MapPin,
     Calendar,
     Link as LinkIcon,
+    Phone,
     Edit,
     Camera,
     Users,
@@ -32,6 +33,8 @@ import {
     Copy,
     ExternalLink,
     MessageSquare,
+    Crown,
+    ChevronRight,
 } from "lucide-vue-next";
 import { Switch } from "@/components/ui";
 import { toast } from "vue-sonner";
@@ -248,6 +251,10 @@ watch(
     },
 );
 
+const ownedTeams = computed(() => teams.value.filter((t) => t.is_owner));
+const memberTeams = computed(() => teams.value.filter((t) => !t.is_owner));
+const hasTeams = computed(() => teams.value.length > 0);
+
 onMounted(() => {
     fetchUserDetails();
 });
@@ -319,7 +326,7 @@ onMounted(() => {
                         <h1
                             class="text-3xl font-bold text-[var(--text-primary)]"
                         >
-                            {{ authStore.displayName }}
+                            {{ authStore.user?.name }}
                         </h1>
                         <p class="text-[var(--text-secondary)] text-lg">
                             {{ authStore.user?.title || "Team Member" }}
@@ -438,21 +445,10 @@ onMounted(() => {
                     </div>
                     <div
                         class="flex items-center gap-2 text-sm text-[var(--text-secondary)]"
-                        v-if="authStore.user?.website"
+                        v-if="authStore.user?.phone"
                     >
-                        <LinkIcon class="h-4 w-4" />
-                        <a
-                            :href="authStore.user.website"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            class="text-[var(--interactive-primary)] hover:underline"
-                            >{{
-                                authStore.user.website.replace(
-                                    /^https?:\/\//,
-                                    "",
-                                )
-                            }}</a
-                        >
+                        <Phone class="h-4 w-4" />
+                        {{ authStore.user.phone }}
                     </div>
                 </div>
             </div>
@@ -482,6 +478,60 @@ onMounted(() => {
                         No bio added yet.
                     </p>
 
+                    <!-- Contact/Meta Information -->
+                    <div
+                        class="mt-6 flex flex-wrap gap-4 p-4 rounded-xl bg-[var(--surface-secondary)]/30 border border-[var(--border-subtle)]"
+                    >
+                        <div
+                            class="flex items-center gap-2 text-xs font-medium text-[var(--text-secondary)]"
+                            v-if="authStore.user?.email"
+                        >
+                            <Mail
+                                class="h-3.5 w-3.5 text-[var(--text-tertiary)]"
+                            />
+                            {{ authStore.user.email }}
+                        </div>
+                        <div
+                            class="flex items-center gap-2 text-xs font-medium text-[var(--text-secondary)]"
+                            v-if="authStore.user?.phone"
+                        >
+                            <Phone
+                                class="h-3.5 w-3.5 text-[var(--text-tertiary)]"
+                            />
+                            {{ authStore.user.phone }}
+                        </div>
+                        <div
+                            class="flex items-center gap-2 text-xs font-medium text-[var(--text-secondary)]"
+                            v-if="authStore.user?.location"
+                        >
+                            <MapPin
+                                class="h-3.5 w-3.5 text-[var(--text-tertiary)]"
+                            />
+                            {{ authStore.user.location }}
+                        </div>
+                        <div
+                            class="flex items-center gap-2 text-xs font-medium text-[var(--text-secondary)]"
+                            v-if="authStore.user?.website"
+                        >
+                            <Globe
+                                class="h-3.5 w-3.5 text-[var(--text-tertiary)]"
+                            />
+                            <a
+                                :href="authStore.user.website"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="text-[var(--interactive-primary)] hover:underline"
+                            >
+                                {{
+                                    authStore.user.website.replace(
+                                        /^https?:\/\//,
+                                        "",
+                                    )
+                                }}
+                            </a>
+                        </div>
+                    </div>
+
                     <div
                         class="mt-8"
                         v-if="
@@ -505,6 +555,99 @@ onMounted(() => {
                                     class="h-1 w-1 rounded-full bg-(--interactive-primary) opacity-50 group-hover/skill:opacity-100 transition-opacity"
                                 ></div>
                                 {{ skill }}
+                            </div>
+                        </div>
+                    </div>
+                </Card>
+
+                <!-- Categorized Teams Section -->
+                <Card padding="lg" v-if="hasTeams">
+                    <div class="space-y-8">
+                        <!-- Owned Teams -->
+                        <div v-if="ownedTeams.length">
+                            <h3
+                                class="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-[0.2em] mb-4 flex items-center gap-2"
+                            >
+                                <Crown class="h-3.5 w-3.5 text-amber-500" />
+                                Teams Owned
+                            </h3>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                                <router-link
+                                    v-for="team in ownedTeams"
+                                    :key="team.public_id"
+                                    :to="`/teams/${team.slug}`"
+                                    class="group flex items-center justify-between p-3 rounded-xl bg-[var(--surface-secondary)]/50 hover:bg-[var(--surface-secondary)] border border-[var(--border-subtle)] transition-all duration-200"
+                                >
+                                    <div class="flex items-center gap-3">
+                                        <div
+                                            class="w-9 h-9 rounded-lg bg-indigo-500 dark:bg-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-sm transition-transform group-hover:scale-105"
+                                        >
+                                            {{ team.name.charAt(0) }}
+                                        </div>
+                                        <div>
+                                            <p
+                                                class="text-sm font-semibold text-[var(--text-primary)] group-hover:text-[var(--interactive-primary)] transition-colors"
+                                            >
+                                                {{ team.name }}
+                                            </p>
+                                            <p
+                                                class="text-[10px] text-[var(--text-muted)]"
+                                            >
+                                                {{
+                                                    team.membership?.role ||
+                                                    "Owner"
+                                                }}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <ChevronRight
+                                        class="h-4 w-4 text-[var(--text-muted)] opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all"
+                                    />
+                                </router-link>
+                            </div>
+                        </div>
+
+                        <!-- Member Teams -->
+                        <div v-if="memberTeams.length">
+                            <h3
+                                class="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-[0.2em] mb-4 flex items-center gap-2"
+                            >
+                                <Users class="h-3.5 w-3.5" />
+                                Member of Teams
+                            </h3>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                                <router-link
+                                    v-for="team in memberTeams"
+                                    :key="team.public_id"
+                                    :to="`/teams/${team.slug}`"
+                                    class="group flex items-center justify-between p-3 rounded-xl bg-[var(--surface-secondary)]/30 hover:bg-[var(--surface-secondary)] border border-[var(--border-subtle)] transition-all duration-200"
+                                >
+                                    <div class="flex items-center gap-3">
+                                        <div
+                                            class="w-9 h-9 rounded-lg bg-[var(--surface-tertiary)] flex items-center justify-center text-[var(--text-secondary)] font-bold text-sm border border-[var(--border-subtle)]"
+                                        >
+                                            {{ team.name.charAt(0) }}
+                                        </div>
+                                        <div>
+                                            <p
+                                                class="text-sm font-medium text-[var(--text-primary)] group-hover:text-[var(--interactive-primary)] transition-colors"
+                                            >
+                                                {{ team.name }}
+                                            </p>
+                                            <p
+                                                class="text-[10px] text-[var(--text-muted)]"
+                                            >
+                                                {{
+                                                    team.membership?.role ||
+                                                    "Member"
+                                                }}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <ChevronRight
+                                        class="h-4 w-4 text-[var(--text-muted)] opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all"
+                                    />
+                                </router-link>
                             </div>
                         </div>
                     </div>

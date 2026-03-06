@@ -103,7 +103,7 @@ function viewAllActivity() {
     if (currentTeamId.value) {
         router.push({
             name: "team-profile",
-            params: { public_id: currentTeamId.value },
+            params: { identifier: authStore.currentTeam?.slug || currentTeamId.value },
             query: { tab: "activity" },
         });
     }

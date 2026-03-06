@@ -69,7 +69,7 @@ onMounted(() => {
     <div class="space-y-6">
         <div class="flex items-center justify-between">
             <div class="flex items-center gap-4">
-                <Button variant="ghost" size="icon" @click="router.push({ name: 'team-profile', params: { public_id: teamId }, query: { tab: 'templates' } })">
+                <Button variant="ghost" size="icon" @click="router.push({ name: 'team-profile', params: { identifier: teamId }, query: { tab: 'templates' } })">
                     <ArrowLeft class="h-5 w-5" />
                 </Button>
                 <div>

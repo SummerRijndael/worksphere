@@ -322,7 +322,23 @@ class UserController extends Controller
             ])->save();
         }
 
+        if ($request->has('website')) {
+            $user->setPreference('website', $request->website);
+            $user->save(); // Save once more for preferences
+        }
+
         return response()->json(new UserResource($user));
+    }
+
+    /**
+     * Update the user's profile information and sync related entities.
+     * This handles profile updates that may include social accounts or other synced data.
+     */
+    public function updateProfileSync(Request $request): JsonResponse
+    {
+        // For now, we'll keep it simple and just do what updateProfile does.
+        // If there's extra sync logic needed (like passing provider tokens), it goes here.
+        return $this->updateProfile($request);
     }
 
     /**
@@ -372,7 +388,9 @@ class UserController extends Controller
             $user,
             'cover',
             'cover_photos',
-            Str::random(40).'.webp'
+            Str::random(40).'.webp',
+            null,
+            'public' // Force public disk
         );
 
         return response()->json(new UserResource($user));

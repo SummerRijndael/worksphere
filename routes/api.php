@@ -117,6 +117,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::post('/user/setup-password', [\App\Http\Controllers\Api\SetPasswordController::class, 'store']);
     Route::put('/user/profile', [UserController::class, 'updateProfile']);
+    Route::post('/user/profile-sync', [UserController::class, 'updateProfileSync']);
     Route::put('/user/password', [UserController::class, 'updatePassword']);
     Route::put('/user/preferences', [UserController::class, 'updatePreferences']);
     Route::put('/user/notification-preferences', [UserController::class, 'updateNotificationPreferences']);

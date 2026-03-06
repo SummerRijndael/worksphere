@@ -257,30 +257,114 @@
                                             {{ user.website }}
                                         </a>
                                     </div>
+                                    <!-- Teams Section - Splitted -->
                                     <div
-                                        class="flex flex-col"
-                                        v-if="user.teams && user.teams.length"
+                                        v-if="hasTeams"
+                                        class="space-y-6 pt-4 border-t border-[var(--border-subtle)]"
                                     >
-                                        <span
-                                            class="text-[var(--text-tertiary)] text-xs uppercase tracking-wider font-semibold mb-1"
-                                            >Teams</span
+                                        <!-- Owned Teams -->
+                                        <div
+                                            v-if="ownedTeams.length"
+                                            class="flex flex-col"
                                         >
-                                        <div class="flex flex-col gap-1">
                                             <div
-                                                v-for="team in user.teams"
-                                                :key="team.public_id"
-                                                class="text-[var(--text-primary)] flex items-center gap-2"
+                                                class="flex items-center gap-2 text-[var(--text-tertiary)] mb-3"
                                             >
-                                                <Users
-                                                    class="w-3.5 h-3.5 text-[var(--text-tertiary)]"
+                                                <Crown
+                                                    class="w-4 h-4 text-amber-500"
                                                 />
-                                                <span class="truncate">{{
-                                                    team.name
-                                                }}</span>
                                                 <span
-                                                    class="text-xs px-1.5 py-0.5 bg-[var(--surface-secondary)] rounded text-[var(--text-tertiary)]"
-                                                    >{{ team.role }}</span
+                                                    class="text-[10px] font-bold uppercase tracking-wider"
+                                                    >Teams Owned</span
                                                 >
+                                            </div>
+                                            <div class="grid grid-cols-1 gap-2">
+                                                <router-link
+                                                    v-for="team in ownedTeams"
+                                                    :key="team.public_id"
+                                                    :to="`/teams/${team.slug}`"
+                                                    class="group flex items-center justify-between p-2 rounded-lg bg-[var(--surface-secondary)]/50 hover:bg-[var(--surface-secondary)] border border-[var(--border-subtle)] transition-all duration-200"
+                                                >
+                                                    <div
+                                                        class="flex items-center gap-3"
+                                                    >
+                                                        <div
+                                                            class="w-8 h-8 rounded bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xs shadow-sm"
+                                                        >
+                                                            {{
+                                                                team.name.charAt(
+                                                                    0,
+                                                                )
+                                                            }}
+                                                        </div>
+                                                        <span
+                                                            class="text-xs font-medium group-hover:text-[var(--interactive-primary)] transition-colors"
+                                                            >{{
+                                                                team.name
+                                                            }}</span
+                                                        >
+                                                    </div>
+                                                    <ChevronRight
+                                                        class="w-3.5 h-3.5 text-[var(--text-muted)] group-hover:translate-x-0.5 transition-transform"
+                                                    />
+                                                </router-link>
+                                            </div>
+                                        </div>
+
+                                        <!-- Member Teams -->
+                                        <div
+                                            v-if="memberTeams.length"
+                                            class="flex flex-col"
+                                        >
+                                            <div
+                                                class="flex items-center gap-2 text-[var(--text-tertiary)] mb-3"
+                                            >
+                                                <Users class="w-4 h-4" />
+                                                <span
+                                                    class="text-[10px] font-bold uppercase tracking-wider"
+                                                    >Member of Teams</span
+                                                >
+                                            </div>
+                                            <div class="grid grid-cols-1 gap-2">
+                                                <router-link
+                                                    v-for="team in memberTeams"
+                                                    :key="team.public_id"
+                                                    :to="`/teams/${team.slug}`"
+                                                    class="group flex items-center justify-between p-2 rounded-lg bg-[var(--surface-secondary)]/30 hover:bg-[var(--surface-secondary)] border border-[var(--border-subtle)] transition-all duration-200"
+                                                >
+                                                    <div
+                                                        class="flex items-center gap-3"
+                                                    >
+                                                        <div
+                                                            class="w-8 h-8 rounded bg-[var(--surface-tertiary)] flex items-center justify-center text-[var(--text-secondary)] font-bold text-xs border border-[var(--border-subtle)]"
+                                                        >
+                                                            {{
+                                                                team.name.charAt(
+                                                                    0,
+                                                                )
+                                                            }}
+                                                        </div>
+                                                        <div
+                                                            class="flex flex-col"
+                                                        >
+                                                            <span
+                                                                class="text-xs font-medium group-hover:text-[var(--interactive-primary)] transition-colors"
+                                                                >{{
+                                                                    team.name
+                                                                }}</span
+                                                            >
+                                                            <span
+                                                                class="text-[10px] text-[var(--text-muted)] leading-none mt-1"
+                                                                >{{
+                                                                    team.role
+                                                                }}</span
+                                                            >
+                                                        </div>
+                                                    </div>
+                                                    <ChevronRight
+                                                        class="w-3.5 h-3.5 text-[var(--text-muted)] group-hover:translate-x-0.5 transition-transform"
+                                                    />
+                                                </router-link>
                                             </div>
                                         </div>
                                     </div>
@@ -348,7 +432,8 @@
                                                       (1000 * 60 * 60 * 24),
                                               )
                                             : 0
-                                    }}</span>
+                                    }}</span
+                                >
                                 >
                                 <span
                                     class="text-xs text-[var(--text-secondary)] uppercase tracking-wider mt-1"
@@ -451,6 +536,10 @@ import {
     MapPin,
     Calendar,
     Edit2,
+    CheckCircle2,
+    ChevronRight,
+    Clock,
+    Crown,
     Mail,
     User,
     Globe,
@@ -475,8 +564,6 @@ const chatStore = useChatStore();
 const miniChatStore = useMiniChatStore();
 const toast = useToast();
 
-
-
 interface UserProfile {
     public_id: string;
     name: string;
@@ -497,6 +584,15 @@ interface UserProfile {
 }
 
 const user = ref<UserProfile | null>(null);
+const ownedTeams = computed(
+    () => user.value?.teams?.filter((t) => t.is_owner) || [],
+);
+const memberTeams = computed(
+    () => user.value?.teams?.filter((t) => !t.is_owner) || [],
+);
+const hasTeams = computed(
+    () => user.value?.teams && user.value.teams.length > 0,
+);
 const loading = ref(true);
 const error = ref<string | null>(null);
 const isCoverLoaded = ref(false);

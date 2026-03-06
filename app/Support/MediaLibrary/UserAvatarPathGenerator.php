@@ -42,6 +42,10 @@ class UserAvatarPathGenerator implements PathGenerator
         // Use public_id (UUID) if available, otherwise fallback to ID or 'unknown'
         $userUuid = $model && isset($model->public_id) ? $model->public_id : ($model->id ?? 'unknown');
 
+        if ($media->collection_name === 'cover_photos') {
+            return "avatar/cover_p/{$userUuid}/{$media->id}";
+        }
+
         return "avatar/{$userUuid}/{$media->id}";
     }
 }

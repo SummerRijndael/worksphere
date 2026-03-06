@@ -50,6 +50,7 @@ class UserResource extends JsonResource
         if (! $isPublicRequest || $isOwner) {
             $data = array_merge($data, [
                 'email' => $this->email,
+                'phone' => $this->phone,
                 'status' => $this->status,
                 'status_reason' => $this->status_reason,
                 'suspended_until' => $this->suspended_until?->toISOString(),
@@ -127,6 +128,7 @@ class UserResource extends JsonResource
                         'name' => $team->name,
                         'slug' => $team->slug,
                         'owner_id' => $team->owner?->public_id, // Use Public ID
+                        'is_owner' => $team->owner_id === $this->id,
                         'membership' => [
                             'role' => $team->pivot->role,
                             'joined_at' => $team->pivot->joined_at,

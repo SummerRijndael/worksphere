@@ -74,33 +74,27 @@ class AvatarService implements AvatarContract
         // Priority 1: Media Library
         if ($user->hasMedia('avatars')) {
             $media = $user->getFirstMedia('avatars');
-            // If disk is not local (e.g., r2, s3, or overriding private), assume it exists.
-            // file_exists() does not work gracefully with remote flysystem URLs.
-            if ($media->disk !== 'local' && config("filesystems.disks.{$media->disk}.driver") !== 'local') {
+            $path = $media->getPath($variant);
+
+            // Check if file exists on disk
+            if (file_exists($path)) {
                 $url = $media->getUrl($variant);
             } else {
-                $path = $media->getPath($variant);
-
-                // Check if file exists on local disk
-                if (file_exists($path)) {
-                    $url = $media->getUrl($variant);
-                } else {
-                    // Log missing file
-                    $logPath = storage_path('app/private/sys/logs/avatar_errors.log');
-                    if (! file_exists(dirname($logPath))) {
-                        mkdir(dirname($logPath), 0755, true);
-                    }
-
-                    $logMessage = sprintf(
-                        "[%s] Missing avatar file for User ID %s (UUID: %s). Expected path: %s\n",
-                        date('Y-m-d H:i:s'),
-                        $user->id,
-                        $user->public_id,
-                        $path
-                    );
-
-                    file_put_contents($logPath, $logMessage, FILE_APPEND);
+                // Log missing file
+                $logPath = storage_path('app/private/sys/logs/avatar_errors.log');
+                if (! file_exists(dirname($logPath))) {
+                    mkdir(dirname($logPath), 0755, true);
                 }
+
+                $logMessage = sprintf(
+                    "[%s] Missing avatar file for User ID %s (UUID: %s). Expected path: %s\n",
+                    date('Y-m-d H:i:s'),
+                    $user->id,
+                    $user->public_id,
+                    $path
+                );
+
+                file_put_contents($logPath, $logMessage, FILE_APPEND);
             }
         }
 
