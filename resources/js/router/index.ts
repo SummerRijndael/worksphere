@@ -1130,7 +1130,7 @@ const routes: RouteRecordRaw[] = [
                 },
             },
             {
-                path: "teams/:public_id",
+                path: "teams/:identifier",
                 name: "team-profile",
                 component: () => import("@/views/TeamProfileView.vue"),
                 meta: {

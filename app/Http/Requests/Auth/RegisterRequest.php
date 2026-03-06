@@ -24,20 +24,20 @@ class RegisterRequest extends FormRequest
     public function rules(): array
     {
         $rules = [
-            'name' => ['required', 'string', 'max:255', 'regex:/^[\pL\s\-\']+$/u'],
+            'name' => ['required', 'string', 'max:255', 'regex:/^[\pL\s\-\']+$/u', 'not_in:NaN,nan,null,NULL,undefined,UNDEFINED'],
             'username' => [
                 'nullable',
                 'string',
                 'min:3',
                 'max:50',
-                'regex:/^[a-zA-Z0-9_\-]+$/',
+                'regex:/^[a-zA-Z0-9_\-\.]+$/',
                 'unique:'.User::class,
             ],
             'email' => [
                 'required',
                 'string',
                 'lowercase',
-                'email:rfc,spoof',
+                'email:rfc,dns,spoof',
                 'max:255',
                 'unique:'.User::class,
             ],

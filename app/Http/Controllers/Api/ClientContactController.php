@@ -19,9 +19,9 @@ class ClientContactController extends Controller
         // $this->authorize('update', $client);
 
         $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['nullable', 'email', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:20', 'regex:/^([0-9\s\-\+\(\)]*)$/'],
+            'name' => ['required', 'string', 'max:255', 'regex:/^[\pL\s\-\']+$/u', 'not_in:NaN,nan,null,NULL,undefined,UNDEFINED'],
+            'email' => ['nullable', 'email:rfc,dns,spoof', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:30', 'regex:/^([0-9\s\-\+\(\)]*)$/'],
             'role' => ['nullable', 'string', 'max:255'],
             'is_primary' => ['boolean'],
         ]);
@@ -44,9 +44,9 @@ class ClientContactController extends Controller
         // if ($contact->client->team_id !== ...) -> complicates things, relying on middleware usually.
 
         $validated = $request->validate([
-            'name' => ['sometimes', 'string', 'max:255'],
-            'email' => ['nullable', 'email', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:20', 'regex:/^([0-9\s\-\+\(\)]*)$/'],
+            'name' => ['sometimes', 'string', 'max:255', 'regex:/^[\pL\s\-\']+$/u', 'not_in:NaN,nan,null,NULL,undefined,UNDEFINED'],
+            'email' => ['nullable', 'email:rfc,dns,spoof', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:30', 'regex:/^([0-9\s\-\+\(\)]*)$/'],
             'role' => ['nullable', 'string', 'max:255'],
             'is_primary' => ['boolean'],
         ]);

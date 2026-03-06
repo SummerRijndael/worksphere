@@ -39,7 +39,6 @@ import {
     BarChart, // for Workload
     Banknote,
     TrendingUp,
-    
 } from "lucide-vue-next";
 import axios from "axios";
 import { useAuthStore } from "@/stores/auth";
@@ -250,22 +249,36 @@ const fetchProject = async () => {
     try {
         isLoading.value = true;
 
-        // 1. Attempt Global Fetch First (Smart Lookup)
-        // This endpoint is now permission-aware and works regardless of current context
         const globalUrl = `/api/projects/${projectId.value}`;
-        const projectRes = await axios.get(globalUrl);
+        const statsUrl = `/api/projects/${projectId.value}/stats`;
+        const tasksUrl = `/api/projects/${projectId.value}/tasks`;
 
-        console.log(
-            "[ProjectDetail] API Response:",
-            projectRes.status,
-            projectRes.data,
-        );
+        const taskParams: any = {
+            per_page: 100,
+            sort_by: "sort_order",
+            search: taskFilters.value.search,
+            status: taskFilters.value.status,
+            assignee: taskFilters.value.assignee,
+        };
 
-        // Handle both wrapped {data: project} and unwrapped {project} responses
+        // Fetch everything in parallel
+        const [projectRes, statsRes, tasksRes] = await Promise.all([
+            axios.get(globalUrl),
+            axios.get(statsUrl).catch((e) => {
+                console.error("[ProjectDetail] Failed to fetch stats", e);
+                return { data: null };
+            }),
+            axios.get(tasksUrl, { params: taskParams }).catch((e) => {
+                console.error("[ProjectDetail] Failed to fetch tasks", e);
+                return { data: { data: [] } };
+            }),
+        ]);
+
+        // Handle Project Data
         const projectData = projectRes.data.data || projectRes.data;
         project.value = projectData;
 
-        // 2. Context Sync: Ensure the active team matches the project's team
+        // Sync Context if needed
         if (
             projectData.team &&
             authStore.currentTeam?.public_id !== projectData.team.public_id
@@ -277,17 +290,11 @@ const fetchProject = async () => {
             authStore.switchTeam(projectData.team.public_id);
         }
 
-        // 3. Fetch Stats (scoped or global)
-        try {
-            const statsUrl = `/api/projects/${projectId.value}/stats`;
-            const statsRes = await axios.get(statsUrl);
-            stats.value = statsRes.data;
-        } catch (e) {
-            console.error("[ProjectDetail] Failed to fetch stats", e);
-        }
+        // Handle Stats
+        stats.value = statsRes.data;
 
-        // Fetch tasks
-        await fetchTasks();
+        // Handle Tasks
+        tasks.value = tasksRes.data.data || tasksRes.data || [];
     } catch (err: any) {
         console.error("[ProjectDetail] Failed to fetch project", {
             status: err.response?.status,
@@ -305,7 +312,7 @@ const fetchProject = async () => {
 const fetchTasks = async () => {
     try {
         const params: any = {
-            per_page: 100, // Load enough for board view
+            per_page: 100,
             sort_by: "sort_order",
             search: taskFilters.value.search,
             status: taskFilters.value.status,
@@ -313,9 +320,8 @@ const fetchTasks = async () => {
         };
 
         const tasksUrl = `/api/projects/${projectId.value}/tasks`;
-
         const tasksRes = await axios.get(tasksUrl, { params });
-        tasks.value = tasksRes.data.data;
+        tasks.value = tasksRes.data.data || tasksRes.data || [];
     } catch (err) {
         console.error("Failed to fetch tasks", err);
     }
@@ -758,8 +764,6 @@ onMounted(() => {
     fetchProject();
     fetchTeamMembers();
 });
-
-
 
 // Watch for query param changes (e.g. back/forward navigation)
 watch(

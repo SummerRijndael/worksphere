@@ -430,7 +430,7 @@ const fetchTeam = async () => {
     loading.value = true;
     try {
         const response = await axios.get(
-            `/api/teams/${route.params.public_id}`,
+            `/api/teams/${route.params.identifier}`,
         );
         team.value = response.data;
         await Promise.all([

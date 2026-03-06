@@ -464,7 +464,7 @@ onMounted(() => {
                                 </td>
                                 <td class="px-6 py-4 text-right">
                                     <div class="flex items-center justify-end gap-2">
-                                        <button @click="router.push({ name: 'team-profile', params: { public_id: team.public_id } })" class="p-2 rounded-lg text-[var(--text-secondary)] hover:text-[var(--interactive-primary)] hover:bg-[var(--interactive-primary)]/10 transition-colors" title="View Dashboard"><LayoutGrid class="w-4 h-4" /></button>
+                                        <button @click="router.push({ name: 'team-profile', params: { identifier: team.slug || team.public_id } })" class="p-2 rounded-lg text-[var(--text-secondary)] hover:text-[var(--interactive-primary)] hover:bg-[var(--interactive-primary)]/10 transition-colors" title="View Dashboard"><LayoutGrid class="w-4 h-4" /></button>
                                         <button v-if="team.can?.update" @click="openEditModal(team)" class="p-2 rounded-lg text-[var(--text-secondary)] hover:text-[var(--interactive-primary)] hover:bg-[var(--interactive-primary)]/10 transition-colors" title="Edit Team"><Edit2 class="w-4 h-4" /></button>
                                         <button v-if="team.can?.delete" @click="deleteTeam(team)" class="p-2 rounded-lg text-[var(--text-secondary)] hover:text-[var(--color-error)] hover:bg-[var(--color-error)]/10 transition-colors" title="Delete Team"><Trash2 class="w-4 h-4" /></button>
                                     </div>
@@ -517,7 +517,7 @@ onMounted(() => {
                                 </td>
                                 <td class="px-6 py-4 text-right">
                                     <div class="flex items-center justify-end gap-2">
-                                        <button @click="router.push({ name: 'team-profile', params: { public_id: team.public_id } })" class="p-2 rounded-lg text-[var(--text-secondary)] hover:text-[var(--interactive-primary)] hover:bg-[var(--interactive-primary)]/10 transition-colors" title="View Dashboard"><LayoutGrid class="w-4 h-4" /></button>
+                                        <button @click="router.push({ name: 'team-profile', params: { identifier: team.slug || team.public_id } })" class="p-2 rounded-lg text-[var(--text-secondary)] hover:text-[var(--interactive-primary)] hover:bg-[var(--interactive-primary)]/10 transition-colors" title="View Dashboard"><LayoutGrid class="w-4 h-4" /></button>
                                         <button v-if="team.can?.update" @click="openEditModal(team)" class="p-2 rounded-lg text-[var(--text-secondary)] hover:text-[var(--interactive-primary)] hover:bg-[var(--interactive-primary)]/10 transition-colors" title="Edit Team"><Edit2 class="w-4 h-4" /></button>
                                         <button v-if="team.can?.delete" @click="deleteTeam(team)" class="p-2 rounded-lg text-[var(--text-secondary)] hover:text-[var(--color-error)] hover:bg-[var(--color-error)]/10 transition-colors" title="Delete Team"><Trash2 class="w-4 h-4" /></button>
                                     </div>
@@ -593,7 +593,7 @@ onMounted(() => {
                                 <td class="px-6 py-4 text-right">
                                     <div class="flex items-center justify-end gap-2">
                                         <button 
-                                            @click="router.push({ name: 'team-profile', params: { public_id: team.public_id } })"
+                                            @click="router.push({ name: 'team-profile', params: { identifier: team.slug || team.public_id } })"
                                             class="p-2 rounded-lg text-[var(--text-secondary)] hover:text-[var(--interactive-primary)] hover:bg-[var(--interactive-primary)]/10 transition-colors"
                                             title="View Dashboard"
                                         >

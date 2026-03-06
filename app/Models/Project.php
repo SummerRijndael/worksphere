@@ -280,7 +280,7 @@ class Project extends Model implements HasMedia
      */
     public function getMemberCountAttribute(): int
     {
-        return $this->members()->count();
+        return $this->attributes['members_count'] ?? $this->members()->count();
     }
 
     /**

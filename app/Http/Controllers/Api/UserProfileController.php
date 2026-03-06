@@ -16,13 +16,15 @@ class UserProfileController extends Controller
         $this->authorize('viewProfile', $user);
 
         // Fetch teams
-        $teams = $user->teams()->select('teams.id', 'teams.public_id', 'teams.name', 'teams.slug', 'team_user.role as team_role')
+        $teams = $user->teams()->select('teams.id', 'teams.public_id', 'teams.name', 'teams.slug', 'teams.owner_id', 'team_user.role as team_role')
             ->get()
-            ->map(function ($team) {
+            ->map(function ($team) use ($user) {
                 return [
                     'public_id' => $team->public_id,
                     'name' => $team->name,
+                    'slug' => $team->slug,
                     'role' => $team->team_role,
+                    'is_owner' => $team->owner_id === $user->id,
                 ];
             });
 

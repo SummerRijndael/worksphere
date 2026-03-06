@@ -74,8 +74,8 @@ class UserController extends Controller
         $this->authorize('create', User::class);
 
         $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255', 'regex:/^[\pL\s\-\']+$/u'],
-            'email' => ['required', 'string', 'email:rfc', 'max:255', 'unique:users'],
+            'name' => ['required', 'string', 'max:255', 'regex:/^[\pL\s\-\']+$/u', 'not_in:NaN,nan,null,NULL,undefined,UNDEFINED'],
+            'email' => ['required', 'string', 'email:rfc,dns,spoof', 'max:255', 'unique:users'],
             'username' => ['nullable', 'string', 'min:3', 'max:50', 'regex:/^[a-zA-Z0-9_\-\.]+$/', 'unique:users'],
             'role' => ['required', 'string', 'exists:roles,name'],
             'status' => ['required', 'string', 'in:active,inactive,suspended'],
@@ -142,16 +142,17 @@ class UserController extends Controller
         $this->authorize('update', $user);
         $authUser = $request->user();
 
-        // Determine which fields can be updated based on permissions
         $rules = [
-            'name' => ['sometimes', 'string', 'max:255', 'regex:/^[\pL\s\-\']+$/u'],
+            'name' => ['sometimes', 'string', 'max:255', 'regex:/^[\pL\s\-\']+$/u', 'not_in:NaN,nan,null,NULL,undefined,UNDEFINED'],
             'username' => ['sometimes', 'nullable', 'string', 'min:3', 'max:50', 'regex:/^[a-zA-Z0-9_\-\.]+$/', Rule::unique('users')->ignore($user->id)],
-            'phone' => ['sometimes', 'nullable', 'string', 'max:20', 'regex:/^([0-9\s\-\+\(\)]*)$/'],
+            'phone' => ['sometimes', 'nullable', 'string', 'max:30', 'regex:/^([0-9\s\-\+\(\)]*)$/'],
+            'email' => ['sometimes', 'string', 'email:rfc,dns,spoof', 'max:255', Rule::unique('users')->ignore($user->id)],
+            'website' => ['sometimes', 'nullable', 'string', 'max:255', 'url'],
         ];
 
         // Email can only be changed by the user themselves (self-service)
         if ($authUser->is($user)) {
-            $rules['email'] = ['sometimes', 'string', 'email:rfc', 'max:255', Rule::unique('users')->ignore($user->id)];
+            $rules['email'] = ['sometimes', 'string', 'email:rfc,dns,spoof', 'max:255', Rule::unique('users')->ignore($user->id)];
         }
 
         // Role changes require users.manage_roles permission
@@ -200,7 +201,7 @@ class UserController extends Controller
         }
 
         // Update basic fields
-        $updateData = collect($validated)->only(['name', 'username', 'phone', 'email'])->filter()->toArray();
+        $updateData = collect($validated)->only(['name', 'username', 'phone', 'email', 'website'])->toArray();
         if (! empty($updateData)) {
             $user->update($updateData);
         }
@@ -281,10 +282,10 @@ class UserController extends Controller
         $user = $request->user();
 
         $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255', 'regex:/^[\pL\s\-\']+$/u'],
-            'email' => ['required', 'string', 'email:rfc', 'max:255', Rule::unique('users')->ignore($user->id)],
+            'name' => ['required', 'string', 'max:255', 'regex:/^[\pL\s\-\']+$/u', 'not_in:NaN,nan,null,NULL,undefined,UNDEFINED'],
+            'email' => ['required', 'string', 'email:rfc,dns,spoof', 'max:255', Rule::unique('users')->ignore($user->id)],
             'username' => ['nullable', 'string', 'min:3', 'max:50', 'regex:/^[a-zA-Z0-9_\-\.]+$/', Rule::unique('users')->ignore($user->id)],
-            'phone' => ['nullable', 'string', 'max:20', 'regex:/^([0-9\s\-\+\(\)]*)$/'],
+            'phone' => ['nullable', 'string', 'max:30', 'regex:/^([0-9\s\-\+\(\)]*)$/'],
             'title' => ['nullable', 'string', 'max:255'],
             'bio' => ['nullable', 'string', 'max:1000'],
             'location' => ['nullable', 'string', 'max:255'],
@@ -321,7 +322,23 @@ class UserController extends Controller
             ])->save();
         }
 
+        if ($request->has('website')) {
+            $user->setPreference('website', $request->website);
+            $user->save(); // Save once more for preferences
+        }
+
         return response()->json(new UserResource($user));
+    }
+
+    /**
+     * Update the user's profile information and sync related entities.
+     * This handles profile updates that may include social accounts or other synced data.
+     */
+    public function updateProfileSync(Request $request): JsonResponse
+    {
+        // For now, we'll keep it simple and just do what updateProfile does.
+        // If there's extra sync logic needed (like passing provider tokens), it goes here.
+        return $this->updateProfile($request);
     }
 
     /**
@@ -371,7 +388,9 @@ class UserController extends Controller
             $user,
             'cover',
             'cover_photos',
-            Str::random(40).'.webp'
+            Str::random(40).'.webp',
+            null,
+            'public' // Force public disk
         );
 
         return response()->json(new UserResource($user));

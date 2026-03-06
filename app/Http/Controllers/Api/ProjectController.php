@@ -17,6 +17,7 @@ use App\Services\AuditService;
 use App\Services\PermissionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
@@ -649,30 +650,44 @@ class ProjectController extends Controller
             }
         }
 
-        $stats = [
-            'total_tasks' => $project->tasks()->count(),
-            'completed_tasks' => $project->tasks()->where('status', 'completed')->count(),
-            'in_progress_tasks' => $project->tasks()->where('status', 'in_progress')->count(),
-            'pending_tasks' => $project->tasks()->where('status', 'pending')->count(),
-            'overdue_tasks' => $project->tasks()
-                ->whereNotNull('due_date')
-                ->where('due_date', '<', now())
-                ->whereNotIn('status', ['completed', 'archived'])
-                ->count(),
-            'member_count' => $project->members()->count(),
-            'progress_percentage' => $project->progress_percentage,
-            'days_until_due' => $project->days_until_due,
-            'is_overdue' => $project->is_overdue,
-            'total_budget' => $project->budget,
-            'total_invoiced' => $project->invoices()->where('status', '!=', InvoiceStatus::Cancelled)->sum('total'),
-            'total_paid' => $project->invoices()->where('status', InvoiceStatus::Paid)->sum('total'),
-            'pending_amount' => $project->invoices()->whereIn('status', [
-                InvoiceStatus::Sent,
-                InvoiceStatus::Viewed,
-                InvoiceStatus::Overdue,
-            ])->sum('total'),
-            'currency' => $project->currency,
-        ];
+        $cacheKey = "project_stats_{$project->id}";
+
+        $stats = Cache::remember($cacheKey, now()->addMinutes(5), function () use ($project) {
+            $taskStats = $project->tasks()
+                ->selectRaw('COUNT(*) as total')
+                ->selectRaw("SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed")
+                ->selectRaw("SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as in_progress")
+                ->selectRaw("SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending")
+                ->selectRaw("SUM(CASE WHEN due_date < ? AND status NOT IN ('completed', 'archived') THEN 1 ELSE 0 END) as overdue", [now()])
+                ->first();
+
+            $invoiceStats = $project->invoices()
+                ->selectRaw("SUM(CASE WHEN status != ? THEN total ELSE 0 END) as total_invoiced", [InvoiceStatus::Cancelled->value])
+                ->selectRaw("SUM(CASE WHEN status = ? THEN total ELSE 0 END) as total_paid", [InvoiceStatus::Paid->value])
+                ->selectRaw("SUM(CASE WHEN status IN (?, ?, ?) THEN total ELSE 0 END) as pending_amount", [
+                    InvoiceStatus::Sent->value,
+                    InvoiceStatus::Viewed->value,
+                    InvoiceStatus::Overdue->value,
+                ])
+                ->first();
+
+            return [
+                'total_tasks' => (int) $taskStats->total,
+                'completed_tasks' => (int) $taskStats->completed,
+                'in_progress_tasks' => (int) $taskStats->in_progress,
+                'pending_tasks' => (int) $taskStats->pending,
+                'overdue_tasks' => (int) $taskStats->overdue,
+                'member_count' => $project->members()->count(),
+                'progress_percentage' => (int) $project->progress_percentage,
+                'days_until_due' => $project->days_until_due,
+                'is_overdue' => (bool) $project->is_overdue,
+                'total_budget' => $project->budget,
+                'total_invoiced' => (float) ($invoiceStats->total_invoiced ?? 0),
+                'total_paid' => (float) ($invoiceStats->total_paid ?? 0),
+                'pending_amount' => (float) ($invoiceStats->pending_amount ?? 0),
+                'currency' => $project->currency,
+            ];
+        });
 
         return response()->json($stats);
     }

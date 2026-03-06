@@ -13,6 +13,7 @@ use Illuminate\Auth\Events\Verified;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
@@ -76,34 +77,37 @@ class AuthController extends Controller
         // Generate username if not provided
         $userData['username'] = $request->username ?? explode('@', $request->email)[0].rand(100, 999);
 
-        $user = User::create($userData);
+        $user = DB::transaction(function () use ($userData, $request) {
+            $user = User::create($userData);
 
-        // Auto-verify if email verification is disabled
-        if (! config('auth.email_verification', true)) {
-            $user->markEmailAsVerified();
-        }
-
-        // Assign default role
-        $defaultRole = config('roles.default_role', 'user');
-        $user->assignRole($defaultRole);
-
-        // Dispatch Registered event - this triggers SendEmailVerificationNotification listener
-        // which calls $user->sendEmailVerificationNotification() automatically
-        event(new Registered($user));
-
-        // Record Legal Agreement Acceptance (assumed via registration form checkbox)
-        foreach (['tos', 'privacy'] as $type) {
-            if ($config = config("legal.{$type}")) {
-                \App\Models\LegalAgreementLog::create([
-                    'user_id' => $user->id,
-                    'document_type' => $type,
-                    'version' => $config['version'],
-                    'ip_address' => $request->ip(),
-                    'user_agent' => $request->userAgent(),
-                    'accepted_at' => now(),
-                ]);
+            // Auto-verify if email verification is disabled
+            if (! config('auth.email_verification', true)) {
+                $user->markEmailAsVerified();
             }
-        }
+
+            // Assign default role
+            $defaultRole = config('roles.default_role', 'user');
+            $user->assignRole($defaultRole);
+
+            // Dispatch Registered event
+            event(new Registered($user));
+
+            // Record Legal Agreement Acceptance
+            foreach (['tos', 'privacy'] as $type) {
+                if ($config = config("legal.{$type}")) {
+                    \App\Models\LegalAgreementLog::create([
+                        'user_id' => $user->id,
+                        'document_type' => $type,
+                        'version' => $config['version'],
+                        'ip_address' => $request->ip(),
+                        'user_agent' => $request->userAgent(),
+                        'accepted_at' => now(),
+                    ]);
+                }
+            }
+
+            return $user;
+        });
 
         Auth::login($user);
         $user->recordLogin($request->ip());
