@@ -15,6 +15,8 @@ import {
 import axios from "axios";
 import DOMPurify from "dompurify";
 
+const appConfig = (window as any).WorkSphere || { name: "WorkSphere" };
+
 interface FaqArticle {
     id: string;
     title: string;
@@ -153,7 +155,7 @@ onMounted(() => {
                     <h1
                         class="text-4xl font-bold tracking-tight text-[var(--text-primary)] sm:text-6xl mb-6"
                     >
-                        Advice and answers from the CoreSync Team
+                        Advice and answers from the {{ appConfig.name }} Team
                     </h1>
                     <p
                         class="mt-4 text-lg leading-8 text-[var(--text-secondary)] mb-10"
@@ -419,7 +421,7 @@ onMounted(() => {
                     </p>
                 </div>
                 <div class="mt-10 lg:mt-0 lg:ml-8 lg:flex-shrink-0">
-                    <RouterLink to="/support">
+                    <RouterLink to="/public/support">
                         <Button size="lg" class="w-full sm:w-auto shadow-md"
                             >Contact Support</Button
                         >

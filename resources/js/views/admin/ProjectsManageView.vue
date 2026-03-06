@@ -40,7 +40,7 @@ const filters = ref({
     sort_by: 'created_at',
     sort_order: 'desc',
     project_id: '',
-    scope: localStorage.getItem('admin_project_scope') || 'team', // 'team' or 'all'
+    scope: (route.path.startsWith('/admin') && localStorage.getItem('admin_project_scope') === 'all') ? 'all' : 'team',
 });
 
 const viewMode = ref<'list' | 'grid'>('grid');

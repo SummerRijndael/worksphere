@@ -36,8 +36,8 @@
 
 > [!WARNING]
 > **BETA RELEASE NOTICE**<br>
-> WorkSphere is currently in active **BETA** development. Features are subject to change, and you may encounter bugs or instability.<br>
-> **NOT RECOMMENDED FOR PRODUCTION USE without extensive testing.**
+> WorkSphere is currently in active **BETA** development. As such, features are subject to rapid change, and you may encounter bugs or system instability.<br>
+> **NOT RECOMMENDED FOR PRODUCTION USE** without comprehensive testing and validation.
 
 ---
 

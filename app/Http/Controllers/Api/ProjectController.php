@@ -15,10 +15,12 @@ use App\Models\Team;
 use App\Models\User;
 use App\Services\AuditService;
 use App\Services\PermissionService;
+use App\Services\MediaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Str;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class ProjectController extends Controller
@@ -991,5 +993,38 @@ class ProjectController extends Controller
         $client = \App\Models\Client::where('public_id', $publicId)->first();
 
         return $client?->id;
+    }
+
+    /**
+     * Upload a project avatar.
+     */
+    public function uploadAvatar(Request $request, Team $team, Project $project): JsonResponse
+    {
+        $this->authorizeTeamPermission($team, 'projects.update');
+        $this->ensureProjectBelongsToTeam($team, $project);
+
+        $request->validate(['avatar' => ['required', 'image', 'max:2048']]);
+
+        $this->mediaService->attachFromRequest(
+            $project,
+            'avatar',
+            'avatars',
+            Str::random(40).'.webp'
+        );
+
+        return response()->json(new ProjectResource($project->fresh()));
+    }
+
+    /**
+     * Remove the project avatar.
+     */
+    public function deleteAvatar(Team $team, Project $project): JsonResponse
+    {
+        $this->authorizeTeamPermission($team, 'projects.update');
+        $this->ensureProjectBelongsToTeam($team, $project);
+
+        $project->clearMediaCollection('avatars');
+
+        return response()->json(new ProjectResource($project->fresh()));
     }
 }

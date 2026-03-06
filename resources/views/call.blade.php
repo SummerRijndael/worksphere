@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
-    <title>Call — {{ config('app.name', 'CoreSync') }}</title>
+    <title>Call — {{ config('app.name', 'WorkSphere') }}</title>
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.bunny.net">
@@ -21,8 +21,8 @@
 
     <!-- Runtime Config -->
     <script nonce="{{ app(\App\Services\CSPService::class)->getNonce() }}">
-        window.CoreSync = {
-            name: "{{ config('app.name', 'CoreSync') }}",
+        window.WorkSphere = {
+            name: "{{ config('app.name', 'WorkSphere') }}",
             url: "{{ config('app.url') }}",
         };
     </script>

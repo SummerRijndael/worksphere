@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Calendar System Documentation - Coresync V2</title>
+        <title>Calendar System Documentation - WorkSphere</title>
         <script src="https://cdn.tailwindcss.com"></script>
         <link
             href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
@@ -24,7 +24,7 @@
                 <div class="flex justify-between h-16">
                     <div class="flex items-center gap-4">
                         <a
-                            href="../../coresync_v2_doc.html"
+                            href="../../index.html"
                             class="flex items-center text-slate-500 hover:text-indigo-600 transition-colors"
                         >
                             <svg
@@ -114,9 +114,11 @@
                             System Overview
                         </h2>
                         <p class="text-slate-600 leading-relaxed mb-4">
-                            The Coresync V2 Calendar System is a robust scheduling tool that integrates directly with 
-                            Teams and supports Google Calendar synchronization. It offers drag-and-drop event management,
-                            ICS exports, and multi-user event sharing.
+                            The WorkSphere Calendar System is a robust
+                            scheduling tool that integrates directly with Teams
+                            and supports Google Calendar synchronization. It
+                            offers drag-and-drop event management, ICS exports,
+                            and multi-user event sharing.
                         </p>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
                             <div
@@ -127,16 +129,21 @@
                                 </h3>
                                 <ul class="text-sm text-slate-600 space-y-1">
                                     <li>
-                                        📅 <strong>Library:</strong> FullCalendar (Vue 3 Adapter)
+                                        📅
+                                        <strong>Library:</strong> FullCalendar
+                                        (Vue 3 Adapter)
                                     </li>
                                     <li>
-                                        🔄 <strong>Sync:</strong> Google Calendar API (OAuth2)
+                                        🔄 <strong>Sync:</strong> Google
+                                        Calendar API (OAuth2)
                                     </li>
                                     <li>
-                                        📤 <strong>Export:</strong> ICS Generation (spatie/icalendar-generator)
+                                        📤 <strong>Export:</strong> ICS
+                                        Generation (spatie/icalendar-generator)
                                     </li>
                                     <li>
-                                        🎨 <strong>UI:</strong> TailwindCSS + Rekaui
+                                        🎨 <strong>UI:</strong> TailwindCSS +
+                                        Rekaui
                                     </li>
                                 </ul>
                             </div>
@@ -148,19 +155,23 @@
                                 </h3>
                                 <ul class="text-sm text-slate-600 space-y-1">
                                     <li>
-                                        👥 <strong>Team Events:</strong> Shared calendars for teams
+                                        👥 <strong>Team Events:</strong> Shared
+                                        calendars for teams
                                     </li>
                                     <li>
-                                        🔗 <strong>External Sync:</strong> Two-way Google Calendar sync
+                                        🔗
+                                        <strong>External Sync:</strong> Two-way
+                                        Google Calendar sync
                                     </li>
                                     <li>
-                                        📨 <strong>Invites:</strong> Email invitations with .ics attachments
+                                        📨 <strong>Invites:</strong> Email
+                                        invitations with .ics attachments
                                     </li>
                                 </ul>
                             </div>
                         </div>
                     </section>
-                    
+
                     <hr class="my-8 border-slate-200" />
 
                     <!-- Frontend Map -->
@@ -193,7 +204,8 @@
                                                 >Index.vue</span
                                             >
                                             <span class="text-slate-500"
-                                                >// Main Page (FullCalendar Instance)</span
+                                                >// Main Page (FullCalendar
+                                                Instance)</span
                                             >
                                         </div>
                                         <div class="flex gap-2">
@@ -225,7 +237,8 @@
                                                 >ui/MiniCalendar.vue</span
                                             >
                                             <span class="text-slate-500"
-                                                >// Date picker / Sidebar widget</span
+                                                >// Date picker / Sidebar
+                                                widget</span
                                             >
                                         </div>
                                         <div class="flex gap-2">
@@ -254,17 +267,25 @@
                                 <h3 class="font-bold text-slate-900 mb-2">
                                     Controller Layer
                                 </h3>
-                                <div class="text-sm text-slate-600 mb-2 space-y-1">
+                                <div
+                                    class="text-sm text-slate-600 mb-2 space-y-1"
+                                >
                                     <p>
-                                        <code>app/Http/Controllers/Api/TeamController.php</code>
+                                        <code
+                                            >app/Http/Controllers/Api/TeamController.php</code
+                                        >
                                         - Handles shared team events
                                     </p>
                                     <p>
-                                        <code>app/Http/Controllers/Api/CalendarShareController.php</code>
+                                        <code
+                                            >app/Http/Controllers/Api/CalendarShareController.php</code
+                                        >
                                         - Manages public/private sharing
                                     </p>
                                     <p>
-                                        <code>app/Http/Controllers/Api/CalendarOAuthController.php</code>
+                                        <code
+                                            >app/Http/Controllers/Api/CalendarOAuthController.php</code
+                                        >
                                         - Handles Google Auth flow
                                     </p>
                                 </div>
@@ -504,7 +525,8 @@
                                         >Drag & Drop</strong
                                     >
                                     <span class="text-sm text-slate-500"
-                                        >Intuitively reschedule events by dragging them on the view.</span
+                                        >Intuitively reschedule events by
+                                        dragging them on the view.</span
                                     >
                                 </div>
                             </li>
@@ -527,7 +549,8 @@
                                         >Google Sync</strong
                                     >
                                     <span class="text-sm text-slate-500"
-                                        >Two-way synchronization with personal Google Calendars.</span
+                                        >Two-way synchronization with personal
+                                        Google Calendars.</span
                                     >
                                 </div>
                             </li>
@@ -550,7 +573,8 @@
                                         >ICS Export</strong
                                     >
                                     <span class="text-sm text-slate-500"
-                                        >Download events as standard .ics files for external use.</span
+                                        >Download events as standard .ics files
+                                        for external use.</span
                                     >
                                 </div>
                             </li>
@@ -564,7 +588,7 @@
             <div
                 class="max-w-7xl mx-auto px-4 text-center text-sm text-slate-400"
             >
-                Coresync V2 Documentation &bull; Generated by Audit Tool
+                WorkSphere Documentation &bull; Generated by Audit Tool
             </div>
         </footer>
     </body>

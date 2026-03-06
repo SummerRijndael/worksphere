@@ -47,6 +47,7 @@ class Team extends Model implements HasMedia
     protected $hidden = [
         'id',
         'owner_id',
+        'media',
     ];
 
     /**
@@ -178,7 +179,7 @@ class Team extends Model implements HasMedia
      */
     public function owner(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'owner_id');
+        return $this->belongsTo(User::class, 'owner_id', null, 'owner');
     }
 
     /**
@@ -188,7 +189,7 @@ class Team extends Model implements HasMedia
      */
     public function members(): BelongsToMany
     {
-        return $this->belongsToMany(User::class, 'team_user')
+        return $this->belongsToMany(User::class, 'team_user', null, null, null, null, 'members')
             ->withPivot(['role', 'team_role_id', 'joined_at'])
             ->withTimestamps();
     }
@@ -306,6 +307,10 @@ class Team extends Model implements HasMedia
      */
     public function getMemberCountAttribute(): int
     {
+        if (array_key_exists('members_count', $this->getAttributes())) {
+            return (int) $this->getAttribute('members_count');
+        }
+
         return $this->members()->count();
     }
 

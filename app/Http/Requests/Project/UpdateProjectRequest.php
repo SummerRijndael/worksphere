@@ -25,7 +25,7 @@ class UpdateProjectRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'name' => ['sometimes', 'string', 'max:255'],
+            'name' => ['sometimes', 'required', 'string', 'min:1', 'max:255', 'regex:/^[\p{L}\p{N}\p{P}\s]+$/u'],
             'description' => ['nullable', 'string', 'max:5000'],
             'status' => ['sometimes', Rule::enum(ProjectStatus::class)],
             'priority' => ['sometimes', Rule::enum(ProjectPriority::class)],

@@ -118,7 +118,6 @@ export const useEmailStore = defineStore("email", () => {
     const filterDateTo = ref("");
 
     // Persist selected account ID
-    // const selectedAccountId = useStorage<string | null>('coresync_selected_email_account', null);
 
     // Manual user-scoped persistence (Moved to top)
     const selectedAccountId = ref<string | null>(

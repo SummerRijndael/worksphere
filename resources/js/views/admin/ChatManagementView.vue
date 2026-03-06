@@ -5,7 +5,8 @@ import type { Chat } from '@/types/models/chat';
 import { Button, Card, Icon, PageLoader, Alert } from '@/components/ui';
 import { useTitle } from '@vueuse/core';
 
-useTitle('Chat Management - CoreSync');
+const appConfig = (window as any).WorkSphere || { name: "WorkSphere" };
+useTitle(`Chat Management - ${appConfig.name}`);
 
 const chats = ref<Chat[]>([]);
 const loading = ref(true);

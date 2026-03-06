@@ -164,6 +164,58 @@ const editForm = ref({
     skills: [],
 });
 
+const newSkill = ref("");
+
+const addSkill = () => {
+    if (!newSkill.value.trim()) return;
+
+    const skillsToAdd = newSkill.value
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s !== "" && s.length <= 40);
+
+    const currentSkills = editForm.value.skills || [];
+
+    for (const skill of skillsToAdd) {
+        if (currentSkills.length < 15 && !currentSkills.includes(skill)) {
+            currentSkills.push(skill);
+        }
+    }
+
+    editForm.value.skills = currentSkills;
+    newSkill.value = "";
+};
+
+const handleSkillKeydown = (e) => {
+    if (e.key === "," || e.key === "Enter") {
+        e.preventDefault();
+        addSkill();
+    }
+};
+
+const handleSkillPaste = (e) => {
+    e.preventDefault();
+    const pastedText = (e.clipboardData || window.clipboardData).getData(
+        "text",
+    );
+    if (!pastedText) return;
+
+    const skillsToAdd = pastedText
+        .split(/[,\n]/)
+        .map((s) => s.trim())
+        .filter((s) => s !== "" && s.length <= 40);
+
+    const currentSkills = editForm.value.skills || [];
+
+    for (const skill of skillsToAdd) {
+        if (currentSkills.length < 15 && !currentSkills.includes(skill)) {
+            currentSkills.push(skill);
+        }
+    }
+
+    editForm.value.skills = currentSkills;
+};
+
 // Init form when user data loads
 
 // Get current user permissions from auth store
@@ -969,7 +1021,23 @@ onMounted(async () => {
                                         v-model="editForm.bio"
                                         class="input w-full h-24 resize-none"
                                         placeholder="Short biography..."
+                                        maxlength="1000"
                                     ></textarea>
+                                    <p
+                                        v-if="isEditing"
+                                        class="text-xs mt-1 text-right transition-colors duration-200"
+                                        :class="[
+                                            (editForm.bio?.length || 0) >= 1000
+                                                ? 'text-red-500 font-medium'
+                                                : (editForm.bio?.length || 0) >=
+                                                    900
+                                                  ? 'text-orange-500'
+                                                  : 'text-[var(--text-muted)]',
+                                        ]"
+                                    >
+                                        {{ editForm.bio?.length || 0 }}/1000
+                                        characters
+                                    </p>
                                     <p
                                         v-else-if="user.bio"
                                         class="whitespace-pre-line"
@@ -1071,22 +1139,26 @@ onMounted(async () => {
                                         </div>
                                         <div class="flex gap-2 max-w-sm">
                                             <input
+                                                v-model="newSkill"
                                                 type="text"
                                                 class="input"
-                                                placeholder="Add skill (Enter)"
-                                                @keydown.enter.prevent="
-                                                    $event.target.value.trim() &&
-                                                    (editForm.skills.push(
-                                                        $event.target.value.trim(),
-                                                    ),
-                                                    ($event.target.value = ''))
+                                                :placeholder="
+                                                    editForm.skills.length >= 15
+                                                        ? 'Limit reached (15)'
+                                                        : 'Add skill (comma or enter)'
                                                 "
+                                                :disabled="
+                                                    editForm.skills.length >= 15
+                                                "
+                                                @keydown="handleSkillKeydown"
+                                                @paste="handleSkillPaste"
+                                                @blur="addSkill"
                                             />
                                         </div>
                                         <p
                                             class="text-xs text-[var(--text-muted)]"
                                         >
-                                            Press Enter to add tags
+                                            Type or paste comma-separated skills
                                         </p>
                                     </div>
                                     <div

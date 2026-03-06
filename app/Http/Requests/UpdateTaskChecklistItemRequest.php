@@ -38,7 +38,7 @@ class UpdateTaskChecklistItemRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'text' => ['sometimes', 'string', 'max:500'],
+            'text' => ['sometimes', 'string', 'min:1', 'max:500', 'regex:/^[\p{L}\p{N}\p{P}\p{S}\s]+$/u'],
             'status' => ['sometimes', Rule::enum(TaskChecklistItemStatus::class)],
             'position' => ['sometimes', 'integer', 'min:0'],
         ];
@@ -52,7 +52,9 @@ class UpdateTaskChecklistItemRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'text.min' => 'The checklist item text cannot be empty.',
             'text.max' => 'The checklist item text must not exceed 500 characters.',
+            'text.regex' => 'The checklist item text contains invalid characters.',
             'status.Illuminate\Validation\Rules\Enum' => 'The status must be one of: todo, in_progress, on_hold, done.',
         ];
     }

@@ -141,8 +141,13 @@ api.interceptors.response.use(
 
             // Don't redirect to login if on meeting pages (guests access meetings without auth)
             // or auth pages (prevent race conditions during login flows)
-            const isMeetingPage = window.location.pathname.startsWith("/m/");
-            if (!window.location.pathname.startsWith("/auth") && !isMeetingPage) {
+            // or public-facing informational pages (FAQ, Support, Terms, Privacy)
+            const publicRoutes = ["/", "/terms", "/privacy"];
+            const isPublicPage = publicRoutes.includes(window.location.pathname) || 
+                               window.location.pathname.startsWith("/public/") ||
+                               window.location.pathname.startsWith("/m/");
+
+            if (!window.location.pathname.startsWith("/auth") && !isPublicPage) {
                 window.location.href = "/auth/login";
             }
             return Promise.reject(error);

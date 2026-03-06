@@ -66,7 +66,12 @@ class ClientController extends Controller
     {
         $user = $request->user();
         $isAdmin = $user->hasRole('administrator');
-        $query = Client::query()->with(['team']);
+        $query = Client::query()
+            ->with([
+                'team' => function ($query) {
+                    $query->withCount(['members'])->with(['media']);
+                },
+            ]);
 
         // Check for route parameter 'team' from teams/{team}/clients
         $routeTeam = $request->route('team');

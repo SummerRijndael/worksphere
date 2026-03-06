@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, onMounted, computed } from "vue";
 import axios from "axios";
 import { useRoute } from "vue-router";
 import Card from "@/components/ui/Card.vue";
@@ -44,8 +44,6 @@ const setSort = (key) => {
         sortOrder.value = "desc";
     }
 };
-
-import { computed } from "vue";
 
 onMounted(() => {
     fetchMemberStats();

@@ -306,7 +306,9 @@ function downloadRecoveryCodes() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'coresync-recovery-codes.txt';
+    const appConfig = (window as any).WorkSphere || { name: "WorkSphere" };
+    const filename = `${appConfig.name.toLowerCase().replace(/\s+/g, '-')}-recovery-codes.txt`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
 }

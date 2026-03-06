@@ -74,6 +74,8 @@ class Project extends Model implements HasMedia
         'member_count',
         'is_overdue',
         'days_until_due',
+        'avatar_url',
+        'has_avatar',
     ];
 
     /**
@@ -168,6 +170,11 @@ class Project extends Model implements HasMedia
      */
     public function registerMediaCollections(): void
     {
+        $this->addMediaCollection('avatars')
+            ->useDisk('public')
+            ->singleFile()
+            ->useFallbackUrl(config('app.url').'/images/defaults/project-avatar.png');
+
         $this->addMediaCollection('attachments')
             ->useDisk('private');
 
@@ -193,7 +200,7 @@ class Project extends Model implements HasMedia
             ->sharpen(10)
             ->format('webp')
             ->optimize()
-            ->performOnCollections('gallery');
+            ->performOnCollections('gallery', 'avatars');
 
         $this->addMediaConversion('preview')
             ->width(800)
@@ -309,6 +316,32 @@ class Project extends Model implements HasMedia
         }
 
         return (int) now()->diffInDays($this->due_date, false);
+    }
+
+    /**
+     * Get avatar URL attribute.
+     */
+    public function getAvatarUrlAttribute(): ?string
+    {
+        return $this->getAvatarData()->getUrl();
+    }
+
+    /**
+     * Check if the project has a custom avatar.
+     */
+    public function getHasAvatarAttribute(): bool
+    {
+        return $this->hasMedia('avatars');
+    }
+
+    /**
+     * Get full avatar data from AvatarService.
+     *
+     * @param  string  $variant  'optimized' or 'thumb'
+     */
+    public function getAvatarData(string $variant = 'optimized'): \App\Contracts\AvatarData
+    {
+        return app(\App\Contracts\AvatarContract::class)->resolve($this, $variant);
     }
 
     /**

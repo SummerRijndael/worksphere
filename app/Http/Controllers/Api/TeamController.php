@@ -1174,9 +1174,7 @@ class TeamController extends Controller
             $team,
             'avatar',
             'avatars',
-            Str::random(40).'.webp',
-            null,
-            'public' // Force public disk
+            Str::random(40).'.webp'
         );
 
         return response()->json($team->fresh()->load('owner'));

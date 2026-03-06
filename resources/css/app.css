@@ -14,7 +14,7 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* ============================================
-   DESIGN SYSTEM - CORESYNC
+   DESIGN SYSTEM - WorkSphere
    Professional Modern Minimalist Theme
    ============================================ */
 
@@ -1036,4 +1036,3 @@ a:hover {
 .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: var(--color-neutral-600);
 }
-

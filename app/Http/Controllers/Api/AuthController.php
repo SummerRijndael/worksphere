@@ -7,6 +7,7 @@ use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\RegisterRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
+use App\Rules\Honeypot;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Auth\Events\Verified;
@@ -323,7 +324,19 @@ class AuthController extends Controller
     {
         $request->validate([
             'email' => ['required', 'email'],
+            'security_field' => [new Honeypot],
         ]);
+
+        // Rate Limit Check
+        $key = 'forgot-password|'.$request->ip();
+        if (\Illuminate\Support\Facades\RateLimiter::tooManyAttempts($key, 3)) {
+            $seconds = \Illuminate\Support\Facades\RateLimiter::availableIn($key);
+            return response()->json([
+                'message' => "Too many password reset attempts. Please try again in $seconds seconds.",
+            ], 429);
+        }
+
+        \Illuminate\Support\Facades\RateLimiter::hit($key, 3600); // 3 per hour
 
         $status = Password::sendResetLink(
             $request->only('email')
@@ -690,6 +703,7 @@ class AuthController extends Controller
         $request->validate([
             'token' => 'required|string',
             'agreed' => 'required|accepted',
+            'security_field' => [new Honeypot],
         ]);
 
         // Rate Limit Check by Fingerprint

@@ -41,13 +41,13 @@ const supportEmail = computed(
                 <p
                     class="text-amber-700 dark:text-amber-300 text-sm leading-relaxed"
                 >
-                    Please be advised that this application is currently in an
-                    <strong>Beta Build Stage</strong>. Many features are still
-                    in a demonstration or active development state.
+                    Please be advised that this application is currently in a
+                    <strong>beta development stage</strong>. Many features are
+                    still in a demonstration or active development state.
                     Functionality may be limited, unstable, or subject to
-                    significant changes or removal without prior notice. Data
-                    persistence and backward compatibility are not guaranteed
-                    during this phase.
+                    significant changes or removal without prior notice.
+                    Furthermore, data persistence and backward compatibility
+                    are not guaranteed during this phase.
                 </p>
             </div>
 
@@ -60,7 +60,7 @@ const supportEmail = computed(
                 <p class="text-[var(--text-secondary)] leading-relaxed">
                     By accessing or using {{ companyName }} ("the Service"), you
                     agree to be bound by these Terms of Service ("Terms"). You
-                    acknowledge the Beta nature of the Service as described
+                    acknowledge the beta nature of the Service as described
                     above. If you disagree with any part of the terms, you may
                     not access the Service. These Terms apply to all visitors,
                     users, and others who access or use the Service.
@@ -76,11 +76,11 @@ const supportEmail = computed(
                 <p class="text-[var(--text-secondary)] leading-relaxed">
                     {{ companyName }} is a comprehensive project management and
                     team collaboration platform.
-                    <strong>The Service is currently in an Beta phase.</strong>
+                    <strong>The Service is currently in a beta phase.</strong>
                     This means that features and capabilities are rapidly
                     evolving. Tools for task management, project tracking, team
                     communication, and analytics are provided for testing and
-                    evaluation purposes. The Service is provided "as is" and we
+                    evaluation purposes. The Service is provided "as is," and we
                     expressly reserve the right to modify, suspend, remove, or
                     discontinue any part of the Service, including specific
                     features or data, at any time without liability.
