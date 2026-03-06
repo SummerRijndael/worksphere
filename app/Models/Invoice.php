@@ -46,10 +46,13 @@ class Invoice extends Model implements HasMedia
         'total',
         'currency',
         'pdf_path',
+        'pdf_password',
         'sent_at',
         'viewed_at',
         'paid_at',
         'created_by',
+        'sent_by',
+        'address_to',
     ];
 
     /**
@@ -174,6 +177,16 @@ class Invoice extends Model implements HasMedia
     }
 
     /**
+     * Get the user who sent this invoice.
+     *
+     * @return BelongsTo<User, Invoice>
+     */
+    public function sentBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'sent_by');
+    }
+
+    /**
      * Get the invoice items.
      *
      * @return HasMany<InvoiceItem>
@@ -243,7 +256,7 @@ class Invoice extends Model implements HasMedia
     /**
      * Mark the invoice as paid.
      */
-    public function markAsPaid(): bool
+    public function markAsPaid(?User $recordedBy = null): bool
     {
         if (! $this->status->canRecordPayment()) {
             return false;
@@ -251,6 +264,10 @@ class Invoice extends Model implements HasMedia
 
         $this->status = InvoiceStatus::Paid;
         $this->paid_at = now();
+
+        if ($recordedBy) {
+            $this->sent_by = $recordedBy->id;
+        }
 
         return $this->save();
     }
@@ -415,5 +432,22 @@ class Invoice extends Model implements HasMedia
     public function scopeWithStatus(Builder $query, InvoiceStatus $status): Builder
     {
         return $query->where('status', $status->value);
+    }
+
+    /**
+     * Register media collections.
+     */
+    public function registerMediaCollections(): void
+    {
+        $this->addMediaCollection('invoices')
+            ->useDisk('private')
+            ->singleFile();
+
+        $this->addMediaCollection('receipts')
+            ->useDisk('private')
+            ->singleFile();
+
+        $this->addMediaCollection('payment_proofs')
+            ->useDisk('private');
     }
 }

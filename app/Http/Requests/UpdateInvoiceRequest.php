@@ -29,6 +29,7 @@ class UpdateInvoiceRequest extends FormRequest
             'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'discount_amount' => ['nullable', 'numeric', 'min:0'],
             'currency' => ['nullable', 'string', 'size:3'],
+            'address_to' => ['nullable', 'string', 'max:500'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'terms' => ['nullable', 'string', 'max:5000'],
             'items' => ['sometimes', 'array', 'min:1'],

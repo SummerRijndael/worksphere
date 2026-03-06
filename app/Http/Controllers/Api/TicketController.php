@@ -117,10 +117,10 @@ class TicketController extends Controller
             ->where('status', 'active')
             ->where(function ($query) {
                 $query->whereHas('roles', function ($q) {
-                    $q->whereIn('name', ['administrator', 'support_staff', 'support']);
+                    $q->whereIn('name', ['administrator', 'it_support']);
                 })
                     ->orWhereHas('permissions', function ($q) {
-                        $q->where('name', 'tickets.assign');
+                        $q->whereIn('name', ['tickets.assign', 'tickets.manage']);
                     });
             })
             ->select(['id', 'public_id', 'name', 'email'])
@@ -185,6 +185,8 @@ class TicketController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
+        $this->authorize('create', Ticket::class);
+
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',

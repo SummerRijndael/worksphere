@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from "vue";
+import { ref, onMounted, computed, watch } from "vue";
 import axios from "axios";
 import { useRoute } from "vue-router";
 import Card from "@/components/ui/Card.vue";
@@ -14,10 +14,13 @@ const sortKey = ref("total_assigned");
 const sortOrder = ref("desc");
 
 const fetchMemberStats = async () => {
+    const identifier = route.params.identifier;
+    if (!identifier) return;
+
     loading.value = true;
     try {
         const response = await axios.get(
-            `/api/teams/${route.params.public_id}/stats/analytics-members`,
+            `/api/teams/${identifier}/stats/analytics-members`,
         );
         members.value = response.data;
     } catch (error) {
@@ -48,6 +51,11 @@ const setSort = (key) => {
 onMounted(() => {
     fetchMemberStats();
 });
+
+watch(() => route.params.identifier, () => {
+    fetchMemberStats();
+});
+
 </script>
 
 <template>

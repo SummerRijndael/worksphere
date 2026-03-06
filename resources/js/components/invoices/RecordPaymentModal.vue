@@ -97,7 +97,7 @@ const closeModal = () => {
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div class="space-y-1">
                     <label
-                        class="text-sm font-medium text-[var(--text-secondary)]"
+                        class="text-sm font-medium text-(--text-secondary)"
                     >
                         Payment Date
                     </label>
@@ -106,19 +106,19 @@ const closeModal = () => {
 
                 <div class="space-y-1">
                     <label
-                        class="text-sm font-medium text-[var(--text-secondary)]"
+                        class="text-sm font-medium text-(--text-secondary)"
                     >
                         Amount
                     </label>
                     <div class="relative">
                         <Input
-                            :value="invoice.total"
+                            :model-value="invoice.total"
                             disabled
-                            class="bg-[var(--surface-secondary)]"
+                            class="bg-(--surface-secondary)"
                         >
                             <template #prefix>
                                 <span
-                                    class="text-xs font-semibold text-[var(--text-muted)]"
+                                    class="text-xs font-semibold text-(--text-muted)"
                                     >{{ invoice.currency }}</span
                                 >
                             </template>
@@ -128,18 +128,18 @@ const closeModal = () => {
             </div>
 
             <div class="space-y-1">
-                <label class="text-sm font-medium text-[var(--text-secondary)]">
+                <label class="text-sm font-medium text-(--text-secondary)">
                     Proof of Payment (Optional)
                 </label>
                 <div class="flex items-center justify-center w-full">
                     <label
-                        class="flex flex-col items-center justify-center w-full h-32 border-2 border-[var(--border-default)] border-dashed rounded-lg cursor-pointer bg-[var(--surface-primary)] hover:bg-[var(--surface-secondary)] transition-colors"
+                        class="flex flex-col items-center justify-center w-full h-32 border-2 border-(--border-default) border-dashed rounded-lg cursor-pointer bg-(--surface-primary) hover:bg-(--surface-secondary) transition-colors"
                     >
                         <div
                             class="flex flex-col items-center justify-center pt-5 pb-6"
                         >
                             <svg
-                                class="w-8 h-8 mb-4 text-[var(--text-muted)]"
+                                class="w-8 h-8 mb-4 text-(--text-muted)"
                                 aria-hidden="true"
                                 xmlns="http://www.w3.org/2000/svg"
                                 fill="none"
@@ -154,14 +154,14 @@ const closeModal = () => {
                                 />
                             </svg>
                             <p
-                                class="mb-2 text-sm text-[var(--text-secondary)]"
+                                class="mb-2 text-sm text-(--text-secondary)"
                             >
                                 <span class="font-semibold"
                                     >Click to upload</span
                                 >
                                 or drag and drop
                             </p>
-                            <p class="text-xs text-[var(--text-muted)]">
+                            <p class="text-xs text-(--text-muted)">
                                 PDF, JPG, PNG (Max 10MB)
                             </p>
                         </div>
@@ -175,10 +175,10 @@ const closeModal = () => {
                 </div>
                 <div
                     v-if="paymentForm.proof"
-                    class="flex items-center gap-2 mt-2 p-2 bg-[var(--surface-secondary)] rounded-md"
+                    class="flex items-center gap-2 mt-2 p-2 bg-(--surface-secondary) rounded-md"
                 >
                     <span
-                        class="text-xs text-[var(--text-primary)] truncate flex-1"
+                        class="text-xs text-(--text-primary) truncate flex-1"
                         >{{ paymentForm.proof.name }}</span
                     >
                     <Button
@@ -191,13 +191,13 @@ const closeModal = () => {
             </div>
 
             <div class="space-y-1">
-                <label class="text-sm font-medium text-[var(--text-secondary)]">
+                <label class="text-sm font-medium text-(--text-secondary)">
                     Note (Optional)
                 </label>
                 <textarea
                     v-model="paymentForm.note"
                     rows="3"
-                    class="flex w-full rounded-md border border-[var(--border-default)] bg-[var(--surface-primary)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--interactive-primary)] placeholder:text-[var(--text-muted)]"
+                    class="flex w-full rounded-md border border-(--border-default) bg-(--surface-primary) px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-(--interactive-primary) placeholder:text-(--text-muted)"
                     placeholder="Enter payment details (e.g., Check #1234)"
                 ></textarea>
             </div>
@@ -205,14 +205,10 @@ const closeModal = () => {
             <div class="flex items-center space-x-2 py-2">
                 <Checkbox
                     id="send_receipt"
-                    v-model:checked="paymentForm.send_receipt"
+                    v-model="paymentForm.send_receipt"
+                    label="Send payment receipt to client"
+                    description="The client will receive a PDF receipt via email"
                 />
-                <label
-                    for="send_receipt"
-                    class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-[var(--text-primary)] cursor-pointer"
-                >
-                    Send receipt to client
-                </label>
             </div>
         </div>
 

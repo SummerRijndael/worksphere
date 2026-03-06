@@ -49,6 +49,7 @@ class InvoiceService
                 'currency' => $data['currency'] ?? 'USD',
                 'notes' => $data['notes'] ?? null,
                 'terms' => $data['terms'] ?? null,
+                'address_to' => $data['address_to'] ?? null,
                 'created_by' => $creator->id,
             ]);
 
@@ -110,6 +111,7 @@ class InvoiceService
                 'currency' => $data['currency'] ?? $invoice->currency,
                 'notes' => $data['notes'] ?? $invoice->notes,
                 'terms' => $data['terms'] ?? $invoice->terms,
+                'address_to' => $data['address_to'] ?? $invoice->address_to,
             ]);
 
             $invoice->save();
@@ -195,6 +197,7 @@ class InvoiceService
 
         // Mark as sent
         $invoice->markAsSent($targetEmail);
+        $invoice->update(['sent_by' => $sentBy->id]);
 
         // Send notification
         $invoice->client->notify(new InvoiceSent($invoice, $pdfPath));
@@ -237,10 +240,11 @@ class InvoiceService
             );
         }
 
-        $invoice->update([
-            'status' => InvoiceStatus::Paid,
-            'paid_at' => $date,
-        ]);
+        $invoice->markAsPaid($recordedBy);
+
+        if ($note) {
+            $invoice->update(['notes' => $invoice->notes ? $invoice->notes . "\n\nPayment Note: " . $note : "Payment Note: " . $note]);
+        }
 
         if ($sendReceipt) {
             $this->sendReceipt($invoice, $date, $note);
@@ -278,12 +282,21 @@ class InvoiceService
             'note' => $note,
         ]);
 
-        $pdfPath = "receipts/{$invoice->public_id}-receipt.pdf";
-        Storage::disk('local')->put($pdfPath, $pdf->output());
+        // Apply password if set
+        if ($invoice->pdf_password) {
+            $dompdf = $pdf->getDomPDF();
+            $dompdf->render();
+            $dompdf->getCanvas()->get_cpdf()->setEncryption($invoice->pdf_password, config('app.key'));
+        }
+
+        $filename = "{$invoice->invoice_number}-receipt.pdf";
+        $media = $invoice->addMediaFromStream($pdf->output())
+            ->usingFileName($filename)
+            ->toMediaCollection('receipts');
 
         // Send Receipt Email
         \Illuminate\Support\Facades\Mail::to($invoice->client->email)
-            ->send(new \App\Mail\PaymentReceiptMail($invoice, $pdfPath, $date));
+            ->send(new \App\Mail\PaymentReceiptMail($invoice, $media->getPath(), $date));
 
         return true;
     }
@@ -299,12 +312,16 @@ class InvoiceService
     /**
      * Cancel an invoice.
      */
-    public function cancelInvoice(Invoice $invoice, User $cancelledBy): bool
+    public function cancelInvoice(Invoice $invoice, User $cancelledBy, ?string $reason = null): bool
     {
         $oldStatus = $invoice->status->value;
 
         if (! $invoice->cancel()) {
             return false;
+        }
+
+        if ($reason) {
+            $invoice->update(['notes' => $invoice->notes ? $invoice->notes . "\n\nCancellation Reason: " . $reason : "Cancellation Reason: " . $reason]);
         }
 
         // Audit log
@@ -315,7 +332,7 @@ class InvoiceService
             $cancelledBy,
             ['status' => $oldStatus],
             ['status' => InvoiceStatus::Cancelled->value],
-            ['action' => 'cancelled']
+            ['action' => 'cancelled', 'reason' => $reason]
         );
 
         return true;
@@ -349,12 +366,19 @@ class InvoiceService
             'invoice' => $invoice,
         ]);
 
-        $filename = "invoices/{$invoice->public_id}.pdf";
-        Storage::disk('local')->put($filename, $pdf->output());
+        // Apply password if set
+        if ($invoice->pdf_password) {
+            $dompdf = $pdf->getDomPDF();
+            $dompdf->render();
+            $dompdf->getCanvas()->get_cpdf()->setEncryption($invoice->pdf_password, config('app.key'));
+        }
 
-        $invoice->update(['pdf_path' => $filename]);
+        $filename = "{$invoice->invoice_number}.pdf";
+        $media = $invoice->addMediaFromStream($pdf->output())
+            ->usingFileName($filename)
+            ->toMediaCollection('invoices');
 
-        return $filename;
+        return $media->getPath();
     }
 
     /**
@@ -362,8 +386,10 @@ class InvoiceService
      */
     public function getPdfPath(Invoice $invoice): string
     {
-        if ($invoice->pdf_path && Storage::disk('local')->exists($invoice->pdf_path)) {
-            return $invoice->pdf_path;
+        $media = $invoice->getFirstMedia('invoices');
+
+        if ($media && file_exists($media->getPath())) {
+            return $media->getPath();
         }
 
         return $this->generatePdf($invoice);

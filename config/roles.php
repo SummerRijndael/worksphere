@@ -70,11 +70,17 @@ return [
             'permissions' => [
                 'dashboard.view',
                 'users.view',
-                'users.update', // Reset password/MFA often falls under update
-                'users.manage_status',
+                'users.update',
                 'users.manage_status',
                 'tickets.manage',
+                'tickets.create',
                 'reports.view',
+                'notes.view',
+                'notes.create',
+                'notes.update',
+                'notes.delete',
+                'teams.view',
+                'teams.create',
             ],
         ],
         'user' => [
@@ -143,6 +149,9 @@ return [
 
         // Ticket Management (Global level)
         'tickets' => [
+            'tickets.view_own' => 'View own tickets',
+            'tickets.create' => 'Create tickets',
+            'tickets.update_own' => 'Update own tickets',
             'tickets.manage' => 'Manage all tickets',
         ],
 
@@ -296,14 +305,13 @@ return [
             'clients.manage_portal' => 'Manage client portal access',
         ],
 
-        // Invoices
         'invoices' => [
-            'invoices.view' => 'View invoices',
+            'invoices.view' => 'View invoices only',
             'invoices.create' => 'Create invoices',
             'invoices.update' => 'Update invoices',
-            'invoices.delete' => 'Delete invoices',
+            'invoices.record_payment' => 'Record invoice payments and send',
             'invoices.send' => 'Send invoices to clients',
-            'invoices.record_payment' => 'Record invoice payments',
+            'invoices.manage' => 'Full invoice management (create, update, delete, record, void)',
         ],
 
         // Invoice Templates
@@ -412,9 +420,7 @@ return [
             'invoices.view',
             'invoices.create',
             'invoices.update',
-            'invoices.delete',
-            'invoices.send',
-            'invoices.record_payment',
+            'invoices.manage',
 
             // Invoice templates
             'invoice_templates.view',
@@ -486,8 +492,8 @@ return [
             'invoices.view',
             'invoices.create',
             'invoices.update',
-            'invoices.send',
             'invoices.record_payment',
+            'invoices.send',
 
             // Invoice templates
             'invoice_templates.view',

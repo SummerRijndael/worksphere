@@ -62,7 +62,7 @@ enum InvoiceStatus: string
      */
     public function canRecordPayment(): bool
     {
-        return in_array($this, [self::Sent, self::Viewed, self::Overdue]);
+        return in_array($this, [self::Draft, self::Sent, self::Viewed, self::Overdue]);
     }
 
     /**

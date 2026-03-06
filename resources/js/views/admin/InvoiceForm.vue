@@ -14,6 +14,9 @@ import {
     Plus,
     Trash2,
     Save,
+    Eye,
+    EyeOff,
+    RefreshCw,
     // Calendar, FileText, XCircle, CheckCircle2 removed
 } from "lucide-vue-next";
 import axios from "axios";
@@ -49,7 +52,20 @@ const form = ref({
     terms: "",
     tax_rate: 0,
     discount_amount: 0,
+    address_to: "",
+    pdf_password: "",
 });
+
+const showPassword = ref(false);
+
+const generatePassword = () => {
+    const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
+    let retVal = "";
+    for (let i = 0, n = charset.length; i < 12; ++i) {
+        retVal += charset.charAt(Math.floor(Math.random() * n));
+    }
+    form.value.pdf_password = retVal;
+};
 
 const teamOptions = computed(() => {
     return (authStore.user?.teams || []).map((t) => ({
@@ -199,6 +215,8 @@ const fetchData = async () => {
                 terms: invoice.terms || "",
                 tax_rate: Number(invoice.tax_rate),
                 discount_amount: Number(invoice.discount_amount),
+                address_to: invoice.address_to || "",
+                pdf_password: invoice.pdf_password || "",
             };
         }
     } catch (err) {
@@ -525,12 +543,24 @@ onMounted(() => {
                             >
                             <Input type="date" v-model="form.issue_date" />
                         </div>
-                        <div class="space-y-1">
-                            <label
-                                class="text-sm font-medium text-[var(--text-primary)]"
-                                >Due Date</label
-                            >
-                            <Input type="date" v-model="form.due_date" />
+                        <div class="section-title">Billing Details</div>
+                        <Input
+                            v-model="form.address_to"
+                            label="Address To (Override)"
+                            placeholder="Specific address for this invoice"
+                            description="Optional: Overrides the default client address on the PDF"
+                        />
+                        <div class="grid grid-cols-2 gap-4">
+                            <Input
+                                v-model="form.issue_date"
+                                type="date"
+                                label="Issue Date"
+                            />
+                            <Input
+                                v-model="form.due_date"
+                                type="date"
+                                label="Due Date"
+                            />
                         </div>
                         <div class="space-y-1">
                             <label
@@ -542,6 +572,47 @@ onMounted(() => {
                                 maxlength="3"
                                 class="uppercase"
                             />
+                        </div>
+
+                        <!-- PDF Password Protection -->
+                        <div class="pt-4 border-t border-[var(--border-default)] space-y-3">
+                            <div class="flex items-center justify-between">
+                                <label class="text-sm font-medium text-[var(--text-primary)]">PDF Password Protection</label>
+                            </div>
+                            <div class="relative group">
+                                <Input
+                                    v-model="form.pdf_password"
+                                    :type="showPassword ? 'text' : 'password'"
+                                    placeholder="Optional PDF password"
+                                    class="pr-20"
+                                />
+                                <div class="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1 px-1">
+                                    <Button
+                                        variant="ghost"
+                                        size="xs"
+                                        type="button"
+                                        class="h-7 w-7 p-0"
+                                        @click="showPassword = !showPassword"
+                                        title="Toggle Visibility"
+                                    >
+                                        <Eye v-if="!showPassword" class="w-3.5 h-3.5" />
+                                        <EyeOff v-else class="w-3.5 h-3.5" />
+                                    </Button>
+                                    <Button
+                                        variant="ghost"
+                                        size="xs"
+                                        type="button"
+                                        class="h-7 w-7 p-0"
+                                        @click="generatePassword"
+                                        title="Generate Password"
+                                    >
+                                        <RefreshCw class="w-3.5 h-3.5" />
+                                    </Button>
+                                </div>
+                            </div>
+                            <p class="text-[10px] text-[var(--text-muted)] italic">
+                                If set, the PDF will be encrypted with this password.
+                            </p>
                         </div>
                     </Card>
 

@@ -28,7 +28,7 @@ class InvoiceController extends Controller
      */
     public function index(Request $request, Team $team): AnonymousResourceCollection
     {
-        $this->authorizeTeamPermission($team, 'invoices.view');
+        $this->authorize('viewAny', [Invoice::class, $team]);
 
         $query = Invoice::query()
             ->forTeam($team)
@@ -91,7 +91,7 @@ class InvoiceController extends Controller
      */
     public function stats(Request $request, Team $team): JsonResponse
     {
-        $this->authorizeTeamPermission($team, 'invoices.view');
+        $this->authorize('viewAny', [Invoice::class, $team]);
 
         $baseQuery = Invoice::query()->forTeam($team);
 
@@ -119,7 +119,7 @@ class InvoiceController extends Controller
      */
     public function store(StoreInvoiceRequest $request, Team $team): InvoiceResource
     {
-        $this->authorizeTeamPermission($team, 'invoices.create');
+        $this->authorize('create', [Invoice::class, $team]);
 
         $client = Client::where('public_id', $request->input('client_id'))->firstOrFail();
 
@@ -164,7 +164,7 @@ class InvoiceController extends Controller
      */
     public function update(UpdateInvoiceRequest $request, Team $team, Invoice $invoice): InvoiceResource
     {
-        $this->authorizeTeamPermission($team, 'invoices.update');
+        $this->authorize('update', $invoice);
 
         // Verify invoice belongs to team
         if ($invoice->team_id !== $team->id) {
@@ -202,7 +202,7 @@ class InvoiceController extends Controller
      */
     public function destroy(Request $request, Team $team, Invoice $invoice): JsonResponse
     {
-        $this->authorizeTeamPermission($team, 'invoices.delete');
+        $this->authorize('delete', $invoice);
 
         // Verify invoice belongs to team
         if ($invoice->team_id !== $team->id) {
@@ -219,12 +219,7 @@ class InvoiceController extends Controller
      */
     public function send(Request $request, Team $team, Invoice $invoice): JsonResponse
     {
-        $this->authorizeTeamPermission($team, 'invoices.send');
-
-        // Verify invoice belongs to team
-        if ($invoice->team_id !== $team->id) {
-            abort(404);
-        }
+        $this->authorize('send', $invoice);
 
         $request->validate([
             'email' => ['nullable', 'email'],
@@ -251,14 +246,9 @@ class InvoiceController extends Controller
     /**
      * Record a payment for the invoice.
      */
-    public function recordPayment(Request $request, Team $team, Invoice $invoice): JsonResponse
+    public function recordPayment(Request $request, Team $team, Invoice $invoice): InvoiceResource
     {
-        $this->authorizeTeamPermission($team, 'invoices.record_payment');
-
-        // Verify invoice belongs to team
-        if ($invoice->team_id !== $team->id) {
-            abort(404);
-        }
+        $this->authorize('recordPayment', $invoice);
 
         $validated = $request->validate([
             'date' => ['required', 'date'],
@@ -267,20 +257,16 @@ class InvoiceController extends Controller
             'send_receipt' => ['nullable', 'boolean'],
         ]);
 
-        try {
-            $updatedInvoice = $this->invoiceService->recordPayment(
-                invoice: $invoice,
-                recordedBy: $request->user(),
-                date: $validated['date'],
-                note: $validated['note'] ?? null,
-                proof: $request->file('proof'),
-                sendReceipt: (bool) ($validated['send_receipt'] ?? false)
-            );
+        $updatedInvoice = $this->invoiceService->recordPayment(
+            invoice: $invoice,
+            recordedBy: $request->user(),
+            date: $validated['date'],
+            note: $validated['note'] ?? null,
+            proof: $request->file('proof'),
+            sendReceipt: (bool) ($validated['send_receipt'] ?? false)
+        );
 
-            return response()->json(new InvoiceResource($updatedInvoice));
-        } catch (\Exception $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
-        }
+        return new InvoiceResource($updatedInvoice);
     }
 
     /**
@@ -288,16 +274,23 @@ class InvoiceController extends Controller
      */
     public function cancel(Request $request, Team $team, Invoice $invoice): JsonResponse
     {
-        $this->authorizeTeamPermission($team, 'invoices.update');
+        $this->authorize('cancel', $invoice);
 
-        // Verify invoice belongs to team
-        if ($invoice->team_id !== $team->id) {
-            abort(404);
+        $request->validate([
+            'password' => ['required', 'string'],
+            'reason' => ['required', 'string', 'max:1000'],
+        ]);
+
+        if (! \Illuminate\Support\Facades\Hash::check($request->input('password'), $request->user()->password)) {
+            return response()->json([
+                'message' => 'Invalid password.',
+            ], 422);
         }
 
         $success = $this->invoiceService->cancelInvoice(
             invoice: $invoice,
-            cancelledBy: $request->user()
+            cancelledBy: $request->user(),
+            reason: $request->input('reason')
         );
 
         if (! $success) {
@@ -317,21 +310,27 @@ class InvoiceController extends Controller
      */
     public function downloadPdf(Request $request, Team $team, Invoice $invoice)
     {
-        $this->authorizeTeamPermission($team, 'invoices.view');
+        $this->authorize('view', $invoice);
 
         // Verify invoice belongs to team
         if ($invoice->team_id !== $team->id) {
             abort(404);
         }
 
-        $pdfPath = $this->invoiceService->getPdfPath($invoice);
+        $media = $invoice->getFirstMedia('invoices');
 
-        if (! Storage::disk('local')->exists($pdfPath)) {
+        if (! $media || ! file_exists($media->getPath())) {
+            // Regenerate if not exists
+            $this->invoiceService->generatePdf($invoice);
+            $media = $invoice->getFirstMedia('invoices');
+        }
+
+        if (! $media) {
             return response()->json(['message' => 'PDF not found.'], 404);
         }
 
-        return Storage::disk('local')->download(
-            $pdfPath,
+        return response()->download(
+            $media->getPath(),
             "Invoice-{$invoice->invoice_number}.pdf",
             ['Content-Type' => 'application/pdf']
         );
@@ -342,7 +341,7 @@ class InvoiceController extends Controller
      */
     public function regeneratePdf(Request $request, Team $team, Invoice $invoice): JsonResponse
     {
-        $this->authorizeTeamPermission($team, 'invoices.update');
+        $this->authorize('update', $invoice);
 
         // Verify invoice belongs to team
         if ($invoice->team_id !== $team->id) {

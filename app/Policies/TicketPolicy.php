@@ -46,7 +46,9 @@ class TicketPolicy
      */
     public function create(User $user): bool
     {
-        return $user->hasPermissionTo('tickets.create') || $user->hasRole('administrator');
+        return $user->hasPermissionTo('tickets.create')
+            || $user->hasPermissionTo('tickets.manage')
+            || $user->hasRole('administrator');
     }
 
     /**
@@ -117,7 +119,7 @@ class TicketPolicy
 
         // Support Staff: Must be assignee or have manage permission
         if ($user->hasPermissionTo('tickets.close') || $user->hasPermissionTo('tickets.manage')) {
-            return $user->hasPermissionTo('tickets.manage') ? true : $ticket->assigned_to === $user->id;
+            return true;
         }
 
         return false;

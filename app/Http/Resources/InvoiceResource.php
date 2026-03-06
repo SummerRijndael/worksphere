@@ -42,6 +42,7 @@ class InvoiceResource extends JsonResource
             'notes' => $this->notes,
             'terms' => $this->terms,
             'sent_to_email' => $this->sent_to_email,
+            'address_to' => $this->address_to,
 
             // Computed flags
             'is_overdue' => $this->is_overdue,
@@ -80,6 +81,17 @@ class InvoiceResource extends JsonResource
                     'public_id' => $this->creator->public_id,
                     'name' => $this->creator->name,
                     'avatar_url' => $this->creator->avatar_url,
+                ];
+            }),
+            'sent_by' => $this->whenLoaded('sentBy', function () {
+                if (! $this->sentBy) {
+                    return null;
+                }
+
+                return [
+                    'public_id' => $this->sentBy->public_id,
+                    'name' => $this->sentBy->name,
+                    'avatar_url' => $this->sentBy->avatar_url,
                 ];
             }),
             'items' => InvoiceItemResource::collection($this->whenLoaded('items')),

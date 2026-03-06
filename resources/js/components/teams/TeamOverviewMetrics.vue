@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, onMounted, watch } from "vue";
 import axios from "axios";
 import { useRoute } from "vue-router";
 import Card from "@/components/ui/Card.vue";
@@ -20,10 +20,13 @@ const stats = ref(null);
 const loading = ref(true);
 
 const fetchOverviewStats = async () => {
+    const identifier = route.params.identifier;
+    if (!identifier) return;
+
     loading.value = true;
     try {
         const response = await axios.get(
-            `/api/teams/${route.params.public_id}/stats/analytics-overview`,
+            `/api/teams/${identifier}/stats/analytics-overview`,
         );
         stats.value = response.data;
     } catch (error) {
@@ -36,6 +39,11 @@ const fetchOverviewStats = async () => {
 onMounted(() => {
     fetchOverviewStats();
 });
+
+watch(() => route.params.identifier, () => {
+    fetchOverviewStats();
+});
+
 </script>
 
 <template>

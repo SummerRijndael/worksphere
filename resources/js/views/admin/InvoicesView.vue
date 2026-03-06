@@ -13,6 +13,7 @@ import {
     
 } from "@/components/ui";
 import RecordPaymentModal from "@/components/invoices/RecordPaymentModal.vue";
+import ConfirmPasswordModal from '@/components/ui/ConfirmPasswordModal.vue';
 import {
     FileText,
     Search,
@@ -75,7 +76,10 @@ const filters = ref({
 const viewMode = ref<"list" | "grid">("list");
 
 const isPaymentModalOpen = ref(false);
+const isCancelModalOpen = ref(false);
 const selectedInvoice = ref<any>(null);
+const isCancelling = ref(false);
+const cancelError = ref('');
 // selectedInvoices removed
 
 // Initialize with store's current team, but allow local override via filter if needed
@@ -264,29 +268,56 @@ const sendInvoice = async (invoice: any) => {
     }
 };
 
-const recordPayment = (invoice: any) => {
+const openRecordPayment = (invoice: any) => {
     selectedInvoice.value = invoice;
     isPaymentModalOpen.value = true;
+};
+
+const handleCancelInvoice = (invoice: any) => {
+    selectedInvoice.value = invoice;
+    isCancelModalOpen.value = true;
+    cancelError.value = '';
+};
+
+const submitCancelInvoice = async (password: string, reason: string) => {
+    isCancelling.value = true;
+    cancelError.value = '';
+    
+    try {
+        await axios.post(`/api/teams/${authStore.currentTeam?.public_id}/invoices/${selectedInvoice.value.public_id}/cancel`, {
+            password,
+            reason
+        });
+        
+        toast.success('Invoice cancelled successfully');
+        isCancelModalOpen.value = false;
+        fetchInvoices();
+    } catch (error: any) {
+        cancelError.value = error.response?.data?.message || 'Failed to cancel invoice';
+    } finally {
+        isCancelling.value = false;
+    }
 };
 
 const onPaymentSuccess = () => {
     refreshData();
 };
 
-const cancelInvoice = async (invoice: any) => {
-    if (!activeTeamId.value) return;
-    if (!confirm("Are you sure you want to cancel this invoice?")) return;
+// The original cancelInvoice function is replaced by the modal flow
+// const cancelInvoice = async (invoice: any) => {
+//     if (!activeTeamId.value) return;
+//     if (!confirm("Are you sure you want to cancel this invoice?")) return;
 
-    try {
-        await axios.post(
-            `/api/teams/${activeTeamId.value}/invoices/${invoice.public_id}/cancel`,
-        );
-        toast.success("Invoice cancelled");
-        refreshData();
-    } catch (err: any) {
-        toast.error(err.response?.data?.message || "Failed to cancel invoice");
-    }
-};
+//     try {
+//         await axios.post(
+//             `/api/teams/${activeTeamId.value}/invoices/${invoice.public_id}/cancel`,
+//         );
+//         toast.success("Invoice cancelled");
+//         refreshData();
+//     } catch (err: any) {
+//         toast.error(err.response?.data?.message || "Failed to cancel invoice");
+//     }
+// };
 
 const deleteInvoice = async (invoice: any) => {
     if (!activeTeamId.value) return;
@@ -360,7 +391,7 @@ const getInvoiceActions = (invoice: any) => {
         actions.push({
             label: "Record Payment",
             icon: DollarSign,
-            action: () => recordPayment(invoice),
+            action: () => openRecordPayment(invoice),
         });
     }
 
@@ -368,7 +399,7 @@ const getInvoiceActions = (invoice: any) => {
         actions.push({
             label: "Cancel",
             icon: XCircle,
-            action: () => cancelInvoice(invoice),
+            action: () => handleCancelInvoice(invoice),
             variant: "danger",
         });
     }
@@ -936,6 +967,18 @@ onMounted(() => {
             :invoice="selectedInvoice"
             :team-id="activeTeamId"
             @success="onPaymentSuccess"
+        />
+
+        <ConfirmPasswordModal
+            v-model:open="isCancelModalOpen"
+            title="Cancel Invoice"
+            description="Are you sure you want to cancel this invoice? This action cannot be undone."
+            submit-text="Cancel Invoice"
+            submit-variant="error"
+            :loading="isCancelling"
+            :external-error="cancelError"
+            show-reason
+            @confirm="submitCancelInvoice"
         />
     </div>
 </template>

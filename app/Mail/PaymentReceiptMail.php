@@ -57,7 +57,7 @@ class PaymentReceiptMail extends Mailable
     public function attachments(): array
     {
         return [
-            Attachment::fromPath(storage_path('app/'.$this->pdfPath))
+            Attachment::fromPath($this->pdfPath)
                 ->as("Receipt-{$this->invoice->invoice_number}.pdf")
                 ->withMime('application/pdf'),
         ];
