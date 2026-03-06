@@ -437,7 +437,7 @@ class EmailController extends Controller
             'Subject: '.$email->subject,
             'From: '.($email->from_name ? '"'.$email->from_name.'" <'.$email->from_email.'>' : $email->from_email),
             'To: '.collect($email->to)->map(fn ($t) => $t['email'] ?? $t)->implode(', '),
-            'Message-ID: '.($email->message_id ?: '<'.uniqid().'@coresync.local>'),
+            'Message-ID: '.($email->message_id ?: '<'.uniqid().'@'.parse_url(config('app.url'), PHP_URL_HOST).'>'),
             'Content-Type: multipart/mixed; boundary="'.$boundary.'"',
         ];
 

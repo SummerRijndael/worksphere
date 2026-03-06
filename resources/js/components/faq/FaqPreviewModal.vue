@@ -3,6 +3,8 @@ import { ref, watch, onMounted } from "vue";
 import { X, Calendar, User } from "lucide-vue-next";
 import { useDate } from "@/composables/useDate";
 
+const appConfig = (window as any).WorkSphere || { name: "WorkSphere" };
+
 const { formatDate } = useDate();
 
 const props = defineProps<{
@@ -91,7 +93,7 @@ const emit = defineEmits(["close"]);
                             <div class="flex items-center gap-2">
                                 <User class="h-4 w-4" />
                                 <span>{{
-                                    article.author?.name || "CoreSync Team"
+                                    article.author?.name || `${appConfig.name} Team`
                                 }}</span>
                             </div>
                             <div class="flex items-center gap-2">

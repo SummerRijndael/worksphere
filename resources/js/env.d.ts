@@ -22,7 +22,7 @@ interface ImportMeta {
 }
 
 interface Window {
-    CoreSync: {
+    WorkSphere: {
         name: string;
         url: string;
     };

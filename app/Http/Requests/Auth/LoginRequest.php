@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Auth;
 
 use App\Models\User;
+use App\Rules\Honeypot;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Auth;
@@ -33,6 +34,7 @@ class LoginRequest extends FormRequest
             'public_id' => ['required_without:email', 'nullable', 'string', 'uuid'],
             'password' => ['required', 'string'],
             'remember' => ['boolean'],
+            'security_field' => [new Honeypot],
         ];
 
         // Add reCAPTCHA validation if enabled

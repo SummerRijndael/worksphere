@@ -73,8 +73,6 @@
                 linkedin: "{{ app(\App\Services\AppSettingsService::class)->get('contact.social.linkedin') }}"
             }
         };
-        // Legacy support
-        window.CoreSync = window.WorkSphere;
     </script>
 </head>
 

@@ -1,7 +1,7 @@
 <?php
 
 $cloudDisks = [];
-$cloudConfigJson = $_SERVER['LARAVEL_CLOUD_DISK_CONFIG'] ?? $_ENV['LARAVEL_CLOUD_DISK_CONFIG'] ?? null;
+$cloudConfigJson = env('LARAVEL_CLOUD_DISK_CONFIG');
 
 if ($cloudConfigJson) {
     $cloudConfig = json_decode($cloudConfigJson, true) ?? [];

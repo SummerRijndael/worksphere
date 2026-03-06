@@ -25,7 +25,7 @@ class StoreProjectRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'name' => ['required', 'string', 'max:255'],
+            'name' => ['required', 'string', 'min:1', 'max:255', 'regex:/^[\p{L}\p{N}\p{P}\p{S}\s]+$/u'],
             'description' => ['nullable', 'string', 'max:5000'],
             'status' => ['sometimes', Rule::enum(ProjectStatus::class)],
             'priority' => ['sometimes', Rule::enum(ProjectPriority::class)],

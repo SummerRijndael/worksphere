@@ -46,6 +46,8 @@ class ProjectResource extends JsonResource
             'progress_percentage' => $this->progress_percentage,
             'is_overdue' => $this->is_overdue,
             'days_until_due' => $this->days_until_due,
+            'avatar_url' => $this->avatar_url,
+            'has_avatar' => $this->has_avatar,
             'settings' => $this->settings,
             'client' => $this->whenLoaded('client', function () {
                 return [

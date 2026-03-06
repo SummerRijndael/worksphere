@@ -159,7 +159,7 @@ class LinkUnfurlService
 
             $payload = [
                 'client' => [
-                    'clientId' => 'coresync-v2',
+                    'clientId' => config('app.name', 'WorkSphere'),
                     'clientVersion' => '1.0.0',
                 ],
                 'threatInfo' => [

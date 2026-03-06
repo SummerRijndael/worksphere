@@ -27,6 +27,8 @@ import RecaptchaChallengeModal from "@/components/common/RecaptchaChallengeModal
 import { useAuthStore } from "@/stores/auth";
 import DOMPurify from "dompurify";
 
+const appConfig = (window as any).WorkSphere || { name: "WorkSphere" };
+
 const MAX_COMMENT_LENGTH = 5000;
 
 const route = useRoute();
@@ -306,7 +308,7 @@ onMounted(() => {
                     <div class="flex items-center gap-2">
                         <User class="h-4 w-4" />
                         <span>{{
-                            article.author?.name || "CoreSync Team"
+                            article.author?.name || `${appConfig.name} Team`
                         }}</span>
                     </div>
                     <div class="flex items-center gap-2">

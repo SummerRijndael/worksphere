@@ -31,7 +31,7 @@ class CacheService
     {
         $this->defaultStore = config('caching.default_store', 'redis');
         $this->fallbackStore = config('caching.fallback_store', 'database');
-        $this->tagPrefix = config('caching.tag_prefix', 'coresync');
+        $this->tagPrefix = config('caching.tag_prefix', 'worksphere');
         $this->healthCheckInterval = config('caching.health_check_interval', 30);
         $this->ttlConfig = config('caching.ttl', []);
         $this->redisAvailable = $this->checkRedisConnection();

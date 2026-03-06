@@ -76,18 +76,21 @@ const newSkill = ref("");
 const addSkill = () => {
     if (!newSkill.value.trim()) return;
 
-    // Split by comma if present
+    // Split by comma in case they typed it but we didn't catch the keydown (or for manual calling)
     const skillsToAdd = newSkill.value
         .split(",")
         .map((s) => s.trim())
-        .filter((s) => s);
+        .filter((s) => s !== "" && s.length <= 40);
 
-    skillsToAdd.forEach((skill) => {
-        if (!profile.value.skills.includes(skill)) {
-            profile.value.skills.push(skill);
+    const currentSkills = profile.value.skills || [];
+
+    for (const skill of skillsToAdd) {
+        if (currentSkills.length < 15 && !currentSkills.includes(skill)) {
+            currentSkills.push(skill);
         }
-    });
+    }
 
+    profile.value.skills = currentSkills;
     newSkill.value = "";
 };
 
@@ -100,17 +103,25 @@ const handleSkillKeydown = (e) => {
 
 const handleSkillPaste = (e) => {
     e.preventDefault();
-    const pastedText = e.clipboardData.getData("text");
-    const skillsToAdd = pastedText
-        .split(",")
-        .map((s) => s.trim())
-        .filter((s) => s);
+    const pastedText = (e.clipboardData || window.clipboardData).getData(
+        "text",
+    );
+    if (!pastedText) return;
 
-    skillsToAdd.forEach((skill) => {
-        if (!profile.value.skills.includes(skill)) {
-            profile.value.skills.push(skill);
+    const skillsToAdd = pastedText
+        .split(/[,\n]/)
+        .map((s) => s.trim())
+        .filter((s) => s !== "" && s.length <= 40);
+
+    const currentSkills = profile.value.skills || [];
+
+    for (const skill of skillsToAdd) {
+        if (currentSkills.length < 15 && !currentSkills.includes(skill)) {
+            currentSkills.push(skill);
         }
-    });
+    }
+
+    profile.value.skills = currentSkills;
 };
 
 const removeSkill = (index) => {
@@ -525,6 +536,7 @@ const saveProfile = async () => {
             skills: profile.value.skills,
             timezone: profile.value.timezone,
             phone: profile.value.phone,
+            website: profile.value.website,
         });
 
         await authStore.fetchUser();
@@ -1426,9 +1438,16 @@ onMounted(() => {
                                 maxlength="1000"
                             ></textarea>
                             <p
-                                class="text-xs text-[var(--text-muted)] mt-1 ml-1 text-right"
+                                class="text-xs mt-1 ml-1 text-right transition-colors duration-200"
+                                :class="[
+                                    (profile.bio?.length || 0) >= 1000
+                                        ? 'text-red-500 font-medium'
+                                        : (profile.bio?.length || 0) >= 900
+                                          ? 'text-orange-500'
+                                          : 'text-[var(--text-muted)]',
+                                ]"
                             >
-                                {{ profile.bio.length }}/1000 characters
+                                {{ profile.bio?.length || 0 }}/1000 characters
                             </p>
                         </div>
 
@@ -1462,18 +1481,17 @@ onMounted(() => {
                                 </div>
                                 <input
                                     v-model="newSkill"
-                                    @keydown.enter.prevent="addSkill"
-                                    @keydown.backspace="
-                                        newSkill === '' &&
-                                        profile.skills?.length > 0
-                                            ? removeSkill(
-                                                  profile.skills?.length - 1,
-                                              )
-                                            : null
-                                    "
+                                    @keydown="handleSkillKeydown"
+                                    @paste="handleSkillPaste"
+                                    @blur="addSkill"
                                     type="text"
                                     class="w-full bg-transparent border-none outline-none placeholder:text-[var(--text-muted)] p-0"
-                                    placeholder="Type a skill and press Enter..."
+                                    :placeholder="
+                                        profile.skills?.length >= 15
+                                            ? 'Limit reached (15)'
+                                            : 'Type a skill (comma or enter)...'
+                                    "
+                                    :disabled="profile.skills?.length >= 15"
                                 />
                             </div>
                         </div>

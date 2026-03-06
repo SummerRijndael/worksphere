@@ -294,40 +294,36 @@ class UserController extends Controller
             'skills.*' => ['string', 'max:50'],
         ]);
 
-        // Check if email is changing
-        if ($validated['email'] !== $user->email && $user instanceof \Illuminate\Contracts\Auth\MustVerifyEmail) {
-            $user->forceFill([
-                'name' => $validated['name'],
-                'email' => $validated['email'],
-                'email_verified_at' => null,
-                'username' => $validated['username'] ?? $user->username,
-                'title' => $validated['title'] ?? null,
-                'bio' => $validated['bio'] ?? null,
-                'location' => $validated['location'] ?? null,
-                'website' => $validated['website'] ?? null,
-                'skills' => $validated['skills'] ?? null,
-            ])->save();
-
-            $user->sendEmailVerificationNotification();
-        } else {
-            $user->forceFill([
+        return DB::transaction(function () use ($user, $validated, $request) {
+            $user->fill([
                 'name' => $validated['name'],
                 'email' => $validated['email'],
                 'username' => $validated['username'] ?? $user->username,
-                'title' => $validated['title'] ?? null,
-                'bio' => $validated['bio'] ?? null,
-                'location' => $validated['location'] ?? null,
-                'website' => $validated['website'] ?? null,
-                'skills' => $validated['skills'] ?? null,
-            ])->save();
-        }
+                'phone' => $validated['phone'] ?? $user->phone,
+                'title' => $validated['title'] ?? $user->title,
+                'bio' => $validated['bio'] ?? $user->bio,
+                'location' => $validated['location'] ?? $user->location,
+                'website' => $validated['website'] ?? $user->website,
+                'skills' => $validated['skills'] ?? $user->skills,
+            ]);
 
-        if ($request->has('website')) {
-            $user->setPreference('website', $request->website);
-            $user->save(); // Save once more for preferences
-        }
+            if ($user->isDirty('email') && $user instanceof \Illuminate\Contracts\Auth\MustVerifyEmail) {
+                $user->email_verified_at = null;
+                $user->save();
+                $user->sendEmailVerificationNotification();
+            } elseif ($user->isDirty()) {
+                $user->save();
+            }
 
-        return response()->json(new UserResource($user));
+            if ($request->has('website')) {
+                $user->setPreference('website', $request->website);
+                if ($user->isDirty('preferences')) {
+                    $user->save();
+                }
+            }
+
+            return response()->json(new UserResource($user->fresh()));
+        });
     }
 
     /**

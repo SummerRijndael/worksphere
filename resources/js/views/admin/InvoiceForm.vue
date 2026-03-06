@@ -303,7 +303,7 @@ onMounted(() => {
 </script>
 
 <template>
-    <div class="p-6 space-y-6 max-w-5xl mx-auto">
+    <div class="p-6 space-y-6 w-full mx-auto">
         <!-- Header -->
         <div class="flex items-center justify-between">
             <div class="flex items-center gap-4">

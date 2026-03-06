@@ -41,8 +41,9 @@ class TwoFactorCodeNotification extends Notification implements ShouldQueue
      */
     public function toMail(object $notifiable): MailMessage
     {
+        $appName = config('app.name', 'WorkSphere');
         return (new MailMessage)
-            ->subject('Your CoreSync Verification Code')
+            ->subject("Your {$appName} Verification Code")
             ->greeting('Hello!')
             ->line('You are receiving this email because we received a two-factor authentication request for your account.')
             ->line('Your verification code is:')
@@ -50,7 +51,7 @@ class TwoFactorCodeNotification extends Notification implements ShouldQueue
             ->line('This code will expire in 10 minutes.')
             ->line('If you did not request this code, please ignore this email or contact support if you have concerns.')
             ->salutation('Best regards,')
-            ->line('The CoreSync Team');
+            ->line("The {$appName} Team");
     }
 
     /**
