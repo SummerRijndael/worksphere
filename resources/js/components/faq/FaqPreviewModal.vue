@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from "vue";
+import { computed } from "vue";
 import { X, Calendar, User } from "lucide-vue-next";
 import { useDate } from "@/composables/useDate";
+import { sanitizeHtml } from "@/utils/sanitize";
 
 const appConfig = (window as any).WorkSphere || { name: "WorkSphere" };
 
@@ -13,6 +14,11 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits(["close"]);
+
+const safeArticleContent = computed(() => {
+    const content = props.article?.content;
+    return content ? sanitizeHtml(content) : "";
+});
 </script>
 
 <template>
@@ -115,10 +121,7 @@ const emit = defineEmits(["close"]);
 
                     <!-- Content -->
                     <div class="prose prose-lg dark:prose-invert max-w-none">
-                        <div
-                            v-if="article.content"
-                            v-html="article.content"
-                        ></div>
+                        <div v-if="safeArticleContent" v-html="safeArticleContent"></div>
                         <p v-else class="text-[var(--text-muted)] italic">
                             No content written yet...
                         </p>

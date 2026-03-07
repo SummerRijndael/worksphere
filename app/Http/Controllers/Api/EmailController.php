@@ -414,6 +414,8 @@ class EmailController extends Controller
      */
     public function source(Email $email)
     {
+        $this->authorize('view', $email);
+
         $cacheKey = "email_source:{$email->id}";
 
         // Try to get from cache first (24 hours)

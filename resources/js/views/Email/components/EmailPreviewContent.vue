@@ -76,6 +76,14 @@
                         <InfoIcon class="w-4 h-4" />
                     </button>
                     <button
+                        v-if="isDev"
+                        class="p-1.5 text-(--text-secondary) hover:bg-(--surface-tertiary) hover:text-(--text-primary) rounded-lg transition-colors"
+                        title="Preview Dev Tools"
+                        @click="showDevToolsModal = true"
+                    >
+                        <SlidersHorizontalIcon class="w-4 h-4" />
+                    </button>
+                    <button
                         class="p-1.5 text-(--text-secondary) hover:bg-(--surface-tertiary) hover:text-(--text-primary) rounded-lg transition-colors"
                         title="Print"
                         @click="printEmail"
@@ -454,6 +462,14 @@
                 </h1>
                 <div class="flex items-center gap-2">
                     <button
+                        v-if="isDev"
+                        @click="showDevToolsModal = true"
+                        class="p-2 text-(--text-secondary) hover:bg-(--surface-secondary) rounded-lg"
+                        title="Preview Dev Tools"
+                    >
+                        <SlidersHorizontalIcon class="w-4 h-4" />
+                    </button>
+                    <button
                         @click="printEmail"
                         class="p-2 text-(--text-secondary) hover:bg-(--surface-secondary) rounded-lg"
                         title="Print"
@@ -613,10 +629,99 @@
             <div
                 v-else
                 class="email-content-wrapper w-full flex-1 overflow-hidden"
-                ref="shadowHost"
-            ></div>
+            >
+                <iframe
+                    v-if="useIframeRenderer"
+                    ref="iframeHost"
+                    title="Email Preview (Iframe)"
+                    sandbox="allow-same-origin"
+                    class="h-full w-full border-0 bg-white"
+                />
+                <div
+                    v-else
+                    class="h-full w-full overflow-hidden"
+                    ref="shadowHost"
+                ></div>
+            </div>
         </div>
     </div>
+
+    <!-- Preview Dev Tools -->
+    <Modal
+        v-if="isDev"
+        v-model:open="showDevToolsModal"
+        title="Email Preview Dev Tools"
+        description="Toggle preview feature flags for testing."
+        size="lg"
+    >
+        <div class="space-y-4">
+            <div
+                class="rounded-xl border border-(--border-default) bg-(--surface-secondary) p-4"
+            >
+                <p class="text-sm font-semibold text-(--text-primary) mb-3">
+                    Renderer
+                </p>
+                <div class="flex flex-wrap gap-2">
+                    <Button
+                        :variant="
+                            previewRenderer === 'shadow' ? 'primary' : 'outline'
+                        "
+                        size="sm"
+                        @click="previewRenderer = 'shadow'"
+                    >
+                        Shadow DOM
+                    </Button>
+                    <Button
+                        :variant="
+                            previewRenderer === 'iframe' ? 'primary' : 'outline'
+                        "
+                        size="sm"
+                        @click="previewRenderer = 'iframe'"
+                    >
+                        Iframe
+                    </Button>
+                </div>
+                <p class="mt-2 text-xs text-(--text-muted)">
+                    Current mode:
+                    {{ previewRenderer === "iframe" ? "Iframe" : "Shadow DOM" }}
+                </p>
+            </div>
+
+            <div
+                class="rounded-xl border border-(--border-default) bg-(--surface-secondary) p-4 space-y-3"
+            >
+                <Switch
+                    v-model="disableScaleToFit"
+                    label="Disable scale-to-fit"
+                    description="When enabled, wide email content uses horizontal scroll instead of auto-scaling."
+                />
+                <Switch
+                    v-model="devDefaultShowExternalImages"
+                    label="Show external images by default"
+                    description="Applies to every email preview while testing."
+                />
+            </div>
+        </div>
+
+        <template #footer>
+            <div class="flex gap-3 w-full">
+                <Button
+                    variant="ghost"
+                    class="flex-1"
+                    @click="resetDevPreviewFlags"
+                >
+                    Reset Flags
+                </Button>
+                <Button
+                    variant="primary"
+                    class="flex-1"
+                    @click="showDevToolsModal = false"
+                >
+                    Done
+                </Button>
+            </div>
+        </template>
+    </Modal>
 
     <!-- External Link Warning Modal -->
     <Modal
@@ -732,6 +837,7 @@ import {
     FileCodeIcon,
     AlertCircleIcon,
     CopyIcon,
+    SlidersHorizontalIcon,
 } from "lucide-vue-next";
 import { useDate } from "@/composables/useDate";
 
@@ -740,15 +846,68 @@ import { animate, stagger } from "animejs";
 import { sanitizeHtml } from "@/utils/sanitize";
 import { useEmailStore } from "@/stores/emailStore";
 import type { Email, EmailAttachment } from "@/stores/emailStore";
-import { storeToRefs } from "pinia";
 import Modal from "@/components/ui/Modal.vue";
 import Button from "@/components/ui/Button.vue";
+import Switch from "@/components/ui/Switch.vue";
 
 const props = defineProps<{
     email: Email;
     isPopup?: boolean;
     embedded?: boolean;
 }>();
+
+type PreviewRenderer = "shadow" | "iframe";
+
+const isDev = import.meta.env.DEV;
+const showDevToolsModal = ref(false);
+
+const DEV_PREVIEW_RENDERER_KEY = "email_preview_renderer_mode";
+const DEV_DISABLE_SCALE_KEY = "email_preview_disable_scale_to_fit";
+const DEV_SHOW_IMAGES_DEFAULT_KEY = "email_preview_show_images_by_default";
+
+function getDevFlag(key: string): string | null {
+    if (!isDev) return null;
+    try {
+        return localStorage.getItem(key);
+    } catch {
+        return null;
+    }
+}
+
+function setDevFlag(key: string, value: string) {
+    if (!isDev) return;
+    try {
+        localStorage.setItem(key, value);
+    } catch {
+        // Ignore storage errors in private mode.
+    }
+}
+
+const savedRenderer = getDevFlag(DEV_PREVIEW_RENDERER_KEY);
+const previewRenderer = ref<PreviewRenderer>(
+    savedRenderer === "iframe" ? "iframe" : "shadow",
+);
+const disableScaleToFit = ref(getDevFlag(DEV_DISABLE_SCALE_KEY) === "true");
+const devDefaultShowExternalImages = ref(
+    getDevFlag(DEV_SHOW_IMAGES_DEFAULT_KEY) === "true",
+);
+const useIframeRenderer = computed(
+    () => isDev && previewRenderer.value === "iframe",
+);
+
+watch(previewRenderer, (value) => {
+    setDevFlag(DEV_PREVIEW_RENDERER_KEY, value);
+});
+
+watch(disableScaleToFit, (value) => {
+    setDevFlag(DEV_DISABLE_SCALE_KEY, String(value));
+});
+
+function resetDevPreviewFlags() {
+    previewRenderer.value = "shadow";
+    disableScaleToFit.value = false;
+    devDefaultShowExternalImages.value = false;
+}
 
 // Read Receipt Logic
 const showReadReceiptPrompt = ref(false);
@@ -814,13 +973,22 @@ const isHeaderExpanded = ref(
     localStorage.getItem("email_header_expanded") !== "false",
 );
 
+watch(devDefaultShowExternalImages, (value) => {
+    setDevFlag(DEV_SHOW_IMAGES_DEFAULT_KEY, String(value));
+    showImages.value = value;
+});
+
 watch(isHeaderExpanded, (val) => {
     localStorage.setItem("email_header_expanded", String(val));
 });
 const showMetadata = ref(false);
 const showOriginalModal = ref(false);
 const shadowHost = ref<HTMLElement | null>(null);
+const iframeHost = ref<HTMLIFrameElement | null>(null);
 const shadowRoot = ref<ShadowRoot | null>(null);
+const shadowResizeObserver = ref<ResizeObserver | null>(null);
+let iframeDocument: Document | null = null;
+let iframeClickHandler: ((event: MouseEvent) => void) | null = null;
 
 // Authentication Header Parsing
 const authInfo = computed(() => {
@@ -946,6 +1114,80 @@ function copyMetadata() {
 const showLinkWarning = ref(false);
 const pendingLink = ref("");
 
+function isAllowedNavigationUrl(rawUrl: string): boolean {
+    try {
+        const parsed = new URL(rawUrl, window.location.origin);
+        return parsed.protocol === "http:" || parsed.protocol === "https:";
+    } catch {
+        return false;
+    }
+}
+
+function cleanupShadowRuntime() {
+    if (shadowResizeObserver.value) {
+        shadowResizeObserver.value.disconnect();
+        shadowResizeObserver.value = null;
+    }
+
+    if (shadowRoot.value) {
+        (shadowRoot.value as any).removeEventListener("click", handleLinkClick);
+        (shadowRoot.value as any).removeEventListener("click", handleImageClick);
+    }
+}
+
+function cleanupIframeRuntime() {
+    if (iframeDocument && iframeClickHandler) {
+        iframeDocument.removeEventListener("click", iframeClickHandler);
+    }
+    iframeDocument = null;
+    iframeClickHandler = null;
+}
+
+function stripUnsafeEmailMarkup(html: string): string {
+    if (!html) return "";
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, "text/html");
+
+    doc.querySelectorAll(
+        "script, noscript, link, meta, base, iframe, object, embed, form, input, button, textarea, select, option",
+    ).forEach((node) => node.remove());
+
+    doc.querySelectorAll("style").forEach((styleNode) => {
+        const cleaned = (styleNode.textContent || "").replace(
+            /@import\s+[^;]+;?/gi,
+            "",
+        );
+        if (!cleaned.trim()) {
+            styleNode.remove();
+            return;
+        }
+        styleNode.textContent = cleaned;
+    });
+
+    doc.querySelectorAll<HTMLElement>("[style]").forEach((node) => {
+        const styleValue = node.getAttribute("style");
+        if (!styleValue) return;
+        const cleaned = styleValue.replace(/@import\s+[^;]+;?/gi, "");
+        if (cleaned.trim()) {
+            node.setAttribute("style", cleaned);
+        } else {
+            node.removeAttribute("style");
+        }
+    });
+
+    return doc.body.innerHTML;
+}
+
+function escapeHtmlForPrint(value: string): string {
+    return value
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
 // On-Demand Downloading State
 const isDownloading = ref<Record<string, boolean>>({});
 
@@ -1019,7 +1261,7 @@ const SYNCING_PLACEHOLDER =
 watch(
     () => props.email?.id,
     () => {
-        showImages.value = false;
+        showImages.value = isDev && devDefaultShowExternalImages.value;
         hasBlockedImages.value = false;
         isBlockedImagesDismissed.value = false;
         selectedAttachments.value.clear();
@@ -1053,8 +1295,10 @@ const visibleAttachments = computed(() => {
 const sanitizedBody = computed(() => {
     if (!props.email?.body_html) return "";
 
+    const sanitizedInput = stripUnsafeEmailMarkup(props.email.body_html);
+
     // Step 1: Replace cid: references with actual attachment URLs (Fallback for existing emails)
-    let html = props.email.body_html;
+    let html = sanitizedInput;
     if (props.email.attachments?.length) {
         props.email.attachments.forEach((att) => {
             if (att.content_id && att.url) {
@@ -1236,9 +1480,25 @@ watch(() => props.email?.id, checkDismissedState, { immediate: true });
 
 // --- Shadow DOM Injection ---
 watch(
-    [() => sanitizedBody.value, () => shadowHost.value, () => showImages.value],
-    async ([html, host]) => {
-        if (!host || !html) return;
+    [
+        () => sanitizedBody.value,
+        () => shadowHost.value,
+        () => showImages.value,
+        () => useIframeRenderer.value,
+        () => disableScaleToFit.value,
+    ],
+    async ([html, host, _showImages, useIframe], _, onCleanup) => {
+        cleanupShadowRuntime();
+
+        onCleanup(() => {
+            cleanupShadowRuntime();
+        });
+
+        if (useIframe || !host || !html) return;
+
+        if (shadowRoot.value && shadowRoot.value.host !== host) {
+            shadowRoot.value = null;
+        }
 
         // Initialize Shadow DOM if not already done
         if (!shadowRoot.value) {
@@ -1342,7 +1602,7 @@ watch(
                     const contentHeight = body.scrollHeight;
 
                     // 2. Calculate Scale
-                    if (contentWidth > containerWidth) {
+                    if (!disableScaleToFit.value && contentWidth > containerWidth) {
                         const scale = containerWidth / contentWidth;
 
                         // 3. Apply Transform
@@ -1367,15 +1627,15 @@ watch(
                         body.style.marginBottom = "0";
                         body.style.marginRight = "0";
                         wrapper.style.overflowY = "auto";
-                        wrapper.style.overflowX = "hidden";
+                        wrapper.style.overflowX =
+                            disableScaleToFit.value && contentWidth > containerWidth
+                                ? "auto"
+                                : "hidden";
                     }
                 });
 
                 resizeObserver.observe(wrapper);
-
-                // Cleanup observer on unmount (scoped to this watcher, simplistic)
-                // ideally store in a ref, but for now this works as watcher re-runs and loses ref.
-                // We should track it.
+                shadowResizeObserver.value = resizeObserver;
             });
 
             // Make all links open in new tab (safety fallback)
@@ -1415,6 +1675,139 @@ watch(
                 }
             });
         }
+    },
+    { immediate: true },
+);
+
+function buildIframePreviewDocument(html: string): string {
+    return `<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            background: #ffffff;
+            color: #1f2937;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.5;
+        }
+        #email-body {
+            padding: 24px;
+            overflow-wrap: break-word;
+            word-wrap: break-word;
+        }
+        img, video, iframe, svg {
+            max-width: 100% !important;
+            height: auto !important;
+        }
+        a {
+            color: #2563eb !important;
+            text-decoration: underline !important;
+            word-break: break-all !important;
+        }
+        blockquote {
+            margin: 1em 0;
+            border-left: 4px solid #e5e7eb;
+            padding-left: 1em;
+            color: #6b7280 !important;
+        }
+        pre {
+            background: #f3f4f6;
+            padding: 1em;
+            overflow-x: auto;
+            border-radius: 0.5em;
+            color: #1f2937 !important;
+        }
+        p {
+            margin-bottom: 1em;
+        }
+    </style>
+</head>
+<body>
+    <div id="email-body">${html}</div>
+</body>
+</html>`;
+}
+
+watch(
+    [
+        () => sanitizedBody.value,
+        () => iframeHost.value,
+        () => useIframeRenderer.value,
+    ],
+    async ([html, frame, useIframe], _, onCleanup) => {
+        cleanupIframeRuntime();
+
+        if (!useIframe || !frame || !html) return;
+
+        const onLoad = () => {
+            const doc = frame.contentDocument;
+            if (!doc) return;
+
+            iframeDocument = doc;
+
+            doc.querySelectorAll("a").forEach((link) => {
+                link.setAttribute("rel", "noopener noreferrer");
+            });
+
+            iframeClickHandler = (event: MouseEvent) => {
+                const target = event.target as HTMLElement | null;
+                if (!target) return;
+
+                const link = target.closest("a");
+                if (link) {
+                    const href = link.getAttribute("href");
+                    if (
+                        href &&
+                        !href.startsWith("#") &&
+                        !href.startsWith("mailto:") &&
+                        !href.startsWith("tel:")
+                    ) {
+                        event.preventDefault();
+                        pendingLink.value = href;
+                        showLinkWarning.value = true;
+                    }
+                    return;
+                }
+
+                if (target.tagName === "IMG") {
+                    openMediaViewer(
+                        getPreviewableImages(doc),
+                        target as HTMLImageElement,
+                    );
+                }
+            };
+            doc.addEventListener("click", iframeClickHandler);
+
+            doc.querySelectorAll("img").forEach(async (imgNode) => {
+                const img = imgNode as HTMLImageElement;
+                const src = img.getAttribute("src");
+                if (!src) return;
+
+                if (
+                    src.includes("/api/media/") ||
+                    img.hasAttribute("data-is-syncing")
+                ) {
+                    if (src.startsWith("http") || src.startsWith("/")) {
+                        const cachedUrl = await getCachedImage(src);
+                        if (cachedUrl !== src) {
+                            img.src = cachedUrl;
+                        }
+                    }
+                    setupImageSyncRetry(img);
+                }
+            });
+        };
+
+        frame.addEventListener("load", onLoad, { once: true });
+        frame.srcdoc = buildIframePreviewDocument(html);
+
+        onCleanup(() => {
+            frame.removeEventListener("load", onLoad);
+            cleanupIframeRuntime();
+        });
     },
     { immediate: true },
 );
@@ -1486,42 +1879,49 @@ function setupImageSyncRetry(img: HTMLImageElement) {
     }
 }
 
+function getPreviewableImages(scope: ParentNode | null): HTMLImageElement[] {
+    if (!scope) return [];
+
+    return Array.from(scope.querySelectorAll("img")).filter(
+        (img) =>
+            img.width >= 20 &&
+            img.height >= 20 &&
+            img.getAttribute("data-blocked") !== "true",
+    );
+}
+
+function openMediaViewer(
+    images: HTMLImageElement[],
+    selectedImage: HTMLImageElement,
+) {
+    if (!images.length) return;
+    if (selectedImage.getAttribute("data-blocked") === "true") return;
+    if (selectedImage.width < 20 || selectedImage.height < 20) return;
+
+    const index = images.indexOf(selectedImage);
+    if (index < 0) return;
+
+    const media = images.map((img) => ({
+        src: img.src,
+        download: img.src,
+        type: "image",
+    }));
+
+    window.dispatchEvent(
+        new CustomEvent("media-viewer:open", {
+            detail: { media, index },
+        }),
+    );
+}
+
 function handleImageClick(event: MouseEvent) {
     const target = event.target as HTMLElement;
-    if (target.tagName === "IMG") {
-        const img = target as HTMLImageElement;
+    if (target.tagName !== "IMG") return;
 
-        // Skip placeholders or blocked images
-        if (img.getAttribute("data-blocked") === "true") return;
-
-        // Skip tiny icons/tracking pixels
-        if (img.width < 20 || img.height < 20) return;
-
-        // Collect all valid images in the shadow DOM for the gallery
-        const allImages = Array.from(
-            shadowRoot.value?.querySelectorAll("img") || [],
-        ).filter(
-            (i) =>
-                i.width >= 20 &&
-                i.height >= 20 &&
-                i.getAttribute("data-blocked") !== "true",
-        );
-
-        const index = allImages.indexOf(img);
-
-        const media = allImages.map((i) => ({
-            src: i.src, // This corresponds to the resolved URL (including CID pointers)
-            download: i.src,
-            type: "image",
-        }));
-
-        // Dispatch event for Global MediaViewer
-        window.dispatchEvent(
-            new CustomEvent("media-viewer:open", {
-                detail: { media, index },
-            }),
-        );
-    }
+    openMediaViewer(
+        getPreviewableImages(shadowRoot.value),
+        target as HTMLImageElement,
+    );
 }
 
 function handleLinkClick(event: MouseEvent) {
@@ -1545,10 +1945,19 @@ function handleLinkClick(event: MouseEvent) {
 }
 
 function proceedToLink() {
-    if (pendingLink.value) {
-        window.open(pendingLink.value, "_blank");
-        showLinkWarning.value = false;
-        pendingLink.value = "";
+    const targetUrl = pendingLink.value.trim();
+    showLinkWarning.value = false;
+    pendingLink.value = "";
+
+    if (!targetUrl) return;
+    if (!isAllowedNavigationUrl(targetUrl)) {
+        console.warn("[EmailPreview] Blocked non-http(s) navigation target");
+        return;
+    }
+
+    const opened = window.open(targetUrl, "_blank", "noopener,noreferrer");
+    if (opened) {
+        opened.opener = null;
     }
 }
 
@@ -1566,11 +1975,41 @@ function printEmail() {
     if (!printWindow) return;
 
     const email = props.email;
+    const safeSubject = escapeHtmlForPrint(email.subject || "");
+    const safeFromName = escapeHtmlForPrint(email.from_name || "");
+    const safeFromEmail = escapeHtmlForPrint(email.from_email || "");
+    const safeDate = escapeHtmlForPrint(formatDate(email.date));
+    const safeTo = escapeHtmlForPrint(
+        email.to
+            ?.map((t) => (typeof t === "string" ? t : t?.email || ""))
+            .filter(Boolean)
+            .join(", ") || "",
+    );
+    const safeBody = email.body_html
+        ? sanitizeHtml(stripUnsafeEmailMarkup(email.body_html), {
+              ADD_TAGS: ["img", "table", "thead", "tbody", "tr", "th", "td"],
+              ADD_ATTR: [
+                  "src",
+                  "alt",
+                  "style",
+                  "href",
+                  "target",
+                  "rel",
+                  "colspan",
+                  "rowspan",
+                  "width",
+                  "height",
+                  "align",
+                  "valign",
+              ],
+          })
+        : `<pre>${escapeHtmlForPrint(email.body_plain || "")}</pre>`;
+
     printWindow.document.write(`
         <!DOCTYPE html>
         <html>
         <head>
-            <title>${email.subject}</title>
+            <title>${safeSubject}</title>
             <style>
                 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; }
                 .header { border-bottom: 1px solid #ddd; padding-bottom: 20px; margin-bottom: 20px; }
@@ -1583,14 +2022,14 @@ function printEmail() {
         </head>
         <body>
             <div class="header">
-                <div class="subject">${email.subject}</div>
+                <div class="subject">${safeSubject}</div>
                 <div class="meta">
-                    <div><strong>From:</strong> ${email.from_name || ""} &lt;${email.from_email}&gt;</div>
-                    <div><strong>Date:</strong> ${formatDate(email.date)}</div>
-                    <div><strong>To:</strong> ${email.to?.map((t) => t.email).join(", ") || ""}</div>
+                    <div><strong>From:</strong> ${safeFromName} &lt;${safeFromEmail}&gt;</div>
+                    <div><strong>Date:</strong> ${safeDate}</div>
+                    <div><strong>To:</strong> ${safeTo}</div>
                 </div>
             </div>
-            <div class="body">${email.body_html || email.body_plain || ""}</div>
+            <div class="body">${safeBody}</div>
         </body>
         </html>
     `);
@@ -1651,5 +2090,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
     if (animation) animation.pause();
+    cleanupShadowRuntime();
+    cleanupIframeRuntime();
 });
 </script>
