@@ -70,16 +70,33 @@ const fetchStats = async () => {
 };
 
 const fetchTeams = async () => {
-    if (!can('clients.manage_any_team')) return;
-    try {
-        const response = await api.get('/api/teams?per_page=100');
-        const teams = response.data.data.map(t => ({
+    // If on admin route, we want all teams. Otherwise just the user's teams.
+    const isAdminView = route.name === 'admin-clients';
+    
+    if (isAdminView && can('clients.manage_any_team')) {
+        try {
+            const response = await api.get('/api/teams?per_page=100');
+            const teams = response.data.data.map(t => ({
+                label: t.name,
+                value: t.id
+            }));
+            teamOptions.value = [{ label: 'All Teams', value: '' }, ...teams];
+        } catch (e) {
+            console.error('Failed to fetch teams', e);
+        }
+    } else {
+        // Regular /clients view or user without manage_any_team
+        const teams = (authStore.user?.teams || []).map(t => ({
             label: t.name,
             value: t.id
         }));
-        teamOptions.value = [{ label: 'All Teams', value: '' }, ...teams];
-    } catch (e) {
-        console.error('Failed to fetch teams', e);
+        
+        // Only show filter if they have multiple teams
+        if (teams.length > 1) {
+            teamOptions.value = [{ label: 'All Teams', value: '' }, ...teams];
+        } else {
+            teamOptions.value = [];
+        }
     }
 };
 
@@ -95,7 +112,7 @@ const fetchClients = async (page = 1) => {
             search: searchQuery.value,
             status: statusFilter.value,
             per_page: pagination.value.perPage,
-            team_id: teamFilter.value || undefined
+            team_id: teamFilter.value // Always send it, even if empty string
         };
 
         const response = await api.get('/api/clients', { params });
@@ -158,6 +175,11 @@ const handlePageChange = (page) => {
     fetchClients(page);
 };
 
+const handlePerPageChange = (perPage) => {
+    pagination.value.perPage = perPage;
+    fetchClients(1);
+};
+
 const handleViewClient = (client) => {
     const detailRoute = route.name === 'admin-clients' ? 'admin-client-detail' : 'client-detail';
     router.push({ name: detailRoute, params: { public_id: client.public_id } });
@@ -190,9 +212,7 @@ watch(() => route.query, (newQuery) => {
 onMounted(() => {
     fetchClients();
     fetchStats();
-    if (can('clients.manage_any_team')) {
-        fetchTeams();
-    }
+    fetchTeams();
 });
 </script>
 
@@ -243,8 +263,8 @@ onMounted(() => {
                     />
                 </div>
                 
-                <!-- Admin Team Filter -->
-                <div v-if="can('clients.manage_any_team') && teamOptions.length > 0" class="w-[200px]">
+                <!-- Team Filter (Admin View all or Multi-Team User) -->
+                <div v-if="teamOptions.length > 0" class="w-[200px]">
                     <SelectFilter
                         v-model="teamFilter"
                         :options="teamOptions"
@@ -295,6 +315,7 @@ onMounted(() => {
             @delete="confirmDelete"
             @view="handleViewClient"
             @page-change="handlePageChange"
+            @per-page-change="handlePerPageChange"
         >
              <template #empty-actions>
                 <Button v-if="can('clients.create')" variant="outline" class="mt-4" @click="openCreateModal">

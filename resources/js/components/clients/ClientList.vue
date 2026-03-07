@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { Button, Checkbox } from '@/components/ui';
 import { 
     LayoutGrid, 
@@ -11,10 +11,12 @@ import {
     Edit2,
     ChevronLeft,
     ChevronRight,
-    Building2
+    Building2,
+    ChevronDown
 } from 'lucide-vue-next';
 import { useAuthStore } from '@/stores/auth';
 import { useDate } from '@/composables/useDate';
+import Dropdown from '@/components/ui/Dropdown.vue';
 
 const { formatDate: formatDateComposable } = useDate();
 
@@ -47,6 +49,7 @@ const emit = defineEmits([
     'delete', 
     'update:viewMode', 
     'page-change', 
+    'per-page-change',
     'toggle-selection', 
     'toggle-all'
 ]);
@@ -64,6 +67,11 @@ const can = (permission) => {
 // Selection Helpers (Pass through events ideally, but for UI state we might need local or pass prop)
 const toggleSelection = (id) => emit('toggle-selection', id);
 const toggleAll = (e) => emit('toggle-all', e.target.checked);
+
+const showTeamColumn = computed(() => {
+    if (can('clients.manage_any_team')) return true;
+    return (authStore.user?.teams?.length || 0) > 1;
+});
 
 </script>
 
@@ -153,7 +161,7 @@ const toggleAll = (e) => emit('toggle-all', e.target.checked);
                                         </th>
                                         <th class="px-6 py-3 text-left font-medium text-[var(--text-secondary)] border border-[var(--border-default)]">Company</th>
                                         <th class="px-6 py-3 text-left font-medium text-[var(--text-secondary)] border border-[var(--border-default)]">Contact</th>
-                                    <th v-if="can('clients.manage_any_team')" class="px-6 py-3 text-left font-medium text-[var(--text-secondary)] border border-[var(--border-default)]">Team</th>
+                                    <th v-if="showTeamColumn" class="px-6 py-3 text-left font-medium text-[var(--text-secondary)] border border-[var(--border-default)]">Team</th>
                                         <th class="px-6 py-3 text-left font-medium text-[var(--text-secondary)] border border-[var(--border-default)]">Status</th>
                                         <th class="px-6 py-3 text-left font-medium text-[var(--text-secondary)] border border-[var(--border-default)]">Details</th>
                                         <th class="px-6 py-3 text-left font-medium text-[var(--text-secondary)] border border-[var(--border-default)]">Created</th>
@@ -183,7 +191,7 @@ const toggleAll = (e) => emit('toggle-all', e.target.checked);
                                             <div v-if="client.contact_person" class="font-medium text-[var(--text-primary)]">{{ client.contact_person }}</div>
                                             <div v-else class="text-[var(--text-muted)]">-</div>
                                         </td>
-                                        <td v-if="can('clients.manage_any_team')" class="px-6 py-3 border border-[var(--border-default)]">
+                                        <td v-if="showTeamColumn" class="px-6 py-3 border border-[var(--border-default)]">
                                             <div v-if="client.team" class="flex items-center gap-2">
                                                 <div class="h-6 w-6 rounded bg-[var(--surface-tertiary)] flex items-center justify-center text-[10px] font-bold text-[var(--text-secondary)] uppercase">
                                                     {{ client.team.name.substring(0, 2) }}
@@ -236,23 +244,43 @@ const toggleAll = (e) => emit('toggle-all', e.target.checked);
                     <p class="text-sm text-[var(--text-secondary)]">
                         Showing <span class="font-medium text-[var(--text-primary)]">{{ (pagination.currentPage - 1) * pagination.perPage + 1 }}</span> to <span class="font-medium text-[var(--text-primary)]">{{ Math.min(pagination.currentPage * pagination.perPage, pagination.total) }}</span> of <span class="font-medium text-[var(--text-primary)]">{{ pagination.total }}</span> results
                     </p>
-                    <div class="flex gap-2">
-                        <Button 
-                            variant="outline" 
-                            size="sm" 
-                            :disabled="pagination.currentPage === 1"
-                            @click="$emit('page-change', pagination.currentPage - 1)"
-                        >
-                            <ChevronLeft class="w-4 h-4" />
-                        </Button>
-                        <Button 
-                            variant="outline" 
-                            size="sm" 
-                            :disabled="pagination.currentPage === pagination.lastPage"
-                            @click="$emit('page-change', pagination.currentPage + 1)"
-                        >
-                            <ChevronRight class="w-4 h-4" />
-                        </Button>
+                    <div class="flex items-center gap-4">
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs text-[var(--text-secondary)] whitespace-nowrap">Results per page:</span>
+                            <Dropdown 
+                                :items="[15, 20, 50, 100, 200].map(size => ({
+                                    label: size.toString(),
+                                    action: () => $emit('per-page-change', size)
+                                }))"
+                                align="end"
+                                side="top"
+                            >
+                                <template #trigger>
+                                    <button class="flex items-center gap-2 h-8 px-3 rounded-lg border border-(--border-default) bg-(--surface-elevated) text-xs font-medium text-(--text-primary) hover:border-(--border-strong) transition-all">
+                                        {{ pagination.perPage }}
+                                        <ChevronDown class="w-3 h-3 text-(--text-muted)" />
+                                    </button>
+                                </template>
+                            </Dropdown>
+                        </div>
+                        <div class="flex gap-2">
+                            <Button 
+                                variant="outline" 
+                                size="sm" 
+                                :disabled="pagination.currentPage === 1"
+                                @click="$emit('page-change', pagination.currentPage - 1)"
+                            >
+                                <ChevronLeft class="w-4 h-4" />
+                            </Button>
+                            <Button 
+                                variant="outline" 
+                                size="sm" 
+                                :disabled="pagination.currentPage === pagination.lastPage"
+                                @click="$emit('page-change', pagination.currentPage + 1)"
+                            >
+                                <ChevronRight class="w-4 h-4" />
+                            </Button>
+                        </div>
                     </div>
                 </div>
             </div>

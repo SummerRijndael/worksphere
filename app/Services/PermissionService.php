@@ -183,9 +183,9 @@ class PermissionService
      */
     public function getTeamPermissions(User $user, Team $team): Collection
     {
-        // Optimization: If user is owner, return all TEAM permissions (wildcard for team scope only)
+        // Team owner bypass - gets team lead permissions by default
         if ($team->owner_id === $user->id) {
-            return $this->getAllTeamPermissionNames();
+            return $this->getPermissionsForTeamRole(\App\Enums\TeamRole::TeamLead);
         }
 
         $cacheKey = "team_permissions:{$user->id}:{$team->id}:all";
@@ -342,6 +342,10 @@ class PermissionService
     {
         $persona = $this->getPersona($user);
         if ($persona->isSuperAdmin) {
+            return true;
+        }
+
+        if ($team->owner_id === $user->id) {
             return true;
         }
 

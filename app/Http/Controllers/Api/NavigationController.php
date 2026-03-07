@@ -92,7 +92,9 @@ class NavigationController extends Controller
         return collect($items)->map(function ($item) use ($user) {
             // Enrich Teams
             if (isset($item['id']) && $item['id'] === 'teams') {
-                $userTeams = $user->teams()->orderBy('name')->get();
+                $userTeams = $user->teams()->orderBy('name')->get()
+                    ->merge($user->ownedTeams()->orderBy('name')->get())
+                    ->unique('id');
 
                 if ($userTeams->isNotEmpty()) {
                     $item['children'] = $userTeams->map(function ($team) {
@@ -110,7 +112,7 @@ class NavigationController extends Controller
 
             // Enrich Projects - show actual projects from user's teams
             if (isset($item['id']) && $item['id'] === 'projects') {
-                $userTeams = $user->teams;
+                $userTeams = $user->teams->merge($user->ownedTeams)->unique('id');
 
                 if ($userTeams->isNotEmpty()) {
                     $projectChildren = [
@@ -181,16 +183,18 @@ class NavigationController extends Controller
                 }
             }
 
-            // Enrich Clients - show recent clients from user's teams
+            // Enrich Clients
             if (isset($item['id']) && $item['id'] === 'clients') {
-                $userTeams = $user->teams;
+                $isAdmin = $user->hasRole('administrator');
+                $item['route'] = $isAdmin ? '/admin/clients' : '/clients';
 
+                $userTeams = $user->teams->merge($user->ownedTeams)->unique('id');
                 if ($userTeams->isNotEmpty()) {
                     $clientChildren = [
                         [
                             'id' => 'clients-all',
                             'label' => 'View All Clients',
-                            'route' => '/clients',
+                            'route' => $item['route'],
                             'icon' => 'users',
                         ],
                         ['id' => 'clients-sep-1', 'type' => 'divider'],
@@ -228,6 +232,12 @@ class NavigationController extends Controller
                 }
             }
 
+            // Enrich Reports
+            if (isset($item['id']) && $item['id'] === 'reports') {
+                $isAdmin = $user->hasRole('administrator');
+                $item['route'] = $isAdmin ? '/admin/reports' : '/reports';
+            }
+
             // Enrich Invoices
             if (isset($item['id']) && $item['id'] === 'invoices') {
                 $isAdmin = $user->hasRole('administrator');
@@ -251,7 +261,7 @@ class NavigationController extends Controller
      */
     protected function filterNavigationByPermissions(array $items, $user): array
     {
-        $hasTeams = $user->teams()->exists();
+        $hasTeams = $user->teams()->exists() || $user->ownedTeams()->exists();
 
         return collect($items)
             ->filter(function ($item) use ($user, $hasTeams) {
@@ -283,7 +293,8 @@ class NavigationController extends Controller
 
                     // If team permission, check team context
                     if ($hasTeams) {
-                        foreach ($user->teams as $team) {
+                        $teams = $user->teams->merge($user->ownedTeams)->unique('id');
+                        foreach ($teams as $team) {
                             if ($this->permissionService->hasTeamPermission($user, $team, $permission)) {
                                 return true;
                             }

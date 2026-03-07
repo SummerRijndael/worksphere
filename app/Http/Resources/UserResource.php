@@ -69,9 +69,14 @@ class UserResource extends JsonResource
 
                         // If super admin, we return the wildcard but frontend might prefer full list
                         // Let's return the flattened collection from the persona
+                        // Merge global permissions with all team permissions for the frontend's can() check.
+                        // Since sensitive permissions (tickets.manage, etc.) are now global-only and not in team roles,
+                        // this union will not cause "bleed".
                         $permissions = $persona->globalPermissions;
+ 
+                        $teams = $this->resource->teams->merge($this->resource->ownedTeams)->unique('id');
 
-                        foreach ($this->resource->teams as $team) {
+                        foreach ($teams as $team) {
                             $teamPerms = $persona->resolveTeam($team->id);
                             $permissions = $permissions->merge($teamPerms);
                         }
@@ -99,7 +104,9 @@ class UserResource extends JsonResource
                         $persona = $permissionService->getPersona($this->resource);
 
                         $teamPermissions = [];
-                        foreach ($this->resource->teams as $team) {
+                        $teams = $this->resource->teams->merge($this->resource->ownedTeams)->unique('id');
+
+                        foreach ($teams as $team) {
                             $teamPermissions[$team->public_id] = $persona->resolveTeam($team->id);
                         }
 
@@ -121,7 +128,7 @@ class UserResource extends JsonResource
                         'connected_at' => $this->created_at?->toISOString(),
                     ],
                 ] : [],
-                'teams' => $this->teams->map(function ($team) {
+                'teams' => $this->teams->merge($this->ownedTeams)->unique('id')->map(function ($team) {
                     return [
                         'id' => $team->public_id,
                         'public_id' => $team->public_id,
@@ -130,8 +137,8 @@ class UserResource extends JsonResource
                         'owner_id' => $team->owner?->public_id, // Use Public ID
                         'is_owner' => $team->owner_id === $this->id,
                         'membership' => [
-                            'role' => $team->pivot->role,
-                            'joined_at' => $team->pivot->joined_at,
+                            'role' => $team->owner_id === $this->id ? 'owner' : ($team->pivot->role ?? 'member'),
+                            'joined_at' => $team->pivot->joined_at ?? $team->created_at,
                         ],
                     ];
                 }),

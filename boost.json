@@ -2,8 +2,11 @@
     "agents": [
         "claude_code"
     ],
-    "editors": [
-        "claude_code"
-    ],
-    "guidelines": []
+    "guidelines": true,
+    "herd_mcp": false,
+    "mcp": true,
+    "sail": false,
+    "skills": [
+        "tailwindcss-development"
+    ]
 }

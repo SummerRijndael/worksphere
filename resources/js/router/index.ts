@@ -428,6 +428,7 @@ const routes: RouteRecordRaw[] = [
                     title: "Analytics",
                     breadcrumb: "Analytics",
                     transition: "slide-fade",
+                    permission: "dashboard.analytics",
                 },
             },
             {
@@ -561,7 +562,7 @@ const routes: RouteRecordRaw[] = [
                     title: "Ticket Reports",
                     breadcrumb: "Reports",
                     transition: "slide-fade",
-                    permission: "tickets.view",
+                    permission: "tickets.reports",
                 },
             },
             {
@@ -573,7 +574,7 @@ const routes: RouteRecordRaw[] = [
                     title: "Projects Report",
                     breadcrumb: "Reports",
                     transition: "slide-fade",
-                    // permission: 'projects.view'
+                    permission: ["reports.view", "reports.view_all"],
                 },
             },
             {
@@ -882,7 +883,7 @@ const routes: RouteRecordRaw[] = [
                     title: "Clients",
                     breadcrumb: "Clients",
                     transition: "slide-fade",
-                    // No permission required, just auth
+                    permission: ["clients.view", "clients.view_all"],
                 },
             },
             {
@@ -894,6 +895,7 @@ const routes: RouteRecordRaw[] = [
                     breadcrumb: "Client Details",
                     breadcrumbParent: { name: "clients", label: "Clients" },
                     transition: "slide-fade",
+                    permission: ["clients.view", "clients.view_all"],
                 },
             },
             {
@@ -904,8 +906,7 @@ const routes: RouteRecordRaw[] = [
                     title: "Manage Clients",
                     breadcrumb: "Clients",
                     transition: "slide-fade",
-                    // No permission check for now - handled by backend and navigationController
-                    // permission: "clients.manage", 
+                    permission: ["clients.view", "clients.view_all"],
                 },
             },
             {

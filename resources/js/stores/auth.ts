@@ -183,17 +183,28 @@ export const useAuthStore = defineStore('auth', () => {
     return user.value?.roles?.some(role => role.name === roleName) || false;
   }
 
-  function hasPermission(permissionName: string): boolean {
+  function hasPermission(permissionName: string | string[]): boolean {
     if (isSuperAdmin.value) return true;
+    if (!user.value) return false;
     
-    return user.value?.permissions?.some(p => p.name === permissionName) || false;
+    const permissionsToCheck = Array.isArray(permissionName) ? permissionName : [permissionName];
+    
+    // 1. Check global permissions
+    const hasGlobal = user.value.permissions?.some(p => permissionsToCheck.includes(p.name)) || false;
+    if (hasGlobal) return true;
+    
+    // 2. Check team permissions (if user has any in any team)
+    return hasAnyTeamPermission(permissionsToCheck);
   }
 
-  function hasAnyTeamPermission(permissionName: string): boolean {
+  function hasAnyTeamPermission(permissionName: string | string[]): boolean {
     if (isSuperAdmin.value) return true;
     if (!user.value?.team_permissions) return false;
 
-    return Object.values(user.value.team_permissions).some(perms => perms.includes(permissionName));
+    const permissionsToCheck = Array.isArray(permissionName) ? permissionName : [permissionName];
+    const allTeamPerms = Object.values(user.value.team_permissions).flat();
+    
+    return permissionsToCheck.some(p => allTeamPerms.includes(p));
   }
 
   function hasTeamPermission(teamPublicId: string, permissionName: string): boolean {

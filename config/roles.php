@@ -69,12 +69,16 @@ return [
             'level' => 50,
             'permissions' => [
                 'dashboard.view',
+                'dashboard.analytics',
                 'users.view',
                 'users.update',
                 'users.manage_status',
+                'tickets.view',
                 'tickets.manage',
                 'tickets.create',
-                'reports.view',
+                'tickets.reports',
+                'clients.view_all',
+                'reports.view_all',
                 'notes.view',
                 'notes.create',
                 'notes.update',
@@ -93,9 +97,6 @@ return [
                 'tickets.view_own',
                 'tickets.create',
                 'tickets.update_own',
-                'projects.view_assigned',
-                'tasks.view_assigned',
-                'tasks.update_assigned',
                 'notes.view',
                 'notes.create',
                 'notes.update',
@@ -149,10 +150,17 @@ return [
 
         // Ticket Management (Global level)
         'tickets' => [
+            'tickets.view' => 'View all tickets',
             'tickets.view_own' => 'View own tickets',
             'tickets.create' => 'Create tickets',
+            'tickets.update' => 'Update tickets',
             'tickets.update_own' => 'Update own tickets',
             'tickets.manage' => 'Manage all tickets',
+            'tickets.assign' => 'Assign tickets',
+            'tickets.close' => 'Close tickets',
+            'tickets.delete' => 'Delete tickets',
+            'tickets.internal_notes' => 'View internal notes',
+            'tickets.reports' => 'View ticket analytics and reports',
         ],
 
         // Team Management (Global context)
@@ -206,6 +214,21 @@ return [
             'services.view' => 'View service plans',
             'services.manage' => 'Manage service plans and pricing',
         ],
+
+        // Client Management (Global context)
+        'clients' => [
+            'clients.view_all' => 'View all clients (Support)',
+            'clients.manage' => 'Full client management override (Admin)',
+            'clients.manage_portal' => 'Manage client portal access',
+        ],
+
+        // Reports (Global context)
+        'reports' => [
+            'reports.view_all' => 'View all reports (Support)',
+            'reports.manage' => 'Full report management override (Admin)',
+            'reports.create' => 'Create reports',
+            'reports.export' => 'Export reports',
+        ],
     ],
 
     'team_permissions' => [
@@ -243,25 +266,6 @@ return [
             'tasks.client_response' => 'Record client approval/rejection',
         ],
 
-        // Ticket Management (Team context)
-        'tickets' => [
-            'tickets.view' => 'View all tickets',
-            'tickets.view_own' => 'View own tickets',
-            'tickets.create' => 'Create tickets',
-            'tickets.update' => 'Update tickets',
-            'tickets.update_own' => 'Update own tickets',
-            'tickets.delete' => 'Delete tickets',
-            'tickets.assign' => 'Assign tickets',
-            'tickets.close' => 'Close tickets',
-            'tickets.internal_notes' => 'View internal notes',
-        ],
-
-        // Reports
-        'reports' => [
-            'reports.view' => 'View reports',
-            'reports.create' => 'Create reports',
-            'reports.export' => 'Export reports',
-        ],
 
         // Team Management (Team context)
         'teams' => [
@@ -296,15 +300,6 @@ return [
             'qa_checks.delete' => 'Delete QA check templates',
         ],
 
-        // Clients
-        'clients' => [
-            'clients.view' => 'View clients',
-            'clients.create' => 'Create clients',
-            'clients.update' => 'Update clients',
-            'clients.delete' => 'Delete clients',
-            'clients.manage_portal' => 'Manage client portal access',
-        ],
-
         'invoices' => [
             'invoices.view' => 'View invoices only',
             'invoices.create' => 'Create invoices',
@@ -320,6 +315,21 @@ return [
             'invoice_templates.create' => 'Create invoice templates',
             'invoice_templates.update' => 'Update invoice templates',
             'invoice_templates.delete' => 'Delete invoice templates',
+        ],
+
+        // Client Management (Team context)
+        'clients' => [
+            'clients.view' => 'View team clients',
+            'clients.create' => 'Create team clients',
+            'clients.update' => 'Update team clients',
+            'clients.delete' => 'Delete team clients',
+        ],
+
+        // Reports (Team context)
+        'reports' => [
+            'reports.view' => 'View team reports',
+            'reports.create' => 'Create team reports',
+            'reports.export' => 'Export team reports',
         ],
     ],
 
@@ -414,7 +424,6 @@ return [
             'clients.create',
             'clients.update',
             'clients.delete',
-            'clients.manage_portal',
 
             // Invoices
             'invoices.view',
@@ -427,12 +436,6 @@ return [
             'invoice_templates.create',
             'invoice_templates.update',
             'invoice_templates.delete',
-
-            // Tickets within team
-            'tickets.view_own',
-            'tickets.create',
-            'tickets.update_own',
-            'tickets.internal_notes',
 
             // Reports
             'reports.view',
@@ -485,7 +488,6 @@ return [
 
             // Clients
             'clients.view',
-            'clients.create',
             'clients.update',
 
             // Invoices
@@ -498,13 +500,9 @@ return [
             // Invoice templates
             'invoice_templates.view',
 
-            // Tickets within team
-            'tickets.view_own',
-            'tickets.create',
-            'tickets.internal_notes',
-
             // Reports
             'reports.view',
+            'reports.create',
             'reports.export',
         ],
         'quality_assessor' => [
@@ -539,7 +537,6 @@ return [
             // CANNOT update task details, add/remove checklist (controlled by policies/UI)
             // But can likely "complete" subtasks if assigned? Instructions said "cannot update task details"
 
-            'tickets.view_own', // Or assigned
             'reports.view', // Maybe?
         ],
     ],
