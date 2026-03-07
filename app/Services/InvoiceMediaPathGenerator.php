@@ -13,6 +13,7 @@ class InvoiceMediaPathGenerator implements PathGenerator
         if ($media->model_type === Invoice::class) {
             /** @var Invoice $invoice */
             $invoice = $media->model;
+
             return "invoice/{$invoice->public_id}/{$media->id}/";
         }
 
@@ -21,11 +22,11 @@ class InvoiceMediaPathGenerator implements PathGenerator
 
     public function getPathForConversions(Media $media): string
     {
-        return $this->getPath($media) . 'conversions/';
+        return $this->getPath($media).'conversions/';
     }
 
     public function getPathForResponsiveImages(Media $media): string
     {
-        return $this->getPath($media) . 'responsive-images/';
+        return $this->getPath($media).'responsive-images/';
     }
 }

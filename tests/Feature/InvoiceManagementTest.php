@@ -321,7 +321,7 @@ class InvoiceManagementTest extends TestCase
 
         $response->assertStatus(200)
             ->assertJsonPath('invoice.status', 'cancelled');
-        
+
         $this->assertStringContainsString('Cancellation Reason: Customer changed mind', $invoice->fresh()->notes);
     }
 

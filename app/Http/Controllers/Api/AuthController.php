@@ -331,6 +331,7 @@ class AuthController extends Controller
         $key = 'forgot-password|'.$request->ip();
         if (\Illuminate\Support\Facades\RateLimiter::tooManyAttempts($key, 3)) {
             $seconds = \Illuminate\Support\Facades\RateLimiter::availableIn($key);
+
             return response()->json([
                 'message' => "Too many password reset attempts. Please try again in $seconds seconds.",
             ], 429);

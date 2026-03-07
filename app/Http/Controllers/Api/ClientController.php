@@ -26,8 +26,8 @@ class ClientController extends Controller
         $projectQuery = \App\Models\Project::query()->whereNotNull('client_id');
 
         // Resolve Team Scoping
-        $requestedTeamId = $request->has('team_id') 
-            ? $request->input('team_id') 
+        $requestedTeamId = $request->has('team_id')
+            ? $request->input('team_id')
             : $request->header('X-Team-ID');
 
         if ($requestedTeamId) {
@@ -49,7 +49,7 @@ class ClientController extends Controller
             $teamIds = $user->teams()->pluck('teams.id')
                 ->merge($user->ownedTeams()->pluck('id'))
                 ->unique();
-            
+
             $query->whereIn('team_id', $teamIds);
             $projectQuery->whereIn('team_id', $teamIds);
         }
@@ -86,8 +86,8 @@ class ClientController extends Controller
         // Typically in this codebase, we see manual resolution often.
         // Let's rely on standard resolution logic combined with the input check.
 
-        $requestedTeamId = $request->has('team_id') 
-            ? $request->input('team_id') 
+        $requestedTeamId = $request->has('team_id')
+            ? $request->input('team_id')
             : ($routeTeam ?? $request->header('X-Team-ID'));
 
         // Sanitize: Treat literal "undefined" or "null" strings as null
@@ -189,7 +189,7 @@ class ClientController extends Controller
             $targetTeam = \App\Models\Team::where('public_id', $teamPublicId)
                 ->orWhere('id', $teamPublicId)
                 ->first();
-            
+
             if ($targetTeam) {
                 // Verify Permission for target team
                 if ($user->hasRole('administrator') || $permissionService->hasTeamPermission($user, $targetTeam, 'clients.create')) {
@@ -200,7 +200,7 @@ class ClientController extends Controller
             } else {
                 throw \Illuminate\Validation\ValidationException::withMessages(['team_id' => 'Invalid team.']);
             }
-        } 
+        }
 
         // 2. Fallback to request context if no team_id or team_id was invalid
         if (! $teamId) {
@@ -300,10 +300,10 @@ class ClientController extends Controller
             $targetTeam = \App\Models\Team::where('public_id', $teamPublicId)
                 ->orWhere('id', $teamPublicId)
                 ->first();
-            
+
             if ($targetTeam) {
                 $permissionService = app(\App\Services\PermissionService::class);
-                
+
                 // Verify Permission: Need update permission on BOTH current and target team
                 $canUpdateCurrent = $user->hasRole('administrator') || $permissionService->hasTeamPermission($user, $client->team, 'clients.update');
                 $canUpdateTarget = $user->hasRole('administrator') || $permissionService->hasTeamPermission($user, $targetTeam, 'clients.update');

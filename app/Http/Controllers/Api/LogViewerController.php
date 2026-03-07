@@ -15,10 +15,10 @@ class LogViewerController extends Controller
     {
         $logPath = storage_path('app/private/sys/logs');
         $files = File::glob($logPath.'/*.log');
-        
+
         // Also include avatar_errors.log if not already caught by glob
         $avatarLog = $logPath.'/avatar_errors.log';
-        if (File::exists($avatarLog) && !in_array($avatarLog, $files)) {
+        if (File::exists($avatarLog) && ! in_array($avatarLog, $files)) {
             $files[] = $avatarLog;
         }
 

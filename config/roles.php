@@ -273,7 +273,6 @@ return [
             'tasks.client_response' => 'Record client approval/rejection',
         ],
 
-
         // Team Management (Team context)
         'teams' => [
             'teams.view' => 'View teams',

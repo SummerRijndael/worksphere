@@ -73,7 +73,7 @@ class UserResource extends JsonResource
                         // Since sensitive permissions (tickets.manage, etc.) are now global-only and not in team roles,
                         // this union will not cause "bleed".
                         $permissions = $persona->globalPermissions;
- 
+
                         $teams = $this->resource->teams->merge($this->resource->ownedTeams)->unique('id');
 
                         foreach ($teams as $team) {

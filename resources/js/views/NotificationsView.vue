@@ -4,19 +4,18 @@ import { useDate } from '@/composables/useDate';
 const { formatDateTime, userTimezone } = useDate();
 import { Card, Button, Badge, Avatar } from '@/components/ui';
 import { Bell, Check, Trash2, Settings, Filter, UserPlus, X, Calendar, MessageSquare, Briefcase, FileText } from 'lucide-vue-next';
-import { useNotifications } from '@/composables/useNotifications.ts';
+import { useNotificationsStore } from '@/stores/notifications';
 
-const { 
-    notifications, 
-    unreadCount, 
-    loading, 
-    fetchNotifications, 
-    markAsRead, 
-    markAllAsRead, 
-    deleteNotification,
-    acceptInvitation,
-    declineInvitation
-} = useNotifications();
+const notificationsStore = useNotificationsStore();
+const notifications = computed(() => notificationsStore.notifications);
+const unreadCount = computed(() => notificationsStore.unreadCount);
+const loading = computed(() => notificationsStore.isLoading);
+const fetchNotifications = () => notificationsStore.fetchNotifications(true);
+const markAsRead = (id) => notificationsStore.markAsRead(id);
+const markAllAsRead = () => notificationsStore.markAllRead();
+const deleteNotification = (id) => notificationsStore.removeNotification(id);
+const acceptInvitation = (notificationId) => notificationsStore.acceptInvitation(notificationId);
+const declineInvitation = (notificationId) => notificationsStore.declineInvitation(notificationId);
 
 const filter = ref('all');
 

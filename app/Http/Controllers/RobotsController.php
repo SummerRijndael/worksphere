@@ -12,8 +12,8 @@ class RobotsController extends Controller
      */
     public function __invoke(AppSettingsService $settings): Response
     {
-        $fallback = file_exists(public_path('robots.txt')) 
-            ? file_get_contents(public_path('robots.txt')) 
+        $fallback = file_exists(public_path('robots.txt'))
+            ? file_get_contents(public_path('robots.txt'))
             : "User-agent: *\nDisallow: /admin\nAllow: /";
 
         $content = $settings->get('seo.robots_txt', $fallback);

@@ -18,6 +18,12 @@ use Throwable;
 
 class MaintenanceService
 {
+    private const CACHE_OBSERVABILITY_PREFIX = 'metrics:cache:observed';
+
+    private const REDIS_INSTANCE_WINDOW_PREFIX = 'metrics:redis:instance:totals';
+
+    private const METRICS_BUCKET_TTL_SECONDS = 7200;
+
     public function __construct(
         protected \App\Services\Chat\PresenceService $presenceService
     ) {}
@@ -91,11 +97,17 @@ class MaintenanceService
             'cache_driver' => $cacheInfo['driver'],
             'cache_status' => $cacheInfo['status'],
             'cache_keys' => $cacheInfo['keys'] ?? null,
+            'cache_keys_cache_db' => $cacheInfo['keys_cache_db'] ?? null,
+            'cache_keys_default_db' => $cacheInfo['keys_default_db'] ?? null,
             'cache_memory_used' => $cacheInfo['memory_used'] ?? null,
             'cache_memory_peak' => $cacheInfo['memory_peak'] ?? null,
             'cache_memory_limit' => $cacheInfo['memory_limit'] ?? null,
             'cache_hits' => $cacheInfo['hits'] ?? null,
             'cache_misses' => $cacheInfo['misses'] ?? null,
+            'cache_hit_rate' => $cacheInfo['hit_rate'] ?? null,
+            'cache_hit_rate_5m' => $cacheInfo['hit_rate_5m'] ?? null,
+            'redis_instance_metrics' => $cacheInfo['redis_instance_metrics'] ?? null,
+            'laravel_cache_metrics' => $cacheInfo['laravel_cache_metrics'] ?? null,
             'reverb_connections' => $cacheInfo['reverb_connections'] ?? 0,
 
             // Real Health Status
@@ -329,15 +341,31 @@ class MaintenanceService
     private function getRedisDetailedInfo(): array
     {
         try {
-            $info = Redis::info();
             $memoryInfo = Redis::info('memory');
             $statsInfo = Redis::info('stats');
 
-            // Handle Predis (nested array) vs Phpredis (flat array) structure
+            // Handle Predis/PhpRedis variants: nested arrays or flat arrays with section keys.
             $usedMemory = $memoryInfo['used_memory'] ?? $memoryInfo['Memory']['used_memory'] ?? 0;
             $peakMemory = $memoryInfo['used_memory_peak'] ?? $memoryInfo['Memory']['used_memory_peak'] ?? 0;
-            $hits = $statsInfo['keyspace_hits'] ?? $statsInfo['Stats']['keyspace_hits'] ?? 0;
-            $misses = $statsInfo['keyspace_misses'] ?? $statsInfo['Stats']['keyspace_misses'] ?? 0;
+            $statsRoot = $statsInfo['Stats'] ?? $statsInfo['stats'] ?? $statsInfo;
+
+            $hasHits = is_array($statsRoot) && array_key_exists('keyspace_hits', $statsRoot);
+            $hasMisses = is_array($statsRoot) && array_key_exists('keyspace_misses', $statsRoot);
+            $hits = $hasHits ? (int) $statsRoot['keyspace_hits'] : null;
+            $misses = $hasMisses ? (int) $statsRoot['keyspace_misses'] : null;
+            $expiredKeys = is_array($statsRoot) && array_key_exists('expired_keys', $statsRoot)
+                ? (int) $statsRoot['expired_keys']
+                : null;
+            $evictedKeys = is_array($statsRoot) && array_key_exists('evicted_keys', $statsRoot)
+                ? (int) $statsRoot['evicted_keys']
+                : null;
+
+            $hitRate = $this->calculateHitRate($hits, $misses);
+            $hitRateWindow = ($hits !== null && $misses !== null)
+                ? $this->calculateRedisInstanceWindowedHitRate($hits, $misses, 5)
+                : null;
+
+            $keyCounts = $this->getRedisKeyCounts();
 
             // Get Reverb Connections if available
             $reverbConnections = 0;
@@ -351,14 +379,32 @@ class MaintenanceService
                 // Ignore errors fetching reverb stats to not break cache stats
             }
 
+            $redisInstanceMetrics = [
+                'scope' => 'redis_instance_global',
+                'hits' => $hits,
+                'misses' => $misses,
+                'hit_rate' => $hitRate,
+                'hit_rate_5m' => $hitRateWindow,
+                'expired_keys' => $expiredKeys,
+                'evicted_keys' => $evictedKeys,
+            ];
+
+            $laravelCacheMetrics = $this->getObservedLaravelCacheMetrics(5);
+
             return [
                 'status' => 'Connected',
-                'keys' => $this->getRedisKeyCount(),
+                'keys' => $keyCounts['total'],
+                'keys_cache_db' => $keyCounts['cache_db'],
+                'keys_default_db' => $keyCounts['default_db'],
                 'memory_used' => $this->formatBytes((int) $usedMemory),
                 'memory_peak' => $this->formatBytes((int) $peakMemory),
                 'memory_limit' => $this->getRedisMemoryLimit($memoryInfo),
-                'hits' => number_format((int) $hits),
-                'misses' => number_format((int) $misses),
+                'hits' => $hits !== null ? number_format($hits) : 'N/A',
+                'misses' => $misses !== null ? number_format($misses) : 'N/A',
+                'hit_rate' => $hitRate !== null ? $hitRate.'%' : 'N/A',
+                'hit_rate_5m' => $hitRateWindow !== null ? $hitRateWindow.'%' : null,
+                'redis_instance_metrics' => $redisInstanceMetrics,
+                'laravel_cache_metrics' => $laravelCacheMetrics,
                 'reverb_connections' => $reverbConnections,
             ];
         } catch (Throwable) {
@@ -387,31 +433,149 @@ class MaintenanceService
      */
     private function getRedisKeyCount(): int
     {
+        return $this->getRedisKeyCounts()['total'];
+    }
+
+    /**
+     * Get Redis key counts split by db for better metric accuracy.
+     *
+     * @return array{total:int, cache_db:int, default_db:int}
+     */
+    private function getRedisKeyCounts(): array
+    {
         try {
             $info = Redis::info('keyspace');
-            $count = 0;
+            $counts = [];
 
             // Handle Predis nested array format (Keyspace -> dbX -> keys)
             if (isset($info['Keyspace']) && is_array($info['Keyspace'])) {
                 foreach ($info['Keyspace'] as $db => $stats) {
                     if (isset($stats['keys'])) {
-                        $count += (int) $stats['keys'];
+                        $counts[(string) $db] = (int) $stats['keys'];
                     }
                 }
-
-                return $count;
-            }
-
-            // Handle Phpredis/Raw format (dbX:keys=123,expires=10...)
-            foreach ($info as $key => $value) {
-                if (strpos($key, 'db') === 0 && preg_match('/keys=(\d+)/', $value, $matches)) {
-                    $count += (int) $matches[1];
+            } else {
+                // Handle Phpredis/Raw format (dbX:keys=123,expires=10...)
+                foreach ($info as $key => $value) {
+                    if (strpos((string) $key, 'db') === 0 && preg_match('/keys=(\d+)/', (string) $value, $matches)) {
+                        $counts[(string) $key] = (int) $matches[1];
+                    }
                 }
             }
 
-            return $count;
+            $total = array_sum($counts);
+            $cacheDb = 'db'.(string) config('database.redis.cache.database', 1);
+            $defaultDb = 'db'.(string) config('database.redis.default.database', 0);
+
+            return [
+                'total' => $total,
+                'cache_db' => $counts[$cacheDb] ?? 0,
+                'default_db' => $counts[$defaultDb] ?? 0,
+            ];
         } catch (Throwable) {
-            return 0;
+            return [
+                'total' => 0,
+                'cache_db' => 0,
+                'default_db' => 0,
+            ];
+        }
+    }
+
+    /**
+     * Calculate hit rate percentage as float.
+     */
+    private function calculateHitRate(?int $hits, ?int $misses): ?float
+    {
+        if ($hits === null || $misses === null) {
+            return null;
+        }
+
+        $total = $hits + $misses;
+        if ($total <= 0) {
+            return null;
+        }
+
+        return round(($hits / $total) * 100, 2);
+    }
+
+    /**
+     * Calculate windowed Redis instance hit rate from cumulative totals.
+     */
+    private function calculateRedisInstanceWindowedHitRate(int $hits, int $misses, int $windowMinutes): ?float
+    {
+        try {
+            $connection = config('cache.stores.redis.connection', 'cache');
+            $redis = Redis::connection($connection);
+
+            $bucketNow = Carbon::now()->startOfMinute();
+            $currentKey = self::REDIS_INSTANCE_WINDOW_PREFIX.':'.$bucketNow->format('YmdHi');
+            $oldKey = self::REDIS_INSTANCE_WINDOW_PREFIX.':'.$bucketNow->copy()->subMinutes($windowMinutes)->format('YmdHi');
+
+            $redis->setex($currentKey, self::METRICS_BUCKET_TTL_SECONDS, json_encode([
+                'hits' => $hits,
+                'misses' => $misses,
+            ]));
+
+            $oldRaw = $redis->get($oldKey);
+            if (! is_string($oldRaw) || $oldRaw === '') {
+                return null;
+            }
+
+            $old = json_decode($oldRaw, true);
+            if (! is_array($old) || ! isset($old['hits'], $old['misses'])) {
+                return null;
+            }
+
+            $deltaHits = max(0, $hits - (int) $old['hits']);
+            $deltaMisses = max(0, $misses - (int) $old['misses']);
+
+            return $this->calculateHitRate($deltaHits, $deltaMisses);
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Build Laravel cache effectiveness metrics from event counters.
+     */
+    private function getObservedLaravelCacheMetrics(int $windowMinutes = 5): ?array
+    {
+        try {
+            $connection = config('cache.stores.redis.connection', 'cache');
+            $redis = Redis::connection($connection);
+            $now = Carbon::now()->startOfMinute();
+
+            $hitTotal = (int) ($redis->get(self::CACHE_OBSERVABILITY_PREFIX.':hit:total') ?? 0);
+            $missTotal = (int) ($redis->get(self::CACHE_OBSERVABILITY_PREFIX.':miss:total') ?? 0);
+            $writeTotal = (int) ($redis->get(self::CACHE_OBSERVABILITY_PREFIX.':write:total') ?? 0);
+
+            $hitKeys = [];
+            $missKeys = [];
+            for ($i = 0; $i < $windowMinutes; $i++) {
+                $bucket = $now->copy()->subMinutes($i)->format('YmdHi');
+                $hitKeys[] = self::CACHE_OBSERVABILITY_PREFIX.":hit:{$bucket}";
+                $missKeys[] = self::CACHE_OBSERVABILITY_PREFIX.":miss:{$bucket}";
+            }
+
+            $hitValues = $redis->mget($hitKeys);
+            $missValues = $redis->mget($missKeys);
+
+            $hitWindow = array_sum(array_map(fn ($v) => (int) ($v ?? 0), is_array($hitValues) ? $hitValues : []));
+            $missWindow = array_sum(array_map(fn ($v) => (int) ($v ?? 0), is_array($missValues) ? $missValues : []));
+
+            return [
+                'scope' => 'laravel_cache_events',
+                'window_minutes' => $windowMinutes,
+                'hits_total' => $hitTotal,
+                'misses_total' => $missTotal,
+                'writes_total' => $writeTotal,
+                'hit_rate_total' => $this->calculateHitRate($hitTotal, $missTotal),
+                'hits_window' => $hitWindow,
+                'misses_window' => $missWindow,
+                'hit_rate_window' => $this->calculateHitRate($hitWindow, $missWindow),
+            ];
+        } catch (Throwable) {
+            return null;
         }
     }
 

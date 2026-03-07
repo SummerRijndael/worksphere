@@ -4,10 +4,14 @@ namespace App\Console\Commands;
 
 use App\Enums\AuditAction;
 use App\Enums\AuditCategory;
+use App\Models\User;
+use App\Notifications\SystemNotification;
 use App\Services\AuditService;
 use App\Services\MaintenanceService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
 
 class MonitorExternalServices extends Command
 {
@@ -44,6 +48,7 @@ class MonitorExternalServices extends Command
                 // Skip if explicitly "Not Configured" or meant to be ignored
                 if ($status === 'Not Configured' || ($key === 'recaptcha' && ! $configured) || ($key === 'twilio' && ! $configured)) {
                     $this->line("[$name] Not Configured - Skipped");
+                    $this->clearServiceFailureState($key);
 
                     continue;
                 }
@@ -69,8 +74,11 @@ class MonitorExternalServices extends Command
                             'latency' => $latency,
                         ]
                     );
+
+                    $this->notifyAdminsOfFailure($key, $name, $status, (string) $message, (string) $latency);
                 } else {
                     $this->info("[$name] Operational");
+                    $this->notifyAdminsOfRecoveryIfNeeded($key, $name);
                 }
             } catch (\Exception $e) {
                 // Prevent one service check failure from crashing the entire monitor command
@@ -85,5 +93,76 @@ class MonitorExternalServices extends Command
         }
 
         return $hasFailures ? 1 : 0;
+    }
+
+    protected function notifyAdminsOfFailure(string $serviceKey, string $serviceName, string $status, string $message, string $latency): void
+    {
+        $cooldownMinutes = (int) config('server-monitor.notifications.throttle_failing_notifications_for_minutes', 60);
+        $notificationKey = "ext_service_alert:{$serviceKey}:{$status}";
+        $stateKey = "ext_service_state:{$serviceKey}";
+
+        // Throttle duplicate alerts with same status.
+        if (! Cache::add($notificationKey, now()->timestamp, now()->addMinutes($cooldownMinutes))) {
+            Cache::put($stateKey, $status, now()->addDays(7));
+
+            return;
+        }
+
+        $admins = User::role('administrator')->get();
+        if ($admins->isNotEmpty()) {
+            Notification::send($admins, new SystemNotification(
+                'system',
+                "External Service Alert: {$serviceName}",
+                "{$serviceName} is {$status}. {$message}",
+                '/system/maintenance',
+                'Open Maintenance',
+                [
+                    'service_key' => $serviceKey,
+                    'service_name' => $serviceName,
+                    'status' => $status,
+                    'message' => $message,
+                    'latency' => $latency,
+                    'checked_at' => now()->toIso8601String(),
+                ]
+            ));
+        }
+
+        Cache::put($stateKey, $status, now()->addDays(7));
+    }
+
+    protected function notifyAdminsOfRecoveryIfNeeded(string $serviceKey, string $serviceName): void
+    {
+        $stateKey = "ext_service_state:{$serviceKey}";
+        $previousStatus = Cache::get($stateKey);
+
+        if (! $previousStatus || $previousStatus === 'Operational') {
+            return;
+        }
+
+        $admins = User::role('administrator')->get();
+        if ($admins->isNotEmpty()) {
+            Notification::send($admins, new SystemNotification(
+                'system',
+                "External Service Recovered: {$serviceName}",
+                "{$serviceName} is now Operational (previously {$previousStatus}).",
+                '/system/maintenance',
+                'Open Maintenance',
+                [
+                    'service_key' => $serviceKey,
+                    'service_name' => $serviceName,
+                    'status' => 'Operational',
+                    'previous_status' => $previousStatus,
+                    'checked_at' => now()->toIso8601String(),
+                ]
+            ));
+        }
+
+        Cache::forget($stateKey);
+    }
+
+    protected function clearServiceFailureState(string $serviceKey): void
+    {
+        $stateKey = "ext_service_state:{$serviceKey}";
+        Cache::forget($stateKey);
     }
 }

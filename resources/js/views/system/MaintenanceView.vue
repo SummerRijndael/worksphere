@@ -110,6 +110,12 @@ const systemInfo = ref({
     cache_memory_limit: null,
     cache_hits: null,
     cache_misses: null,
+    cache_hit_rate: null,
+    cache_hit_rate_5m: null,
+    cache_keys_cache_db: null,
+    cache_keys_default_db: null,
+    redis_instance_metrics: null,
+    laravel_cache_metrics: null,
     cpu_model: null,
     disk_model: null,
 });
@@ -4178,6 +4184,44 @@ onUnmounted(() => {
                                         }}
                                     </span>
                                 </div>
+                                <div
+                                    class="flex justify-between items-center p-2 bg-[var(--surface-secondary)] rounded-lg"
+                                >
+                                    <span
+                                        class="text-sm text-[var(--text-secondary)]"
+                                        >Cache DB Keys</span
+                                    >
+                                    <span
+                                        class="text-sm font-medium text-[var(--text-primary)]"
+                                    >
+                                        {{
+                                            typeof systemInfo.cache_keys_cache_db ===
+                                            "number"
+                                                ? systemInfo.cache_keys_cache_db.toLocaleString()
+                                                : systemInfo.cache_keys_cache_db ??
+                                                  "N/A"
+                                        }}
+                                    </span>
+                                </div>
+                                <div
+                                    class="flex justify-between items-center p-2 bg-[var(--surface-secondary)] rounded-lg"
+                                >
+                                    <span
+                                        class="text-sm text-[var(--text-secondary)]"
+                                        >Default DB Keys</span
+                                    >
+                                    <span
+                                        class="text-sm font-medium text-[var(--text-primary)]"
+                                    >
+                                        {{
+                                            typeof systemInfo.cache_keys_default_db ===
+                                            "number"
+                                                ? systemInfo.cache_keys_default_db.toLocaleString()
+                                                : systemInfo.cache_keys_default_db ??
+                                                  "N/A"
+                                        }}
+                                    </span>
+                                </div>
                             </div>
                         </div>
 
@@ -4230,35 +4274,163 @@ onUnmounted(() => {
                                     </div>
                                 </div>
 
-                                <div class="grid grid-cols-2 gap-2">
+                                <div
+                                    class="p-2.5 bg-[var(--surface-secondary)] rounded-lg"
+                                >
                                     <div
-                                        class="p-2 bg-[var(--surface-secondary)] rounded-lg"
+                                        class="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wide mb-1.5"
                                     >
-                                        <div
-                                            class="text-xs text-[var(--text-muted)] mb-0.5"
-                                        >
-                                            Cache Hits
+                                        Redis Instance (Global)
+                                    </div>
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <div
+                                                class="text-xs text-[var(--text-muted)] mb-0.5"
+                                            >
+                                                Hits
+                                            </div>
+                                            <div
+                                                class="text-sm font-semibold text-green-600"
+                                            >
+                                                {{ systemInfo.cache_hits || "0" }}
+                                            </div>
                                         </div>
-                                        <div
-                                            class="text-sm font-semibold text-green-600"
-                                        >
-                                            {{ systemInfo.cache_hits || "0" }}
+                                        <div>
+                                            <div
+                                                class="text-xs text-[var(--text-muted)] mb-0.5"
+                                            >
+                                                Misses
+                                            </div>
+                                            <div
+                                                class="text-sm font-semibold text-orange-600"
+                                            >
+                                                {{ systemInfo.cache_misses || "0" }}
+                                            </div>
                                         </div>
                                     </div>
                                     <div
-                                        class="p-2 bg-[var(--surface-secondary)] rounded-lg"
+                                        class="text-xs text-[var(--text-muted)] mt-1.5"
                                     >
-                                        <div
-                                            class="text-xs text-[var(--text-muted)] mb-0.5"
+                                        Lifetime Rate:
+                                        <span
+                                            class="font-medium text-[var(--text-primary)]"
                                         >
-                                            Cache Misses
+                                            {{ systemInfo.cache_hit_rate ?? "N/A" }}
+                                        </span>
+                                    </div>
+                                    <div
+                                        class="text-xs text-[var(--text-muted)]"
+                                    >
+                                        5m Rate:
+                                        <span
+                                            class="font-medium text-[var(--text-primary)]"
+                                        >
+                                            {{ systemInfo.cache_hit_rate_5m ?? "N/A" }}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div
+                                    class="p-2.5 bg-[var(--surface-secondary)] rounded-lg"
+                                >
+                                    <div
+                                        class="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wide mb-1.5"
+                                    >
+                                        Laravel Cache (Observed)
+                                    </div>
+                                    <div class="grid grid-cols-3 gap-2">
+                                        <div>
+                                            <div
+                                                class="text-xs text-[var(--text-muted)] mb-0.5"
+                                            >
+                                                Hits
+                                            </div>
+                                            <div
+                                                class="text-sm font-semibold text-green-600"
+                                            >
+                                                {{
+                                                    typeof systemInfo.laravel_cache_metrics?.hits_total ===
+                                                    "number"
+                                                        ? systemInfo.laravel_cache_metrics.hits_total.toLocaleString()
+                                                        : "N/A"
+                                                }}
+                                            </div>
                                         </div>
-                                        <div
-                                            class="text-sm font-semibold text-orange-600"
-                                        >
-                                            {{ systemInfo.cache_misses || "0" }}
+                                        <div>
+                                            <div
+                                                class="text-xs text-[var(--text-muted)] mb-0.5"
+                                            >
+                                                Misses
+                                            </div>
+                                            <div
+                                                class="text-sm font-semibold text-orange-600"
+                                            >
+                                                {{
+                                                    typeof systemInfo.laravel_cache_metrics?.misses_total ===
+                                                    "number"
+                                                        ? systemInfo.laravel_cache_metrics.misses_total.toLocaleString()
+                                                        : "N/A"
+                                                }}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div
+                                                class="text-xs text-[var(--text-muted)] mb-0.5"
+                                            >
+                                                Writes
+                                            </div>
+                                            <div
+                                                class="text-sm font-semibold text-cyan-600"
+                                            >
+                                                {{
+                                                    typeof systemInfo.laravel_cache_metrics?.writes_total ===
+                                                    "number"
+                                                        ? systemInfo.laravel_cache_metrics.writes_total.toLocaleString()
+                                                        : "N/A"
+                                                }}
+                                            </div>
                                         </div>
                                     </div>
+                                    <div
+                                        class="text-xs text-[var(--text-muted)] mt-1.5"
+                                    >
+                                        Lifetime Rate:
+                                        <span
+                                            class="font-medium text-[var(--text-primary)]"
+                                        >
+                                            {{
+                                                typeof systemInfo.laravel_cache_metrics?.hit_rate_total ===
+                                                "number"
+                                                    ? `${systemInfo.laravel_cache_metrics.hit_rate_total}%`
+                                                    : "N/A"
+                                            }}
+                                        </span>
+                                    </div>
+                                    <div
+                                        class="text-xs text-[var(--text-muted)]"
+                                    >
+                                        {{
+                                            systemInfo.laravel_cache_metrics?.window_minutes ||
+                                            5
+                                        }}m
+                                        Rate:
+                                        <span
+                                            class="font-medium text-[var(--text-primary)]"
+                                        >
+                                            {{
+                                                typeof systemInfo.laravel_cache_metrics?.hit_rate_window ===
+                                                "number"
+                                                    ? `${systemInfo.laravel_cache_metrics.hit_rate_window}%`
+                                                    : "N/A"
+                                            }}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div class="text-xs text-[var(--text-muted)]">
+                                    Redis Instance is global across all Redis
+                                    traffic. Laravel Cache is app-observed
+                                    cache events only.
                                 </div>
                             </div>
                         </div>

@@ -11,8 +11,8 @@ use Illuminate\Http\UploadedFile;
 
 // 1. Get a user
 $user = User::first();
-if (!$user) {
-    die("No user found.\n");
+if (! $user) {
+    exit("No user found.\n");
 }
 
 echo "Testing for user: {$user->name} ({$user->public_id})\n";
@@ -32,21 +32,21 @@ $mediaService = app(MediaService::class);
 try {
     // This simulates what UserController does: $mediaService->attachFromRequest(..., 'cover', 'cover_photos', $filename, null, 'public')
     $media = $mediaService->attach($user, $file, 'cover_photos', 'test_cover.png', null, 'public');
-    
+
     echo "\nUpload Successful!\n";
     echo "Disk used: {$media->disk}\n";
     echo "Path Generator Output:\n";
-    echo "- Base Path: " . $media->getPath() . "\n";
-    echo "- URL: " . $media->getUrl() . "\n";
+    echo '- Base Path: '.$media->getPath()."\n";
+    echo '- URL: '.$media->getUrl()."\n";
     echo "- Expected Path Contains: avatar/cover_p/{$user->public_id}/{$media->id}\n";
-    
+
     // Validate path
     if (strpos($media->getPath(), "avatar/cover_p/{$user->public_id}/{$media->id}") !== false) {
         echo "✅ Path generator correctly placed file in avatar/cover_p/\n";
     } else {
         echo "❌ Path generator FAILED. Output did not match expected directory.\n";
     }
-    
+
     // Validate disk
     if ($media->disk === 'public') {
         echo "✅ Disk correctly resolved to 'public'.\n";
@@ -55,7 +55,7 @@ try {
     }
 
 } catch (\Exception $e) {
-    echo "Error: " . $e->getMessage() . "\n";
+    echo 'Error: '.$e->getMessage()."\n";
 } finally {
     // Cleanup
     if (file_exists($tempPath)) {
