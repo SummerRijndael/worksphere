@@ -59,7 +59,7 @@
                         </button>
                         <button
                             @click="handleSend"
-                            :disabled="isSending"
+                            :disabled="isSending || !selectedAccount"
                             class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-(--interactive-primary) hover:bg-(--interactive-primary-hover) shadow-lg shadow-(--interactive-primary)/25 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
                         >
                             <span v-if="isSending">Sending...</span>

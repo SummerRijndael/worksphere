@@ -485,26 +485,30 @@
                     <button
                         v-if="email.is_draft"
                         @click="emit('edit')"
-                        class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-(--interactive-primary) text-white hover:bg-(--interactive-primary)/90 transition-colors"
+                        :disabled="!store.selectedAccount"
+                        class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-(--interactive-primary) text-white hover:bg-(--interactive-primary)/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         <PencilIcon class="w-3.5 h-3.5" /> Edit Draft
                     </button>
                     <template v-else>
                         <button
                             @click="emit('reply')"
-                            class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-(--interactive-primary) text-white hover:bg-(--interactive-primary)/90 transition-colors"
+                            :disabled="!store.selectedAccount"
+                            class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-(--interactive-primary) text-white hover:bg-(--interactive-primary)/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <ReplyIcon class="w-3.5 h-3.5" /> Reply
                         </button>
                         <button
                             @click="emit('reply-all')"
-                            class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-(--border-default) text-(--text-primary) hover:bg-(--surface-secondary) transition-colors"
+                            :disabled="!store.selectedAccount"
+                            class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-(--border-default) text-(--text-primary) hover:bg-(--surface-secondary) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <ReplyAllIcon class="w-3.5 h-3.5" /> Reply All
                         </button>
                         <button
                             @click="emit('forward')"
-                            class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-(--border-default) text-(--text-primary) hover:bg-(--surface-secondary) transition-colors"
+                            :disabled="!store.selectedAccount"
+                            class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-(--border-default) text-(--text-primary) hover:bg-(--surface-secondary) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <ForwardIcon class="w-3.5 h-3.5" /> Forward
                         </button>
@@ -713,19 +717,14 @@ import axios from "axios";
 import {
     PrinterIcon,
     Maximize2Icon,
-    
     AlertTriangleIcon,
     ReplyIcon,
     ForwardIcon,
     PencilIcon,
-    
-    
     ReplyAllIcon,
     ImageIcon,
-    
     ChevronDownIcon,
     InfoIcon,
-    
     DownloadIcon,
     ExternalLinkIcon,
     ShieldAlertIcon,
@@ -1385,10 +1384,16 @@ watch(
             });
 
             // Add click listener for external link warning
-            (shadowRoot.value as any)?.addEventListener("click", handleLinkClick);
+            (shadowRoot.value as any)?.addEventListener(
+                "click",
+                handleLinkClick,
+            );
 
             // Add click listener for Image Preview (MediaViewer)
-            (shadowRoot.value as any)?.addEventListener("click", handleImageClick);
+            (shadowRoot.value as any)?.addEventListener(
+                "click",
+                handleImageClick,
+            );
 
             // Add error listener for Images (Retry Loop)
             shadowRoot.value?.querySelectorAll("img").forEach(async (img) => {
@@ -1548,9 +1553,6 @@ function proceedToLink() {
 }
 
 // Local formatting functions removed in favor of useDate composable
-
-
-
 
 // --- Print ---
 // --- Print ---

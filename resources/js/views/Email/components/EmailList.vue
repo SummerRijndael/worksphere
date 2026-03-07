@@ -12,7 +12,7 @@
             >
                 <button
                     @click="$emit('toggle-sidebar')"
-                    class="md:hidden p-1.5 -ml-1.5 text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--surface-tertiary) rounded-lg transition-colors shrink-0"
+                    class="lg:hidden p-1.5 -ml-1.5 text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--surface-tertiary) rounded-lg transition-colors shrink-0"
                 >
                     <MenuIcon class="w-5 h-5" />
                 </button>
@@ -461,7 +461,9 @@
                                             v-if="email.is_pinned"
                                             class="p-0.5 text-blue-500"
                                         >
-                                            <PinIcon class="w-3.5 h-3.5 fill-current" />
+                                            <PinIcon
+                                                class="w-3.5 h-3.5 fill-current"
+                                            />
                                         </div>
                                     </div>
                                 </div>
@@ -518,7 +520,12 @@
                                                         : 'text-(--text-muted)'
                                                 "
                                             >
-                                                {{ formatDate(email.date, 'smart') }}
+                                                {{
+                                                    formatDate(
+                                                        email.date,
+                                                        "smart",
+                                                    )
+                                                }}
                                             </span>
                                             <!-- Hover Actions -->
                                             <div
@@ -526,15 +533,28 @@
                                             >
                                                 <button
                                                     @click.stop="
-                                                        store.togglePin(email.id)
+                                                        store.togglePin(
+                                                            email.id,
+                                                        )
                                                     "
                                                     class="p-1 hover:bg-(--surface-tertiary) rounded-md transition-colors"
-                                                    :title="email.is_pinned ? 'Unpin' : 'Pin to Top'"
+                                                    :title="
+                                                        email.is_pinned
+                                                            ? 'Unpin'
+                                                            : 'Pin to Top'
+                                                    "
                                                 >
                                                     <component
-                                                        :is="email.is_pinned ? PinOffIcon : PinIcon"
+                                                        :is="
+                                                            email.is_pinned
+                                                                ? PinOffIcon
+                                                                : PinIcon
+                                                        "
                                                         class="w-4 h-4 text-(--text-secondary)"
-                                                        :class="{ 'text-blue-500 fill-current': email.is_pinned }"
+                                                        :class="{
+                                                            'text-blue-500 fill-current':
+                                                                email.is_pinned,
+                                                        }"
                                                     />
                                                 </button>
                                                 <button
@@ -720,20 +740,22 @@
                                     ></div>
                                     <ContextMenuItem
                                         v-if="selectedEmailIds.size <= 1"
+                                        :disabled="!store.selectedAccount"
                                         @select="
                                             $emit('compose', { replyTo: email })
                                         "
-                                        class="w-full text-left px-4 py-2 text-sm text-(--text-primary) hover:bg-(--surface-tertiary) flex items-center gap-2 cursor-pointer outline-none select-none"
+                                        class="w-full text-left px-4 py-2 text-sm text-(--text-primary) hover:bg-(--surface-tertiary) flex items-center gap-2 cursor-pointer outline-none select-none disabled:opacity-30 disabled:cursor-not-allowed"
                                     >
                                         <ReplyIcon class="w-4 h-4" />
                                         Reply
                                     </ContextMenuItem>
                                     <ContextMenuItem
                                         v-if="selectedEmailIds.size <= 1"
+                                        :disabled="!store.selectedAccount"
                                         @select="
                                             $emit('compose', { forward: email })
                                         "
-                                        class="w-full text-left px-4 py-2 text-sm text-(--text-primary) hover:bg-(--surface-tertiary) flex items-center gap-2 cursor-pointer outline-none select-none"
+                                        class="w-full text-left px-4 py-2 text-sm text-(--text-primary) hover:bg-(--surface-tertiary) flex items-center gap-2 cursor-pointer outline-none select-none disabled:opacity-30 disabled:cursor-not-allowed"
                                     >
                                         <ForwardIcon class="w-4 h-4" />
                                         Forward
@@ -800,7 +822,6 @@ import {
     ArrowDownIcon,
     ArrowUpDownIcon,
     ChevronDownIcon,
-    
     FolderIcon,
     TagIcon,
     ReplyIcon,

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
-import { ArrowUp } from 'lucide-vue-next';
+import { ref, onMounted, onUnmounted } from "vue";
+import { ArrowUp } from "lucide-vue-next";
 
 const isVisible = ref(false);
 const scrollThreshold = 300;
@@ -12,17 +12,17 @@ function handleScroll() {
 function scrollToTop() {
     window.scrollTo({
         top: 0,
-        behavior: 'smooth',
+        behavior: "smooth",
     });
 }
 
 onMounted(() => {
-    window.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener("scroll", handleScroll, { passive: true });
     handleScroll(); // Check initial state
 });
 
 onUnmounted(() => {
-    window.removeEventListener('scroll', handleScroll);
+    window.removeEventListener("scroll", handleScroll);
 });
 </script>
 
@@ -31,7 +31,7 @@ onUnmounted(() => {
         <button
             v-if="isVisible"
             @click="scrollToTop"
-            class="fixed bottom-20 right-4 z-50 p-3 rounded-full bg-[var(--interactive-primary)] text-white shadow-lg shadow-[var(--color-primary-500)]/30 hover:bg-[var(--interactive-primary-hover)] hover:scale-110 active:scale-95 transition-all duration-200"
+            class="fixed bottom-28 sm:bottom-20 right-4 z-50 p-3 rounded-full bg-(--interactive-primary) text-white shadow-lg shadow-(--color-primary-500)/30 hover:bg-(--interactive-primary-hover) hover:scale-110 active:scale-95 transition-all duration-200"
             aria-label="Scroll to top"
         >
             <ArrowUp class="h-5 w-5" />

@@ -19,7 +19,7 @@
                 'fixed inset-y-0 left-0 shadow-xl w-64': isMobileSidebarOpen,
                 'hidden md:flex md:static': !isMobileSidebarOpen,
                 'w-64': !isMobileSidebarOpen && !isCollapsed,
-                'w-20': !isMobileSidebarOpen && isCollapsed
+                'w-20': !isMobileSidebarOpen && isCollapsed,
             }"
         >
             <EmailSidebar @compose="handleCompose" />
@@ -30,8 +30,8 @@
         <div
             class="flex flex-col w-full md:w-[289px] lg:w-[346px] border-r border-(--border-default) h-full min-h-0 shrink-0 bg-(--surface-primary)"
             :class="{
-                'hidden md:flex': selectedEmailId || isComposing,
-                flex: !selectedEmailId && !isComposing,
+                'hidden md:flex': selectedEmail || isComposing,
+                flex: !selectedEmail && !isComposing,
             }"
         >
             <EmailList
@@ -46,14 +46,15 @@
         <main
             class="flex-1 flex flex-col h-full min-h-0 min-w-0 bg-(--surface-primary)"
             :class="{
-                'hidden md:flex': !selectedEmailId && !isComposing,
-                flex: selectedEmailId || isComposing,
+                'hidden md:flex': !selectedEmail && !isComposing,
+                flex: selectedEmail || isComposing,
             }"
         >
             <EmailPreviewPane
                 ref="previewPaneRef"
                 :email="selectedEmail"
                 @tab-closed="handleTabClosed"
+                @toggle-sidebar="isMobileSidebarOpen = !isMobileSidebarOpen"
                 @back="
                     selectedEmailId = null;
                     isComposing = false;
@@ -72,7 +73,12 @@ import { useEmailStore, type Email } from "@/stores/emailStore";
 import { storeToRefs } from "pinia";
 
 const store = useEmailStore();
-const { emails, selectedEmailId, loading, isSidebarCollapsed: isCollapsed } = storeToRefs(store);
+const {
+    emails,
+    selectedEmailId,
+    loading,
+    isSidebarCollapsed: isCollapsed,
+} = storeToRefs(store);
 
 const selectedEmail = computed(() => {
     return emails.value.find((e) => e.id === selectedEmailId.value) || null;
