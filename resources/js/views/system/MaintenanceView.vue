@@ -1199,7 +1199,7 @@ onUnmounted(() => {
                     System maintenance and optimization tools.
                 </p>
             </div>
-            <div class="flex items-center gap-3">
+            <div class="flex flex-wrap items-center gap-2 sm:gap-3">
                 <Badge
                     :variant="
                         maintenanceMode
@@ -1234,58 +1234,64 @@ onUnmounted(() => {
                                     : "Degraded")
                     }}
                 </Badge>
-                <Button
-                    v-if="maintenanceMode"
-                    variant="outline"
-                    size="sm"
-                    @click="disableMaintenance"
-                    :loading="isTogglingMaintenance"
-                >
-                    Disable Maintenance
-                </Button>
-                <Button
-                    v-else
-                    variant="danger"
-                    size="sm"
-                    @click="openMaintenanceModal"
-                >
-                    Enable Maintenance
-                </Button>
-                <div class="h-6 w-px bg-[var(--border-default)] mx-2"></div>
+                <div class="flex items-center gap-2">
+                    <Button
+                        v-if="maintenanceMode"
+                        variant="outline"
+                        size="sm"
+                        @click="disableMaintenance"
+                        :loading="isTogglingMaintenance"
+                    >
+                        Disable Maintenance
+                    </Button>
+                    <Button
+                        v-else
+                        variant="danger"
+                        size="sm"
+                        @click="openMaintenanceModal"
+                    >
+                        Enable Maintenance
+                    </Button>
+                </div>
+                <div
+                    class="hidden xs:block h-6 w-px bg-[var(--border-default)] mx-1"
+                ></div>
 
-                <a href="/horizon" target="_blank">
+                <div class="flex items-center gap-1 sm:gap-2">
+                    <a href="/horizon" target="_blank">
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Open Horizon"
+                            class="text-purple-500 hover:text-purple-600 hover:bg-purple-50"
+                        >
+                            <Activity class="w-4 h-4" />
+                        </Button>
+                    </a>
+
+                    <a href="/pulse" target="_blank">
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Open Pulse"
+                            class="text-red-500 hover:text-red-600 hover:bg-red-50"
+                        >
+                            <Activity class="w-4 h-4" />
+                        </Button>
+                    </a>
+
                     <Button
                         variant="ghost"
                         size="icon"
-                        title="Open Horizon"
-                        class="text-purple-500 hover:text-purple-600 hover:bg-purple-50"
+                        @click="refreshSystemInfo"
+                        :disabled="isLoading"
                     >
-                        <Activity class="w-4 h-4" />
+                        <RefreshCw
+                            class="w-4 h-4"
+                            :class="{ 'animate-spin': isLoading }"
+                        />
                     </Button>
-                </a>
-
-                <a href="/pulse" target="_blank">
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Open Pulse"
-                        class="text-red-500 hover:text-red-600 hover:bg-red-50"
-                    >
-                        <Activity class="w-4 h-4" />
-                    </Button>
-                </a>
-
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    @click="refreshSystemInfo"
-                    :disabled="isLoading"
-                >
-                    <RefreshCw
-                        class="w-4 h-4"
-                        :class="{ 'animate-spin': isLoading }"
-                    />
-                </Button>
+                </div>
             </div>
         </div>
 
@@ -2506,6 +2512,63 @@ onUnmounted(() => {
                                     }"
                                 >
                                     {{ externalServices.cloudflare?.status }}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="h-px bg-[var(--border-default)]"></div>
+
+                        <!-- Cloudflare R2 -->
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <HardDrive
+                                    class="w-4 h-4 text-[var(--text-muted)]"
+                                />
+                                <div class="flex flex-col">
+                                    <span
+                                        class="text-sm font-medium text-[var(--text-primary)]"
+                                        >Cloudflare R2</span
+                                    >
+                                    <span
+                                        v-if="externalServices.r2?.info"
+                                        class="text-xs text-[var(--text-muted)]"
+                                        >{{ externalServices.r2.info }}</span
+                                    >
+                                    <span
+                                        v-if="externalServices.r2?.message"
+                                        class="text-xs text-[var(--color-error)]"
+                                        >{{ externalServices.r2.message }}</span
+                                    >
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span
+                                    v-if="externalServices.r2?.latency"
+                                    class="text-xs text-[var(--text-muted)]"
+                                    >{{ externalServices.r2.latency }}ms</span
+                                >
+                                <span
+                                    class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+                                    :class="{
+                                        'bg-green-500/10 text-green-500':
+                                            externalServices.r2?.status ===
+                                            'Operational',
+                                        'bg-red-500/10 text-red-500':
+                                            externalServices.r2?.status ===
+                                                'Error' ||
+                                            externalServices.r2?.status ===
+                                                'Unreachable',
+                                        'bg-yellow-500/10 text-yellow-500':
+                                            externalServices.r2?.status ===
+                                                'Not Configured' ||
+                                            externalServices.r2?.status ===
+                                                'Degraded',
+                                        'bg-gray-500/10 text-gray-500':
+                                            externalServices.r2?.status ===
+                                            'Unknown',
+                                    }"
+                                >
+                                    {{ externalServices.r2?.status }}
                                 </span>
                             </div>
                         </div>

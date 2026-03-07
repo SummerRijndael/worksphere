@@ -105,6 +105,9 @@ Route::get('/p/{slug}', function (string $slug) {
     ]);
 });
 
+// Search Engine Robots
+Route::get('/robots.txt', \App\Http\Controllers\RobotsController::class);
+
 Route::get('/{any?}', function () {
     return view('app');
 })->where('any', '^(?!.*\\.(js|css|map|png|jpg|jpeg|gif|svg|ico|json|txt|xml|webmanifest|woff2?|ttf)$).*$');

@@ -11,25 +11,26 @@
 
     <!-- SEO -->
     <meta name="description"
-        content="{{ $ogDescription ?? 'Unified Data, Seamless Workflow. WorkSphere connects your essential business tools into one powerful ecosystem.' }}">
-    <meta name="keywords" content="WorkSphere, workflow, automation, efficiency, data sync">
-    <meta name="author" content="WorkSphere">
+        content="{{ $ogDescription ?? (app(\App\Services\AppSettingsService::class)->get('seo.description') ?? 'Unified Data, Seamless Workflow. WorkSphere connects your essential business tools into one powerful ecosystem.') }}">
+    <meta name="keywords" content="{{ app(\App\Services\AppSettingsService::class)->get('seo.keywords') ?? 'WorkSphere, workflow, automation, efficiency, data sync' }}">
+    <meta name="author" content="{{ app(\App\Services\AppSettingsService::class)->get('seo.author') ?? 'WorkSphere' }}">
+    <meta name="robots" content="{{ app(\App\Services\AppSettingsService::class)->get('seo.robots') ?? 'index, follow' }}">
 
     <!-- Open Graph / Facebook -->
-    <meta property="og:type" content="website">
+    <meta property="og:type" content="{{ app(\App\Services\AppSettingsService::class)->get('og.type') ?? 'website' }}">
     <meta property="og:site_name" content="{{ config('app.name', 'WorkSphere') }}">
-    <meta property="og:title" content="{{ $ogTitle ?? config('app.name', 'WorkSphere') }}">
+    <meta property="og:title" content="{{ $ogTitle ?? (app(\App\Services\AppSettingsService::class)->get('og.title') ?? config('app.name', 'WorkSphere')) }}">
     <meta property="og:description"
-        content="{{ $ogDescription ?? 'Unified Data, Seamless Workflow. WorkSphere connects your essential business tools into one powerful ecosystem.' }}">
+        content="{{ $ogDescription ?? (app(\App\Services\AppSettingsService::class)->get('og.description') ?? 'Unified Data, Seamless Workflow. WorkSphere connects your essential business tools into one powerful ecosystem.') }}">
     <meta property="og:url" content="{{ url()->current() }}">
     <meta property="og:image"
         content="{{ $ogImage ?? (app(\App\Services\AppSettingsService::class)->get('app.opengraph') ?? asset('static/images/worksphere_brand.png')) }}">
 
     <!-- Twitter -->
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="{{ $ogTitle ?? config('app.name', 'WorkSphere') }}">
+    <meta name="twitter:card" content="{{ app(\App\Services\AppSettingsService::class)->get('twitter.card') ?? 'summary_large_image' }}">
+    <meta name="twitter:title" content="{{ $ogTitle ?? (app(\App\Services\AppSettingsService::class)->get('og.title') ?? config('app.name', 'WorkSphere')) }}">
     <meta name="twitter:description"
-        content="{{ $ogDescription ?? 'Unified Data, Seamless Workflow. WorkSphere connects your essential business tools into one powerful ecosystem.' }}">
+        content="{{ $ogDescription ?? (app(\App\Services\AppSettingsService::class)->get('og.description') ?? 'Unified Data, Seamless Workflow. WorkSphere connects your essential business tools into one powerful ecosystem.') }}">
     <meta name="twitter:image"
         content="{{ $ogImage ?? (app(\App\Services\AppSettingsService::class)->get('app.opengraph') ?? asset('static/images/worksphere_brand.png')) }}">
 

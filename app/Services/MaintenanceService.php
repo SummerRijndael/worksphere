@@ -1950,7 +1950,135 @@ class MaintenanceService
             $results['cloudflare']['status'] = 'Unreachable';
         }
 
-        // 4. Cloudflare STUN
+        // 4. Cloudflare R2 (S3 API) connectivity
+        $allDisks = config('filesystems.disks', []);
+        $r2Candidates = [];
+
+        foreach ($allDisks as $diskName => $diskConfig) {
+            if (! is_array($diskConfig) || ($diskConfig['driver'] ?? null) !== 's3') {
+                continue;
+            }
+
+            $endpoint = strtolower((string) ($diskConfig['endpoint'] ?? ''));
+            $isR2Endpoint = str_contains($endpoint, 'r2.cloudflarestorage.com') || str_contains($endpoint, 'cloudflarestorage.com');
+            if ($diskName === 'r2' || $isR2Endpoint) {
+                $r2Candidates[$diskName] = $diskConfig;
+            }
+        }
+
+        $configuredR2Disks = [];
+        $misconfiguredR2Disks = [];
+        foreach ($r2Candidates as $diskName => $diskConfig) {
+            $isConfigured = ! empty($diskConfig['key'])
+                && ! empty($diskConfig['secret'])
+                && ! empty($diskConfig['bucket'])
+                && ! empty($diskConfig['endpoint']);
+
+            if ($isConfigured) {
+                $configuredR2Disks[$diskName] = $diskConfig;
+            } else {
+                $misconfiguredR2Disks[] = $diskName;
+            }
+        }
+
+        $results['r2'] = [
+            'name' => 'Cloudflare R2',
+            'configured' => ! empty($configuredR2Disks),
+            'status' => 'Unknown',
+            'latency' => null,
+            'message' => null,
+            'info' => ! empty($configuredR2Disks)
+                ? 'Disks: '.implode(', ', array_keys($configuredR2Disks))
+                : null,
+            'checks' => [],
+        ];
+
+        if (empty($r2Candidates)) {
+            $results['r2']['status'] = 'Not Configured';
+            $results['r2']['message'] = 'No R2-backed S3 disk found.';
+        } elseif (empty($configuredR2Disks)) {
+            $results['r2']['status'] = 'Not Configured';
+            $results['r2']['message'] = 'Missing R2 credentials on disks: '.implode(', ', $misconfiguredR2Disks);
+        } else {
+            $overallStatus = 'Operational';
+            $latencies = [];
+            $checkMessages = [];
+
+            foreach ($configuredR2Disks as $diskName => $diskConfig) {
+                $probeStart = microtime(true);
+                $probePath = "system/health/r2-connectivity-{$diskName}-".Str::uuid().'.txt';
+                $probePayload = 'r2-health-check:'.now()->toIso8601String();
+                $probeWritten = false;
+                $probeDeleted = false;
+                $checkStatus = 'Unknown';
+                $checkMessage = null;
+
+                try {
+                    $probeWritten = (bool) Storage::disk($diskName)->put($probePath, $probePayload);
+
+                    if (! $probeWritten) {
+                        $checkStatus = 'Error';
+                        $checkMessage = 'Write probe failed.';
+                    } else {
+                        $readback = (string) Storage::disk($diskName)->get($probePath);
+
+                        if ($readback !== $probePayload) {
+                            $checkStatus = 'Error';
+                            $checkMessage = 'Read verification failed.';
+                        } else {
+                            $probeDeleted = (bool) Storage::disk($diskName)->delete($probePath);
+                            if ($probeDeleted) {
+                                $checkStatus = 'Operational';
+                            } else {
+                                $checkStatus = 'Degraded';
+                                $checkMessage = 'Read/write succeeded, but cleanup failed.';
+                            }
+                        }
+                    }
+                } catch (Throwable $e) {
+                    $checkStatus = 'Unreachable';
+                    $checkMessage = $e->getMessage();
+                } finally {
+                    // Best-effort cleanup if probe object was created and not deleted.
+                    if ($probeWritten && ! $probeDeleted) {
+                        try {
+                            Storage::disk($diskName)->delete($probePath);
+                        } catch (Throwable) {
+                        }
+                    }
+                }
+
+                $latency = round((microtime(true) - $probeStart) * 1000);
+                $latencies[] = $latency;
+
+                $results['r2']['checks'][$diskName] = [
+                    'bucket' => $diskConfig['bucket'] ?? null,
+                    'status' => $checkStatus,
+                    'latency' => $latency,
+                    'message' => $checkMessage,
+                ];
+
+                if ($checkStatus === 'Unreachable') {
+                    $overallStatus = 'Unreachable';
+                } elseif ($checkStatus === 'Error' && $overallStatus !== 'Unreachable') {
+                    $overallStatus = 'Error';
+                } elseif ($checkStatus === 'Degraded' && ! in_array($overallStatus, ['Unreachable', 'Error'], true)) {
+                    $overallStatus = 'Degraded';
+                }
+
+                if ($checkStatus !== 'Operational') {
+                    $checkMessages[] = "[{$diskName}] ".($checkMessage ?? $checkStatus);
+                }
+            }
+
+            $results['r2']['status'] = $overallStatus;
+            $results['r2']['latency'] = ! empty($latencies)
+                ? round(array_sum($latencies) / count($latencies))
+                : null;
+            $results['r2']['message'] = ! empty($checkMessages) ? implode(' | ', $checkMessages) : null;
+        }
+
+        // 5. Cloudflare STUN
         $results['cloudflare_stun'] = [
             'name' => 'Cloudflare STUN',
             'status' => 'Unknown',
@@ -1972,7 +2100,7 @@ class MaintenanceService
             $results['cloudflare_stun']['message'] = $e->getMessage();
         }
 
-        // 5. Cloudflare TURN
+        // 6. Cloudflare TURN
         $results['cloudflare_turn'] = [
             'name' => 'Cloudflare TURN',
             'status' => 'Unknown',
@@ -1994,7 +2122,7 @@ class MaintenanceService
             $results['cloudflare_turn']['message'] = $e->getMessage();
         }
 
-        // 6. Cloudflare SFU (Calls Signaling)
+        // 7. Cloudflare SFU (Calls Signaling)
         $results['cloudflare_sfu'] = [
             'name' => 'Cloudflare SFU',
             'status' => 'Unknown',
@@ -2016,7 +2144,7 @@ class MaintenanceService
             $results['cloudflare_sfu']['message'] = $e->getMessage();
         }
 
-        // 7. Local Reverb Server
+        // 8. Local Reverb Server
         $results['reverb_server'] = [
             'name' => 'Reverb Server',
             'status' => 'Unknown',

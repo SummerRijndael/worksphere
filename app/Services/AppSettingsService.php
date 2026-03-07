@@ -115,6 +115,16 @@ class AppSettingsService
         // Analytics
         'analytics_ga_enabled' => ['config' => 'analytics.ga_enabled', 'default' => false],
         'analytics_ga_measurement_id' => ['config' => 'analytics.ga_measurement_id'],
+        // SEO & Open Graph
+        'seo.description' => ['config' => 'app.seo.description'],
+        'seo.keywords' => ['config' => 'app.seo.keywords'],
+        'seo.author' => ['config' => 'app.seo.author', 'default' => 'WorkSphere'],
+        'seo.robots' => ['config' => 'app.seo.robots', 'default' => 'index, follow'],
+        'og.title' => ['config' => 'app.og.title'],
+        'og.description' => ['config' => 'app.og.description'],
+        'og.type' => ['config' => 'app.og.type', 'default' => 'website'],
+        'twitter.card' => ['config' => 'app.twitter.card', 'default' => 'summary_large_image'],
+        'seo.robots_txt' => ['config' => 'app.seo.robots_txt'],
     ];
 
     /**
@@ -740,6 +750,71 @@ class AppSettingsService
                     'type' => 'string',
                     'value' => $this->get('analytics_ga_measurement_id'),
                     'description' => 'Your GA4 Measurement ID (G-XXXXXXXXXX)',
+                ],
+            ],
+            'seo' => [
+                [
+                    'key' => 'seo.description',
+                    'label' => 'Meta Description',
+                    'type' => 'string',
+                    'value' => $this->get('seo.description'),
+                    'description' => 'The default description for search engines',
+                ],
+                [
+                    'key' => 'seo.keywords',
+                    'label' => 'Meta Keywords',
+                    'type' => 'string',
+                    'value' => $this->get('seo.keywords'),
+                    'description' => 'Comma-separated keywords for search engines',
+                ],
+                [
+                    'key' => 'seo.author',
+                    'label' => 'Author',
+                    'type' => 'string',
+                    'value' => $this->get('seo.author', 'WorkSphere'),
+                    'description' => 'The default author name',
+                ],
+                [
+                    'key' => 'seo.robots',
+                    'label' => 'Robots Tag',
+                    'type' => 'string',
+                    'value' => $this->get('seo.robots', 'index, follow'),
+                    'description' => 'Instructions for search engine crawlers (e.g., index, follow)',
+                ],
+                [
+                    'key' => 'og.title',
+                    'label' => 'Open Graph Title',
+                    'type' => 'string',
+                    'value' => $this->get('og.title'),
+                    'description' => 'Title displayed when sharing on social media',
+                ],
+                [
+                    'key' => 'og.description',
+                    'label' => 'Open Graph Description',
+                    'type' => 'string',
+                    'value' => $this->get('og.description'),
+                    'description' => 'Description displayed when sharing on social media',
+                ],
+                [
+                    'key' => 'og.type',
+                    'label' => 'Open Graph Type',
+                    'type' => 'string',
+                    'value' => $this->get('og.type', 'website'),
+                    'description' => 'The type of your content (e.g., website, article)',
+                ],
+                [
+                    'key' => 'twitter.card',
+                    'label' => 'Twitter Card Type',
+                    'type' => 'string',
+                    'value' => $this->get('twitter.card', 'summary_large_image'),
+                    'description' => 'The card type for Twitter summary (summary, summary_large_image)',
+                ],
+                [
+                    'key' => 'seo.robots_txt',
+                    'label' => 'Robots.txt Content',
+                    'type' => 'string',
+                    'value' => $this->get('seo.robots_txt'),
+                    'description' => 'The content of your robots.txt file for search engine crawlers',
                 ],
             ],
         ];
