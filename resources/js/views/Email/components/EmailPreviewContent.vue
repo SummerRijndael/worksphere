@@ -543,7 +543,7 @@
 
         <!-- Body -->
         <div
-            class="flex-1 preview-animate-item"
+            class="flex-1 flex flex-col min-h-0 preview-animate-item"
             :class="[
                 embedded
                     ? 'p-0 overflow-visible'
@@ -556,7 +556,7 @@
                     (!isTrustedSource && !isUntrustedDismissed) ||
                     hasBlockedImages
                 "
-                class="mb-6 space-y-4 p-3"
+                class="mb-6 space-y-4 p-3 shrink-0"
             >
                 <div
                     v-if="!isTrustedSource && !isUntrustedDismissed"
@@ -625,23 +625,41 @@
                 </p>
             </div>
 
-            <!-- Email Content (Shadow DOM for Style Isolation) -->
+            <!-- Email Content Renderers -->
             <div
                 v-else
-                class="email-content-wrapper w-full flex-1 overflow-hidden"
+                class="email-content-wrapper w-full flex-1 flex min-h-0 overflow-hidden gap-4"
+                :class="previewRenderer === 'both' ? 'flex-col lg:flex-row' : 'flex-col'"
             >
-                <iframe
-                    v-if="useIframeRenderer"
-                    ref="iframeHost"
-                    title="Email Preview (Iframe)"
-                    sandbox="allow-same-origin"
-                    class="h-full w-full border-0 bg-white"
-                />
-                <div
-                    v-else
-                    class="h-full w-full overflow-hidden"
-                    ref="shadowHost"
-                ></div>
+                <!-- Iframe Renderer -->
+                <div 
+                    v-if="previewRenderer === 'iframe' || previewRenderer === 'both'"
+                    class="flex-1 flex flex-col min-h-0 border border-(--border-default)/50 rounded-xl overflow-hidden relative"
+                >
+                    <div v-if="previewRenderer === 'both'" class="absolute top-2 right-2 z-10 px-2 py-0.5 rounded bg-black/50 text-white text-[10px] font-bold uppercase tracking-wider backdrop-blur-md">
+                        Iframe Renderer
+                    </div>
+                    <iframe
+                        ref="iframeHost"
+                        title="Email Preview (Iframe)"
+                        sandbox="allow-scripts"
+                        class="h-full w-full border-0 bg-white"
+                    />
+                </div>
+
+                <!-- Shadow DOM Renderer -->
+                <div 
+                    v-if="previewRenderer === 'shadow' || previewRenderer === 'both'"
+                    class="flex-1 flex flex-col min-h-0 border border-(--border-default)/50 rounded-xl overflow-hidden relative bg-white"
+                >
+                    <div v-if="previewRenderer === 'both'" class="absolute top-2 right-2 z-10 px-2 py-0.5 rounded bg-black/50 text-white text-[10px] font-bold uppercase tracking-wider backdrop-blur-md">
+                        Shadow DOM Renderer
+                    </div>
+                    <div
+                        class="h-full w-full overflow-hidden"
+                        ref="shadowHost"
+                    ></div>
+                </div>
             </div>
         </div>
     </div>
@@ -680,10 +698,23 @@
                     >
                         Iframe
                     </Button>
+                    <Button
+                        :variant="
+                            previewRenderer === 'both' ? 'primary' : 'outline'
+                        "
+                        size="sm"
+                        @click="previewRenderer = 'both'"
+                    >
+                        Comparison (Split)
+                    </Button>
                 </div>
                 <p class="mt-2 text-xs text-(--text-muted)">
                     Current mode:
-                    {{ previewRenderer === "iframe" ? "Iframe" : "Shadow DOM" }}
+                    {{ 
+                        previewRenderer === "iframe" ? "Iframe" : 
+                        previewRenderer === "shadow" ? "Shadow DOM" : 
+                        "Comparison Mode"
+                    }}
                 </p>
             </div>
 
@@ -856,7 +887,7 @@ const props = defineProps<{
     embedded?: boolean;
 }>();
 
-type PreviewRenderer = "shadow" | "iframe";
+type PreviewRenderer = "shadow" | "iframe" | "both";
 
 const isDev = import.meta.env.DEV;
 const showDevToolsModal = ref(false);
@@ -885,14 +916,17 @@ function setDevFlag(key: string, value: string) {
 
 const savedRenderer = getDevFlag(DEV_PREVIEW_RENDERER_KEY);
 const previewRenderer = ref<PreviewRenderer>(
-    savedRenderer === "iframe" ? "iframe" : "shadow",
+    savedRenderer === "iframe" ? "iframe" : (savedRenderer === "both" ? "both" : "shadow"),
 );
 const disableScaleToFit = ref(getDevFlag(DEV_DISABLE_SCALE_KEY) === "true");
 const devDefaultShowExternalImages = ref(
     getDevFlag(DEV_SHOW_IMAGES_DEFAULT_KEY) === "true",
 );
 const useIframeRenderer = computed(
-    () => isDev && previewRenderer.value === "iframe",
+    () => isDev && (previewRenderer.value === "iframe" || previewRenderer.value === "both"),
+);
+const useShadowRenderer = computed(
+    () => previewRenderer.value === "shadow" || previewRenderer.value === "both",
 );
 
 watch(previewRenderer, (value) => {
@@ -1415,6 +1449,100 @@ const sanitizedBody = computed(() => {
     return clean;
 });
 
+/**
+ * Lenient Sanitization for Iframe Rendering
+ * This pass preserves <style> tags and @media queries to ensure email layouts
+ * are preserved, but remains safe because the Iframe is locked in a 
+ * unique-origin sandbox (without allow-same-origin).
+ */
+const sanitizedRawBody = computed(() => {
+    // Fallback to body_html if body_raw is missing
+    const rawContent = props.email?.body_raw || props.email?.body_html;
+    if (!rawContent) return "";
+
+    // Base cleanup of absolutely dangerous markers before DOMPurify
+    let html = stripUnsafeEmailMarkup(rawContent);
+
+    // Replace CID images with actual URLs (reusing same logic as sanitizedBody)
+    if (props.email.attachments?.length) {
+        props.email.attachments.forEach((att) => {
+            if (att.content_id && att.url) {
+                const cleanCid = att.content_id.replace(/[<>]/g, "");
+                const escapedCid = cleanCid.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                const escapedFullCid = att.content_id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                
+                const pattern = new RegExp(
+                    `src\\s*=\\s*[\\\\"'\\s]*cid\\s*:\\s*(?:&lt;|<)?(${escapedCid}|${escapedFullCid}|${encodeURIComponent(cleanCid)})(?:&gt;|>)?([\\\\"'\\s]*)`,
+                    "gi",
+                );
+                html = html.replace(pattern, `src="${att.url}"$2`);
+
+                const bgPattern = new RegExp(
+                    `url\\s*\\(\\s*[\\\\"'\\s]*cid\\s*:\\s*(?:&lt;|<)?(${escapedCid}|${escapedFullCid}|${encodeURIComponent(cleanCid)})(?:&gt;|>)?([\\\\"'\\s]*)\\)`,
+                    "gi",
+                );
+                html = html.replace(bgPattern, `url("${att.url}")`);
+            }
+        });
+    }
+
+    // Protection against remaining CIDs
+    html = html.replace(/src\s*=\s*[\\"' ]*cid:[^\\"' >]+[\\"' ]*/gi, `src="${SYNCING_PLACEHOLDER}" data-unresolved-cid="true" `);
+
+    // Lenient DOMPurify Pass
+    const clean = sanitizeHtml(
+        html,
+        {
+            // USE_PROFILES: { html: true } usually strips <style>
+            // We instead manually define what's allowed to be as lenient as possible for layout
+            // using ALLOWED_TAGS directly to override the default whitelist in sanitizeHtml
+            ALLOWED_TAGS: [
+                "style", "img", "meta", "base", "p", "br", "strong", "em", "u", "s", "del", "ins",
+                "a", "ul", "ol", "li", "blockquote", "code", "pre",
+                "h1", "h2", "h3", "h4", "h5", "h6",
+                "table", "thead", "tbody", "tr", "th", "td", "caption", "colgroup", "col",
+                "span", "div", "hr", "body", "html", "head"
+            ],
+            ALLOWED_ATTR: [
+                "src", "alt", "style", "data-original-src", "width", "height", "border", 
+                "cellpadding", "cellspacing", "colspan", "rowspan", "bgcolor", "href", 
+                "title", "target", "rel", "class", "id", "name"
+            ],
+            // FORCE_BODY ensures we get a payload that can be injected into iframe
+            FORCE_BODY: true,
+        },
+        {
+            beforeSanitizeElements: (currentNode) => {
+                // Same image blocking logic as sanitizedBody
+                if (currentNode instanceof HTMLImageElement) {
+                    let src = currentNode.getAttribute("src") || "";
+                    const originalSrc = currentNode.getAttribute("data-original-src");
+                    if (!src && originalSrc) src = originalSrc;
+
+                    const isExternal = src && !src.startsWith("data:") && !src.startsWith("blob:") && 
+                                      !src.startsWith("cid:") && !src.startsWith(window.location.origin) && 
+                                      !src.startsWith("/") && !src.includes("/storage/") && !src.includes("/api/media/");
+
+                    if (isExternal) {
+                        if (showImages.value) {
+                            currentNode.setAttribute("src", src);
+                            currentNode.removeAttribute("data-original-src");
+                        } else {
+                            currentNode.setAttribute("data-blocked-src", src);
+                            currentNode.setAttribute("src", 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100"%3E%3Crect fill="%23e5e7eb" width="200" height="100"/%3E%3Ctext x="50%25" y="50%25" dominant-baseline="middle" text-anchor="middle" fill="%236b7280" font-family="sans-serif" font-size="12"%3EImage blocked%3C/text%3E%3C/svg%3E');
+                            currentNode.setAttribute("data-blocked", "true");
+                            currentNode.style.maxWidth = "200px";
+                        }
+                    }
+                }
+                return currentNode;
+            },
+        },
+    );
+
+    return clean;
+});
+
 // We need to update `hasBlockedImages` separately to avoid computed side-effects
 // Image Analysis
 const imageAnalysis = computed(() => {
@@ -1494,7 +1622,7 @@ watch(
             cleanupShadowRuntime();
         });
 
-        if (useIframe || !host || !html) return;
+        if (!useShadowRenderer.value || !host || !html) return;
 
         if (shadowRoot.value && shadowRoot.value.host !== host) {
             shadowRoot.value = null;
@@ -1733,14 +1861,14 @@ function buildIframePreviewDocument(html: string): string {
 
 watch(
     [
-        () => sanitizedBody.value,
+        () => sanitizedRawBody.value,
         () => iframeHost.value,
         () => useIframeRenderer.value,
     ],
     async ([html, frame, useIframe], _, onCleanup) => {
         cleanupIframeRuntime();
 
-        if (!useIframe || !frame || !html) return;
+        if (!useIframeRenderer.value || !frame || !html) return;
 
         const onLoad = () => {
             const doc = frame.contentDocument;

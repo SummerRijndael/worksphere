@@ -61,8 +61,8 @@ export function useBackgroundBlur() {
 
     // Adaptive quality: track actual FPS to decide if we should downgrade model
     const FPS_WINDOW = 30; // sliding window of last N frame timestamps
-    const FPS_DOWNGRADE_THRESHOLD = 15; // fps below this = struggling
-    const FPS_DOWNGRADE_WINDOW_MS = 5000; // must sustain low fps for this long
+    const FPS_DOWNGRADE_THRESHOLD = 20; // fps below this = struggling (was 15)
+    const FPS_DOWNGRADE_WINDOW_MS = 2000; // must sustain low fps for this long (was 5000)
     let fpsFrameTimes: number[] = [];
     let lowFpsStartTime: number | null = null;
     let hasDowngraded = false;
@@ -236,55 +236,58 @@ export function useBackgroundBlur() {
             ctx = canvas.getContext("2d");
         }
         
-        // Resolution Strategy: True 720p for recording, 360p fallback for true potatoes
-        let targetWidth = video.videoWidth;
-        let targetHeight = video.videoHeight;
+        // Resolution Strategy:
+        // Output remains High Fidelity (720p) for recordings/presentation
+        // Processing (Segmentation) happens at 480p to eliminate lag
+        const outputWidth = video.videoWidth;
+        const outputHeight = video.videoHeight;
         
-        const MAX_DIMENSION = isLowEnd ? 360 : 720; 
+        const MAX_PROCESSING_DIM = isLowEnd ? 360 : 480; 
+        let procWidth = outputWidth;
+        let procHeight = outputHeight;
         
-        if (targetWidth > MAX_DIMENSION || targetHeight > MAX_DIMENSION) {
-            const ratio = targetWidth / targetHeight;
-            if (targetWidth > targetHeight) {
-                 targetWidth = MAX_DIMENSION;
-                 targetHeight = Math.round(MAX_DIMENSION / ratio);
+        if (procWidth > MAX_PROCESSING_DIM || procHeight > MAX_PROCESSING_DIM) {
+            const ratio = procWidth / procHeight;
+            if (procWidth > procHeight) {
+                 procWidth = MAX_PROCESSING_DIM;
+                 procHeight = Math.round(MAX_PROCESSING_DIM / ratio);
             } else {
-                 targetHeight = MAX_DIMENSION;
-                 targetWidth = Math.round(MAX_DIMENSION * ratio);
+                 procHeight = MAX_PROCESSING_DIM;
+                 procWidth = Math.round(MAX_PROCESSING_DIM * ratio);
             }
         }
         
-        // Setting width/height resets the canvas context state!
-        canvas.width = targetWidth;
-        canvas.height = targetHeight;
+        canvas.width = outputWidth;
+        canvas.height = outputHeight;
+        
         if (ctx) {
             ctx.imageSmoothingEnabled = true;
             ctx.imageSmoothingQuality = 'medium';
         }
 
-
-        
-        // Setup offscreen canvases
-        if (!blurCanvas) blurCanvas = document.createElement("canvas");
-        const blurDownsample = isMobile ? 12 : 8; // Heavier downsample for a massive Gaussian effect
-        // Blur canvas is even smaller for performance
-        blurCanvas.width = Math.round(targetWidth / blurDownsample); 
-        blurCanvas.height = Math.round(targetHeight / blurDownsample);
-        blurCtx = blurCanvas.getContext("2d", { alpha: false, willReadFrequently: true });
-        if (blurCtx) {
-            blurCtx.imageSmoothingEnabled = true;
-            blurCtx.imageSmoothingQuality = 'high';
-        }
-
+        // Processing Canvas (internal downsampled source for segmenter)
         if (!personCanvas) personCanvas = document.createElement("canvas");
-        personCanvas.width = targetWidth;
-        personCanvas.height = targetHeight;
-        personCtx = personCanvas.getContext("2d", { willReadFrequently: true });
+        personCanvas.width = procWidth;
+        personCanvas.height = procHeight;
+        // willReadFrequently is only helpful if we call getImageData/putImageData (ChromaKey)
+        personCtx = personCanvas.getContext("2d", { willReadFrequently: useChromaKey });
         if (personCtx) {
             personCtx.imageSmoothingEnabled = true;
-            personCtx.imageSmoothingQuality = 'high';
+            personCtx.imageSmoothingQuality = 'medium';
         }
 
-        console.log(`[BackgroundBlur] Processing dimensions: ${targetWidth}x${targetHeight} (Source: ${video.videoWidth}x${video.videoHeight}), mode: ${currentRunningMode}`);
+        // Setup offscreen canvases
+        if (!blurCanvas) blurCanvas = document.createElement("canvas");
+        const blurDownsample = isMobile ? 12 : 8;
+        blurCanvas.width = Math.round(outputWidth / blurDownsample); 
+        blurCanvas.height = Math.round(outputHeight / blurDownsample);
+        blurCtx = blurCanvas.getContext("2d", { alpha: false, willReadFrequently: false });
+        if (blurCtx) {
+            blurCtx.imageSmoothingEnabled = true;
+            blurCtx.imageSmoothingQuality = 'medium';
+        }
+
+        console.log(`[BackgroundBlur] Quality: Output ${outputWidth}x${outputHeight}, Processing ${procWidth}x${procHeight}, Mode: ${currentRunningMode}`);
 
 
         let lastFrameTime = 0;
@@ -395,14 +398,19 @@ export function useBackgroundBlur() {
                 if (useChromaKey) {
                     // Manual Chroma Key Path
                     const maskData = processChromaKey(video);
-                    renderChromaKeyResult(maskData, canvas.width, canvas.height);
+                    renderChromaKeyResult(maskData, personCanvas.width, personCanvas.height);
                 } else if (segmenter.value) {
-                    if (currentRunningMode === 'IMAGE') {
-                        const result = segmenter.value.segment(video);
-                        renderResult(result);
-                    } else {
-                        const startTime = performance.now();
-                        segmenter.value.segmentForVideo(video, startTime, renderResult);
+                    // Draw video to processing canvas (downsampled)
+                    if (personCtx && personCanvas) {
+                        personCtx.drawImage(video, 0, 0, personCanvas.width, personCanvas.height);
+                        
+                        if (currentRunningMode === 'IMAGE') {
+                            const result = segmenter.value.segment(personCanvas);
+                            renderResult(result);
+                        } else {
+                            const startTime = performance.now();
+                            segmenter.value.segmentForVideo(personCanvas, startTime, renderResult);
+                        }
                     }
                 } else {
                     // No segmenter and no chroma key? Just draw raw
@@ -548,7 +556,10 @@ export function useBackgroundBlur() {
                  }
 
                  // Software blur on the float mask data directly for superior soft-edge rendering
-                 fastBoxBlur(maskData, width, height, isMobile ? 2 : 3);
+                 // Skip manual blur on low-end devices to save CPU; MediaPipe is usually enough.
+                 if (!isLowEnd && !hasDowngraded) {
+                     fastBoxBlur(maskData, width, height, isMobile ? 2 : 3);
+                 }
 
                  // Reuse or create ImageData for mask
                  if (!maskImageData || maskImageDataWidth !== width || maskImageDataHeight !== height) {
