@@ -29,6 +29,8 @@ export function useBackgroundBlur() {
     let blurCtx: CanvasRenderingContext2D | null = null;
     let personCanvas: HTMLCanvasElement | null = null;
     let personCtx: CanvasRenderingContext2D | null = null;
+    let segCanvas: HTMLCanvasElement | null = null;
+    let segCtx: CanvasRenderingContext2D | null = null;
     let cachedBgCanvas: HTMLCanvasElement | null = null;
     let cachedBgCtx: CanvasRenderingContext2D | null = null;
     
@@ -265,15 +267,21 @@ export function useBackgroundBlur() {
             ctx.imageSmoothingQuality = 'medium';
         }
 
-        // Processing Canvas (internal downsampled source for segmenter)
+        // Person Canvas (full resolution for composition)
         if (!personCanvas) personCanvas = document.createElement("canvas");
-        personCanvas.width = procWidth;
-        personCanvas.height = procHeight;
+        personCanvas.width = outputWidth;
+        personCanvas.height = outputHeight;
+        personCtx = personCanvas.getContext("2d", { willReadFrequently: false });
+
+        // Segmentation Canvas (internal downsampled source for segmenter)
+        if (!segCanvas) segCanvas = document.createElement("canvas");
+        segCanvas.width = procWidth;
+        segCanvas.height = procHeight;
         // willReadFrequently is only helpful if we call getImageData/putImageData (ChromaKey)
-        personCtx = personCanvas.getContext("2d", { willReadFrequently: useChromaKey });
-        if (personCtx) {
-            personCtx.imageSmoothingEnabled = true;
-            personCtx.imageSmoothingQuality = 'medium';
+        segCtx = segCanvas.getContext("2d", { willReadFrequently: useChromaKey });
+        if (segCtx) {
+            segCtx.imageSmoothingEnabled = true;
+            segCtx.imageSmoothingQuality = 'medium';
         }
 
         // Setup offscreen canvases
@@ -356,10 +364,19 @@ export function useBackgroundBlur() {
                     if (personCanvas) {
                         personCanvas.width = newTargetWidth;
                         personCanvas.height = newTargetHeight;
-                        if (personCtx) {
-                            personCtx.imageSmoothingEnabled = true;
-                            personCtx.imageSmoothingQuality = 'high';
+                    }
+                    if (segCanvas) {
+                        // Re-apply capping logic for segCanvas
+                        const MAX_DIM = isLowEnd ? 360 : 480;
+                        let sw = newTargetWidth;
+                        let sh = newTargetHeight;
+                        if (sw > MAX_DIM || sh > MAX_DIM) {
+                            const r = sw / sh;
+                            if (sw > sh) { sw = MAX_DIM; sh = Math.round(MAX_DIM / r); }
+                            else { sh = MAX_DIM; sw = Math.round(MAX_DIM * r); }
                         }
+                        segCanvas.width = sw;
+                        segCanvas.height = sh;
                     }
                     if (currentEffect === 'image' && currentImageUrl) {
                         updateBackgroundImage(currentImageUrl, canvas.width, canvas.height);
@@ -398,18 +415,18 @@ export function useBackgroundBlur() {
                 if (useChromaKey) {
                     // Manual Chroma Key Path
                     const maskData = processChromaKey(video);
-                    renderChromaKeyResult(maskData, personCanvas.width, personCanvas.height);
+                    renderChromaKeyResult(maskData, segCanvas.width, segCanvas.height);
                 } else if (segmenter.value) {
-                    // Draw video to processing canvas (downsampled)
-                    if (personCtx && personCanvas) {
-                        personCtx.drawImage(video, 0, 0, personCanvas.width, personCanvas.height);
+                    // Draw video to segmentation canvas (downsampled)
+                    if (segCtx && segCanvas) {
+                        segCtx.drawImage(video, 0, 0, segCanvas.width, segCanvas.height);
                         
                         if (currentRunningMode === 'IMAGE') {
-                            const result = segmenter.value.segment(personCanvas);
+                            const result = segmenter.value.segment(segCanvas);
                             renderResult(result);
                         } else {
                             const startTime = performance.now();
-                            segmenter.value.segmentForVideo(personCanvas, startTime, renderResult);
+                            segmenter.value.segmentForVideo(segCanvas, startTime, renderResult);
                         }
                     }
                 } else {
@@ -428,11 +445,11 @@ export function useBackgroundBlur() {
         };
 
         const processChromaKey = (video: HTMLVideoElement): Float32Array => {
-            if (!personCtx || !personCanvas) return new Float32Array(0);
+            if (!segCtx || !segCanvas) return new Float32Array(0);
             
-            // Draw video to personCanvas to get pixel data
-            personCtx.drawImage(video, 0, 0, personCanvas.width, personCanvas.height);
-            const imageData = personCtx.getImageData(0, 0, personCanvas.width, personCanvas.height);
+            // Draw video to segCanvas to get pixel data
+            segCtx.drawImage(video, 0, 0, segCanvas.width, segCanvas.height);
+            const imageData = segCtx.getImageData(0, 0, segCanvas.width, segCanvas.height);
             const data = imageData.data;
             const mask = new Float32Array(data.length / 4);
             
@@ -898,12 +915,17 @@ export function useBackgroundBlur() {
         }
         isLoaded.value = false;
         
-        // Clear cached canvases
-        canvas = null;
-        blurCanvas = null;
-        personCanvas = null;
-        cachedBgCanvas = null;
-        bgImage = null;
+        if (personCanvas) personCanvas = null;
+        if (personCtx) personCtx = null;
+        if (segCanvas) segCanvas = null;
+        if (segCtx) segCtx = null;
+        if (blurCanvas) blurCanvas = null;
+        if (blurCtx) blurCtx = null;
+        if (cachedBgCanvas) cachedBgCanvas = null;
+        if (cachedBgCtx) cachedBgCtx = null;
+        
+        hasDowngraded = false;
+        isDowngrading = false;
     }
     
     onUnmounted(() => {
