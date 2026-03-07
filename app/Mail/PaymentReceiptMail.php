@@ -20,7 +20,8 @@ class PaymentReceiptMail extends Mailable
     public function __construct(
         public Invoice $invoice,
         public string $pdfPath,
-        public string $paymentDate
+        public string $paymentDate,
+        public ?string $disk = null
     ) {}
 
     /**
@@ -56,8 +57,10 @@ class PaymentReceiptMail extends Mailable
      */
     public function attachments(): array
     {
+        $disk = $this->disk ?: config('media-library.disk_name');
+
         return [
-            Attachment::fromPath(storage_path('app/'.$this->pdfPath))
+            Attachment::fromStorageDisk($disk, $this->pdfPath)
                 ->as("Receipt-{$this->invoice->invoice_number}.pdf")
                 ->withMime('application/pdf'),
         ];

@@ -70,13 +70,12 @@
         }
         .billing-section {
             margin: 30px 0;
-            display: table;
             width: 100%;
+            overflow: hidden;
         }
         .bill-to, .bill-from {
-            display: table-cell;
+            float: left;
             width: 50%;
-            vertical-align: top;
         }
         .section-title {
             font-size: 10px;
@@ -101,11 +100,11 @@
             padding: 15px 20px;
             border-radius: 8px;
             margin: 20px 0;
-            display: table;
             width: 100%;
+            overflow: hidden;
         }
         .date-item {
-            display: table-cell;
+            float: left;
             width: 33.33%;
             text-align: center;
         }
@@ -154,18 +153,18 @@
             margin-top: 20px;
         }
         .total-row {
-            display: table;
             width: 100%;
             padding: 8px 0;
             border-bottom: 1px solid #e5e7eb;
+            overflow: hidden;
         }
         .total-label {
-            display: table-cell;
+            float: left;
             width: 60%;
             color: #666;
         }
         .total-value {
-            display: table-cell;
+            float: right;
             width: 40%;
             text-align: right;
             font-weight: 500;
@@ -251,13 +250,16 @@
                 <div class="section-title">Bill To</div>
                 <div class="client-name">{{ $invoice->client->name }}</div>
                 <div class="client-details">
+                    @if($invoice->address_to)
+                        <div style="font-weight: bold; margin-bottom: 4px;">{{ $invoice->address_to }}</div>
+                    @endif
                     @if($invoice->client->email)
                         {{ $invoice->client->email }}<br>
                     @endif
                     @if($invoice->client->phone)
                         {{ $invoice->client->phone }}<br>
                     @endif
-                    @if($invoice->client->address)
+                    @if(!$invoice->address_to && $invoice->client->address)
                         {{ $invoice->client->address }}
                     @endif
                 </div>

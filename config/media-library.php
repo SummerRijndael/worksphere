@@ -95,6 +95,7 @@ return [
         // Model::class => PathGenerator::class
         // or
         // 'model_morph_alias' => PathGenerator::class
+        \App\Models\Invoice::class => \App\Services\InvoiceMediaPathGenerator::class,
         \App\Models\FaqArticle::class => \App\Support\MediaLibrary\FaqArticlePathGenerator::class,
         \App\Models\EmailTemplate::class => \App\Support\MediaLibrary\PrivatePathGenerator::class,
         \App\Models\EmailSignature::class => \App\Support\MediaLibrary\PrivatePathGenerator::class,

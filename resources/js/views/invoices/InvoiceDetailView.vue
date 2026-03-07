@@ -8,11 +8,9 @@ import {
     PageLoader,
     Dropdown,
     Avatar,
-    
-    
-    
 } from "@/components/ui";
 import RecordPaymentModal from "@/components/invoices/RecordPaymentModal.vue";
+import ConfirmPasswordModal from "@/components/ui/ConfirmPasswordModal.vue";
 import {
     ArrowLeft,
     Download,
@@ -24,6 +22,10 @@ import {
     MoreHorizontal,
     XCircle,
     Copy,
+    Shield,
+    Eye,
+    EyeOff,
+    Lock,
 } from "lucide-vue-next";
 import axios from "axios";
 import { useAuthStore } from "@/stores/auth";
@@ -43,6 +45,10 @@ const invoice = ref<any>(null);
 const invoiceId = computed(() => route.params.id as string);
 const currentTeamId = computed(() => authStore.currentTeam?.public_id);
 const showPaymentModal = ref(false);
+const isCancelModalOpen = ref(false);
+const isCancelling = ref(false);
+const cancelError = ref("");
+const showPassword = ref(false);
 
 const formatCurrency = (amount: number, currency: string = "USD") => {
     return new Intl.NumberFormat("en-US", {
@@ -77,13 +83,9 @@ const getStatusVariant = (status: string) => {
 };
 
 const fetchInvoice = async () => {
-    if (!currentTeamId.value) return;
-
     try {
         isLoading.value = true;
-        const response = await axios.get(
-            `/api/teams/${currentTeamId.value}/invoices/${invoiceId.value}`,
-        );
+        const response = await axios.get(`/api/invoices/${invoiceId.value}`);
         invoice.value = response.data.data;
     } catch (err: any) {
         console.error("Failed to fetch invoice", err);
@@ -105,10 +107,14 @@ const deleteInvoice = async () => {
     try {
         isProcessing.value = true;
         await axios.delete(
-            `/api/teams/${currentTeamId.value}/invoices/${invoice.value.public_id}`,
+            `/api/teams/${invoice.value.team.public_id}/invoices/${invoice.value.public_id}`,
         );
         toast.success("Invoice deleted");
-        router.push("/admin/invoices");
+        if (route.name?.toString().startsWith("admin-")) {
+            router.push("/admin/invoices");
+        } else {
+            router.push("/invoices");
+        }
     } catch (err: any) {
         toast.error(err.response?.data?.message || "Failed to delete invoice");
     } finally {
@@ -122,7 +128,7 @@ const sendInvoice = async () => {
     try {
         isProcessing.value = true;
         await axios.post(
-            `/api/teams/${currentTeamId.value}/invoices/${invoice.value.public_id}/send`,
+            `/api/teams/${invoice.value.team.public_id}/invoices/${invoice.value.public_id}/send`,
         );
         toast.success("Invoice sent successfully");
         fetchInvoice();
@@ -141,21 +147,30 @@ const recordPayment = () => {
     showPaymentModal.value = true;
 };
 
-const cancelInvoice = async () => {
+const cancelInvoice = () => {
+    isCancelModalOpen.value = true;
+    cancelError.value = "";
+};
+
+const submitCancelInvoice = async (password, reason) => {
     if (!currentTeamId.value || !invoice.value) return;
-    if (!confirm("Are you sure you want to cancel this invoice?")) return;
+
+    isCancelling.value = true;
+    cancelError.value = "";
 
     try {
-        isProcessing.value = true;
         await axios.post(
-            `/api/teams/${currentTeamId.value}/invoices/${invoice.value.public_id}/cancel`,
+            `/api/teams/${invoice.value.team.public_id}/invoices/${invoice.value.public_id}/cancel`,
+            { password, reason },
         );
         toast.success("Invoice cancelled");
+        isCancelModalOpen.value = false;
         fetchInvoice();
     } catch (err: any) {
-        toast.error(err.response?.data?.message || "Failed to cancel invoice");
+        cancelError.value =
+            err.response?.data?.message || "Failed to cancel invoice";
     } finally {
-        isProcessing.value = false;
+        isCancelling.value = false;
     }
 };
 
@@ -168,7 +183,7 @@ const downloadPdf = async () => {
 
     try {
         const response = await axios.get(
-            `/api/teams/${currentTeamId.value}/invoices/${invoice.value.public_id}/download-pdf`,
+            `/api/teams/${invoice.value.team.public_id}/invoices/${invoice.value.public_id}/download-pdf`,
             { responseType: "blob" },
         );
 
@@ -189,7 +204,10 @@ const downloadPdf = async () => {
 };
 
 const editInvoice = () => {
-    router.push(`/admin/invoices/${invoiceId.value}/edit`);
+    const editRoute = route.name?.toString().startsWith("admin-")
+        ? "admin-invoice-edit"
+        : "invoice-edit";
+    router.push({ name: editRoute, params: { id: invoiceId.value } });
 };
 
 const getActions = () => {
@@ -252,7 +270,11 @@ const getActions = () => {
 };
 
 const goBack = () => {
-    router.push("/admin/invoices");
+    if (route.name?.toString().startsWith("admin-")) {
+        router.push("/admin/invoices");
+    } else {
+        router.push("/invoices");
+    }
 };
 
 onMounted(() => {
@@ -276,7 +298,7 @@ onMounted(() => {
                     <div>
                         <div class="flex items-center gap-3">
                             <h1
-                                class="text-2xl font-bold text-[var(--text-primary)]"
+                                class="text-2xl font-bold text-(--text-primary)"
                             >
                                 {{ invoice?.invoice_number || "Loading..." }}
                             </h1>
@@ -288,7 +310,7 @@ onMounted(() => {
                                 {{ invoice.status_label }}
                             </Badge>
                         </div>
-                        <p class="text-[var(--text-secondary)]">
+                        <p class="text-(--text-secondary)">
                             {{ invoice?.project?.name || "Invoice Details" }}
                         </p>
                     </div>
@@ -355,7 +377,7 @@ onMounted(() => {
                                 <!-- From -->
                                 <div>
                                     <p
-                                        class="text-xs font-semibold uppercase text-[var(--text-muted)] mb-2"
+                                        class="text-xs font-semibold uppercase text-(--text-muted) mb-2"
                                     >
                                         From
                                     </p>
@@ -367,12 +389,12 @@ onMounted(() => {
                                         />
                                         <div>
                                             <p
-                                                class="font-semibold text-[var(--text-primary)]"
+                                                class="font-semibold text-(--text-primary)"
                                             >
                                                 {{ invoice.team?.name }}
                                             </p>
                                             <p
-                                                class="text-sm text-[var(--text-secondary)]"
+                                                class="text-sm text-(--text-secondary)"
                                             >
                                                 {{ invoice.owner?.name }}
                                             </p>
@@ -382,7 +404,7 @@ onMounted(() => {
                                 <!-- To -->
                                 <div>
                                     <p
-                                        class="text-xs font-semibold uppercase text-[var(--text-muted)] mb-2"
+                                        class="text-xs font-semibold uppercase text-(--text-muted) mb-2"
                                     >
                                         Bill To
                                     </p>
@@ -394,16 +416,31 @@ onMounted(() => {
                                         />
                                         <div>
                                             <p
-                                                class="font-semibold text-[var(--text-primary)]"
+                                                class="font-semibold text-(--text-primary)"
                                             >
                                                 {{ invoice.client?.name }}
                                             </p>
                                             <p
                                                 v-if="invoice.client?.email"
-                                                class="text-sm text-[var(--text-secondary)]"
+                                                class="text-sm text-(--text-secondary)"
                                             >
                                                 {{ invoice.client.email }}
                                             </p>
+                                            <div
+                                                v-if="invoice.address_to"
+                                                class="mt-2 pt-2 border-t border-(--border-default)"
+                                            >
+                                                <p
+                                                    class="text-xs font-semibold uppercase text-(--text-muted) mb-1"
+                                                >
+                                                    Address To (Override)
+                                                </p>
+                                                <p
+                                                    class="text-sm text-(--text-secondary)"
+                                                >
+                                                    {{ invoice.address_to }}
+                                                </p>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -413,11 +450,9 @@ onMounted(() => {
                         <!-- Line Items -->
                         <Card padding="none" class="overflow-hidden">
                             <div
-                                class="p-4 border-b border-[var(--border-default)] flex justify-between items-center"
+                                class="p-4 border-b border-(--border-default) flex justify-between items-center"
                             >
-                                <h2
-                                    class="font-semibold text-[var(--text-primary)]"
-                                >
+                                <h2 class="font-semibold text-(--text-primary)">
                                     Line Items
                                 </h2>
                                 <Button
@@ -433,7 +468,7 @@ onMounted(() => {
 
                             <!-- Table Header -->
                             <div
-                                class="hidden sm:grid grid-cols-12 gap-4 p-4 bg-[var(--surface-secondary)] text-xs font-semibold uppercase text-[var(--text-muted)]"
+                                class="hidden sm:grid grid-cols-12 gap-4 p-4 bg-(--surface-secondary) text-xs font-semibold uppercase text-(--text-muted)"
                             >
                                 <div class="col-span-6">Description</div>
                                 <div class="col-span-2 text-right">
@@ -446,9 +481,7 @@ onMounted(() => {
                             </div>
 
                             <!-- Items -->
-                            <div
-                                class="divide-y divide-[var(--border-default)]"
-                            >
+                            <div class="divide-y divide-(--border-default)">
                                 <div
                                     v-for="item in invoice.items"
                                     :key="item.id"
@@ -459,25 +492,25 @@ onMounted(() => {
                                     >
                                         <div class="col-span-6">
                                             <p
-                                                class="font-medium text-[var(--text-primary)]"
+                                                class="font-medium text-(--text-primary)"
                                             >
                                                 {{ item.description }}
                                             </p>
                                         </div>
                                         <div
-                                            class="col-span-2 text-right text-[var(--text-secondary)]"
+                                            class="col-span-2 text-right text-(--text-secondary)"
                                         >
                                             <span
-                                                class="sm:hidden text-[var(--text-muted)]"
+                                                class="sm:hidden text-(--text-muted)"
                                                 >Qty:
                                             </span>
                                             {{ item.quantity }}
                                         </div>
                                         <div
-                                            class="col-span-2 text-right text-[var(--text-secondary)]"
+                                            class="col-span-2 text-right text-(--text-secondary)"
                                         >
                                             <span
-                                                class="sm:hidden text-[var(--text-muted)]"
+                                                class="sm:hidden text-(--text-muted)"
                                                 >Unit:
                                             </span>
                                             {{
@@ -488,7 +521,7 @@ onMounted(() => {
                                             }}
                                         </div>
                                         <div
-                                            class="col-span-2 text-right font-medium text-[var(--text-primary)]"
+                                            class="col-span-2 text-right font-medium text-(--text-primary)"
                                         >
                                             {{
                                                 formatCurrency(
@@ -503,11 +536,11 @@ onMounted(() => {
 
                             <!-- Totals -->
                             <div
-                                class="border-t border-[var(--border-default)] p-4 bg-[var(--surface-secondary)]"
+                                class="border-t border-(--border-default) p-4 bg-(--surface-secondary)"
                             >
                                 <div class="max-w-xs ml-auto space-y-2">
                                     <div
-                                        class="flex justify-between text-[var(--text-secondary)]"
+                                        class="flex justify-between text-(--text-secondary)"
                                     >
                                         <span>Subtotal</span>
                                         <span>{{
@@ -519,7 +552,7 @@ onMounted(() => {
                                     </div>
                                     <div
                                         v-if="invoice.tax_rate > 0"
-                                        class="flex justify-between text-[var(--text-secondary)]"
+                                        class="flex justify-between text-(--text-secondary)"
                                     >
                                         <span
                                             >Tax ({{ invoice.tax_rate }}%)</span
@@ -533,7 +566,7 @@ onMounted(() => {
                                     </div>
                                     <div
                                         v-if="invoice.discount_amount > 0"
-                                        class="flex justify-between text-[var(--text-secondary)]"
+                                        class="flex justify-between text-(--text-secondary)"
                                     >
                                         <span>Discount</span>
                                         <span
@@ -546,7 +579,7 @@ onMounted(() => {
                                         >
                                     </div>
                                     <div
-                                        class="flex justify-between pt-2 border-t border-[var(--border-default)] font-bold text-lg text-[var(--text-primary)]"
+                                        class="flex justify-between pt-2 border-t border-(--border-default) font-bold text-lg text-(--text-primary)"
                                     >
                                         <span>Total</span>
                                         <span>{{
@@ -563,33 +596,35 @@ onMounted(() => {
                         <!-- Notes & Terms -->
                         <div
                             v-if="invoice.notes || invoice.terms"
-                            class="grid grid-cols-1 md:grid-cols-2 gap-6"
+                            class="grid grid-cols-1 gap-6"
+                            :class="{ 'md:grid-cols-2': invoice.notes && invoice.terms }"
                         >
-                            <Card v-if="invoice.notes" padding="lg">
+                            <Card v-if="invoice.notes" padding="lg" :class="{ 'col-span-full': !invoice.terms }">
                                 <h3
-                                    class="font-semibold text-[var(--text-primary)] mb-2"
+                                    class="font-semibold text-(--text-primary) mb-2"
                                 >
                                     Notes
                                 </h3>
-                                <p
-                                    class="text-sm text-[var(--text-secondary)] whitespace-pre-wrap"
+                                <div
+                                    class="text-sm text-(--text-secondary) whitespace-pre-wrap leading-relaxed"
                                 >
                                     {{ invoice.notes }}
-                                </p>
+                                </div>
                             </Card>
-                            <Card v-if="invoice.terms" padding="lg">
+                            <Card v-if="invoice.terms" padding="lg" :class="{ 'col-span-full': !invoice.notes }">
                                 <h3
-                                    class="font-semibold text-[var(--text-primary)] mb-2"
+                                    class="font-semibold text-(--text-primary) mb-2"
                                 >
                                     Terms & Conditions
                                 </h3>
-                                <p
-                                    class="text-sm text-[var(--text-secondary)] whitespace-pre-wrap"
+                                <div
+                                    class="text-sm text-(--text-secondary) whitespace-pre-wrap leading-relaxed"
                                 >
                                     {{ invoice.terms }}
-                                </p>
+                                </div>
                             </Card>
                         </div>
+
                     </div>
 
                     <!-- Sidebar -->
@@ -597,25 +632,25 @@ onMounted(() => {
                         <!-- Invoice Info -->
                         <Card padding="lg">
                             <h3
-                                class="font-semibold text-[var(--text-primary)] mb-4"
+                                class="font-semibold text-(--text-primary) mb-4"
                             >
                                 Invoice Details
                             </h3>
                             <dl class="space-y-4">
                                 <div>
                                     <dt
-                                        class="text-xs font-semibold uppercase text-[var(--text-muted)]"
+                                        class="text-xs font-semibold uppercase text-(--text-muted)"
                                     >
                                         Invoice Number
                                     </dt>
                                     <dd
-                                        class="text-[var(--text-primary)] flex items-center gap-2"
+                                        class="text-(--text-primary) flex items-center gap-2"
                                     >
                                         {{ invoice.invoice_number }}
                                         <Button
                                             variant="ghost"
                                             size="icon"
-                                            class="h-6 w-6 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                                            class="h-6 w-6 text-(--text-muted) hover:text-(--text-primary)"
                                             @click="
                                                 copyToClipboard(
                                                     invoice.invoice_number,
@@ -629,11 +664,11 @@ onMounted(() => {
                                 </div>
                                 <div>
                                     <dt
-                                        class="text-xs font-semibold uppercase text-[var(--text-muted)]"
+                                        class="text-xs font-semibold uppercase text-(--text-muted)"
                                     >
                                         Issue Date
                                     </dt>
-                                    <dd class="text-[var(--text-primary)]">
+                                    <dd class="text-(--text-primary)">
                                         {{
                                             formatShortDate(invoice.issue_date)
                                         }}
@@ -641,15 +676,14 @@ onMounted(() => {
                                 </div>
                                 <div>
                                     <dt
-                                        class="text-xs font-semibold uppercase text-[var(--text-muted)]"
+                                        class="text-xs font-semibold uppercase text-(--text-muted)"
                                     >
                                         Due Date
                                     </dt>
                                     <dd
-                                        class="text-[var(--text-primary)]"
+                                        class="text-(--text-primary)"
                                         :class="{
-                                            'text-[var(--color-error)]':
-                                                invoice.is_overdue,
+                                            'text-error': invoice.is_overdue,
                                         }"
                                     >
                                         {{ formatShortDate(invoice.due_date) }}
@@ -662,27 +696,47 @@ onMounted(() => {
                                 </div>
                                 <div v-if="invoice.paid_at">
                                     <dt
-                                        class="text-xs font-semibold uppercase text-[var(--text-muted)]"
+                                        class="text-xs font-semibold uppercase text-(--text-muted)"
                                     >
                                         Paid Date
                                     </dt>
-                                    <dd class="text-[var(--color-success)]">
+                                    <dd class="text-success">
                                         {{ formatShortDate(invoice.paid_at) }}
                                     </dd>
                                 </div>
                                 <div>
                                     <dt
-                                        class="text-xs font-semibold uppercase text-[var(--text-muted)]"
+                                        class="text-xs font-semibold uppercase text-(--text-muted)"
                                     >
                                         Currency
                                     </dt>
-                                    <dd class="text-[var(--text-primary)]">
+                                    <dd class="text-(--text-primary)">
                                         {{ invoice.currency }}
+                                    </dd>
+                                </div>
+                                <div v-if="invoice.amount_paid > 0">
+                                    <dt
+                                        class="text-xs font-semibold uppercase text-(--text-muted)"
+                                    >
+                                        Amount Paid
+                                    </dt>
+                                    <dd class="text-success font-medium">
+                                        {{ formatCurrency(invoice.amount_paid, invoice.currency) }}
+                                    </dd>
+                                </div>
+                                <div v-if="invoice.amount_paid > 0 && invoice.remaining_balance > 0">
+                                    <dt
+                                        class="text-xs font-semibold uppercase text-(--text-muted)"
+                                    >
+                                        Remaining Balance
+                                    </dt>
+                                    <dd class="text-error font-medium">
+                                        {{ formatCurrency(invoice.remaining_balance, invoice.currency) }}
                                     </dd>
                                 </div>
                                 <div v-if="invoice.public_view_url">
                                     <dt
-                                        class="text-xs font-semibold uppercase text-[var(--text-muted)]"
+                                        class="text-xs font-semibold uppercase text-(--text-muted)"
                                     >
                                         Client Link
                                     </dt>
@@ -690,13 +744,96 @@ onMounted(() => {
                                         <a
                                             :href="invoice.public_view_url"
                                             target="_blank"
-                                            class="text-[var(--interactive-primary)] hover:underline"
+                                            class="text-(--interactive-primary) hover:underline"
                                         >
                                             View as Client
                                         </a>
                                     </dd>
                                 </div>
+
+                                <div v-if="invoice.pdf_password" class="pt-4 border-t border-(--border-default)">
+                                    <dt class="text-xs font-semibold uppercase text-(--text-muted) mb-2 flex items-center gap-1">
+                                        <Shield class="w-3 h-3" />
+                                        PDF Security
+                                    </dt>
+                                    <dd>
+                                        <div class="p-2 bg-(--surface-secondary) rounded border border-(--border-default)">
+                                            <div class="flex items-center justify-between">
+                                                <code class="text-xs font-mono text-(--text-primary)">
+                                                    {{ showPassword ? invoice.pdf_password : '••••••••' }}
+                                                </code>
+                                                <div class="flex items-center">
+                                                    <Button variant="ghost" size="icon" class="h-6 w-6" @click="showPassword = !showPassword">
+                                                        <Eye v-if="!showPassword" class="w-3 h-3" />
+                                                        <EyeOff v-else class="w-3 h-3" />
+                                                    </Button>
+                                                    <Button variant="ghost" size="icon" class="h-6 w-6" @click="copyToClipboard(invoice.pdf_password)">
+                                                        <Copy class="w-3 h-3" />
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </dd>
+                                </div>
                             </dl>
+                        </Card>
+
+                        <!-- Payment Assets -->
+                        <Card
+                            v-if="
+                                invoice.proofs?.length ||
+                                invoice.receipts?.length
+                            "
+                            padding="lg"
+                        >
+                            <h3
+                                class="font-semibold text-(--text-primary) mb-4"
+                            >
+                                Payment Assets
+                            </h3>
+                            <div class="space-y-4">
+                                <div v-if="invoice.proofs?.length">
+                                    <p
+                                        class="text-xs font-semibold uppercase text-(--text-muted) mb-2"
+                                    >
+                                        Payment Proofs
+                                    </p>
+                                    <ul class="space-y-2">
+                                        <li
+                                            v-for="proof in invoice.proofs"
+                                            :key="proof.id"
+                                            class="flex items-center justify-between p-2 bg-(--surface-secondary) rounded-md border border-(--border-default)"
+                                        >
+                                            <div class="flex items-center gap-2 min-w-0">
+                                                <Printer class="w-3 h-3 text-(--text-muted)" />
+                                                <span class="text-xs text-(--text-primary) truncate">{{ proof.name }}</span>
+                                            </div>
+                                            <a :href="proof.url" target="_blank" class="text-(--interactive-primary) hover:underline text-xs font-medium shrink-0 ml-2">Download</a>
+                                        </li>
+                                    </ul>
+                                </div>
+
+                                <div v-if="invoice.receipts?.length">
+                                    <p
+                                        class="text-xs font-semibold uppercase text-(--text-muted) mb-2"
+                                    >
+                                        Payment Receipts
+                                    </p>
+                                    <ul class="space-y-2">
+                                        <li
+                                            v-for="receipt in invoice.receipts"
+                                            :key="receipt.id"
+                                            class="flex items-center justify-between p-2 bg-(--surface-secondary) rounded-md border border-(--border-default)"
+                                        >
+                                            <div class="flex items-center gap-2 min-w-0">
+                                                <Download class="w-3 h-3 text-(--text-muted)" />
+                                                <span class="text-xs text-(--text-primary) truncate">{{ receipt.name }}</span>
+                                            </div>
+                                            <a :href="receipt.url" target="_blank" class="text-(--interactive-primary) hover:underline text-xs font-medium shrink-0 ml-2">Download</a>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
                         </Card>
 
                         <!-- Amount Due Card -->
@@ -705,12 +842,12 @@ onMounted(() => {
                             :class="
                                 invoice.status === 'paid'
                                     ? 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800'
-                                    : 'bg-[var(--surface-secondary)]'
+                                    : 'bg-(--surface-secondary)'
                             "
                         >
                             <div class="text-center">
                                 <p
-                                    class="text-sm font-semibold uppercase text-[var(--text-muted)] mb-2"
+                                    class="text-sm font-semibold uppercase text-(--text-muted) mb-2"
                                 >
                                     {{
                                         invoice.status === "paid"
@@ -722,8 +859,8 @@ onMounted(() => {
                                     class="text-3xl font-bold"
                                     :class="
                                         invoice.status === 'paid'
-                                            ? 'text-[var(--color-success)]'
-                                            : 'text-[var(--text-primary)]'
+                                            ? 'text-success'
+                                            : 'text-(--text-primary)'
                                     "
                                 >
                                     {{
@@ -747,6 +884,18 @@ onMounted(() => {
             :invoice="invoice"
             :team-id="currentTeamId"
             @success="handlePaymentSuccess"
+        />
+
+        <ConfirmPasswordModal
+            v-model:open="isCancelModalOpen"
+            title="Cancel Invoice"
+            description="Are you sure you want to cancel this invoice? This action cannot be undone."
+            submit-text="Cancel Invoice"
+            submit-variant="error"
+            :loading="isCancelling"
+            :external-error="cancelError"
+            show-reason
+            @confirm="submitCancelInvoice"
         />
     </div>
 </template>

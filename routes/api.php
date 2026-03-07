@@ -105,16 +105,17 @@ Route::middleware(['throttle:60,1'])->group(function () {
     Route::get('/public/reviews', [\App\Http\Controllers\Api\ReviewController::class, 'index']);
 });
 
-// Protected routes (requires authentication)
-Route::get('/media/secure/{media}', [\App\Http\Controllers\Api\MediaController::class, 'secureDownload'])
-    ->name('api.media.secure-download')
-    ->middleware('signed');
-
 Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->group(function () {
     // Current User
     Route::get('/user', [AuthController::class, 'user']);
     Route::get('/user/details', [UserController::class, 'details']);
     Route::post('/logout', [AuthController::class, 'logout']);
+
+    // Secure Media Delivery
+    Route::get('/media/secure/{media}', [\App\Http\Controllers\Api\MediaController::class, 'secureDownload'])
+        ->name('api.media.secure-download');
+    Route::get('/media/{media}/{conversion?}', [\App\Http\Controllers\Api\MediaController::class, 'show'])
+        ->name('api.media.show');
     Route::post('/user/setup-password', [\App\Http\Controllers\Api\SetPasswordController::class, 'store']);
     Route::put('/user/profile', [UserController::class, 'updateProfile']);
     Route::post('/user/profile-sync', [UserController::class, 'updateProfileSync']);
@@ -223,6 +224,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
     Route::get('teams/stats', [\App\Http\Controllers\Api\TeamController::class, 'stats']);
     Route::get('clients/stats', [\App\Http\Controllers\Api\ClientController::class, 'stats']);
     Route::get('projects/stats', [\App\Http\Controllers\Api\ProjectController::class, 'globalStats']);
+    Route::get('invoices/{invoice}', [\App\Http\Controllers\Api\InvoiceController::class, 'showById']);
 
     // Project Management (Global Access)
     Route::get('/projects', [\App\Http\Controllers\Api\ProjectController::class, 'indexGlobal']);
@@ -382,7 +384,6 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
             Route::post('/{invoice}/record-payment', [\App\Http\Controllers\Api\InvoiceController::class, 'recordPayment']);
             Route::post('/{invoice}/cancel', [\App\Http\Controllers\Api\InvoiceController::class, 'cancel']);
             Route::get('/{invoice}/download-pdf', [\App\Http\Controllers\Api\InvoiceController::class, 'downloadPdf']);
-            Route::post('/{invoice}/regenerate-pdf', [\App\Http\Controllers\Api\InvoiceController::class, 'regeneratePdf']);
             Route::post('/{invoice}/regenerate-pdf', [\App\Http\Controllers\Api\InvoiceController::class, 'regeneratePdf']);
         });
 

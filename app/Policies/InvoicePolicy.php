@@ -16,12 +16,8 @@ class InvoicePolicy
      */
     public function viewAny(User $user, Team $team): bool
     {
-        // Check if user is team member
-        if (! $team->hasMember($user)) {
-            return false;
-        }
-
-        return $user->can('invoices.view');
+        return app(\App\Services\PermissionService::class)->hasTeamPermission($user, $team, 'invoices.view') ||
+               app(\App\Services\PermissionService::class)->hasTeamPermission($user, $team, 'invoices.manage');
     }
 
     /**
@@ -29,6 +25,8 @@ class InvoicePolicy
      */
     public function view(User $user, Invoice $invoice): bool
     {
+        $team = $invoice->team;
+
         // Clients can view their own invoices
         if ($user->hasRole('client')) {
             $client = $user->linkedClient;
@@ -36,13 +34,8 @@ class InvoicePolicy
             return $client && $invoice->client_id === $client->id;
         }
 
-        // Team members with permission can view
-        $team = $invoice->team;
-        if (! $team->hasMember($user)) {
-            return false;
-        }
-
-        return $user->can('invoices.view');
+        return app(\App\Services\PermissionService::class)->hasTeamPermission($user, $team, 'invoices.view') ||
+               app(\App\Services\PermissionService::class)->hasTeamPermission($user, $team, 'invoices.manage');
     }
 
     /**
@@ -50,12 +43,8 @@ class InvoicePolicy
      */
     public function create(User $user, Team $team): bool
     {
-        // Check if user is team member
-        if (! $team->hasMember($user)) {
-            return false;
-        }
-
-        return app(\App\Services\PermissionService::class)->hasTeamPermission($user, $team, 'invoices.create');
+        return app(\App\Services\PermissionService::class)->hasTeamPermission($user, $team, 'invoices.create') ||
+               app(\App\Services\PermissionService::class)->hasTeamPermission($user, $team, 'invoices.manage');
     }
 
     /**
@@ -63,24 +52,13 @@ class InvoicePolicy
      */
     public function update(User $user, Invoice $invoice): bool
     {
-        $team = $invoice->team;
-        if (! $team->hasMember($user)) {
+        // Check if status allows editing (only Draft)
+        if (! $invoice->status->canEdit()) {
             return false;
         }
 
-        // Allow editing draft invoices
-        if ($invoice->can_edit) {
-            return $user->can('invoices.update');
-        }
-
-        // Allow admins/owners to edit sent invoices (but not paid/cancelled)
-        if ($invoice->status === \App\Enums\InvoiceStatus::Sent) {
-            if ($user->hasRole('administrator') || $team->owner_id === $user->id) {
-                return $user->can('invoices.update');
-            }
-        }
-
-        return false;
+        return app(\App\Services\PermissionService::class)->hasTeamPermission($user, $invoice->team, 'invoices.update') ||
+               app(\App\Services\PermissionService::class)->hasTeamPermission($user, $invoice->team, 'invoices.manage');
     }
 
     /**
@@ -88,12 +66,7 @@ class InvoicePolicy
      */
     public function delete(User $user, Invoice $invoice): bool
     {
-        $team = $invoice->team;
-        if (! $team->hasMember($user)) {
-            return false;
-        }
-
-        return $user->can('invoices.delete');
+        return app(\App\Services\PermissionService::class)->hasTeamPermission($user, $invoice->team, 'invoices.manage');
     }
 
     /**
@@ -101,17 +74,12 @@ class InvoicePolicy
      */
     public function send(User $user, Invoice $invoice): bool
     {
-        // Only allow sending if invoice can be sent
         if (! $invoice->can_send) {
             return false;
         }
 
-        $team = $invoice->team;
-        if (! $team->hasMember($user)) {
-            return false;
-        }
-
-        return $user->can('invoices.send');
+        return app(\App\Services\PermissionService::class)->hasTeamPermission($user, $invoice->team, 'invoices.send') ||
+               app(\App\Services\PermissionService::class)->hasTeamPermission($user, $invoice->team, 'invoices.manage');
     }
 
     /**
@@ -119,17 +87,12 @@ class InvoicePolicy
      */
     public function recordPayment(User $user, Invoice $invoice): bool
     {
-        // Only allow recording payment if invoice is in appropriate status
         if (! $invoice->can_record_payment) {
             return false;
         }
 
-        $team = $invoice->team;
-        if (! $team->hasMember($user)) {
-            return false;
-        }
-
-        return $user->can('invoices.record_payment');
+        return app(\App\Services\PermissionService::class)->hasTeamPermission($user, $invoice->team, 'invoices.record_payment') ||
+               app(\App\Services\PermissionService::class)->hasTeamPermission($user, $invoice->team, 'invoices.manage');
     }
 
     /**
@@ -151,11 +114,6 @@ class InvoicePolicy
             return false;
         }
 
-        $team = $invoice->team;
-        if (! $team->hasMember($user)) {
-            return false;
-        }
-
-        return $user->can('invoices.update');
+        return app(\App\Services\PermissionService::class)->hasTeamPermission($user, $invoice->team, 'invoices.manage');
     }
 }

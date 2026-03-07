@@ -26,13 +26,12 @@
             margin-bottom: 40px;
             border-bottom: 2px solid #059669; /* Success Green */
             padding-bottom: 20px;
-            display: table;
             width: 100%;
+            overflow: hidden;
         }
         .company-info {
-            display: table-cell;
+            float: left;
             width: 50%;
-            vertical-align: top;
         }
         .company-name {
             font-size: 24px;
@@ -41,10 +40,9 @@
             margin-bottom: 8px;
         }
         .receipt-info {
-            display: table-cell;
+            float: right;
             width: 50%;
             text-align: right;
-            vertical-align: top;
         }
         .receipt-title {
             font-size: 28px;
@@ -64,8 +62,8 @@
         }
         .billing-section {
             margin: 30px 0;
-            display: table;
             width: 100%;
+            overflow: hidden;
         }
         .section-title {
             font-size: 10px;
@@ -76,9 +74,8 @@
             margin-bottom: 8px;
         }
         .bill-to, .payment-details {
-            display: table-cell;
+            float: left;
             width: 50%;
-            vertical-align: top;
         }
         .details-box {
             background: #f8fafc;
@@ -88,20 +85,21 @@
         }
         .detail-row {
             margin-bottom: 8px;
-            display: table;
             width: 100%;
+            overflow: hidden;
         }
         .detail-label {
-            display: table-cell;
+            float: left;
             width: 40%;
             color: #666;
             font-size: 11px;
         }
         .detail-value {
-            display: table-cell;
+            float: right;
             width: 60%;
             font-weight: bold;
             color: #333;
+            text-align: right;
         }
         .items-table {
             width: 100%;
@@ -131,21 +129,21 @@
             margin-top: 20px;
         }
         .total-row {
-            display: table;
             width: 100%;
             padding: 8px 0;
             border-bottom: 1px solid #e5e7eb;
+            overflow: hidden;
         }
         .total-label {
-            display: table-cell;
+            float: left;
             width: 60%;
             color: #666;
         }
         .total-value {
-            display: table-cell;
+            float: right;
             width: 40%;
             text-align: right;
-            font-weight: 500;
+            font-weight: bold;
         }
         .paid-amount {
             background: #059669;
@@ -153,6 +151,9 @@
             padding: 15px;
             border-radius: 8px;
             margin-top: 10px;
+            overflow: hidden;
+            width: 100%;
+            box-sizing: border-box;
         }
         .paid-amount .total-label,
         .paid-amount .total-value {
@@ -170,28 +171,27 @@
         }
         .stamp {
             position: absolute;
-            top: 200px;
-            right: 100px;
-            width: 150px;
-            height: 150px;
+            bottom: 100px;
+            right: 50px;
+            width: 120px;
+            height: 120px;
             border: 4px solid #059669;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
             color: #059669;
-            font-size: 24px;
+            font-size: 20px;
             font-weight: bold;
             text-transform: uppercase;
-            transform: rotate(25deg);
-            opacity: 0.2;
-            z-index: -1;
+            transform: rotate(-15deg);
+            opacity: 0.15;
+            z-index: 1;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="stamp">PAID</div>
 
         <div class="header">
             <div class="company-info">
@@ -274,6 +274,8 @@
             <p>This is a computer generated receipt and does not require a physical signature.</p>
             <p>Generated on {{ now()->format('M d, Y \a\t h:i A') }}</p>
         </div>
+
+        <div class="stamp">PAID</div>
     </div>
 </body>
 </html>

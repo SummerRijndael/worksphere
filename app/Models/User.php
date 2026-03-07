@@ -663,6 +663,16 @@ class User extends Authenticatable implements HasMedia, MustVerifyEmail, WebAuth
     }
 
     /**
+     * Get the teams that the user owns.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasMany<Team>
+     */
+    public function ownedTeams(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Team::class, 'owner_id');
+    }
+
+    /**
      * Get the teams that the user belongs to.
      *
      * @return \Illuminate\Database\Eloquent\Relations\BelongsToMany<Team>

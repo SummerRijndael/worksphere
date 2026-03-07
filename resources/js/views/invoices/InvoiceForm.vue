@@ -14,6 +14,10 @@ import {
     Plus,
     Trash2,
     Save,
+    Eye,
+    EyeOff,
+    RefreshCw,
+    Shield,
     // Calendar, FileText, XCircle, CheckCircle2 removed
 } from "lucide-vue-next";
 import axios from "axios";
@@ -49,7 +53,20 @@ const form = ref({
     terms: "",
     tax_rate: 0,
     discount_amount: 0,
+    address_to: "",
+    pdf_password: "",
 });
+
+const showPassword = ref(false);
+
+const generatePassword = () => {
+    const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
+    let retVal = "";
+    for (let i = 0, n = charset.length; i < 12; ++i) {
+        retVal += charset.charAt(Math.floor(Math.random() * n));
+    }
+    form.value.pdf_password = retVal;
+};
 
 const teamOptions = computed(() => {
     return (authStore.user?.teams || []).map((t) => ({
@@ -161,28 +178,20 @@ const formatCurrency = (amount: number) => {
 };
 
 const fetchData = async () => {
-    if (!activeTeamId.value) return;
-
     try {
-        const [clientsRes, projectsRes] = await Promise.all([
-            axios.get(`/api/teams/${activeTeamId.value}/clients`),
-            axios.get(`/api/teams/${activeTeamId.value}/projects`),
-        ]);
-
-        clients.value = clientsRes.data.data || [];
-        projects.value = projectsRes.data.data || []; // Assuming project resource structure
-
-        // Fetch templates
-        fetchTemplates();
+        let teamIdToFetch = activeTeamId.value;
 
         if (isEditing.value) {
-            const invoiceRes = await axios.get(
-                `/api/teams/${activeTeamId.value}/invoices/${invoiceId.value}`,
-            );
+            const invoiceRes = await axios.get(`/api/invoices/${invoiceId.value}`);
             const invoice = invoiceRes.data.data;
+            teamIdToFetch = invoice.team.public_id;
+
+            // Update activeTeamId only if different, but avoid triggering watcher if possible
+            // Actually, we skip setting form.team_id here to avoid triggering watcher loop
+            activeTeamId.value = teamIdToFetch;
 
             form.value = {
-                team_id: invoice.team_id || activeTeamId.value, // Ensure team_id is set
+                team_id: invoice.team.public_id,
                 client_id: invoice.client.public_id,
                 project_id: invoice.project?.public_id || "",
                 issue_date: invoice.issue_date.split("T")[0],
@@ -199,8 +208,26 @@ const fetchData = async () => {
                 terms: invoice.terms || "",
                 tax_rate: Number(invoice.tax_rate),
                 discount_amount: Number(invoice.discount_amount),
+                address_to: invoice.address_to || "",
+                pdf_password: invoice.pdf_password || "",
             };
         }
+
+        if (!teamIdToFetch) {
+            isLoading.value = false;
+            return;
+        }
+
+        const [clientsRes, projectsRes] = await Promise.all([
+            axios.get(`/api/teams/${teamIdToFetch}/clients`),
+            axios.get(`/api/teams/${teamIdToFetch}/projects`),
+        ]);
+
+        clients.value = clientsRes.data.data || [];
+        projects.value = projectsRes.data.data || [];
+
+        // Fetch templates
+        fetchTemplates();
     } catch (err) {
         console.error("Failed to load data", err);
         toast.error("Failed to load form data");
@@ -271,13 +298,21 @@ const saveInvoice = async () => {
                 payload,
             );
             toast.success("Invoice created successfully");
-            router.replace(`/admin/invoices/${res.data.data.public_id}/edit`);
-            return; // Stay on edit page or redirect to detail
+            
+            const editRoute = route.name?.toString().startsWith('admin-') 
+                ? 'admin-invoice-edit' 
+                : 'invoice-edit';
+            
+            router.replace({ name: editRoute, params: { id: res.data.data.public_id } });
+            return;
         }
 
         // After save, redirect to detail view
         if (isEditing.value) {
-            router.push(`/admin/invoices/${invoiceId.value}`);
+            const detailRoute = route.name?.toString().startsWith('admin-') 
+                ? 'admin-invoice-detail' 
+                : 'invoice-detail';
+            router.push({ name: detailRoute, params: { id: invoiceId.value } });
         }
     } catch (err: any) {
         toast.error(err.response?.data?.message || "Failed to save invoice");
@@ -287,10 +322,13 @@ const saveInvoice = async () => {
 };
 
 const cancel = () => {
+    const isAdmin = route.name?.toString().startsWith('admin-');
     if (isEditing.value) {
-        router.push(`/admin/invoices/${invoiceId.value}`);
+        const detailRoute = isAdmin ? 'admin-invoice-detail' : 'invoice-detail';
+        router.push({ name: detailRoute, params: { id: invoiceId.value } });
     } else {
-        router.push("/admin/invoices");
+        const listRoute = isAdmin ? 'admin-invoices' : 'invoices';
+        router.push({ name: listRoute });
     }
 };
 
@@ -525,12 +563,24 @@ onMounted(() => {
                             >
                             <Input type="date" v-model="form.issue_date" />
                         </div>
-                        <div class="space-y-1">
-                            <label
-                                class="text-sm font-medium text-[var(--text-primary)]"
-                                >Due Date</label
-                            >
-                            <Input type="date" v-model="form.due_date" />
+                        <div class="section-title">Billing Details</div>
+                        <Input
+                            v-model="form.address_to"
+                            label="Address To (Override)"
+                            placeholder="Specific address for this invoice"
+                            description="Optional: Overrides the default client address on the PDF"
+                        />
+                        <div class="grid grid-cols-2 gap-4">
+                            <Input
+                                v-model="form.issue_date"
+                                type="date"
+                                label="Issue Date"
+                            />
+                            <Input
+                                v-model="form.due_date"
+                                type="date"
+                                label="Due Date"
+                            />
                         </div>
                         <div class="space-y-1">
                             <label
@@ -542,6 +592,47 @@ onMounted(() => {
                                 maxlength="3"
                                 class="uppercase"
                             />
+                        </div>
+
+                        <!-- PDF Password Protection -->
+                        <div class="pt-4 border-t border-(--border-default) space-y-3">
+                            <div class="flex items-center gap-2">
+                                <Shield class="w-4 h-4 text-(--interactive-primary)" />
+                                <label class="text-sm font-semibold text-(--text-primary)">PDF Password Protection</label>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <div class="relative flex-1">
+                                    <input
+                                        v-model="form.pdf_password"
+                                        :type="showPassword ? 'text' : 'password'"
+                                        placeholder="Optional PDF password"
+                                        class="w-full rounded-md border border-(--border-default) bg-(--surface-primary) pl-3 pr-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-(--interactive-primary) transition-all"
+                                    />
+                                    <button
+                                        type="button"
+                                        class="absolute right-3 top-1/2 -translate-y-1/2 text-(--text-muted) hover:text-(--text-primary) transition-colors"
+                                        @click="showPassword = !showPassword"
+                                        title="Toggle Visibility"
+                                    >
+                                        <Eye v-if="!showPassword" class="w-4 h-4" />
+                                        <EyeOff v-else class="w-4 h-4" />
+                                    </button>
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    type="button"
+                                    class="h-9 px-3 gap-2"
+                                    @click="generatePassword"
+                                    title="Generate Random Password"
+                                >
+                                    <RefreshCw class="w-4 h-4" />
+                                    Generate
+                                </Button>
+                            </div>
+                            <p class="text-[10px] text-(--text-muted) italic ml-1">
+                                If set, the downloaded PDF will be encrypted with this password.
+                            </p>
                         </div>
                     </Card>
 

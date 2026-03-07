@@ -26,7 +26,9 @@ class ClientController extends Controller
         $projectQuery = \App\Models\Project::query()->whereNotNull('client_id');
 
         // Resolve Team Scoping
-        $requestedTeamId = $request->header('X-Team-ID') ?? $request->input('team_id');
+        $requestedTeamId = $request->has('team_id') 
+            ? $request->input('team_id') 
+            : $request->header('X-Team-ID');
 
         if ($requestedTeamId) {
             $team = \App\Models\Team::where('public_id', $requestedTeamId)->first();
@@ -43,8 +45,11 @@ class ClientController extends Controller
                 return response()->json(['total' => 0, 'active' => 0, 'total_projects' => 0]);
             }
         } elseif (! $user->hasRole('administrator')) {
-            // For regular users without a specific team, scope to all their teams
-            $teamIds = $user->teams()->pluck('teams.id');
+            // For regular users without a specific team, scope to all their teams (member + owned)
+            $teamIds = $user->teams()->pluck('teams.id')
+                ->merge($user->ownedTeams()->pluck('id'))
+                ->unique();
+            
             $query->whereIn('team_id', $teamIds);
             $projectQuery->whereIn('team_id', $teamIds);
         }
@@ -81,14 +86,16 @@ class ClientController extends Controller
         // Typically in this codebase, we see manual resolution often.
         // Let's rely on standard resolution logic combined with the input check.
 
-        $requestedTeamId = $routeTeam ?? $request->header('X-Team-ID') ?? $request->input('team_id');
+        $requestedTeamId = $request->has('team_id') 
+            ? $request->input('team_id') 
+            : ($routeTeam ?? $request->header('X-Team-ID'));
 
         // Sanitize: Treat literal "undefined" or "null" strings as null
         if ($requestedTeamId === 'undefined' || $requestedTeamId === 'null') {
             $requestedTeamId = null;
         }
 
-        // 1. Resolve Scope
+        // Resolve Scope
         if ($isAdmin) {
             // Admin Scoping
             if ($requestedTeamId) {
@@ -130,7 +137,9 @@ class ClientController extends Controller
             } else {
                 // No specific team requested. Show clients from ALL teams where user has permission.
                 $permissionService = app(\App\Services\PermissionService::class);
-                $allowedTeamIds = $user->teams->filter(function ($team) use ($user, $permissionService) {
+                $teams = $user->teams->merge($user->ownedTeams)->unique('id');
+
+                $allowedTeamIds = $teams->filter(function ($team) use ($user, $permissionService) {
                     return $permissionService->hasTeamPermission($user, $team, 'clients.view');
                 })->pluck('id');
 
@@ -171,24 +180,37 @@ class ClientController extends Controller
     {
         $user = $request->user();
         $team = $request->attributes->get('current_team');
+        $permissionService = app(\App\Services\PermissionService::class);
 
-        // Allow admins to specify team_id (public_id)
-        if ($request->has('team_id') && $user->hasRole('administrator')) {
+        // 1. Resolve Target Team
+        $teamId = null;
+        if ($request->has('team_id')) {
             $teamPublicId = $request->input('team_id');
-            $targetTeam = \App\Models\Team::where('public_id', $teamPublicId)->first();
-            if (! $targetTeam) {
+            $targetTeam = \App\Models\Team::where('public_id', $teamPublicId)
+                ->orWhere('id', $teamPublicId)
+                ->first();
+            
+            if ($targetTeam) {
+                // Verify Permission for target team
+                if ($user->hasRole('administrator') || $permissionService->hasTeamPermission($user, $targetTeam, 'clients.create')) {
+                    $teamId = $targetTeam->id;
+                } else {
+                    abort(403, 'You do not have permission to create clients for this team.');
+                }
+            } else {
                 throw \Illuminate\Validation\ValidationException::withMessages(['team_id' => 'Invalid team.']);
             }
-            $teamId = $targetTeam->id;
-        } else {
+        } 
+
+        // 2. Fallback to request context if no team_id or team_id was invalid
+        if (! $teamId) {
             if (! $team) {
-                abort(403, 'Team context required');
+                abort(400, 'Team context or team_id is required.');
             }
             $teamId = $team->id;
         }
 
         $validated = $request->validate([
-            'team_id' => ['sometimes', 'exists:teams,public_id'], // Validate public_id
             'name' => ['required', 'string', 'max:255', 'regex:/^[\pL\s\-\']+$/u', 'not_in:NaN,nan,null,NULL,undefined,UNDEFINED'],
             'email' => ['nullable', 'email:rfc,dns,spoof', 'max:255', Rule::unique('clients')->where(fn ($query) => $query->where('team_id', $teamId))],
             'contact_person' => ['nullable', 'string', 'max:255'],
@@ -197,7 +219,6 @@ class ClientController extends Controller
             'status' => ['required', 'in:active,inactive'],
         ]);
 
-        // Ensure team_id is set in validated data
         $validated['team_id'] = $teamId;
 
         $client = Client::create($validated);
@@ -273,17 +294,32 @@ class ClientController extends Controller
             }
         }
 
-        // Allow updating team_id (public_id) if admin
-        if ($request->has('team_id') && $user->hasRole('administrator')) {
+        // Allow updating team_id (public_id) for authorized users
+        if ($request->has('team_id')) {
             $teamPublicId = $request->input('team_id');
-            $targetTeam = \App\Models\Team::where('public_id', $teamPublicId)->first();
+            $targetTeam = \App\Models\Team::where('public_id', $teamPublicId)
+                ->orWhere('id', $teamPublicId)
+                ->first();
+            
             if ($targetTeam) {
-                $targetTeamId = $targetTeam->id;
+                $permissionService = app(\App\Services\PermissionService::class);
+                
+                // Verify Permission: Need update permission on BOTH current and target team
+                $canUpdateCurrent = $user->hasRole('administrator') || $permissionService->hasTeamPermission($user, $client->team, 'clients.update');
+                $canUpdateTarget = $user->hasRole('administrator') || $permissionService->hasTeamPermission($user, $targetTeam, 'clients.update');
+
+                if ($canUpdateCurrent && $canUpdateTarget) {
+                    $targetTeamId = $targetTeam->id;
+                } else {
+                    abort(403, 'Unauthorized to move this client to the specified team.');
+                }
+            } else {
+                throw \Illuminate\Validation\ValidationException::withMessages(['team_id' => 'Invalid target team.']);
             }
         }
 
         $validated = $request->validate([
-            'team_id' => ['sometimes', 'exists:teams,public_id'],
+            'team_id' => ['sometimes'],
             'name' => ['sometimes', 'string', 'max:255', 'regex:/^[\pL\s\-\']+$/u', 'not_in:NaN,nan,null,NULL,undefined,UNDEFINED'],
             'email' => ['sometimes', 'nullable', 'email:rfc,dns,spoof', 'max:255', Rule::unique('clients')->where(fn ($query) => $query->where('team_id', $client->team_id))->ignore($client->id)],
             'contact_person' => ['sometimes', 'nullable', 'string', 'max:255'],

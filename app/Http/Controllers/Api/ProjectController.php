@@ -62,8 +62,11 @@ class ProjectController extends Controller
             $query->where('team_id', $team->id);
         } elseif (! $user->hasRole('administrator')) {
             // Non-admins MUST provide a team_id or be restricted to their teams
-            // For "global" view of a regular user, return stats from all their teams
-            $allowedTeamIds = $user->teams()->pluck('teams.id');
+            // For "global" view of a regular user, return stats from all their teams (member + owned)
+            $allowedTeamIds = $user->teams()->pluck('teams.id')
+                ->merge($user->ownedTeams()->pluck('id'))
+                ->unique();
+            
             $query->whereIn('team_id', $allowedTeamIds);
         }
         // Admins with no team_id see global stats (original behavior)
@@ -118,18 +121,26 @@ class ProjectController extends Controller
      */
     public function indexGlobal(Request $request): AnonymousResourceCollection
     {
-        if (! $request->user()->hasRole('administrator')) {
-            abort(403, 'Unauthorized access to global project list.');
-        }
-
+        $user = $request->user();
         $query = $this->getProjectsQuery($request);
 
         // If specific team is requested in filter
         if ($request->filled('team_id')) {
             $team = Team::where('public_id', $request->team_id)->first();
             if ($team) {
+                // Verify Permission: Admin or Team Member/Owner
+                if (! $user->hasRole('administrator') && ! $this->permissionService->isTeamMember($user, $team) && ! $team->isOwner($user)) {
+                    abort(403, 'Unauthorized access to this team\'s projects.');
+                }
                 $query->where('team_id', $team->id);
             }
+        } elseif (! $user->hasRole('administrator')) {
+            // For regular users, scope to their teams (member + owned)
+            $allowedTeamIds = $user->teams()->pluck('teams.id')
+                ->merge($user->ownedTeams()->pluck('id'))
+                ->unique();
+            
+            $query->whereIn('team_id', $allowedTeamIds);
         }
 
         $projects = $query->paginate($request->integer('per_page', 15));

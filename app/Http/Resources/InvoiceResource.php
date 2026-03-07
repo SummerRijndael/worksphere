@@ -36,19 +36,23 @@ class InvoiceResource extends JsonResource
             'tax_amount' => (float) $this->tax_amount,
             'discount_amount' => (float) $this->discount_amount,
             'total' => (float) $this->total,
+            'amount_paid' => (float) $this->amount_paid,
+            'remaining_balance' => (float) $this->remaining_balance,
             'currency' => $this->currency,
 
             // Content
             'notes' => $this->notes,
             'terms' => $this->terms,
             'sent_to_email' => $this->sent_to_email,
+            'address_to' => $this->address_to,
+            'pdf_password' => $this->when($request->user()?->can('view', $this->resource), $this->pdf_password),
 
             // Computed flags
             'is_overdue' => $this->is_overdue,
             'days_until_due' => $this->days_until_due,
             'can_edit' => $request->user()?->can('update', $this->resource) ?? false,
-            'can_send' => $this->can_send,
-            'can_record_payment' => $this->can_record_payment,
+            'can_send' => $request->user()?->can('send', $this->resource) ?? false,
+            'can_record_payment' => $request->user()?->can('recordPayment', $this->resource) ?? false,
 
             // Relationships
             'client' => $this->whenLoaded('client', function () {
@@ -82,8 +86,35 @@ class InvoiceResource extends JsonResource
                     'avatar_url' => $this->creator->avatar_url,
                 ];
             }),
+            'sent_by' => $this->whenLoaded('sentBy', function () {
+                if (! $this->sentBy) {
+                    return null;
+                }
+
+                return [
+                    'public_id' => $this->sentBy->public_id,
+                    'name' => $this->sentBy->name,
+                    'avatar_url' => $this->sentBy->avatar_url,
+                ];
+            }),
             'items' => InvoiceItemResource::collection($this->whenLoaded('items')),
             'items_count' => $this->whenCounted('items'),
+
+            // Media
+            'proofs' => $this->getMedia('payment_proofs')->map(fn($media) => [
+                'id' => $media->id,
+                'name' => $media->file_name,
+                'url' => route('api.media.secure-download', ['media' => $media->id]),
+                'size' => $media->size,
+                'mime_type' => $media->mime_type,
+            ]),
+            'receipts' => $this->getMedia('receipts')->map(fn($media) => [
+                'id' => $media->id,
+                'name' => $media->file_name,
+                'url' => route('api.media.secure-download', ['media' => $media->id]),
+                'size' => $media->size,
+                'mime_type' => $media->mime_type,
+            ]),
         ];
     }
 }

@@ -17,6 +17,12 @@ class TicketReportController extends Controller
     public function stats(Request $request): JsonResponse
     {
         $user = $request->user();
+        
+        // Ensure user has permission to view ticket reports (Admin or IT Support)
+        if (! $user->hasRole('administrator') && ! $user->hasPermissionTo('tickets.reports')) {
+            abort(403, 'You do not have permission to view ticket reports.');
+        }
+
         $filters = $request->all();
 
         // 1. Resolve Team Scoping
@@ -24,7 +30,7 @@ class TicketReportController extends Controller
         if ($requestedTeamId) {
             $team = \App\Models\Team::where('public_id', $requestedTeamId)->first();
             if ($team) {
-                // Verify Permission
+                // Verify Permission: Admin or Team Member/Owner
                 $permissionService = app(\App\Services\PermissionService::class);
                 if ($user->hasRole('administrator') || $permissionService->isTeamMember($user, $team)) {
                     $filters['team_id'] = $team->id;
@@ -35,8 +41,12 @@ class TicketReportController extends Controller
                 return response()->json(['total' => 0, 'open' => 0, 'in_progress' => 0, 'resolved' => 0, 'closed' => 0]);
             }
         } elseif (! $user->hasRole('administrator')) {
-            // No specific team, scope to all user's teams
-            $filters['team_ids'] = $user->teams()->pluck('teams.id')->toArray();
+            // No specific team, scope to all user's teams (member + owned)
+            $filters['team_ids'] = $user->teams()
+                ->pluck('teams.id')
+                ->merge($user->ownedTeams()->pluck('id'))
+                ->unique()
+                ->toArray();
         }
 
         // 2. Personal scope if needed
@@ -50,6 +60,12 @@ class TicketReportController extends Controller
     public function workload(Request $request): JsonResponse
     {
         $user = $request->user();
+
+        // Ensure user has permission to view ticket reports (Admin or IT Support)
+        if (! $user->hasRole('administrator') && ! $user->hasPermissionTo('tickets.reports')) {
+            abort(403, 'You do not have permission to view ticket reports.');
+        }
+
         $filters = $request->all();
 
         if (! $user->hasPermissionTo('tickets.view')) {
@@ -62,6 +78,12 @@ class TicketReportController extends Controller
     public function export(Request $request): JsonResponse
     {
         $user = $request->user();
+
+        // Ensure user has permission to view ticket reports (Admin or IT Support)
+        if (! $user->hasRole('administrator') && ! $user->hasPermissionTo('tickets.reports')) {
+            abort(403, 'You do not have permission to export ticket reports.');
+        }
+
         $filters = $request->all();
 
         // Ensure user permission is scoped

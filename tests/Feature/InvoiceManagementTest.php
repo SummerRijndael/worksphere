@@ -204,7 +204,7 @@ class InvoiceManagementTest extends TestCase
             'notes' => 'Trying to update',
         ];
 
-        $response = $this->actingAs($this->admin)
+        $response = $this->actingAs($this->member)
             ->putJson("/api/teams/{$this->team->public_id}/invoices/{$invoice->public_id}", $data);
 
         $response->assertStatus(403);
@@ -275,17 +275,19 @@ class InvoiceManagementTest extends TestCase
             ->create();
 
         $response = $this->actingAs($this->admin)
-            ->postJson("/api/teams/{$this->team->public_id}/invoices/{$invoice->public_id}/record-payment");
+            ->postJson("/api/teams/{$this->team->public_id}/invoices/{$invoice->public_id}/record-payment", [
+                'date' => now()->toDateString(),
+            ]);
 
         $response->assertStatus(200)
-            ->assertJsonPath('invoice.status', 'paid');
+            ->assertJsonPath('data.status', 'paid');
 
         $invoice->refresh();
         $this->assertEquals(InvoiceStatus::Paid, $invoice->status);
         $this->assertNotNull($invoice->paid_at);
     }
 
-    public function test_cannot_record_payment_for_draft_invoice(): void
+    public function test_admin_can_record_payment_for_draft_invoice(): void
     {
         $invoice = Invoice::factory()
             ->forTeam($this->team)
@@ -295,9 +297,11 @@ class InvoiceManagementTest extends TestCase
             ->create();
 
         $response = $this->actingAs($this->admin)
-            ->postJson("/api/teams/{$this->team->public_id}/invoices/{$invoice->public_id}/record-payment");
+            ->postJson("/api/teams/{$this->team->public_id}/invoices/{$invoice->public_id}/record-payment", [
+                'date' => now()->toDateString(),
+            ]);
 
-        $response->assertStatus(403); // can_record_payment returns false
+        $response->assertStatus(200); // Now allowed by requirement
     }
 
     public function test_admin_can_cancel_invoice(): void
@@ -310,10 +314,15 @@ class InvoiceManagementTest extends TestCase
             ->create();
 
         $response = $this->actingAs($this->admin)
-            ->postJson("/api/teams/{$this->team->public_id}/invoices/{$invoice->public_id}/cancel");
+            ->postJson("/api/teams/{$this->team->public_id}/invoices/{$invoice->public_id}/cancel", [
+                'password' => 'password', // Default Jetstream password in tests
+                'reason' => 'Customer changed mind',
+            ]);
 
         $response->assertStatus(200)
             ->assertJsonPath('invoice.status', 'cancelled');
+        
+        $this->assertStringContainsString('Cancellation Reason: Customer changed mind', $invoice->fresh()->notes);
     }
 
     public function test_cannot_cancel_paid_invoice(): void
@@ -326,7 +335,10 @@ class InvoiceManagementTest extends TestCase
             ->create();
 
         $response = $this->actingAs($this->admin)
-            ->postJson("/api/teams/{$this->team->public_id}/invoices/{$invoice->public_id}/cancel");
+            ->postJson("/api/teams/{$this->team->public_id}/invoices/{$invoice->public_id}/cancel", [
+                'password' => 'password',
+                'reason' => 'Testing',
+            ]);
 
         $response->assertStatus(403);
     }
@@ -355,6 +367,12 @@ class InvoiceManagementTest extends TestCase
                 ['description' => 'Test', 'quantity' => 1, 'unit_price' => 100],
             ],
         ];
+
+        // Explicitly set role to one without create permission
+        \Illuminate\Support\Facades\DB::table('team_user')
+            ->where('team_id', $this->team->id)
+            ->where('user_id', $this->member->id)
+            ->update(['role' => 'operator']);
 
         $response = $this->actingAs($this->member)
             ->postJson("/api/teams/{$this->team->public_id}/invoices", $data);
