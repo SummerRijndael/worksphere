@@ -396,18 +396,12 @@ watch(
     width: 100%;
     height: 100%;
     position: relative;
-    background: #3c4043;
+    background: transparent; /* Seamless blend */
     display: flex;
     align-items: center;
     justify-content: center;
     overflow: hidden;
-    border-radius: 8px;
-}
-
-@media (max-width: 768px) {
-    .tile-root {
-        border-radius: 0;
-    }
+    border-radius: 0; /* Match grid-tile */
 }
 
 .tile-speaking {

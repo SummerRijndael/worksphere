@@ -1131,7 +1131,7 @@
                             <div
                                 v-if="showActivitiesMenu"
                                 ref="activitiesMenuRef"
-                                class="layout-menu shadow-2xl z-[1000]"
+                                class="layout-menu shadow-2xl z-1000"
                             >
                                 <div class="px-4 pt-4 pb-2 border-none">
                                     <h3
@@ -3235,8 +3235,8 @@ onBeforeUnmount(() => {
     flex: 1;
     display: flex;
     flex-direction: column;
-    padding: 16px 16px 24px 16px; /* Reduced buffer: keeps content centered while allowing PiP overlap */
-    gap: 8px;
+    padding: 0; /* Removed padding for seamless edge-to-edge feel */
+    gap: 0;
     position: relative;
     min-width: 0;
 }
@@ -3245,8 +3245,8 @@ onBeforeUnmount(() => {
 .grid-container {
     flex: 1;
     display: grid;
-    gap: 8px;
-    padding: 8px;
+    gap: 2px; /* Minimal gap for separation without "boxed" look */
+    padding: 0;
     min-height: 0;
     align-content: center;
     justify-content: center;
@@ -3259,9 +3259,9 @@ onBeforeUnmount(() => {
 .grid-1 {
     grid-template-columns: 1fr;
     grid-template-rows: 1fr;
-    max-width: 1080px;
-    margin: 0 auto;
+    margin: 0;
     width: 100%;
+    /* Removed max-width to allow full-screen immersive view */
 }
 
 .grid-2 {
@@ -3370,14 +3370,13 @@ onBeforeUnmount(() => {
     margin: auto;
 
     background: var(--surface-secondary);
-    border-radius: 12px;
+    border-radius: 0; /* Square edges for seamless tile-to-tile look */
     overflow: hidden;
     position: relative;
     display: flex;
     justify-content: center;
     align-items: center;
-    border: 1px solid var(--border-default); /* Premium outline */
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25); /* Subtle lift */
+    border: 1px solid rgba(255, 255, 255, 0.05); /* Minimal separator */
     transition:
         transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
         box-shadow 0.2s ease;
@@ -4375,7 +4374,7 @@ onBeforeUnmount(() => {
     height: 100%;
     width: 100%;
     overflow: hidden;
-    background-color: #111111;
+    background-color: transparent; /* Blend with stage */
 }
 
 .ambient-background {
@@ -4447,14 +4446,10 @@ onBeforeUnmount(() => {
     align-items: center;
     justify-content: center;
     padding: 64px 96px;
-    background: rgba(32, 33, 36, 0.5);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 32px;
-    box-shadow:
-        0 24px 48px rgba(0, 0, 0, 0.2),
-        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
     animation: soloFadeIn 1s cubic-bezier(0.16, 1, 0.3, 1);
     text-align: center;
 }

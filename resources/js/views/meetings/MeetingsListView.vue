@@ -58,7 +58,7 @@
                     <input
                         v-model="joinId"
                         placeholder="Enter Meeting ID"
-                        class="bg-transparent border-none outline-none focus:ring-0 focus:outline-none px-2 py-1 text-sm w-40 text-(--text-primary)"
+                        class="join-meeting-input bg-transparent border-none! shadow-none! outline-none! ring-0! focus:ring-0! focus:ring-transparent! focus:ring-offset-0! focus:outline-none! focus:border-none! px-2 py-1 text-sm w-40 text-(--text-primary)"
                         @keyup.enter="handleJoinById"
                     />
                     <button
@@ -146,7 +146,7 @@
                             <div>
                                 <div class="flex items-center gap-2">
                                     <h3
-                                        class="font-bold text-lg leading-tight truncate max-w-[12rem] sm:max-w-[14rem]"
+                                        class="font-bold text-lg leading-tight truncate max-w-48 sm:max-w-56"
                                         :title="meeting.title"
                                     >
                                         {{ meeting.title }}
@@ -753,3 +753,12 @@ onUnmounted(() => {
     }
 });
 </script>
+
+<style scoped>
+.join-meeting-input:focus {
+    outline: none !important;
+    box-shadow: none !important;
+    border: none !important;
+    ring: none !important;
+}
+</style>
