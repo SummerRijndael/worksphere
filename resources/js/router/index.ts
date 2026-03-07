@@ -924,7 +924,7 @@ const routes: RouteRecordRaw[] = [
             {
                 path: "/invoices",
                 name: "invoices",
-                component: () => import("@/views/admin/InvoicesView.vue"),
+                component: () => import("@/views/invoices/InvoicesView.vue"),
                 meta: {
                     title: "Invoices",
                     breadcrumb: "Invoices",
@@ -934,7 +934,7 @@ const routes: RouteRecordRaw[] = [
             {
                 path: "/invoices/:id",
                 name: "invoice-detail",
-                component: () => import("@/views/admin/InvoiceDetailView.vue"),
+                component: () => import("@/views/invoices/InvoiceDetailView.vue"),
                 meta: {
                     title: "Invoice Details",
                     breadcrumb: "Invoice Details",
@@ -943,20 +943,44 @@ const routes: RouteRecordRaw[] = [
                 },
             },
             {
+                path: "/invoices/create",
+                name: "invoice-create",
+                component: () => import("@/views/invoices/InvoiceForm.vue"),
+                meta: {
+                    title: "Create Invoice",
+                    breadcrumb: "Create Invoice",
+                    breadcrumbParent: { name: "invoices", label: "Invoices" },
+                    transition: "slide-fade",
+                    permission: "invoices.create",
+                },
+            },
+            {
+                path: "/invoices/:id/edit",
+                name: "invoice-edit",
+                component: () => import("@/views/invoices/InvoiceForm.vue"),
+                meta: {
+                    title: "Edit Invoice",
+                    breadcrumb: "Edit Invoice",
+                    breadcrumbParent: { name: "invoices", label: "Invoices" },
+                    transition: "slide-fade",
+                    permission: "invoices.update",
+                },
+            },
+            {
                 path: "/admin/invoices",
                 name: "admin-invoices",
-                component: () => import("@/views/admin/InvoicesView.vue"),
+                component: () => import("@/views/invoices/InvoicesView.vue"),
                 meta: {
                     title: "Manage Invoices",
                     breadcrumb: "Invoices",
                     transition: "slide-fade",
-                    permission: "invoices.view",
+                    permission: "user_manage",
                 },
             },
             {
                 path: "/admin/invoices/create",
                 name: "admin-invoice-create",
-                component: () => import("@/views/admin/InvoiceForm.vue"),
+                component: () => import("@/views/invoices/InvoiceForm.vue"),
                 meta: {
                     title: "Create Invoice",
                     breadcrumb: "Create Invoice",
@@ -965,13 +989,13 @@ const routes: RouteRecordRaw[] = [
                         label: "Invoices",
                     },
                     transition: "slide-fade",
-                    permission: "invoices.create",
+                    permission: "user_manage",
                 },
             },
             {
                 path: "/admin/invoices/:id",
                 name: "admin-invoice-detail",
-                component: () => import("@/views/admin/InvoiceDetailView.vue"),
+                component: () => import("@/views/invoices/InvoiceDetailView.vue"),
                 meta: {
                     title: "Invoice Details",
                     breadcrumb: "Invoice Details",
@@ -980,13 +1004,13 @@ const routes: RouteRecordRaw[] = [
                         label: "Invoices",
                     },
                     transition: "slide-fade",
-                    permission: "invoices.view",
+                    permission: "user_manage",
                 },
             },
             {
                 path: "/admin/invoices/:id/edit",
                 name: "admin-invoice-edit",
-                component: () => import("@/views/admin/InvoiceForm.vue"),
+                component: () => import("@/views/invoices/InvoiceForm.vue"),
                 meta: {
                     title: "Edit Invoice",
                     breadcrumb: "Edit Invoice",
@@ -995,7 +1019,7 @@ const routes: RouteRecordRaw[] = [
                         label: "Invoices",
                     },
                     transition: "slide-fade",
-                    permission: "invoices.update",
+                    permission: "user_manage",
                 },
             },
 

@@ -52,8 +52,8 @@ class InvoicePolicy
      */
     public function update(User $user, Invoice $invoice): bool
     {
-        // Paid/Cancelled invoices are NOT editable
-        if (in_array($invoice->status, [\App\Enums\InvoiceStatus::Paid, \App\Enums\InvoiceStatus::Cancelled])) {
+        // Check if status allows editing (only Draft)
+        if (! $invoice->status->canEdit()) {
             return false;
         }
 

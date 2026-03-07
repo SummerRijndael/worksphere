@@ -146,7 +146,7 @@ return [
         [
             'id' => 'reports',
             'label' => 'Reports',
-            'icon' => 'file-text',
+            'icon' => 'file-text', // Check Lucide icon name. 'file-text' is valid.
             'route' => '/reports',
             'permission' => ['reports.view', 'reports.view_all'],
             'pinnable' => true,
@@ -172,6 +172,14 @@ return [
                 ],
             ],
         ],
+        [
+            'id' => 'invoices',
+            'label' => 'Invoices',
+            'icon' => 'file-text',
+            'route' => '/invoices',
+            'permission' => 'invoices.view',
+            'pinnable' => true,
+        ],
 
         // Divider - Admin Section
         [
@@ -179,14 +187,6 @@ return [
             'type' => 'divider',
             'label' => 'Administration',
             'permission' => 'users.view',
-        ],
-        [
-            'id' => 'invoices',
-            'label' => 'Invoices',
-            'icon' => 'file-text',
-            'route' => '/admin/invoices',
-            'permission' => 'invoices.view',
-            'pinnable' => true,
         ],
         [
             'id' => 'chats',
@@ -251,6 +251,12 @@ return [
                     'id' => 'admin-clients',
                     'label' => 'Clients',
                     'route' => '/admin/clients',
+                    'permission' => 'user_manage',
+                ],
+                [
+                    'id' => 'admin-invoices',
+                    'label' => 'Invoices',
+                    'route' => '/admin/invoices',
                     'permission' => 'user_manage',
                 ],
 

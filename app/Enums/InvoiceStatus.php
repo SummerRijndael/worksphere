@@ -8,6 +8,7 @@ enum InvoiceStatus: string
     case Sent = 'sent';
     case Viewed = 'viewed';
     case Paid = 'paid';
+    case Partial = 'partial';
     case Overdue = 'overdue';
     case Cancelled = 'cancelled';
 
@@ -21,6 +22,7 @@ enum InvoiceStatus: string
             self::Sent => 'Sent',
             self::Viewed => 'Viewed',
             self::Paid => 'Paid',
+            self::Partial => 'Partial',
             self::Overdue => 'Overdue',
             self::Cancelled => 'Cancelled',
         };
@@ -36,6 +38,7 @@ enum InvoiceStatus: string
             self::Sent => 'info',
             self::Viewed => 'warning',
             self::Paid => 'success',
+            self::Partial => 'warning',
             self::Overdue => 'error',
             self::Cancelled => 'muted',
         };
@@ -57,12 +60,9 @@ enum InvoiceStatus: string
         return in_array($this, [self::Draft, self::Overdue]);
     }
 
-    /**
-     * Check if a payment can be recorded.
-     */
     public function canRecordPayment(): bool
     {
-        return in_array($this, [self::Draft, self::Sent, self::Viewed, self::Overdue]);
+        return in_array($this, [self::Draft, self::Sent, self::Viewed, self::Overdue, self::Partial]);
     }
 
     /**

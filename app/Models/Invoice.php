@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
@@ -44,6 +45,7 @@ class Invoice extends Model implements HasMedia
         'tax_amount',
         'discount_amount',
         'total',
+        'amount_paid',
         'currency',
         'pdf_path',
         'pdf_password',
@@ -81,6 +83,7 @@ class Invoice extends Model implements HasMedia
             'tax_amount' => 'decimal:2',
             'discount_amount' => 'decimal:2',
             'total' => 'decimal:2',
+            'amount_paid' => 'decimal:2',
         ];
     }
 
@@ -107,6 +110,10 @@ class Invoice extends Model implements HasMedia
             if (empty($invoice->currency)) {
                 $invoice->currency = 'USD';
             }
+
+            if (empty($invoice->pdf_password)) {
+                $invoice->pdf_password = Str::random(12);
+            }
         });
     }
 
@@ -123,17 +130,24 @@ class Invoice extends Model implements HasMedia
      */
     public static function generateInvoiceNumber(int $teamId): string
     {
-        $prefix = 'INV';
-        $year = date('Y');
-        $month = date('m');
+        return DB::transaction(function () use ($teamId) {
+            // Lock the team record to serialize invoice generation for this specific team
+            // This prevents race conditions better than locking on the invoices table
+            DB::table('teams')->where('id', $teamId)->lockForUpdate()->first();
 
-        // Count invoices for this team this month
-        $count = self::where('team_id', $teamId)
-            ->whereYear('created_at', $year)
-            ->whereMonth('created_at', $month)
-            ->count() + 1;
+            $prefix = 'INV';
+            $year = date('Y');
+            $month = date('m');
 
-        return sprintf('%s-%s%s-%04d', $prefix, $year, $month, $count);
+            // Count invoices for this team this month, COMPRISING soft-deleted ones
+            $count = self::withTrashed()
+                ->where('team_id', $teamId)
+                ->whereYear('created_at', $year)
+                ->whereMonth('created_at', $month)
+                ->count() + 1;
+
+            return sprintf('%s-%s%s-%04d', $prefix, $year, $month, $count);
+        });
     }
 
     /**
@@ -254,16 +268,23 @@ class Invoice extends Model implements HasMedia
     }
 
     /**
-     * Mark the invoice as paid.
+     * Mark the invoice as paid (full or partial).
      */
-    public function markAsPaid(?User $recordedBy = null): bool
+    public function markAsPaid(?User $recordedBy = null, ?float $amount = null): bool
     {
         if (! $this->status->canRecordPayment()) {
             return false;
         }
 
-        $this->status = InvoiceStatus::Paid;
-        $this->paid_at = now();
+        $paymentAmount = $amount ?? $this->remaining_balance;
+        $this->amount_paid = (float) $this->amount_paid + $paymentAmount;
+
+        if ($this->amount_paid >= $this->total) {
+            $this->status = InvoiceStatus::Paid;
+            $this->paid_at = now();
+        } else {
+            $this->status = InvoiceStatus::Partial;
+        }
 
         if ($recordedBy) {
             $this->sent_by = $recordedBy->id;
@@ -284,6 +305,14 @@ class Invoice extends Model implements HasMedia
         $this->status = InvoiceStatus::Overdue;
 
         return $this->save();
+    }
+
+    /**
+     * Get the remaining balance of the invoice.
+     */
+    public function getRemainingBalanceAttribute(): float
+    {
+        return max(0, (float) $this->total - (float) $this->amount_paid);
     }
 
     /**

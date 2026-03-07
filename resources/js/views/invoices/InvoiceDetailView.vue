@@ -8,9 +8,6 @@ import {
     PageLoader,
     Dropdown,
     Avatar,
-    
-    
-    
 } from "@/components/ui";
 import RecordPaymentModal from "@/components/invoices/RecordPaymentModal.vue";
 import ConfirmPasswordModal from "@/components/ui/ConfirmPasswordModal.vue";
@@ -25,6 +22,10 @@ import {
     MoreHorizontal,
     XCircle,
     Copy,
+    Shield,
+    Eye,
+    EyeOff,
+    Lock,
 } from "lucide-vue-next";
 import axios from "axios";
 import { useAuthStore } from "@/stores/auth";
@@ -46,7 +47,8 @@ const currentTeamId = computed(() => authStore.currentTeam?.public_id);
 const showPaymentModal = ref(false);
 const isCancelModalOpen = ref(false);
 const isCancelling = ref(false);
-const cancelError = ref('');
+const cancelError = ref("");
+const showPassword = ref(false);
 
 const formatCurrency = (amount: number, currency: string = "USD") => {
     return new Intl.NumberFormat("en-US", {
@@ -81,13 +83,9 @@ const getStatusVariant = (status: string) => {
 };
 
 const fetchInvoice = async () => {
-    if (!currentTeamId.value) return;
-
     try {
         isLoading.value = true;
-        const response = await axios.get(
-            `/api/teams/${currentTeamId.value}/invoices/${invoiceId.value}`,
-        );
+        const response = await axios.get(`/api/invoices/${invoiceId.value}`);
         invoice.value = response.data.data;
     } catch (err: any) {
         console.error("Failed to fetch invoice", err);
@@ -109,10 +107,14 @@ const deleteInvoice = async () => {
     try {
         isProcessing.value = true;
         await axios.delete(
-            `/api/teams/${currentTeamId.value}/invoices/${invoice.value.public_id}`,
+            `/api/teams/${invoice.value.team.public_id}/invoices/${invoice.value.public_id}`,
         );
         toast.success("Invoice deleted");
-        router.push("/admin/invoices");
+        if (route.name?.toString().startsWith("admin-")) {
+            router.push("/admin/invoices");
+        } else {
+            router.push("/invoices");
+        }
     } catch (err: any) {
         toast.error(err.response?.data?.message || "Failed to delete invoice");
     } finally {
@@ -126,7 +128,7 @@ const sendInvoice = async () => {
     try {
         isProcessing.value = true;
         await axios.post(
-            `/api/teams/${currentTeamId.value}/invoices/${invoice.value.public_id}/send`,
+            `/api/teams/${invoice.value.team.public_id}/invoices/${invoice.value.public_id}/send`,
         );
         toast.success("Invoice sent successfully");
         fetchInvoice();
@@ -147,25 +149,26 @@ const recordPayment = () => {
 
 const cancelInvoice = () => {
     isCancelModalOpen.value = true;
-    cancelError.value = '';
+    cancelError.value = "";
 };
 
 const submitCancelInvoice = async (password, reason) => {
     if (!currentTeamId.value || !invoice.value) return;
-    
+
     isCancelling.value = true;
-    cancelError.value = '';
-    
+    cancelError.value = "";
+
     try {
         await axios.post(
-            `/api/teams/${currentTeamId.value}/invoices/${invoice.value.public_id}/cancel`,
-            { password, reason }
+            `/api/teams/${invoice.value.team.public_id}/invoices/${invoice.value.public_id}/cancel`,
+            { password, reason },
         );
         toast.success("Invoice cancelled");
         isCancelModalOpen.value = false;
         fetchInvoice();
     } catch (err: any) {
-        cancelError.value = err.response?.data?.message || "Failed to cancel invoice";
+        cancelError.value =
+            err.response?.data?.message || "Failed to cancel invoice";
     } finally {
         isCancelling.value = false;
     }
@@ -180,7 +183,7 @@ const downloadPdf = async () => {
 
     try {
         const response = await axios.get(
-            `/api/teams/${currentTeamId.value}/invoices/${invoice.value.public_id}/download-pdf`,
+            `/api/teams/${invoice.value.team.public_id}/invoices/${invoice.value.public_id}/download-pdf`,
             { responseType: "blob" },
         );
 
@@ -201,7 +204,10 @@ const downloadPdf = async () => {
 };
 
 const editInvoice = () => {
-    router.push(`/admin/invoices/${invoiceId.value}/edit`);
+    const editRoute = route.name?.toString().startsWith("admin-")
+        ? "admin-invoice-edit"
+        : "invoice-edit";
+    router.push({ name: editRoute, params: { id: invoiceId.value } });
 };
 
 const getActions = () => {
@@ -264,7 +270,11 @@ const getActions = () => {
 };
 
 const goBack = () => {
-    router.push("/admin/invoices");
+    if (route.name?.toString().startsWith("admin-")) {
+        router.push("/admin/invoices");
+    } else {
+        router.push("/invoices");
+    }
 };
 
 onMounted(() => {
@@ -416,9 +426,20 @@ onMounted(() => {
                                             >
                                                 {{ invoice.client.email }}
                                             </p>
-                                            <div v-if="invoice.address_to" class="mt-2 pt-2 border-t border-(--border-default)">
-                                                <p class="text-xs font-semibold uppercase text-(--text-muted) mb-1">Address To (Override)</p>
-                                                <p class="text-sm text-(--text-secondary)">{{ invoice.address_to }}</p>
+                                            <div
+                                                v-if="invoice.address_to"
+                                                class="mt-2 pt-2 border-t border-(--border-default)"
+                                            >
+                                                <p
+                                                    class="text-xs font-semibold uppercase text-(--text-muted) mb-1"
+                                                >
+                                                    Address To (Override)
+                                                </p>
+                                                <p
+                                                    class="text-sm text-(--text-secondary)"
+                                                >
+                                                    {{ invoice.address_to }}
+                                                </p>
                                             </div>
                                         </div>
                                     </div>
@@ -431,9 +452,7 @@ onMounted(() => {
                             <div
                                 class="p-4 border-b border-(--border-default) flex justify-between items-center"
                             >
-                                <h2
-                                    class="font-semibold text-(--text-primary)"
-                                >
+                                <h2 class="font-semibold text-(--text-primary)">
                                     Line Items
                                 </h2>
                                 <Button
@@ -462,9 +481,7 @@ onMounted(() => {
                             </div>
 
                             <!-- Items -->
-                            <div
-                                class="divide-y divide-(--border-default)"
-                            >
+                            <div class="divide-y divide-(--border-default)">
                                 <div
                                     v-for="item in invoice.items"
                                     :key="item.id"
@@ -579,33 +596,35 @@ onMounted(() => {
                         <!-- Notes & Terms -->
                         <div
                             v-if="invoice.notes || invoice.terms"
-                            class="grid grid-cols-1 md:grid-cols-2 gap-6"
+                            class="grid grid-cols-1 gap-6"
+                            :class="{ 'md:grid-cols-2': invoice.notes && invoice.terms }"
                         >
-                            <Card v-if="invoice.notes" padding="lg">
+                            <Card v-if="invoice.notes" padding="lg" :class="{ 'col-span-full': !invoice.terms }">
                                 <h3
                                     class="font-semibold text-(--text-primary) mb-2"
                                 >
                                     Notes
                                 </h3>
-                                <p
-                                    class="text-sm text-(--text-secondary) whitespace-pre-wrap"
+                                <div
+                                    class="text-sm text-(--text-secondary) whitespace-pre-wrap leading-relaxed"
                                 >
                                     {{ invoice.notes }}
-                                </p>
+                                </div>
                             </Card>
-                            <Card v-if="invoice.terms" padding="lg">
+                            <Card v-if="invoice.terms" padding="lg" :class="{ 'col-span-full': !invoice.notes }">
                                 <h3
                                     class="font-semibold text-(--text-primary) mb-2"
                                 >
                                     Terms & Conditions
                                 </h3>
-                                <p
-                                    class="text-sm text-(--text-secondary) whitespace-pre-wrap"
+                                <div
+                                    class="text-sm text-(--text-secondary) whitespace-pre-wrap leading-relaxed"
                                 >
                                     {{ invoice.terms }}
-                                </p>
+                                </div>
                             </Card>
                         </div>
+
                     </div>
 
                     <!-- Sidebar -->
@@ -664,8 +683,7 @@ onMounted(() => {
                                     <dd
                                         class="text-(--text-primary)"
                                         :class="{
-                                            'text-error':
-                                                invoice.is_overdue,
+                                            'text-error': invoice.is_overdue,
                                         }"
                                     >
                                         {{ formatShortDate(invoice.due_date) }}
@@ -696,6 +714,26 @@ onMounted(() => {
                                         {{ invoice.currency }}
                                     </dd>
                                 </div>
+                                <div v-if="invoice.amount_paid > 0">
+                                    <dt
+                                        class="text-xs font-semibold uppercase text-(--text-muted)"
+                                    >
+                                        Amount Paid
+                                    </dt>
+                                    <dd class="text-success font-medium">
+                                        {{ formatCurrency(invoice.amount_paid, invoice.currency) }}
+                                    </dd>
+                                </div>
+                                <div v-if="invoice.amount_paid > 0 && invoice.remaining_balance > 0">
+                                    <dt
+                                        class="text-xs font-semibold uppercase text-(--text-muted)"
+                                    >
+                                        Remaining Balance
+                                    </dt>
+                                    <dd class="text-error font-medium">
+                                        {{ formatCurrency(invoice.remaining_balance, invoice.currency) }}
+                                    </dd>
+                                </div>
                                 <div v-if="invoice.public_view_url">
                                     <dt
                                         class="text-xs font-semibold uppercase text-(--text-muted)"
@@ -712,7 +750,90 @@ onMounted(() => {
                                         </a>
                                     </dd>
                                 </div>
+
+                                <div v-if="invoice.pdf_password" class="pt-4 border-t border-(--border-default)">
+                                    <dt class="text-xs font-semibold uppercase text-(--text-muted) mb-2 flex items-center gap-1">
+                                        <Shield class="w-3 h-3" />
+                                        PDF Security
+                                    </dt>
+                                    <dd>
+                                        <div class="p-2 bg-(--surface-secondary) rounded border border-(--border-default)">
+                                            <div class="flex items-center justify-between">
+                                                <code class="text-xs font-mono text-(--text-primary)">
+                                                    {{ showPassword ? invoice.pdf_password : '••••••••' }}
+                                                </code>
+                                                <div class="flex items-center">
+                                                    <Button variant="ghost" size="icon" class="h-6 w-6" @click="showPassword = !showPassword">
+                                                        <Eye v-if="!showPassword" class="w-3 h-3" />
+                                                        <EyeOff v-else class="w-3 h-3" />
+                                                    </Button>
+                                                    <Button variant="ghost" size="icon" class="h-6 w-6" @click="copyToClipboard(invoice.pdf_password)">
+                                                        <Copy class="w-3 h-3" />
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </dd>
+                                </div>
                             </dl>
+                        </Card>
+
+                        <!-- Payment Assets -->
+                        <Card
+                            v-if="
+                                invoice.proofs?.length ||
+                                invoice.receipts?.length
+                            "
+                            padding="lg"
+                        >
+                            <h3
+                                class="font-semibold text-(--text-primary) mb-4"
+                            >
+                                Payment Assets
+                            </h3>
+                            <div class="space-y-4">
+                                <div v-if="invoice.proofs?.length">
+                                    <p
+                                        class="text-xs font-semibold uppercase text-(--text-muted) mb-2"
+                                    >
+                                        Payment Proofs
+                                    </p>
+                                    <ul class="space-y-2">
+                                        <li
+                                            v-for="proof in invoice.proofs"
+                                            :key="proof.id"
+                                            class="flex items-center justify-between p-2 bg-(--surface-secondary) rounded-md border border-(--border-default)"
+                                        >
+                                            <div class="flex items-center gap-2 min-w-0">
+                                                <Printer class="w-3 h-3 text-(--text-muted)" />
+                                                <span class="text-xs text-(--text-primary) truncate">{{ proof.name }}</span>
+                                            </div>
+                                            <a :href="proof.url" target="_blank" class="text-(--interactive-primary) hover:underline text-xs font-medium shrink-0 ml-2">Download</a>
+                                        </li>
+                                    </ul>
+                                </div>
+
+                                <div v-if="invoice.receipts?.length">
+                                    <p
+                                        class="text-xs font-semibold uppercase text-(--text-muted) mb-2"
+                                    >
+                                        Payment Receipts
+                                    </p>
+                                    <ul class="space-y-2">
+                                        <li
+                                            v-for="receipt in invoice.receipts"
+                                            :key="receipt.id"
+                                            class="flex items-center justify-between p-2 bg-(--surface-secondary) rounded-md border border-(--border-default)"
+                                        >
+                                            <div class="flex items-center gap-2 min-w-0">
+                                                <Download class="w-3 h-3 text-(--text-muted)" />
+                                                <span class="text-xs text-(--text-primary) truncate">{{ receipt.name }}</span>
+                                            </div>
+                                            <a :href="receipt.url" target="_blank" class="text-(--interactive-primary) hover:underline text-xs font-medium shrink-0 ml-2">Download</a>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
                         </Card>
 
                         <!-- Amount Due Card -->

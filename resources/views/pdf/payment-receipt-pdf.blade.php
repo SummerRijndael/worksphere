@@ -143,7 +143,7 @@
             float: right;
             width: 40%;
             text-align: right;
-            font-weight: 500;
+            font-weight: bold;
         }
         .paid-amount {
             background: #059669;
@@ -151,6 +151,9 @@
             padding: 15px;
             border-radius: 8px;
             margin-top: 10px;
+            overflow: hidden;
+            width: 100%;
+            box-sizing: border-box;
         }
         .paid-amount .total-label,
         .paid-amount .total-value {
@@ -168,28 +171,27 @@
         }
         .stamp {
             position: absolute;
-            top: 200px;
-            right: 100px;
-            width: 150px;
-            height: 150px;
+            bottom: 100px;
+            right: 50px;
+            width: 120px;
+            height: 120px;
             border: 4px solid #059669;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
             color: #059669;
-            font-size: 24px;
+            font-size: 20px;
             font-weight: bold;
             text-transform: uppercase;
-            transform: rotate(25deg);
-            opacity: 0.2;
-            z-index: -1;
+            transform: rotate(-15deg);
+            opacity: 0.15;
+            z-index: 1;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="stamp">PAID</div>
 
         <div class="header">
             <div class="company-info">
@@ -272,6 +274,8 @@
             <p>This is a computer generated receipt and does not require a physical signature.</p>
             <p>Generated on {{ now()->format('M d, Y \a\t h:i A') }}</p>
         </div>
+
+        <div class="stamp">PAID</div>
     </div>
 </body>
 </html>

@@ -22,6 +22,7 @@ const emit = defineEmits(["update:open", "success"]);
 const isProcessing = ref(false);
 const paymentForm = reactive({
     date: new Date().toISOString().split("T")[0],
+    amount: props.invoice.remaining_balance ?? props.invoice.total,
     note: "",
     proof: null as File | null,
     send_receipt: true,
@@ -40,10 +41,21 @@ const handleFileChange = (event: Event) => {
 };
 
 const submitPayment = async () => {
+    if (paymentForm.amount <= 0) {
+        toast.error("Please enter a valid payment amount");
+        return;
+    }
+
+    if (paymentForm.amount > props.invoice.remaining_balance) {
+        toast.error(`Amount cannot exceed the remaining balance (${props.invoice.remaining_balance})`);
+        return;
+    }
+
     try {
         isProcessing.value = true;
         const formData = new FormData();
         formData.append("date", paymentForm.date);
+        formData.append("amount", paymentForm.amount.toString());
         if (paymentForm.note) formData.append("note", paymentForm.note);
         if (paymentForm.proof) formData.append("proof", paymentForm.proof);
         formData.append("send_receipt", paymentForm.send_receipt ? "1" : "0");
@@ -80,6 +92,7 @@ const closeModal = () => {
         paymentForm.note = "";
         paymentForm.proof = null;
         paymentForm.date = new Date().toISOString().split("T")[0];
+        paymentForm.amount = props.invoice.remaining_balance ?? props.invoice.total;
         paymentForm.send_receipt = true;
     }, 300);
 };
@@ -112,9 +125,10 @@ const closeModal = () => {
                     </label>
                     <div class="relative">
                         <Input
-                            :model-value="invoice.total"
-                            disabled
-                            class="bg-(--surface-secondary)"
+                            v-model="paymentForm.amount"
+                            type="number"
+                            step="0.01"
+                            class="bg-(--surface-primary)"
                         >
                             <template #prefix>
                                 <span

@@ -50,6 +50,7 @@ class InvoiceService
                 'notes' => $data['notes'] ?? null,
                 'terms' => $data['terms'] ?? null,
                 'address_to' => $data['address_to'] ?? null,
+                'pdf_password' => $data['pdf_password'] ?? null,
                 'created_by' => $creator->id,
             ]);
 
@@ -112,6 +113,7 @@ class InvoiceService
                 'notes' => $data['notes'] ?? $invoice->notes,
                 'terms' => $data['terms'] ?? $invoice->terms,
                 'address_to' => $data['address_to'] ?? $invoice->address_to,
+                'pdf_password' => $data['pdf_password'] ?? $invoice->pdf_password,
             ]);
 
             $invoice->save();
@@ -225,7 +227,8 @@ class InvoiceService
         string $date,
         ?string $note = null,
         ?\Illuminate\Http\UploadedFile $proof = null,
-        bool $sendReceipt = false
+        bool $sendReceipt = false,
+        ?float $amount = null
     ): Invoice {
         if (! $invoice->status->canRecordPayment()) {
             throw new \Exception('Cannot record payment for this invoice.');
@@ -240,11 +243,14 @@ class InvoiceService
             );
         }
 
-        $invoice->markAsPaid($recordedBy);
-
         if ($note) {
-            $invoice->update(['notes' => $invoice->notes ? $invoice->notes . "\n\nPayment Note: " . $note : "Payment Note: " . $note]);
+            $paymentNote = "Payment Note: " . $note;
+            $invoice->notes = $invoice->notes
+                ? $invoice->notes . "\n\n" . $paymentNote
+                : $paymentNote;
         }
+
+        $invoice->markAsPaid($recordedBy, $amount);
 
         if ($sendReceipt) {
             $this->sendReceipt($invoice, $date, $note);
@@ -258,6 +264,7 @@ class InvoiceService
                 'action' => 'payment_recorded',
                 'team_id' => $invoice->team_id,
                 'paid_at' => $date,
+                'paid_amount' => $amount ?? $invoice->total,
                 'note' => $note,
                 'has_proof' => (bool) $proofMedia,
                 'recorded_by' => $recordedBy->id,
@@ -296,7 +303,12 @@ class InvoiceService
 
         // Send Receipt Email
         \Illuminate\Support\Facades\Mail::to($invoice->client->email)
-            ->send(new \App\Mail\PaymentReceiptMail($invoice, $media->getPath(), $date));
+            ->send(new \App\Mail\PaymentReceiptMail(
+                invoice: $invoice,
+                pdfPath: $media->getPath(),
+                paymentDate: $date,
+                disk: $media->disk
+            ));
 
         return true;
     }
@@ -388,7 +400,7 @@ class InvoiceService
     {
         $media = $invoice->getFirstMedia('invoices');
 
-        if ($media && file_exists($media->getPath())) {
+        if ($media && Storage::disk($media->disk)->exists($media->getPath())) {
             return $media->getPath();
         }
 

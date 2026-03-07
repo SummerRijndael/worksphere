@@ -14,6 +14,7 @@ use App\Services\InvoiceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 class InvoiceController extends Controller
@@ -121,25 +122,27 @@ class InvoiceController extends Controller
     {
         $this->authorize('create', [Invoice::class, $team]);
 
-        $client = Client::where('public_id', $request->input('client_id'))->firstOrFail();
+        return DB::transaction(function () use ($request, $team) {
+            $client = Client::where('public_id', $request->input('client_id'))->firstOrFail();
 
-        $project = null;
-        if ($request->filled('project_id')) {
-            $project = Project::where('public_id', $request->input('project_id'))->first();
-        }
+            $project = null;
+            if ($request->filled('project_id')) {
+                $project = Project::where('public_id', $request->input('project_id'))->first();
+            }
 
-        $invoice = $this->invoiceService->createInvoice(
-            team: $team,
-            client: $client,
-            creator: $request->user(),
-            data: $request->validated(),
-            items: $request->input('items'),
-            project: $project
-        );
+            $invoice = $this->invoiceService->createInvoice(
+                team: $team,
+                client: $client,
+                creator: $request->user(),
+                data: $request->validated(),
+                items: $request->input('items'),
+                project: $project
+            );
 
-        $invoice->load(['client', 'project', 'creator', 'items']);
+            $invoice->load(['client', 'project', 'creator', 'items']);
 
-        return new InvoiceResource($invoice);
+            return new InvoiceResource($invoice);
+        });
     }
 
     /**
@@ -171,30 +174,32 @@ class InvoiceController extends Controller
             abort(404);
         }
 
-        $client = null;
-        if ($request->filled('client_id')) {
-            $client = Client::where('public_id', $request->input('client_id'))->first();
-        }
-
-        $project = null;
-        if ($request->has('project_id')) {
-            if ($request->filled('project_id')) {
-                $project = Project::where('public_id', $request->input('project_id'))->first();
+        return DB::transaction(function () use ($request, $team, $invoice) {
+            $client = null;
+            if ($request->filled('client_id')) {
+                $client = Client::where('public_id', $request->input('client_id'))->first();
             }
-        }
 
-        $invoice = $this->invoiceService->updateInvoice(
-            invoice: $invoice,
-            data: $request->validated(),
-            items: $request->input('items'),
-            updatedBy: $request->user(),
-            client: $client,
-            project: $project
-        );
+            $project = null;
+            if ($request->has('project_id')) {
+                if ($request->filled('project_id')) {
+                    $project = Project::where('public_id', $request->input('project_id'))->first();
+                }
+            }
 
-        $invoice->load(['client', 'project', 'creator', 'items']);
+            $invoice = $this->invoiceService->updateInvoice(
+                invoice: $invoice,
+                data: $request->validated(),
+                items: $request->input('items'),
+                updatedBy: $request->user(),
+                client: $client,
+                project: $project
+            );
 
-        return new InvoiceResource($invoice);
+            $invoice->load(['client', 'project', 'creator', 'items']);
+
+            return new InvoiceResource($invoice);
+        });
     }
 
     /**
@@ -252,6 +257,7 @@ class InvoiceController extends Controller
 
         $validated = $request->validate([
             'date' => ['required', 'date'],
+            'amount' => ['nullable', 'numeric', 'min:0'],
             'note' => ['nullable', 'string', 'max:1000'],
             'proof' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'], // Max 10MB
             'send_receipt' => ['nullable', 'boolean'],
@@ -263,7 +269,8 @@ class InvoiceController extends Controller
             date: $validated['date'],
             note: $validated['note'] ?? null,
             proof: $request->file('proof'),
-            sendReceipt: (bool) ($validated['send_receipt'] ?? false)
+            sendReceipt: (bool) ($validated['send_receipt'] ?? false),
+            amount: isset($validated['amount']) ? (float) $validated['amount'] : null
         );
 
         return new InvoiceResource($updatedInvoice);
@@ -319,17 +326,17 @@ class InvoiceController extends Controller
 
         $media = $invoice->getFirstMedia('invoices');
 
-        if (! $media || ! file_exists($media->getPath())) {
+        if (! $media || ! Storage::disk($media->disk)->exists($media->getPath())) {
             // Regenerate if not exists
             $this->invoiceService->generatePdf($invoice);
-            $media = $invoice->getFirstMedia('invoices');
+            $media = $invoice->refresh()->getFirstMedia('invoices');
         }
 
         if (! $media) {
             return response()->json(['message' => 'PDF not found.'], 404);
         }
 
-        return response()->download(
+        return Storage::disk($media->disk)->download(
             $media->getPath(),
             "Invoice-{$invoice->invoice_number}.pdf",
             ['Content-Type' => 'application/pdf']
@@ -353,6 +360,18 @@ class InvoiceController extends Controller
         return response()->json([
             'message' => 'PDF regenerated successfully.',
         ]);
+    }
+
+    /**
+     * Show a single invoice by its ID (team-agnostic).
+     */
+    public function showById(Invoice $invoice): InvoiceResource
+    {
+        $this->authorize('view', $invoice);
+
+        $invoice->load(['client', 'project', 'team', 'creator', 'items']);
+
+        return new InvoiceResource($invoice);
     }
 
     /**

@@ -238,12 +238,6 @@ class NavigationController extends Controller
                 $item['route'] = $isAdmin ? '/admin/reports' : '/reports';
             }
 
-            // Enrich Invoices
-            if (isset($item['id']) && $item['id'] === 'invoices') {
-                $isAdmin = $user->hasRole('administrator');
-                $item['route'] = $isAdmin ? '/admin/invoices' : '/invoices';
-            }
-
             // Recurse for children
             if (isset($item['children']) && is_array($item['children'])) {
                 $item['children'] = $this->enrichNavigation($item['children'], $user);

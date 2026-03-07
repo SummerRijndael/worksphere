@@ -251,7 +251,11 @@ const viewInvoice = (invoice: any) => {
 };
 
 const createInvoice = () => {
-    router.push("/admin/invoices/create");
+    const createRoute =
+        route.name === "admin-invoices"
+            ? "admin-invoice-create"
+            : "invoice-create";
+    router.push({ name: createRoute });
 };
 
 const sendInvoice = async (invoice: any) => {

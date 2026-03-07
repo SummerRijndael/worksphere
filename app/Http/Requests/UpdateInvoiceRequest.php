@@ -32,6 +32,7 @@ class UpdateInvoiceRequest extends FormRequest
             'address_to' => ['nullable', 'string', 'max:500'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'terms' => ['nullable', 'string', 'max:5000'],
+            'pdf_password' => ['nullable', 'string', 'max:50'],
             'items' => ['sometimes', 'array', 'min:1'],
             'items.*.id' => ['nullable', 'integer'],
             'items.*.description' => ['required_with:items', 'string', 'max:500'],

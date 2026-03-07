@@ -196,6 +196,26 @@ class MediaController extends Controller
             }
         }
 
+        // 9. Invoice Assets (Proofs, Receipts)
+        if ($media->model_type === 'App\Models\Invoice') {
+            $invoice = \App\Models\Invoice::find($media->model_id);
+            if ($invoice) {
+                // Clients can view their own invoice assets
+                if ($user->hasRole('client')) {
+                    $client = $user->linkedClient;
+                    if ($client && $invoice->client_id === $client->id) {
+                        return;
+                    }
+                }
+
+                // Team members with view permission
+                if ($this->permissionService->hasTeamPermission($user, $invoice->team, 'invoices.view') ||
+                    $this->permissionService->hasTeamPermission($user, $invoice->team, 'invoices.manage')) {
+                    return;
+                }
+            }
+        }
+
         abort(403, 'Unauthorized access to this file.');
     }
 }
