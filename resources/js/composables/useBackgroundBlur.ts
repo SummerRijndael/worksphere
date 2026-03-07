@@ -699,6 +699,9 @@ export function useBackgroundBlur() {
                  framing.centerX = 0.5;
                  framing.centerY = 0.5;
                  framing.zoom = 1.0;
+                 framing.targetCenterX = 0.5;
+                 framing.targetCenterY = 0.5;
+                 framing.targetZoom = 1.0;
              }
 
               const drawOptimized = (targetCtx: CanvasRenderingContext2D, source: CanvasImageSource, targetWidth: number, targetHeight: number) => {
@@ -730,17 +733,18 @@ export function useBackgroundBlur() {
              drawOptimized(blurCtx, video, blurCanvas.width, blurCanvas.height);
              blurCtx.filter = 'none';
 
-             // 2. Prepare person with mask feathering — single draw, no redundant pass
-             personCtx.clearRect(0, 0, w, h);
-             personCtx.save();
-             // Mask is already mathematically feathered. No CSS filter required here.
-             personCtx.filter = 'none';
-             drawOptimized(personCtx, mask, w, h);
-             personCtx.restore();
-             
-             personCtx.globalCompositeOperation = 'source-in';
-             drawOptimized(personCtx, video, w, h);
-             personCtx.globalCompositeOperation = 'source-over';
+              // 2. Prepare person with mask feathering
+              personCtx.setTransform(1, 0, 0, 1, 0, 0);
+              personCtx.clearRect(0, 0, w, h);
+              
+              // Draw mask - always stretched to full output resolution
+              // We avoid drawOptimized for the mask to ensure it always matches output geometry perfectly
+              personCtx.drawImage(mask, 0, 0, (mask as any).width, (mask as any).height, 0, 0, w, h);
+              
+              personCtx.globalCompositeOperation = 'source-in';
+              // Draw video - applied with framing (if enabled)
+              drawOptimized(personCtx, video, w, h);
+              personCtx.globalCompositeOperation = 'source-over';
 
              // 3. Final composition on main canvas
              ctx.clearRect(0, 0, w, h);
@@ -761,36 +765,46 @@ export function useBackgroundBlur() {
         };
 
         const updateFraming = (maskData: Float32Array, width: number, height: number) => {
+            if (!isAutoFramingEnabled) return;
+            
             let minX = width, minY = height, maxX = 0, maxY = 0;
             let found = false;
+            let sumX = 0, sumY = 0, count = 0;
 
             // Sample mask to find person bounds
-            const step = 4; // Faster sampling
-            for (let y = 0; y < height; y += step) {
-                for (let x = 0; x < width; x += step) {
+            // Ignore outer 10% edges to filter sensor/segmentation noise (fixes "zoomed to corner" bug)
+            const marginX = Math.floor(width * 0.1);
+            const marginY = Math.floor(height * 0.1);
+            const step = 4; 
+            
+            for (let y = marginY; y < height - marginY; y += step) {
+                for (let x = marginX; x < width - marginX; x += step) {
                     const val = maskData[y * width + x];
-                    if (val > 0.5) {
+                    if (val > 0.6) { // Higher threshold for framing stability
                         if (x < minX) minX = x;
                         if (x > maxX) maxX = x;
                         if (y < minY) minY = y;
                         if (y > maxY) maxY = y;
+                        sumX += x;
+                        sumY += y;
+                        count++;
                         found = true;
                     }
                 }
             }
 
-            if (found) {
-                // Calculate target center and zoom
-//                 const personWidth = (maxX - minX) / width;
+            if (found && count > 50) { // Require minimum mass to move "camera"
                 const personHeight = (maxY - minY) / height;
+                const centroidX = sumX / (count * width);
+                const centroidY = sumY / (count * height);
                 
-                framing.targetCenterX = (minX + maxX) / (2 * width);
-                framing.targetCenterY = (minY + maxY) / (2 * height);
-                // Target zoom to keep person at ~60% of frame height (better balance)
-                 const desiredHeight = 0.6;
-                 const zoomFactor = desiredHeight / personHeight;
-                 framing.targetZoom = Math.max(1.0, Math.min(2.5, zoomFactor));
-
+                framing.targetCenterX = centroidX;
+                framing.targetCenterY = centroidY;
+                
+                // Target zoom to keep person at ~60% of frame height
+                const desiredHeight = 0.6;
+                const zoomFactor = desiredHeight / Math.max(0.2, personHeight);
+                framing.targetZoom = Math.max(1.0, Math.min(2.0, zoomFactor));
             } else {
                 framing.targetCenterX = 0.5;
                 framing.targetCenterY = 0.5;
