@@ -464,6 +464,26 @@ export const useMeetingStore = defineStore('meeting', () => {
     }
 
     async function publishScreenTrack(s?: MediaStream) {
+        if (!meeting.value || !localParticipant.value) return null;
+
+        const restrictToModerators = !!meeting.value.settings?.screen_share_host_cohost_only;
+        if (restrictToModerators && !presence.isModerator.value) {
+            const { toast } = await import('vue-sonner');
+            toast.error('Only host or co-host can share screen in this meeting.');
+            return null;
+        }
+
+        const localId = localParticipant.value.public_id.toLowerCase();
+        const activeOtherSharer = Array.from(presence.screenShares.value).find(
+            (id) => String(id).toLowerCase() !== localId
+        );
+
+        if (activeOtherSharer && !presence.isModerator.value) {
+            const { toast } = await import('vue-sonner');
+            toast.error('Another participant is already sharing their screen.');
+            return null;
+        }
+
         let streamToPublish = s;
 
         // Legacy SFU REQUIRES a stream (it doesn't have a built-in prompt like the SDK)

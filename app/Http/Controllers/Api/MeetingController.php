@@ -50,6 +50,10 @@ class MeetingController extends Controller
             'start_time' => 'required|date',
             'end_time' => 'nullable|date|after:start_time',
             'settings' => 'nullable|array',
+            'settings.guest_access' => 'sometimes|boolean',
+            'settings.lobby_enabled' => 'sometimes|boolean',
+            'settings.require_host_or_cohost_present' => 'sometimes|boolean',
+            'settings.screen_share_host_cohost_only' => 'sometimes|boolean',
             'password' => [
                 'nullable',
                 'string',
@@ -225,6 +229,42 @@ class MeetingController extends Controller
             return response()->json(['message' => 'Unauthorized or invalid sender session'], 403);
         }
 
+        $signalType = (string) $request->signal_type;
+        $signalData = $request->signal_data ?? [];
+
+        if ($signalType === 'screen-share-toggle') {
+            $isSharing = (bool) ($signalData['sharing'] ?? false);
+            if ($isSharing) {
+                $restrictToModerators = (bool) ($meeting->settings['screen_share_host_cohost_only'] ?? false);
+                $isModerator = in_array($sender->role, ['host', 'co-host'], true);
+
+                if ($restrictToModerators && ! $isModerator) {
+                    return response()->json(['message' => 'Only host or co-host can share screen in this meeting.'], 403);
+                }
+            }
+        }
+
+        if ($signalType === 'force-stop-screen-share') {
+            $isModerator = in_array($sender->role, ['host', 'co-host'], true);
+            if (! $isModerator) {
+                return response()->json(['message' => 'Only host or co-host can control screen sharing.'], 403);
+            }
+
+            $targetId = strtolower((string) ($signalData['targetId'] ?? ''));
+            if ($targetId === '') {
+                return response()->json(['message' => 'Missing target participant.'], 422);
+            }
+
+            $targetExists = MeetingParticipant::where('meeting_id', $meeting->id)
+                ->whereRaw('LOWER(public_id) = ?', [$targetId])
+                ->where('status', 'admitted')
+                ->exists();
+
+            if (! $targetExists) {
+                return response()->json(['message' => 'Target participant not found in meeting.'], 404);
+            }
+        }
+
         Log::channel('videocall')->debug('[SIGNAL] Broadcasting signal', [
             'meeting' => $meeting->public_id,
             'type' => $request->signal_type,
@@ -254,6 +294,10 @@ class MeetingController extends Controller
             'start_time' => 'required|date',
             'end_time' => 'nullable|date|after:start_time',
             'settings' => 'nullable|array',
+            'settings.guest_access' => 'sometimes|boolean',
+            'settings.lobby_enabled' => 'sometimes|boolean',
+            'settings.require_host_or_cohost_present' => 'sometimes|boolean',
+            'settings.screen_share_host_cohost_only' => 'sometimes|boolean',
             'password' => [
                 'nullable',
                 'string',

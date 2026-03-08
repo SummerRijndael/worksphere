@@ -188,7 +188,8 @@ export function createPresenceManager(
 
     function toggleScreenShareState(publicId: string, isSharing: boolean) {
         if (isSharing) {
-            screenShares.value = new Set(screenShares.value).add(publicId);
+            // Single active sharer policy: the latest "ON" event becomes the sole sharer.
+            screenShares.value = new Set([publicId]);
         } else {
             const newSet = new Set(screenShares.value);
             newSet.delete(publicId);

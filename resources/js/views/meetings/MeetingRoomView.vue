@@ -1025,9 +1025,11 @@
                 </div>
 
                 <button
+                    v-if="showScreenShareControl"
                     class="ctrl-btn ctrl-btn--screen"
                     :class="{ 'ctrl-btn--sharing': isScreenSharing }"
                     @click="toggleScreenShare"
+                    :disabled="!canStartScreenShare && !isScreenSharing"
                     :title="screenShareToggleTitle"
                 >
                     <Icon
@@ -2017,7 +2019,11 @@ const cameraToggleTitle = computed(() =>
     isCameraOn.value ? "Turn off camera (Ctrl+E)" : "Turn on camera (Ctrl+E)",
 );
 const screenShareToggleTitle = computed(() =>
-    isScreenSharing.value ? "Stop sharing" : "Share Screen",
+    isScreenSharing.value
+        ? "Stop sharing"
+        : !canStartScreenShare.value && activeScreenSharerId.value
+          ? "Another participant is sharing"
+          : "Share Screen",
 );
 const isHandRaised = computed(() =>
     meetingStore.raisedHands.has(
@@ -2056,6 +2062,54 @@ const waitingDescription = computed(() =>
         ? "Waiting for a host or co-host to join the meeting."
         : "The meeting host has been notified. They'll let you in soon.",
 );
+
+const screenShareHostCohostOnly = computed(
+    () => !!meetingStore.meeting?.settings?.screen_share_host_cohost_only,
+);
+
+const isScreenShareDeviceSupported = computed(() => {
+    if (typeof window !== "undefined" && !window.isSecureContext) return false;
+    if (!navigator?.mediaDevices?.getDisplayMedia) return false;
+
+    // Hard-disable on mobile/tablet for now; current mobile path is unstable.
+    const ua = navigator.userAgent || "";
+    const isTouchMac = /Macintosh/i.test(ua) && navigator.maxTouchPoints > 1;
+    const isMobileOrTablet =
+        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+            ua,
+        ) || isTouchMac;
+    return !isMobileOrTablet;
+});
+
+const canUseScreenShareRole = computed(() => {
+    if (!screenShareHostCohostOnly.value) return true;
+    return !!meetingStore.isModerator;
+});
+
+const localParticipantId = computed(() =>
+    String(meetingStore.localParticipant?.public_id || "").toLowerCase(),
+);
+
+const activeScreenSharerId = computed(() => {
+    const sharers = Array.from(meetingStore.screenShares || []).map((id) =>
+        String(id).toLowerCase(),
+    );
+    return (
+        sharers.find((id) => id && id !== localParticipantId.value) || null
+    );
+});
+
+const showScreenShareControl = computed(() => {
+    if (!isScreenShareDeviceSupported.value) return false;
+    return canUseScreenShareRole.value || isScreenSharing.value;
+});
+
+const canStartScreenShare = computed(() => {
+    if (!isScreenShareDeviceSupported.value) return false;
+    if (!canUseScreenShareRole.value) return false;
+    if (activeScreenSharerId.value && !meetingStore.isModerator) return false;
+    return true;
+});
 
 /**
  * Smart Self-View Logic:
@@ -2397,13 +2451,20 @@ onMounted(async () => {
 
         // Auto-start screen share if joined via "Present" button
         if (route.query.present === "1") {
-            toast.info(
-                "Joined in Companion Mode. Audio and video are disabled.",
-                { duration: 5000 },
-            );
-            setTimeout(() => {
-                toggleScreenShare();
-            }, 2000); // Wait for SFU connection to establish
+            if (!isScreenShareDeviceSupported.value) {
+                toast.warning(
+                    "Screen sharing is not supported on this device. Opening Whiteboard instead.",
+                );
+                whiteboardStore.isVisible = true;
+            } else {
+                toast.info(
+                    "Joined in Companion Mode. Audio and video are disabled.",
+                    { duration: 5000 },
+                );
+                setTimeout(() => {
+                    toggleScreenShare();
+                }, 2000); // Wait for SFU connection to establish
+            }
         }
 
         // Start Heartbeat
@@ -2473,6 +2534,38 @@ async function toggleScreenShare() {
         meetingStore.clearSpotlight();
         await recoverCameraAfterScreenShareToggle();
     } else {
+        if (!isScreenShareDeviceSupported.value) {
+            if (route.query.present === "1") {
+                toast.warning(
+                    "Screen sharing is not supported on this device. Opening Whiteboard instead.",
+                );
+                whiteboardStore.isVisible = true;
+            } else {
+                toast.error("Screen sharing is not available on this device.");
+            }
+            return;
+        }
+
+        if (!canUseScreenShareRole.value) {
+            toast.error("Only the host or co-host can share their screen.");
+            return;
+        }
+
+        if (activeScreenSharerId.value) {
+            if (!meetingStore.isModerator) {
+                toast.error(
+                    "Another participant is already sharing. Please wait for them to stop.",
+                );
+                return;
+            }
+
+            // Host/co-host takeover flow: request current sharer to stop first.
+            meetingStore.sendSignal("force-stop-screen-share", {
+                targetId: activeScreenSharerId.value,
+            });
+            await new Promise((resolve) => setTimeout(resolve, 400));
+        }
+
         try {
             // Let the SDK handle the prompt to avoid "double prompt" issue
             const result = await meetingStore.publishScreenTrack();
@@ -2507,6 +2600,18 @@ async function toggleScreenShare() {
         }
     }
 }
+
+watch(
+    [screenShareHostCohostOnly, () => meetingStore.isModerator],
+    ([hostOnly, isModerator]) => {
+        if (hostOnly && !isModerator && isScreenSharing.value) {
+            toast.info(
+                "Screen sharing is now restricted to host/co-host. Your share has been stopped.",
+            );
+            void toggleScreenShare();
+        }
+    },
+);
 
 const toggleCamera = async () => {
     if (

@@ -26,6 +26,13 @@ class MeetingService implements MeetingServiceContract
 {
     public function createMeeting(User $user, array $data): Meeting
     {
+        $data['settings'] = array_merge([
+            'guest_access' => false,
+            'lobby_enabled' => true,
+            'require_host_or_cohost_present' => false,
+            'screen_share_host_cohost_only' => false,
+        ], $data['settings'] ?? []);
+
         $participants = $data['participants'] ?? [];
         $internalParticipants = collect($participants)->filter(fn ($p) => ($p['type'] ?? 'user') === 'user');
         $externalParticipants = collect($participants)->filter(fn ($p) => ($p['type'] ?? 'user') === 'email');

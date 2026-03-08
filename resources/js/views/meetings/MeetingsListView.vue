@@ -619,6 +619,7 @@ const startInstantMeeting = async () => {
                 instant: true,
                 lobby_enabled: false,
                 require_host_or_cohost_present: false,
+                screen_share_host_cohost_only: false,
             },
         });
 

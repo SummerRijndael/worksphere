@@ -143,8 +143,50 @@ export function createSignalingManager(
             return;
         }
 
+        if (type === 'force-stop-screen-share') {
+            const targetId = String(data?.targetId || '').toLowerCase();
+            if (!targetId || !myId || targetId !== myId) return;
+
+            const senderParticipant = presenceManager.participants.value.find(
+                (p: any) => p.public_id === normalizedSenderId
+            );
+            const senderIsModerator =
+                senderParticipant?.role === 'host' || senderParticipant?.role === 'co-host';
+
+            if (!senderIsModerator) {
+                log('SIGNAL', `Ignoring force-stop-screen-share from non-moderator ${normalizedSenderId}`);
+                return;
+            }
+
+            log('SIGNAL', 'Received forced stop for local screen share');
+            try {
+                await streamManager.unpublishScreenTrack();
+            } catch (e) {
+                log('ERROR', 'Failed to unpublish local screen share after force-stop', e);
+            } finally {
+                presenceManager.toggleScreenShareState(myId, false);
+                sendSignal('screen-share-toggle', { sharing: false });
+            }
+            return;
+        }
+
         if (type === 'screen-share-toggle') {
             const { sharing, mid } = data;
+
+            // Single active sharer policy:
+            // If another participant starts sharing while we are sharing, stop ours.
+            if (sharing && myId && normalizedSenderId !== myId && presenceManager.screenShares.value.has(myId)) {
+                log('SIGNAL', `Another participant (${normalizedSenderId}) started sharing; stopping local share`);
+                try {
+                    await streamManager.unpublishScreenTrack();
+                } catch (e) {
+                    log('ERROR', 'Failed to stop local share after remote sharer started', e);
+                } finally {
+                    presenceManager.toggleScreenShareState(myId, false);
+                    sendSignal('screen-share-toggle', { sharing: false });
+                }
+            }
+
             presenceManager.toggleScreenShareState(normalizedSenderId, sharing);
             
             if (sharing) {
