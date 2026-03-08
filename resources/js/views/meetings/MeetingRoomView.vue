@@ -2539,6 +2539,12 @@ const toggleCamera = async () => {
             toast.error("Could not access camera hardware.");
         }
     } else {
+        // Unpublish first to guarantee remote clients receive a clean camera-off update
+        // before we stop local tracks.
+        await meetingStore.replaceTrack("video", null);
+        isCameraOn.value = false;
+        meetingStore.sendSignal("camera-toggle", { enabled: false });
+
         stream.getVideoTracks().forEach((t) => {
             t.stop();
         });
@@ -2549,9 +2555,6 @@ const toggleCamera = async () => {
         backgroundBlur.stopProcessing();
         const updatedStream = new MediaStream(stream.getAudioTracks());
         meetingStore.setStream(updatedStream);
-        isCameraOn.value = false;
-        await meetingStore.replaceTrack("video", null);
-        meetingStore.sendSignal("camera-toggle", { enabled: false });
     }
 };
 

@@ -24,9 +24,30 @@ export function createRealtimeKitManager(
     let lastScreenshareProfile: string | null = null;
 
     const resolveParticipantId = (p: any, isScreen = false) => {
-        const baseId = String(p?.customParticipantId || p?.id || '').toLowerCase();
+        const baseId = String(p?.customParticipantId || p?.userId || p?.id || '').toLowerCase();
         return isScreen ? `${baseId}:screen` : baseId;
     };
+
+    function syncRemoteParticipantMedia(participant: any) {
+        const basePid = resolveParticipantId(participant);
+        if (!basePid) return;
+        const screenPid = resolveParticipantId(participant, true);
+
+        const videoTrack = participant?.videoEnabled ? (participant?.videoTrack || null) : null;
+        const audioTrack = participant?.audioEnabled ? (participant?.audioTrack || null) : null;
+
+        handleRemoteTrack(basePid, videoTrack, 'video');
+        handleRemoteTrack(basePid, audioTrack, 'audio');
+
+        if (participant?.screenShareEnabled && participant?.screenShareTracks) {
+            handleRemoteTrack(screenPid, participant.screenShareTracks.video || null, 'screen-video');
+            handleRemoteTrack(screenPid, participant.screenShareTracks.audio || null, 'screen-audio');
+            onScreenShareToggle(basePid, true);
+        } else {
+            removeParticipantStreams(screenPid);
+            onScreenShareToggle(basePid, false);
+        }
+    }
 
     function syncLocalTrack(kind: 'audio' | 'video', track: MediaStreamTrack | null) {
         const current = localStream.value ? new MediaStream(localStream.value.getTracks()) : new MediaStream();
@@ -188,6 +209,23 @@ export function createRealtimeKitManager(
             removeParticipantStreams(resolveParticipantId(participant));
         });
 
+        // Reconcile streams on map-level refreshes (covers edge cases where video track changes
+        // without a clean start/stop toggle event).
+        cfMeeting.participants.joined.on('participantsUpdate', () => {
+            cfMeeting.participants.joined.toArray().forEach((participant: any) => {
+                syncRemoteParticipantMedia(participant);
+            });
+        });
+
+        cfMeeting.participants.joined.on('participantsCleared', () => {
+            remoteStreams.value.forEach((stream) => {
+                stream.getTracks().forEach((t) => {
+                    try { t.stop(); } catch {}
+                });
+            });
+            remoteStreams.value = new Map();
+        });
+
         // Talking state (Active Speaker)
         cfMeeting.participants.active.on('activeSpeakerChanged', (participant: any) => {
             if (participant) {
@@ -241,53 +279,32 @@ export function createRealtimeKitManager(
 
     function setupParticipantListeners(participant: any) {
         // Handle initial tracks if already available
-        if (participant.videoEnabled) handleRemoteTrack(resolveParticipantId(participant), participant.videoTrack, 'video');
-        if (participant.audioEnabled) handleRemoteTrack(resolveParticipantId(participant), participant.audioTrack, 'audio');
-        if (participant.screenShareEnabled && participant.screenShareTracks) {
-            handleRemoteTrack(resolveParticipantId(participant, true), participant.screenShareTracks.video, 'screen-video');
-            handleRemoteTrack(resolveParticipantId(participant, true), participant.screenShareTracks.audio, 'screen-audio');
-        }
+        syncRemoteParticipantMedia(participant);
 
         // Listen for Video updates (Webcam)
         participant.on('videoUpdate', (payload: any) => {
             log('TRACK', `Remote videoUpdate from ${participant.id}`, { enabled: payload.videoEnabled });
-            const sourceTrack = payload?.videoTrack || participant?.videoTrack || null;
-            if (payload.videoEnabled && sourceTrack) {
-                handleRemoteTrack(resolveParticipantId(participant), sourceTrack, 'video');
-            } else {
-                log('TRACK', `Remote video disabled for ${participant.id}`);
-                handleRemoteTrack(resolveParticipantId(participant), null, 'video');
-            }
+            syncRemoteParticipantMedia(participant);
         });
 
         // Listen for Audio updates (Mic)
         participant.on('audioUpdate', (payload: any) => {
             log('TRACK', `Remote audioUpdate from ${participant.id}`, { enabled: payload.audioEnabled });
-            const sourceTrack = payload?.audioTrack || participant?.audioTrack || null;
-            if (payload.audioEnabled && sourceTrack) {
-                handleRemoteTrack(resolveParticipantId(participant), sourceTrack, 'audio');
-            } else {
-                log('TRACK', `Remote audio disabled for ${participant.id}`);
-                handleRemoteTrack(resolveParticipantId(participant), null, 'audio');
-            }
+            syncRemoteParticipantMedia(participant);
         });
 
         // Listen for Screenshare updates
         participant.on('screenShareUpdate', (payload: any) => {
             log('TRACK', `Remote screenShareUpdate from ${participant.id}`, { enabled: payload.screenShareEnabled });
-            const screenPid = resolveParticipantId(participant, true);
-            const basePid = resolveParticipantId(participant);
+            syncRemoteParticipantMedia(participant);
+        });
 
-            if (payload.screenShareEnabled && payload.screenShareTracks) {
-                if (payload.screenShareTracks.video) handleRemoteTrack(screenPid, payload.screenShareTracks.video, 'screen-video');
-                if (payload.screenShareTracks.audio) handleRemoteTrack(screenPid, payload.screenShareTracks.audio, 'screen-audio');
-                
-                // Notify PresenceManager to update UI state
-                onScreenShareToggle(basePid, true);
-            } else {
-                removeParticipantStreams(screenPid);
-                onScreenShareToggle(basePid, false);
-            }
+        // Some SDK changes update track objects while keeping videoEnabled=true.
+        // Wildcard listener ensures we re-bind updated tracks even without explicit toggles.
+        participant.on('*', (eventName: string) => {
+            if (!eventName) return;
+            if (!/video|audio|screen/i.test(eventName)) return;
+            syncRemoteParticipantMedia(participant);
         });
     }
 
@@ -404,6 +421,21 @@ export function createRealtimeKitManager(
             syncLocalTrack('audio', newTrack);
         } else {
             if (newTrack) {
+                const currentPublishedTrackId = cfMeeting.self?.rawVideoTrack?.id || cfMeeting.self?.videoTrack?.id || null;
+                const shouldForceRepublish =
+                    !!cfMeeting.self?.videoEnabled &&
+                    !!currentPublishedTrackId &&
+                    currentPublishedTrackId !== newTrack.id;
+
+                if (shouldForceRepublish) {
+                    log(
+                        'MEDIA',
+                        'Forcing video republish so remote participants/recording receive updated processed track.',
+                        { previousTrackId: currentPublishedTrackId, nextTrackId: newTrack.id }
+                    );
+                    await cfMeeting.self.disableVideo();
+                }
+
                 await cfMeeting.self.enableVideo(newTrack);
                 const publishedRawId = cfMeeting.self?.rawVideoTrack?.id;
                 if (publishedRawId && publishedRawId !== newTrack.id) {

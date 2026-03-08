@@ -158,14 +158,21 @@ const activeStream = computed(() => {
 
 const actualHasVideo = ref(false);
 
-const checkVideoStatus = () => {
-    const hasLiveVideo = (s: MediaStream | null | undefined) => {
-        if (!s) return false;
-        return s
-            .getVideoTracks()
-            .some((t) => t.readyState === "live" && t.enabled && !t.muted);
-    };
+const hasLiveVideo = (s: MediaStream | null | undefined) => {
+    if (!s) return false;
+    return s
+        .getVideoTracks()
+        .some((t) => t.readyState === "live" && t.enabled && !t.muted);
+};
 
+const hasLiveAudio = (s: MediaStream | null | undefined) => {
+    if (!s) return false;
+    return s
+        .getAudioTracks()
+        .some((t) => t.readyState === "live" && t.enabled && !t.muted);
+};
+
+const checkVideoStatus = () => {
     if (isLocal.value) {
         // Use real track state so UI recovers when a track is externally stopped.
         if (props.isScreenShare) {
@@ -182,10 +189,9 @@ const checkVideoStatus = () => {
         return;
     }
 
-    // For remote tracks, rely on live/non-muted state across any video track.
-    actualHasVideo.value = s
-        .getVideoTracks()
-        .some((t) => t.readyState === "live" && !t.muted);
+    // For remote tracks, include `enabled` so tiles fall back to avatar when
+    // publishers disable camera without immediately ending the track object.
+    actualHasVideo.value = hasLiveVideo(s);
 };
 
 let videoStatusInterval: ReturnType<typeof setInterval>;
@@ -299,6 +305,28 @@ const bindLocalVideo = (el: any) => {
     }
 };
 
+function updateLocalStream() {
+    const videoEl = localVideo.value;
+    if (!videoEl) return;
+
+    const stream =
+        props.isScreenShare && props.localStreamOverride
+            ? props.localStreamOverride
+            : meetingStore.localStream;
+    const shouldBindVideo = !!stream && hasLiveVideo(stream) && actualHasVideo.value;
+
+    if (shouldBindVideo) {
+        if (videoEl.srcObject !== stream) {
+            videoEl.srcObject = stream as MediaStream;
+        }
+        videoEl.play().catch((e) =>
+            console.warn("[LocalVideo] Auto-play prevented", e),
+        );
+    } else {
+        videoEl.srcObject = null;
+    }
+}
+
 watch(
     () => [
         localVideo.value,
@@ -306,20 +334,7 @@ watch(
         props.isScreenShare,
         props.localStreamOverride,
     ],
-    ([videoEl, camStream, isScreen, overrideStream]) => {
-        const stream = isScreen && overrideStream ? overrideStream : camStream;
-        if (videoEl && stream) {
-            const el = videoEl as HTMLVideoElement;
-            if (el.srcObject !== stream) {
-                el.srcObject = stream as MediaStream;
-                el.play().catch((e) =>
-                    console.warn("[LocalVideo] Auto-play prevented", e),
-                );
-            }
-        } else if (videoEl && !stream) {
-            (videoEl as HTMLVideoElement).srcObject = null;
-        }
-    },
+    () => updateLocalStream(),
     { immediate: true, flush: "post" },
 );
 
@@ -348,61 +363,59 @@ const bindRemoteAudio = (el: any) => {
 
 function updateRemoteStream() {
     const stream = activeStream.value;
-    if (stream) {
-        if (remoteVideo.value && remoteVideo.value.srcObject !== stream) {
-            remoteVideo.value.srcObject = stream;
+    const hasVideo = hasLiveVideo(stream) && actualHasVideo.value;
+    const hasAudio = hasLiveAudio(stream);
+
+    if (remoteVideo.value) {
+        if (hasVideo && stream) {
+            if (remoteVideo.value.srcObject !== stream) {
+                remoteVideo.value.srcObject = stream;
+            }
+            remoteVideo.value.play().catch(() => {});
+        } else {
+            remoteVideo.value.srcObject = null;
         }
-        if (remoteAudio.value && remoteAudio.value.srcObject !== stream) {
-            remoteAudio.value.srcObject = stream;
+    }
+
+    if (remoteAudio.value) {
+        if (hasAudio && stream) {
+            if (remoteAudio.value.srcObject !== stream) {
+                remoteAudio.value.srcObject = stream;
+            }
+            remoteAudio.value.play().catch((e: any) => {
+                console.warn(
+                    `[AudioPlayback] Playback failed for ${props.participant.public_id}:`,
+                    e,
+                );
+            });
+        } else {
+            remoteAudio.value.srcObject = null;
         }
-    } else {
-        if (remoteVideo.value) remoteVideo.value.srcObject = null;
-        if (remoteAudio.value) remoteAudio.value.srcObject = null;
     }
 }
 
 watch(
     [activeStream, remoteVideo, remoteAudio],
-    ([newStream, videoEl, audioEl]) => {
-        if (newStream) {
-            if (videoEl && videoEl.srcObject !== newStream) {
-                videoEl.srcObject = newStream;
-            }
-            if (audioEl && audioEl.srcObject !== newStream) {
-                audioEl.srcObject = newStream;
-                audioEl.play().catch((e: any) => {
-                    console.warn(
-                        `[AudioPlayback] Playback failed for ${props.participant.public_id}:`,
-                        e,
-                    );
-                });
-            }
-        } else {
-            if (videoEl) videoEl.srcObject = null;
-            if (audioEl) audioEl.srcObject = null;
-        }
-    },
+    () => updateRemoteStream(),
     { immediate: true },
 );
 
 watch(
     actualHasVideo,
-    (hasVideo) => {
-        if (hasVideo) return;
-
-        // Force-clear stale last-frame rendering when video is considered off.
-        if (isLocal.value && !props.isScreenShare && localVideo.value) {
-            localVideo.value.srcObject = null;
-        }
-        if (!isLocal.value && remoteVideo.value) {
-            remoteVideo.value.srcObject = null;
+    () => {
+        if (isLocal.value) {
+            updateLocalStream();
+        } else {
+            updateRemoteStream();
         }
     },
     { immediate: true },
 );
 
 onMounted(() => {
-    if (!isLocal.value) {
+    if (isLocal.value) {
+        updateLocalStream();
+    } else {
         updateRemoteStream();
     }
 });
