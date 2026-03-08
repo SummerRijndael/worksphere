@@ -53,12 +53,19 @@
             class="hidden"
         ></audio>
 
-        <!-- Avatar Fallback (Initials) -->
+        <!-- Avatar Fallback -->
         <div v-if="!actualHasVideo" class="tile-avatar-wrap">
             <div class="tile-avatar-content">
-                <div class="tile-avatar">
-                    {{ initials }}
-                </div>
+                <Avatar
+                    :src="
+                        participant.user?.avatar_url ||
+                        participant.metadata?.avatar_url
+                    "
+                    :fallback="initials"
+                    :color="participant.user?.color"
+                    size="3xl"
+                    class="tile-avatar-comp"
+                />
             </div>
         </div>
 
@@ -112,7 +119,7 @@
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onUnmounted } from "vue";
 import { useMeetingStore } from "@/stores/meeting";
-import { Icon } from "@/components/ui";
+import { Icon, Avatar } from "@/components/ui";
 import LaserPointerOverlay from "./LaserPointerOverlay.vue";
 import AnnotationOverlay from "./AnnotationOverlay.vue";
 
@@ -462,6 +469,14 @@ watch(
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.tile-avatar-comp {
+    width: 80px;
+    height: 80px;
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    background: #3c4043;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .tile-avatar {

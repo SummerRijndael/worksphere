@@ -12,6 +12,7 @@ import {
     SearchInput,
     Modal,
     ConfirmPasswordModal,
+    Avatar,
 } from "@/components/ui";
 import api from "@/lib/api";
 import { storeToRefs } from "pinia";
@@ -2064,23 +2065,21 @@ const stripHtml = (html) => {
                                             <div
                                                 class="flex items-center gap-2"
                                             >
-                                                <img
-                                                    v-if="
-                                                        article.author?.avatar
+                                                <Avatar
+                                                    :src="
+                                                        article.author
+                                                            ?.avatar_url
                                                     "
-                                                    :src="article.author.avatar"
-                                                    class="w-6 h-6 rounded-full object-cover"
-                                                />
-                                                <div
-                                                    v-else
-                                                    class="w-6 h-6 rounded-full bg-[var(--surface-tertiary)] flex items-center justify-center text-xs font-medium text-[var(--text-secondary)]"
-                                                >
-                                                    {{
+                                                    :fallback="
                                                         article.author?.name?.charAt(
                                                             0,
-                                                        ) || "?"
-                                                    }}
-                                                </div>
+                                                        ) || '?'
+                                                    "
+                                                    :color="
+                                                        article.author?.color
+                                                    "
+                                                    size="xs"
+                                                />
                                                 <span
                                                     class="text-sm text-[var(--text-secondary)]"
                                                     >{{
@@ -2441,7 +2440,17 @@ const stripHtml = (html) => {
                                     <div
                                         class="flex items-center gap-1.5 text-[var(--text-secondary)]"
                                     >
-                                        <User class="w-3 h-3" />
+                                        <Avatar
+                                            :src="article.author?.avatar_url"
+                                            :fallback="
+                                                article.author?.name?.charAt(
+                                                    0,
+                                                ) || '?'
+                                            "
+                                            :color="article.author?.color"
+                                            size="xs"
+                                            class="w-4 h-4"
+                                        />
                                         <span>{{
                                             article.author?.name || "Unknown"
                                         }}</span>

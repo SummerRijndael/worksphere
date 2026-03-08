@@ -7,7 +7,10 @@ import listPlugin from "@fullcalendar/list";
 import interactionPlugin from "@fullcalendar/interaction";
 import multiMonthPlugin from "@fullcalendar/multimonth";
 import { useDate } from "@/composables/useDate";
+import { useAuthStore } from "@/stores/auth";
+import LockedFeature from "@/components/ui/LockedFeature.vue";
 
+const authStore = useAuthStore();
 const { formatDate, formatDateTime } = useDate();
 import {
     Plus,
@@ -742,619 +745,643 @@ onMounted(async () => {
 
 <template>
     <div class="h-[calc(100vh-2rem) flex flex-col gap-6">
-        <!-- Premium Header -->
-        <div
-            class="flex flex-col xl:flex-row xl:items-center justify-between gap-6"
-        >
-            <div class="space-y-1">
-                <h1
-                    class="text-3xl font-bold tracking-tight text-(--text-primary)"
-                >
-                    Calendar
-                </h1>
-                <p class="text-(--text-secondary) font-medium">
-                    Manage your schedule and events efficiently.
-                </p>
-            </div>
+        <template v-if="!authStore.isImpersonating">
+            <!-- Premium Header -->
+            <div
+                class="flex flex-col xl:flex-row xl:items-center justify-between gap-6"
+            >
+                <div class="space-y-1">
+                    <h1
+                        class="text-3xl font-bold tracking-tight text-(--text-primary)"
+                    >
+                        Calendar
+                    </h1>
+                    <p class="text-(--text-secondary) font-medium">
+                        Manage your schedule and events efficiently.
+                    </p>
+                </div>
 
-            <div class="flex flex-wrap items-center gap-2">
-                <!-- Group 1: Calendars + View Options -->
-                <div
-                    class="flex items-center h-9 bg-(--surface-elevated) border border-(--border-default) rounded-lg shadow-sm overflow-visible"
-                >
-                    <!-- Calendars Dropdown -->
-                    <div v-if="currentUser" class="relative">
-                        <button
-                            @click="
-                                showCalendarDropdown = !showCalendarDropdown
-                            "
-                            class="flex items-center gap-1.5 px-3 h-9 text-sm font-medium text-(--text-primary) hover:bg-(--surface-secondary) transition-colors rounded-lg"
-                        >
-                            <User class="h-3.5 w-3.5 text-(--text-tertiary)" />
-                            <span class="hidden sm:inline">Calendars</span>
-                            <span
-                                class="bg-(--surface-secondary) px-1.5 py-0.5 rounded text-xs font-semibold text-(--text-secondary) leading-none"
+                <div class="flex flex-wrap items-center gap-2">
+                    <!-- Group 1: Calendars + View Options -->
+                    <div
+                        class="flex items-center h-9 bg-(--surface-elevated) border border-(--border-default) rounded-lg shadow-sm overflow-visible"
+                    >
+                        <!-- Calendars Dropdown -->
+                        <div v-if="currentUser" class="relative">
+                            <button
+                                @click="
+                                    showCalendarDropdown = !showCalendarDropdown
+                                "
+                                class="flex items-center gap-1.5 px-3 h-9 text-sm font-medium text-(--text-primary) hover:bg-(--surface-secondary) transition-colors rounded-lg"
                             >
-                                {{ selectedCalendarIds.length }}
-                            </span>
-                            <ChevronDown
-                                class="h-3 w-3 text-(--text-tertiary)"
-                            />
-                        </button>
-
-                        <div
-                            v-if="showCalendarDropdown"
-                            class="absolute left-0 top-full mt-2 w-64 rounded-xl border border-(--border-default) bg-(--surface-elevated) shadow-xl z-50 overflow-hidden animate-in fade-in zoom-in-95 p-1"
-                        >
-                            <!-- My Calendar -->
-                            <div v-if="currentUser" class="mb-1">
-                                <button
-                                    @click="
-                                        toggleCalendarSelection(
-                                            currentUser.public_id,
-                                        )
-                                    "
-                                    class="w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors"
-                                    :class="
-                                        selectedCalendarIds.includes(
-                                            currentUser.public_id,
-                                        )
-                                            ? 'bg-(--interactive-primary)/10 text-(--interactive-primary) font-medium'
-                                            : 'hover:bg-(--surface-secondary) text-(--text-primary)'
-                                    "
+                                <User
+                                    class="h-3.5 w-3.5 text-(--text-tertiary)"
+                                />
+                                <span class="hidden sm:inline">Calendars</span>
+                                <span
+                                    class="bg-(--surface-secondary) px-1.5 py-0.5 rounded text-xs font-semibold text-(--text-secondary) leading-none"
                                 >
-                                    <div class="flex items-center gap-2">
-                                        <User
-                                            class="h-4 w-4"
-                                            :class="
-                                                selectedCalendarIds.includes(
-                                                    currentUser.public_id,
-                                                )
-                                                    ? 'text-(--interactive-primary)'
-                                                    : 'text-(--text-tertiary)'
-                                            "
-                                        />
-                                        <span>My Calendar</span>
-                                    </div>
-                                    <div
-                                        v-if="
-                                            selectedCalendarIds.includes(
+                                    {{ selectedCalendarIds.length }}
+                                </span>
+                                <ChevronDown
+                                    class="h-3 w-3 text-(--text-tertiary)"
+                                />
+                            </button>
+
+                            <div
+                                v-if="showCalendarDropdown"
+                                class="absolute left-0 top-full mt-2 w-64 rounded-xl border border-(--border-default) bg-(--surface-elevated) shadow-xl z-50 overflow-hidden animate-in fade-in zoom-in-95 p-1"
+                            >
+                                <!-- My Calendar -->
+                                <div v-if="currentUser" class="mb-1">
+                                    <button
+                                        @click="
+                                            toggleCalendarSelection(
                                                 currentUser.public_id,
                                             )
                                         "
-                                        class="h-2 w-2 rounded-full bg-(--interactive-primary)"
-                                    ></div>
-                                </button>
-                            </div>
-
-                            <div class="h-px bg-(--border-default) my-1"></div>
-
-                            <!-- Shared Calendars -->
-                            <div class="space-y-0.5 max-h-64 overflow-y-auto">
-                                <div
-                                    class="text-[10px] uppercase tracking-wider font-semibold text-(--text-tertiary) px-2 py-1"
-                                >
-                                    Shared with me
-                                </div>
-                                <button
-                                    v-for="user in sharedCalendars"
-                                    :key="user.id"
-                                    @click="
-                                        toggleCalendarSelection(user.public_id)
-                                    "
-                                    class="w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors"
-                                    :class="
-                                        selectedCalendarIds.includes(
-                                            user.public_id,
-                                        )
-                                            ? 'bg-(--interactive-primary)/10 text-(--interactive-primary) font-medium'
-                                            : 'hover:bg-(--surface-secondary) text-(--text-primary)'
-                                    "
-                                >
-                                    <span>{{ user.name }}</span>
-                                    <div
-                                        v-if="
+                                        class="w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors"
+                                        :class="
                                             selectedCalendarIds.includes(
-                                                user.public_id,
+                                                currentUser.public_id,
                                             )
-                                        "
-                                        class="h-2 w-2 rounded-full bg-(--interactive-primary)"
-                                    ></div>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Divider -->
-                    <div
-                        class="w-px h-5 bg-(--border-default) mx-0.5 shrink-0"
-                    ></div>
-
-                    <!-- View Options Dropdown -->
-                    <div class="relative">
-                        <button
-                            @click="
-                                showViewOptionsDropdown =
-                                    !showViewOptionsDropdown
-                            "
-                            class="flex items-center gap-1.5 px-3 h-9 text-sm font-medium text-(--text-primary) hover:bg-(--surface-secondary) transition-colors rounded-lg"
-                        >
-                            <SlidersHorizontal
-                                class="h-3.5 w-3.5 text-(--text-secondary)"
-                            />
-                            <span class="hidden sm:inline">View Options</span>
-                            <ChevronDown
-                                class="h-3 w-3 text-(--text-tertiary)"
-                            />
-                        </button>
-
-                        <div
-                            v-if="showViewOptionsDropdown"
-                            class="absolute right-0 top-full mt-2 w-72 rounded-xl border border-(--border-default) bg-(--surface-elevated) shadow-xl z-50 overflow-hidden animate-in fade-in zoom-in-95 p-2 space-y-2"
-                        >
-                            <div
-                                class="px-2 py-1.5 text-xs font-semibold text-(--text-tertiary) uppercase tracking-wider"
-                            >
-                                Display Settings
-                            </div>
-
-                            <!-- Google Events Toggle -->
-                            <button
-                                @click="showGoogleEvents = !showGoogleEvents"
-                                class="w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors"
-                                :class="
-                                    showGoogleEvents
-                                        ? 'bg-(--surface-secondary)/50'
-                                        : 'hover:bg-(--surface-secondary)'
-                                "
-                            >
-                                <div class="flex items-center gap-3">
-                                    <div
-                                        class="p-1.5 rounded-md bg-white border border-gray-200 shadow-sm"
-                                    >
-                                        <img
-                                            src="https://www.svgrepo.com/show/475656/google-color.svg"
-                                            class="h-4 w-4"
-                                            :class="{
-                                                'grayscale opacity-50':
-                                                    !showGoogleEvents,
-                                            }"
-                                            alt="Google"
-                                        />
-                                    </div>
-                                    <span
-                                        class="text-sm font-medium text-(--text-primary)"
-                                        >Google Events</span
-                                    >
-                                </div>
-                                <div
-                                    class="w-9 h-5 rounded-full transition-colors relative"
-                                    :class="
-                                        showGoogleEvents
-                                            ? 'bg-blue-500'
-                                            : 'bg-gray-300 dark:bg-gray-600'
-                                    "
-                                >
-                                    <div
-                                        class="absolute top-1 left-1 bg-white w-3 h-3 rounded-full transition-transform shadow-sm"
-                                        :class="
-                                            showGoogleEvents
-                                                ? 'translate-x-4'
-                                                : 'translate-x-0'
-                                        "
-                                    ></div>
-                                </div>
-                            </button>
-
-                            <!-- Holidays Toggle -->
-                            <button
-                                @click="toggleHolidays"
-                                class="w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors"
-                                :class="
-                                    showHolidays
-                                        ? 'bg-(--surface-secondary)/50'
-                                        : 'hover:bg-(--surface-secondary)'
-                                "
-                            >
-                                <div class="flex items-center gap-3">
-                                    <div
-                                        class="p-1.5 rounded-md bg-red-50 border border-red-100/50"
-                                    >
-                                        <span class="text-sm">🎉</span>
-                                    </div>
-                                    <span
-                                        class="text-sm font-medium text-(--text-primary)"
-                                        >Holidays</span
-                                    >
-                                </div>
-                                <div
-                                    class="w-9 h-5 rounded-full transition-colors relative"
-                                    :class="
-                                        showHolidays
-                                            ? 'bg-blue-500'
-                                            : 'bg-gray-300 dark:bg-gray-600'
-                                    "
-                                >
-                                    <div
-                                        class="absolute top-1 left-1 bg-white w-3 h-3 rounded-full transition-transform shadow-sm"
-                                        :class="
-                                            showHolidays
-                                                ? 'translate-x-4'
-                                                : 'translate-x-0'
-                                        "
-                                    ></div>
-                                </div>
-                            </button>
-
-                            <!-- Country Selector -->
-                            <div
-                                v-if="showHolidays"
-                                class="pt-2 border-t border-(--border-default)"
-                            >
-                                <div
-                                    class="px-2 py-1.5 text-xs font-semibold text-(--text-tertiary) uppercase tracking-wider mb-1"
-                                >
-                                    Holiday Region
-                                </div>
-                                <div class="grid grid-cols-5 gap-2 px-1">
-                                    <button
-                                        v-for="code in popularCountries"
-                                        :key="code"
-                                        @click="selectCountry(code)"
-                                        class="flex items-center justify-center p-2 rounded-lg text-xs font-medium transition-colors border"
-                                        :class="
-                                            selectedCountry === code
-                                                ? 'bg-(--interactive-primary) text-white border-transparent shadow-sm'
-                                                : 'bg-(--surface-elevated) border-(--border-default) text-(--text-secondary) hover:border-(--border-strong) hover:text-(--text-primary)'
-                                        "
-                                    >
-                                        {{ code }}
-                                    </button>
-                                </div>
-                                <button
-                                    @click="
-                                        showCountryDropdown =
-                                            !showCountryDropdown;
-                                        showViewOptionsDropdown = false;
-                                    "
-                                    class="w-full mt-2 flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium bg-(--surface-secondary)/50 hover:bg-(--surface-secondary) text-(--text-secondary) hover:text-(--text-primary) transition-colors"
-                                >
-                                    <span>More Regions...</span>
-                                    <ChevronRight class="h-3 w-3" />
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- All Countries Dropdown -->
-                        <div
-                            v-if="showCountryDropdown"
-                            class="absolute right-0 top-full mt-2 w-72 rounded-xl border border-(--border-default) bg-(--surface-elevated) shadow-xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200"
-                        >
-                            <div
-                                class="p-2 border-b border-(--border-default) flex items-center justify-between bg-(--surface-secondary)/30"
-                            >
-                                <span
-                                    class="text-xs font-semibold uppercase tracking-wider text-(--text-tertiary)"
-                                    >Select Region</span
-                                >
-                                <button
-                                    @click="
-                                        showCountryDropdown = false;
-                                        showViewOptionsDropdown = true;
-                                    "
-                                    class="p-1 hover:bg-(--surface-secondary) rounded-md transition-colors"
-                                >
-                                    <ChevronLeft
-                                        class="w-4 h-4 text-(--text-secondary)"
-                                    />
-                                </button>
-                            </div>
-                            <div
-                                class="max-h-80 overflow-y-auto p-2 custom-scrollbar"
-                            >
-                                <div class="space-y-0.5">
-                                    <button
-                                        v-for="country in countries"
-                                        :key="country.countryCode"
-                                        @click="
-                                            selectCountry(country.countryCode)
-                                        "
-                                        class="w-full text-left px-3 py-2 text-sm rounded-lg transition-colors flex items-center justify-between group"
-                                        :class="
-                                            selectedCountry ===
-                                            country.countryCode
                                                 ? 'bg-(--interactive-primary)/10 text-(--interactive-primary) font-medium'
                                                 : 'hover:bg-(--surface-secondary) text-(--text-primary)'
                                         "
                                     >
-                                        <span>{{ country.name }}</span>
-                                        <span
-                                            class="text-xs text-(--text-muted) group-hover:text-(--text-secondary)"
-                                            >{{ country.countryCode }}</span
-                                        >
+                                        <div class="flex items-center gap-2">
+                                            <User
+                                                class="h-4 w-4"
+                                                :class="
+                                                    selectedCalendarIds.includes(
+                                                        currentUser.public_id,
+                                                    )
+                                                        ? 'text-(--interactive-primary)'
+                                                        : 'text-(--text-tertiary)'
+                                                "
+                                            />
+                                            <span>My Calendar</span>
+                                        </div>
+                                        <div
+                                            v-if="
+                                                selectedCalendarIds.includes(
+                                                    currentUser.public_id,
+                                                )
+                                            "
+                                            class="h-2 w-2 rounded-full bg-(--interactive-primary)"
+                                        ></div>
+                                    </button>
+                                </div>
+
+                                <div
+                                    class="h-px bg-(--border-default) my-1"
+                                ></div>
+
+                                <!-- Shared Calendars -->
+                                <div
+                                    class="space-y-0.5 max-h-64 overflow-y-auto"
+                                >
+                                    <div
+                                        class="text-[10px] uppercase tracking-wider font-semibold text-(--text-tertiary) px-2 py-1"
+                                    >
+                                        Shared with me
+                                    </div>
+                                    <button
+                                        v-for="user in sharedCalendars"
+                                        :key="user.id"
+                                        @click="
+                                            toggleCalendarSelection(
+                                                user.public_id,
+                                            )
+                                        "
+                                        class="w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors"
+                                        :class="
+                                            selectedCalendarIds.includes(
+                                                user.public_id,
+                                            )
+                                                ? 'bg-(--interactive-primary)/10 text-(--interactive-primary) font-medium'
+                                                : 'hover:bg-(--surface-secondary) text-(--text-primary)'
+                                        "
+                                    >
+                                        <span>{{ user.name }}</span>
+                                        <div
+                                            v-if="
+                                                selectedCalendarIds.includes(
+                                                    user.public_id,
+                                                )
+                                            "
+                                            class="h-2 w-2 rounded-full bg-(--interactive-primary)"
+                                        ></div>
                                     </button>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                </div>
 
-                <!-- Group 2: Select & Export -->
-                <div
-                    class="flex items-center h-9 bg-(--surface-elevated) border border-(--border-default) rounded-lg shadow-sm"
-                >
-                    <button
-                        @click="toggleSelectionMode"
-                        class="flex items-center gap-1.5 px-3 h-9 text-sm font-medium transition-all rounded-lg"
-                        :class="
-                            isSelectionMode
-                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
-                                : 'text-(--text-secondary) hover:bg-(--surface-secondary) hover:text-(--text-primary)'
-                        "
-                    >
-                        <SquareCheck class="w-3.5 h-3.5" />
-                        <span v-if="!isSelectionMode">Select &amp; Export</span>
-                        <span v-else>Done</span>
-                    </button>
-
-                    <template v-if="isSelectionMode">
+                        <!-- Divider -->
                         <div
                             class="w-px h-5 bg-(--border-default) mx-0.5 shrink-0"
                         ></div>
-                        <button
-                            @click="handleBulkExport"
-                            :disabled="selectedExportEvents.length === 0"
-                            class="flex items-center gap-1.5 px-3 h-9 text-sm font-medium transition-all rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
-                            :class="
-                                selectedExportEvents.length > 0
-                                    ? 'text-(--interactive-primary) hover:bg-(--interactive-primary)/10'
-                                    : 'text-(--text-muted)'
-                            "
-                        >
-                            <Download class="w-3.5 h-3.5" />
-                            Export ({{ selectedExportEvents.length }})
-                        </button>
-                    </template>
-                </div>
 
-                <!-- Group 3: Share + Google Sync -->
-                <div
-                    class="flex items-center h-9 bg-(--surface-elevated) border border-(--border-default) rounded-lg shadow-sm"
-                >
-                    <button
-                        @click="openShareModal"
-                        class="flex items-center gap-1.5 px-3 h-9 text-sm font-medium text-(--text-secondary) hover:bg-(--surface-secondary) hover:text-(--text-primary) transition-colors rounded-lg"
-                    >
-                        <Share class="h-3.5 w-3.5" />
-                        <span class="hidden sm:inline">Share</span>
-                    </button>
+                        <!-- View Options Dropdown -->
+                        <div class="relative">
+                            <button
+                                @click="
+                                    showViewOptionsDropdown =
+                                        !showViewOptionsDropdown
+                                "
+                                class="flex items-center gap-1.5 px-3 h-9 text-sm font-medium text-(--text-primary) hover:bg-(--surface-secondary) transition-colors rounded-lg"
+                            >
+                                <SlidersHorizontal
+                                    class="h-3.5 w-3.5 text-(--text-secondary)"
+                                />
+                                <span class="hidden sm:inline"
+                                    >View Options</span
+                                >
+                                <ChevronDown
+                                    class="h-3 w-3 text-(--text-tertiary)"
+                                />
+                            </button>
+
+                            <div
+                                v-if="showViewOptionsDropdown"
+                                class="absolute right-0 top-full mt-2 w-72 rounded-xl border border-(--border-default) bg-(--surface-elevated) shadow-xl z-50 overflow-hidden animate-in fade-in zoom-in-95 p-2 space-y-2"
+                            >
+                                <div
+                                    class="px-2 py-1.5 text-xs font-semibold text-(--text-tertiary) uppercase tracking-wider"
+                                >
+                                    Display Settings
+                                </div>
+
+                                <!-- Google Events Toggle -->
+                                <button
+                                    @click="
+                                        showGoogleEvents = !showGoogleEvents
+                                    "
+                                    class="w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors"
+                                    :class="
+                                        showGoogleEvents
+                                            ? 'bg-(--surface-secondary)/50'
+                                            : 'hover:bg-(--surface-secondary)'
+                                    "
+                                >
+                                    <div class="flex items-center gap-3">
+                                        <div
+                                            class="p-1.5 rounded-md bg-white border border-gray-200 shadow-sm"
+                                        >
+                                            <img
+                                                src="https://www.svgrepo.com/show/475656/google-color.svg"
+                                                class="h-4 w-4"
+                                                :class="{
+                                                    'grayscale opacity-50':
+                                                        !showGoogleEvents,
+                                                }"
+                                                alt="Google"
+                                            />
+                                        </div>
+                                        <span
+                                            class="text-sm font-medium text-(--text-primary)"
+                                            >Google Events</span
+                                        >
+                                    </div>
+                                    <div
+                                        class="w-9 h-5 rounded-full transition-colors relative"
+                                        :class="
+                                            showGoogleEvents
+                                                ? 'bg-blue-500'
+                                                : 'bg-gray-300 dark:bg-gray-600'
+                                        "
+                                    >
+                                        <div
+                                            class="absolute top-1 left-1 bg-white w-3 h-3 rounded-full transition-transform shadow-sm"
+                                            :class="
+                                                showGoogleEvents
+                                                    ? 'translate-x-4'
+                                                    : 'translate-x-0'
+                                            "
+                                        ></div>
+                                    </div>
+                                </button>
+
+                                <!-- Holidays Toggle -->
+                                <button
+                                    @click="toggleHolidays"
+                                    class="w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors"
+                                    :class="
+                                        showHolidays
+                                            ? 'bg-(--surface-secondary)/50'
+                                            : 'hover:bg-(--surface-secondary)'
+                                    "
+                                >
+                                    <div class="flex items-center gap-3">
+                                        <div
+                                            class="p-1.5 rounded-md bg-red-50 border border-red-100/50"
+                                        >
+                                            <span class="text-sm">🎉</span>
+                                        </div>
+                                        <span
+                                            class="text-sm font-medium text-(--text-primary)"
+                                            >Holidays</span
+                                        >
+                                    </div>
+                                    <div
+                                        class="w-9 h-5 rounded-full transition-colors relative"
+                                        :class="
+                                            showHolidays
+                                                ? 'bg-blue-500'
+                                                : 'bg-gray-300 dark:bg-gray-600'
+                                        "
+                                    >
+                                        <div
+                                            class="absolute top-1 left-1 bg-white w-3 h-3 rounded-full transition-transform shadow-sm"
+                                            :class="
+                                                showHolidays
+                                                    ? 'translate-x-4'
+                                                    : 'translate-x-0'
+                                            "
+                                        ></div>
+                                    </div>
+                                </button>
+
+                                <!-- Country Selector -->
+                                <div
+                                    v-if="showHolidays"
+                                    class="pt-2 border-t border-(--border-default)"
+                                >
+                                    <div
+                                        class="px-2 py-1.5 text-xs font-semibold text-(--text-tertiary) uppercase tracking-wider mb-1"
+                                    >
+                                        Holiday Region
+                                    </div>
+                                    <div class="grid grid-cols-5 gap-2 px-1">
+                                        <button
+                                            v-for="code in popularCountries"
+                                            :key="code"
+                                            @click="selectCountry(code)"
+                                            class="flex items-center justify-center p-2 rounded-lg text-xs font-medium transition-colors border"
+                                            :class="
+                                                selectedCountry === code
+                                                    ? 'bg-(--interactive-primary) text-white border-transparent shadow-sm'
+                                                    : 'bg-(--surface-elevated) border-(--border-default) text-(--text-secondary) hover:border-(--border-strong) hover:text-(--text-primary)'
+                                            "
+                                        >
+                                            {{ code }}
+                                        </button>
+                                    </div>
+                                    <button
+                                        @click="
+                                            showCountryDropdown =
+                                                !showCountryDropdown;
+                                            showViewOptionsDropdown = false;
+                                        "
+                                        class="w-full mt-2 flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium bg-(--surface-secondary)/50 hover:bg-(--surface-secondary) text-(--text-secondary) hover:text-(--text-primary) transition-colors"
+                                    >
+                                        <span>More Regions...</span>
+                                        <ChevronRight class="h-3 w-3" />
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- All Countries Dropdown -->
+                            <div
+                                v-if="showCountryDropdown"
+                                class="absolute right-0 top-full mt-2 w-72 rounded-xl border border-(--border-default) bg-(--surface-elevated) shadow-xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+                            >
+                                <div
+                                    class="p-2 border-b border-(--border-default) flex items-center justify-between bg-(--surface-secondary)/30"
+                                >
+                                    <span
+                                        class="text-xs font-semibold uppercase tracking-wider text-(--text-tertiary)"
+                                        >Select Region</span
+                                    >
+                                    <button
+                                        @click="
+                                            showCountryDropdown = false;
+                                            showViewOptionsDropdown = true;
+                                        "
+                                        class="p-1 hover:bg-(--surface-secondary) rounded-md transition-colors"
+                                    >
+                                        <ChevronLeft
+                                            class="w-4 h-4 text-(--text-secondary)"
+                                        />
+                                    </button>
+                                </div>
+                                <div
+                                    class="max-h-80 overflow-y-auto p-2 custom-scrollbar"
+                                >
+                                    <div class="space-y-0.5">
+                                        <button
+                                            v-for="country in countries"
+                                            :key="country.countryCode"
+                                            @click="
+                                                selectCountry(
+                                                    country.countryCode,
+                                                )
+                                            "
+                                            class="w-full text-left px-3 py-2 text-sm rounded-lg transition-colors flex items-center justify-between group"
+                                            :class="
+                                                selectedCountry ===
+                                                country.countryCode
+                                                    ? 'bg-(--interactive-primary)/10 text-(--interactive-primary) font-medium'
+                                                    : 'hover:bg-(--surface-secondary) text-(--text-primary)'
+                                            "
+                                        >
+                                            <span>{{ country.name }}</span>
+                                            <span
+                                                class="text-xs text-(--text-muted) group-hover:text-(--text-secondary)"
+                                                >{{ country.countryCode }}</span
+                                            >
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Group 2: Select & Export -->
                     <div
-                        class="w-px h-5 bg-(--border-default) mx-0.5 shrink-0"
-                    ></div>
-                    <GoogleCalendarConnect @connected="onGoogleConnected" />
-                </div>
-
-                <!-- Manual Refresh -->
-                <button
-                    @click="refreshCalendar"
-                    :disabled="isRefreshing"
-                    class="flex items-center justify-center w-9 h-9 rounded-lg bg-(--surface-elevated) border border-(--border-default) shadow-sm text-(--text-secondary) hover:bg-(--surface-secondary) hover:text-(--text-primary) transition-all disabled:opacity-50"
-                    title="Refresh calendar"
-                >
-                    <RotateCw
-                        class="h-3.5 w-3.5"
-                        :class="{ 'animate-spin': isRefreshing }"
-                    />
-                </button>
-
-                <!-- Primary Action -->
-                <Button
-                    @click="handleNewEvent"
-                    class="h-9 px-4 shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30 transition-all"
-                >
-                    <Plus class="h-3.5 w-3.5 mr-1.5" />
-                    New Event
-                </Button>
-            </div>
-        </div>
-
-        <!-- Click outside to close dropdowns -->
-
-        <!-- Click outside to close dropdowns -->
-        <div
-            v-if="
-                showCountryDropdown ||
-                showMonthDropdown ||
-                showYearDropdown ||
-                showViewOptionsDropdown ||
-                showCalendarDropdown
-            "
-            class="fixed inset-0 z-40"
-            @click="closeDropdowns"
-        ></div>
-
-        <!-- Calendar Container -->
-        <div
-            class="flex-1 bg-(--surface-elevated) rounded-2xl border border-(--border-default) shadow-sm overflow-hidden flex flex-col fullcalendar-wrapper transition-all duration-300 ease-in-out"
-            :class="{
-                'selection-mode': isSelectionMode,
-                'is-transitioning': isTransitioning,
-            }"
-        >
-            <!-- Custom Toolbar -->
-            <div
-                class="p-4 border-b border-(--border-default) flex flex-col sm:flex-row items-center justify-between gap-4 bg-(--surface-primary)"
-            >
-                <!-- Navigation -->
-                <div
-                    class="flex items-center bg-(--surface-elevated) rounded-xl border border-(--border-default) p-1 shadow-sm"
-                >
-                    <button
-                        @click="navigatePrev"
-                        class="p-2 rounded-lg hover:bg-(--surface-secondary) text-(--text-secondary) hover:text-(--text-primary) transition-colors"
-                    >
-                        <ChevronLeft class="h-4 w-4" />
-                    </button>
-                    <button
-                        @click="goToToday"
-                        class="px-3 py-1.5 text-sm font-medium hover:bg-(--surface-secondary) rounded-md transition-colors"
-                    >
-                        Today
-                    </button>
-                    <button
-                        @click="navigateNext"
-                        class="p-2 rounded-lg hover:bg-(--surface-secondary) text-(--text-secondary) hover:text-(--text-primary) transition-colors"
-                    >
-                        <ChevronRight class="h-4 w-4" />
-                    </button>
-                </div>
-
-                <!-- Date Selectors -->
-                <div class="flex items-center gap-3">
-                    <!-- Month -->
-                    <div class="relative">
-                        <button
-                            @click="showMonthDropdown = !showMonthDropdown"
-                            class="flex items-center gap-2 text-xl font-bold text-(--text-primary) hover:opacity-75 transition-opacity"
-                        >
-                            {{ months[currentMonth] }}
-                            <ChevronDown
-                                class="h-5 w-5 text-(--text-tertiary)"
-                            />
-                        </button>
-                        <div
-                            v-if="showMonthDropdown"
-                            class="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-48 bg-(--surface-elevated) rounded-xl border border-(--border-default) shadow-xl z-50 p-2 grid grid-cols-1 overflow-hidden animate-in fade-in zoom-in-95"
-                        >
-                            <button
-                                v-for="(month, index) in months"
-                                :key="index"
-                                @click="navigateToMonth(index)"
-                                class="px-3 py-2 rounded-lg text-sm text-center font-medium transition-colors"
-                                :class="
-                                    currentMonth === index
-                                        ? 'bg-(--interactive-primary) text-white'
-                                        : 'hover:bg-(--surface-secondary)'
-                                "
-                            >
-                                {{ month }}
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Year -->
-                    <span class="text-xl font-medium text-(--text-tertiary)"
-                        >/</span
-                    >
-                    <div class="relative">
-                        <button
-                            @click="showYearDropdown = !showYearDropdown"
-                            class="text-xl font-medium text-(--text-secondary) hover:text-(--text-primary) transition-colors flex items-center gap-1"
-                        >
-                            {{ currentYear }}
-                            <ChevronDown class="h-4 w-4 opacity-50" />
-                        </button>
-                        <div
-                            v-if="showYearDropdown"
-                            class="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-32 bg-(--surface-elevated) rounded-xl border border-(--border-default) shadow-xl z-50 p-2 max-h-64 overflow-y-auto custom-scrollbar"
-                        >
-                            <button
-                                v-for="year in years"
-                                :key="year"
-                                @click="navigateToYear(year)"
-                                class="w-full px-3 py-2 rounded-lg text-sm text-center font-medium transition-colors block"
-                                :class="
-                                    currentYear === year
-                                        ? 'bg-(--interactive-primary) text-white'
-                                        : 'hover:bg-(--surface-secondary)'
-                                "
-                            >
-                                {{ year }}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- View Switcher -->
-                <div
-                    class="flex bg-(--surface-elevated) rounded-xl border border-(--border-default) p-1 shadow-sm"
-                >
-                    <template
-                        v-for="view in [
-                            'multiMonthYear',
-                            'dayGridMonth',
-                            'timeGridWeek',
-                            'timeGridDay',
-                            'listWeek',
-                        ]"
-                        :key="view"
+                        class="flex items-center h-9 bg-(--surface-elevated) border border-(--border-default) rounded-lg shadow-sm"
                     >
                         <button
-                            @click="changeView(view)"
-                            class="px-3 py-1.5 text-xs font-semibold rounded-lg transition-all"
+                            @click="toggleSelectionMode"
+                            class="flex items-center gap-1.5 px-3 h-9 text-sm font-medium transition-all rounded-lg"
                             :class="
-                                currentView === view
-                                    ? 'bg-(--interactive-primary) text-white shadow-sm'
+                                isSelectionMode
+                                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
                                     : 'text-(--text-secondary) hover:bg-(--surface-secondary) hover:text-(--text-primary)'
                             "
                         >
-                            {{ formatViewName(view) }}
+                            <SquareCheck class="w-3.5 h-3.5" />
+                            <span v-if="!isSelectionMode"
+                                >Select &amp; Export</span
+                            >
+                            <span v-else>Done</span>
                         </button>
-                    </template>
+
+                        <template v-if="isSelectionMode">
+                            <div
+                                class="w-px h-5 bg-(--border-default) mx-0.5 shrink-0"
+                            ></div>
+                            <button
+                                @click="handleBulkExport"
+                                :disabled="selectedExportEvents.length === 0"
+                                class="flex items-center gap-1.5 px-3 h-9 text-sm font-medium transition-all rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                                :class="
+                                    selectedExportEvents.length > 0
+                                        ? 'text-(--interactive-primary) hover:bg-(--interactive-primary)/10'
+                                        : 'text-(--text-muted)'
+                                "
+                            >
+                                <Download class="w-3.5 h-3.5" />
+                                Export ({{ selectedExportEvents.length }})
+                            </button>
+                        </template>
+                    </div>
+
+                    <!-- Group 3: Share + Google Sync -->
+                    <div
+                        class="flex items-center h-9 bg-(--surface-elevated) border border-(--border-default) rounded-lg shadow-sm"
+                    >
+                        <button
+                            @click="openShareModal"
+                            class="flex items-center gap-1.5 px-3 h-9 text-sm font-medium text-(--text-secondary) hover:bg-(--surface-secondary) hover:text-(--text-primary) transition-colors rounded-lg"
+                        >
+                            <Share class="h-3.5 w-3.5" />
+                            <span class="hidden sm:inline">Share</span>
+                        </button>
+                        <div
+                            class="w-px h-5 bg-(--border-default) mx-0.5 shrink-0"
+                        ></div>
+                        <GoogleCalendarConnect @connected="onGoogleConnected" />
+                    </div>
+
+                    <!-- Manual Refresh -->
+                    <button
+                        @click="refreshCalendar"
+                        :disabled="isRefreshing"
+                        class="flex items-center justify-center w-9 h-9 rounded-lg bg-(--surface-elevated) border border-(--border-default) shadow-sm text-(--text-secondary) hover:bg-(--surface-secondary) hover:text-(--text-primary) transition-all disabled:opacity-50"
+                        title="Refresh calendar"
+                    >
+                        <RotateCw
+                            class="h-3.5 w-3.5"
+                            :class="{ 'animate-spin': isRefreshing }"
+                        />
+                    </button>
+
+                    <!-- Primary Action -->
+                    <Button
+                        @click="handleNewEvent"
+                        class="h-9 px-4 shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30 transition-all"
+                    >
+                        <Plus class="h-3.5 w-3.5 mr-1.5" />
+                        New Event
+                    </Button>
                 </div>
             </div>
 
-            <!-- Calendar Body -->
-            <div class="flex-1 min-h-0 bg-(--surface-primary)">
-                <FullCalendar
-                    ref="calendarRef"
-                    :options="calendarOptions"
-                    class="h-full"
-                />
+            <!-- Click outside to close dropdowns -->
+
+            <!-- Click outside to close dropdowns -->
+            <div
+                v-if="
+                    showCountryDropdown ||
+                    showMonthDropdown ||
+                    showYearDropdown ||
+                    showViewOptionsDropdown ||
+                    showCalendarDropdown
+                "
+                class="fixed inset-0 z-40"
+                @click="closeDropdowns"
+            ></div>
+
+            <!-- Calendar Container -->
+            <div
+                class="flex-1 bg-(--surface-elevated) rounded-2xl border border-(--border-default) shadow-sm overflow-hidden flex flex-col fullcalendar-wrapper transition-all duration-300 ease-in-out"
+                :class="{
+                    'selection-mode': isSelectionMode,
+                    'is-transitioning': isTransitioning,
+                }"
+            >
+                <!-- Custom Toolbar -->
+                <div
+                    class="p-4 border-b border-(--border-default) flex flex-col sm:flex-row items-center justify-between gap-4 bg-(--surface-primary)"
+                >
+                    <!-- Navigation -->
+                    <div
+                        class="flex items-center bg-(--surface-elevated) rounded-xl border border-(--border-default) p-1 shadow-sm"
+                    >
+                        <button
+                            @click="navigatePrev"
+                            class="p-2 rounded-lg hover:bg-(--surface-secondary) text-(--text-secondary) hover:text-(--text-primary) transition-colors"
+                        >
+                            <ChevronLeft class="h-4 w-4" />
+                        </button>
+                        <button
+                            @click="goToToday"
+                            class="px-3 py-1.5 text-sm font-medium hover:bg-(--surface-secondary) rounded-md transition-colors"
+                        >
+                            Today
+                        </button>
+                        <button
+                            @click="navigateNext"
+                            class="p-2 rounded-lg hover:bg-(--surface-secondary) text-(--text-secondary) hover:text-(--text-primary) transition-colors"
+                        >
+                            <ChevronRight class="h-4 w-4" />
+                        </button>
+                    </div>
+
+                    <!-- Date Selectors -->
+                    <div class="flex items-center gap-3">
+                        <!-- Month -->
+                        <div class="relative">
+                            <button
+                                @click="showMonthDropdown = !showMonthDropdown"
+                                class="flex items-center gap-2 text-xl font-bold text-(--text-primary) hover:opacity-75 transition-opacity"
+                            >
+                                {{ months[currentMonth] }}
+                                <ChevronDown
+                                    class="h-5 w-5 text-(--text-tertiary)"
+                                />
+                            </button>
+                            <div
+                                v-if="showMonthDropdown"
+                                class="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-48 bg-(--surface-elevated) rounded-xl border border-(--border-default) shadow-xl z-50 p-2 grid grid-cols-1 overflow-hidden animate-in fade-in zoom-in-95"
+                            >
+                                <button
+                                    v-for="(month, index) in months"
+                                    :key="index"
+                                    @click="navigateToMonth(index)"
+                                    class="px-3 py-2 rounded-lg text-sm text-center font-medium transition-colors"
+                                    :class="
+                                        currentMonth === index
+                                            ? 'bg-(--interactive-primary) text-white'
+                                            : 'hover:bg-(--surface-secondary)'
+                                    "
+                                >
+                                    {{ month }}
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Year -->
+                        <span class="text-xl font-medium text-(--text-tertiary)"
+                            >/</span
+                        >
+                        <div class="relative">
+                            <button
+                                @click="showYearDropdown = !showYearDropdown"
+                                class="text-xl font-medium text-(--text-secondary) hover:text-(--text-primary) transition-colors flex items-center gap-1"
+                            >
+                                {{ currentYear }}
+                                <ChevronDown class="h-4 w-4 opacity-50" />
+                            </button>
+                            <div
+                                v-if="showYearDropdown"
+                                class="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-32 bg-(--surface-elevated) rounded-xl border border-(--border-default) shadow-xl z-50 p-2 max-h-64 overflow-y-auto custom-scrollbar"
+                            >
+                                <button
+                                    v-for="year in years"
+                                    :key="year"
+                                    @click="navigateToYear(year)"
+                                    class="w-full px-3 py-2 rounded-lg text-sm text-center font-medium transition-colors block"
+                                    :class="
+                                        currentYear === year
+                                            ? 'bg-(--interactive-primary) text-white'
+                                            : 'hover:bg-(--surface-secondary)'
+                                    "
+                                >
+                                    {{ year }}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- View Switcher -->
+                    <div
+                        class="flex bg-(--surface-elevated) rounded-xl border border-(--border-default) p-1 shadow-sm"
+                    >
+                        <template
+                            v-for="view in [
+                                'multiMonthYear',
+                                'dayGridMonth',
+                                'timeGridWeek',
+                                'timeGridDay',
+                                'listWeek',
+                            ]"
+                            :key="view"
+                        >
+                            <button
+                                @click="changeView(view)"
+                                class="px-3 py-1.5 text-xs font-semibold rounded-lg transition-all"
+                                :class="
+                                    currentView === view
+                                        ? 'bg-(--interactive-primary) text-white shadow-sm'
+                                        : 'text-(--text-secondary) hover:bg-(--surface-secondary) hover:text-(--text-primary)'
+                                "
+                            >
+                                {{ formatViewName(view) }}
+                            </button>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- Calendar Body -->
+                <div class="flex-1 min-h-0 bg-(--surface-primary)">
+                    <FullCalendar
+                        ref="calendarRef"
+                        :options="calendarOptions"
+                        class="h-full"
+                    />
+                </div>
             </div>
-        </div>
 
-        <!-- Event Tooltip -->
-        <EventSummaryTooltip
-            v-if="hoveredEvent && !isSelectionMode"
-            :event="hoveredEvent"
-            :position="tooltipPosition"
-        />
+            <!-- Event Tooltip -->
+            <EventSummaryTooltip
+                v-if="hoveredEvent && !isSelectionMode"
+                :event="hoveredEvent"
+                :position="tooltipPosition"
+            />
 
-        <!-- Edit/New Modal -->
-        <EventModal
-            :open="showEventModal"
-            :event="selectedEvent"
-            :selected-date="selectedDate"
-            @update:open="showEventModal = $event"
-            @saved="onEventSaved"
-            @deleted="handleDeleteEvent"
-        />
+            <!-- Edit/New Modal -->
+            <EventModal
+                :open="showEventModal"
+                :event="selectedEvent"
+                :selected-date="selectedDate"
+                @update:open="showEventModal = $event"
+                @saved="onEventSaved"
+                @deleted="handleDeleteEvent"
+            />
 
-        <!-- View Only Modal -->
-        <EventViewModal
-            :open="showViewModal"
-            :event="selectedEvent"
-            @update:open="showViewModal = $event"
-            @edit="handleEditEvent"
-            @delete="handleDeleteEvent"
-        />
+            <!-- View Only Modal -->
+            <EventViewModal
+                :open="showViewModal"
+                :event="selectedEvent"
+                @update:open="showViewModal = $event"
+                @edit="handleEditEvent"
+                @delete="handleDeleteEvent"
+            />
 
-        <!-- Share Modal -->
-        <CalendarShareModal
-            :isOpen="showShareModal"
-            :current-user-id="currentUser?.id"
-            @close="showShareModal = false"
-        />
+            <!-- Share Modal -->
+            <CalendarShareModal
+                :isOpen="showShareModal"
+                :current-user-id="currentUser?.id"
+                @close="showShareModal = false"
+            />
 
-        <!-- Confirmation Modal -->
-        <ConfirmationModal
-            v-model:open="showDeleteConfirm"
-            title="Delete Event"
-            :message="deleteConfirmMessage"
-            confirm-label="Delete"
-            confirm-variant="danger"
-            @confirm="confirmDelete"
+            <!-- Confirmation Modal -->
+            <ConfirmationModal
+                v-model:open="showDeleteConfirm"
+                title="Delete Event"
+                :message="deleteConfirmMessage"
+                confirm-label="Delete"
+                confirm-variant="danger"
+                @confirm="confirmDelete"
+            />
+        </template>
+
+        <LockedFeature
+            v-else
+            title="Calendar is Locked"
+            description="To protect user privacy and avoid unauthorized modifications, calendar access is disabled during impersonation."
         />
     </div>
 </template>

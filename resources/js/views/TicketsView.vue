@@ -298,14 +298,22 @@ async function fetchTickets() {
             tags: ticket.tags || [],
             assignee: ticket.assignee
                 ? {
+                      id: ticket.assignee.id,
+                      public_id: ticket.assignee.public_id,
                       name: ticket.assignee.name,
                       initials: ticket.assignee.initials,
+                      avatar_url: ticket.assignee.avatar_url,
+                      color: ticket.assignee.color,
                   }
                 : null,
             reporter: ticket.reporter
                 ? {
+                      id: ticket.reporter.id,
+                      public_id: ticket.reporter.public_id,
                       name: ticket.reporter.name,
                       initials: ticket.reporter.initials,
+                      avatar_url: ticket.reporter.avatar_url,
+                      color: ticket.reporter.color,
                   }
                 : null,
             comments: ticket.comment_count || 0,
@@ -1277,6 +1285,7 @@ function viewTicket(ticketId) {
                                             v-if="ticket.reporter"
                                             :fallback="ticket.reporter.initials"
                                             :src="ticket.reporter?.avatar_url"
+                                            :color="ticket.reporter?.color"
                                             size="xs"
                                         />
                                         <User
@@ -1309,6 +1318,7 @@ function viewTicket(ticketId) {
                                             v-if="ticket.assignee"
                                             :fallback="ticket.assignee.initials"
                                             :src="ticket.assignee?.avatar_url"
+                                            :color="ticket.assignee?.color"
                                             size="xs"
                                         />
                                         <User
@@ -1629,6 +1639,8 @@ function viewTicket(ticketId) {
                                         <Avatar
                                             v-if="ticket.assignee"
                                             :fallback="ticket.assignee.initials"
+                                            :src="ticket.assignee?.avatar_url"
+                                            :color="ticket.assignee?.color"
                                             size="xs"
                                         />
                                         <User v-else class="h-3.5 w-3.5" />

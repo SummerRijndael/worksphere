@@ -30,10 +30,16 @@
                     </p>
                     <div class="waiting-meta">
                         <div class="waiting-host-badge">
-                            <img
-                                v-if="meetingStore?.meeting?.host?.avatar_url"
-                                :src="meetingStore.meeting.host.avatar_url"
-                                class="waiting-host-avatar"
+                            <Avatar
+                                :src="meetingStore?.meeting?.host?.avatar_url"
+                                :fallback="
+                                    meetingStore?.meeting?.host?.name?.charAt(
+                                        0,
+                                    ) || 'H'
+                                "
+                                :color="meetingStore?.meeting?.host?.color"
+                                size="sm"
+                                class="waiting-host-avatar shrink-0"
                             />
                             <span>Host: {{ meetingHostName }}</span>
                         </div>
@@ -370,13 +376,25 @@
                         </div>
                         <div v-else class="solo-content glass-panel">
                             <div class="solo-avatar-wrap">
-                                <div class="solo-avatar">
-                                    {{
+                                <Avatar
+                                    :src="
+                                        meetingStore.localParticipant?.user
+                                            ?.avatar_url ||
+                                        meetingStore.localParticipant?.metadata
+                                            ?.avatar_url
+                                    "
+                                    :fallback="
                                         getParticipantInitial(
                                             meetingStore.localParticipant,
                                         )
-                                    }}
-                                </div>
+                                    "
+                                    :color="
+                                        meetingStore.localParticipant?.user
+                                            ?.color
+                                    "
+                                    size="5xl"
+                                    class="solo-avatar-comp"
+                                />
                             </div>
                             <div class="solo-info">
                                 <h2 class="solo-name">
@@ -514,9 +532,16 @@
                                 :key="p.public_id"
                                 class="participant-row"
                             >
-                                <div class="participant-avatar">
-                                    {{ getParticipantInitial(p) }}
-                                </div>
+                                <Avatar
+                                    :src="
+                                        p.user?.avatar_url ||
+                                        p.metadata?.avatar_url
+                                    "
+                                    :fallback="getParticipantInitial(p)"
+                                    :color="p.user?.color"
+                                    size="sm"
+                                    class="mr-3 shrink-0"
+                                />
                                 <div class="participant-info">
                                     <span class="participant-name">
                                         {{ getParticipantName(p) }}
@@ -911,7 +936,11 @@
                 </div>
 
                 <NetworkHealthIndicator
-                    v-if="meetingStore.sfuPc() || (meetingStore.meeting && meetingStore.meeting.recording_enabled)"
+                    v-if="
+                        meetingStore.sfuPc() ||
+                        (meetingStore.meeting &&
+                            meetingStore.meeting.recording_enabled)
+                    "
                     v-bind="networkStats"
                     compact
                     class="ml-2"

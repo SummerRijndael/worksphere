@@ -427,7 +427,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
     Route::get('/search', [\App\Http\Controllers\SearchController::class, 'index'])->middleware('throttle:60,1');
 
     // Email Accounts
-    Route::prefix('email-accounts')->middleware('throttle:30,1')->group(function () {
+    Route::prefix('email-accounts')->middleware(['throttle:30,1', 'impersonation.block'])->group(function () {
         Route::get('/', [\App\Http\Controllers\Api\EmailAccountController::class, 'index']);
         Route::get('/providers', [\App\Http\Controllers\Api\EmailAccountController::class, 'providers']);
         Route::post('/pre-check', [\App\Http\Controllers\Api\EmailAccountController::class, 'preCheck']);
@@ -447,7 +447,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
     });
 
     // Email System
-    Route::prefix('emails')->middleware('throttle:60,1')->group(function () {
+    Route::prefix('emails')->middleware(['throttle:60,1', 'impersonation.block'])->group(function () {
         // Folders
         Route::apiResource('folders', \App\Http\Controllers\Api\EmailFolderController::class);
         Route::apiResource('labels', \App\Http\Controllers\Api\EmailLabelController::class);
@@ -792,13 +792,15 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
     Route::get('calendar/events/{event}/ics', [\App\Http\Controllers\CalendarController::class, 'downloadIcs']);
     Route::post('calendar/export/bulk', [\App\Http\Controllers\CalendarController::class, 'bulkExport']);
     Route::get('calendar/events/export', [\App\Http\Controllers\CalendarController::class, 'export']);
-    Route::apiResource('calendar/events', \App\Http\Controllers\CalendarController::class);
+    Route::apiResource('calendar/events', \App\Http\Controllers\CalendarController::class)->middleware('impersonation.block');
 
     // Calendar Sharing
-    Route::get('calendar/shares', [\App\Http\Controllers\Api\CalendarShareController::class, 'index']);
-    Route::post('calendar/shares', [\App\Http\Controllers\Api\CalendarShareController::class, 'store']);
-    Route::put('calendar/shares/{id}', [\App\Http\Controllers\Api\CalendarShareController::class, 'update']);
-    Route::delete('calendar/shares/{id}', [\App\Http\Controllers\Api\CalendarShareController::class, 'destroy']);
+    Route::middleware('impersonation.block')->group(function () {
+        Route::get('calendar/shares', [\App\Http\Controllers\Api\CalendarShareController::class, 'index']);
+        Route::post('calendar/shares', [\App\Http\Controllers\Api\CalendarShareController::class, 'store']);
+        Route::put('calendar/shares/{id}', [\App\Http\Controllers\Api\CalendarShareController::class, 'update']);
+        Route::delete('calendar/shares/{id}', [\App\Http\Controllers\Api\CalendarShareController::class, 'destroy']);
+    });
 
     // Calendar Google Sync
     Route::middleware('throttle:120,1')->group(function () {
@@ -889,7 +891,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
     });
 
     // Chat System
-    Route::prefix('chat')->group(function () {
+    Route::prefix('chat')->middleware('impersonation.block')->group(function () {
         // Chat List (root)
         Route::get('/', [\App\Http\Controllers\Api\Chat\ChatApiController::class, 'index']);
 

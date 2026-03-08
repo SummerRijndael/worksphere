@@ -29,13 +29,13 @@ class MeetingResource extends JsonResource
             'password' => $this->when(($this->user_id === Auth::id()), $this->password),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
-            'host' => $this->whenLoaded('host', function () {
-                return [
-                    'public_id' => $this->host->public_id,
-                    'name' => $this->host->name,
-                    'avatar_url' => $this->host->avatar_url,
-                ];
-            }),
+            'host' => $this->host ? [
+                'id' => $this->host->id,
+                'public_id' => $this->host->public_id,
+                'name' => $this->host->name,
+                'avatar_url' => $this->host->getAvatarData()->getUrl(),
+                'color' => $this->host->getAvatarData()->color,
+            ] : null,
             'participants' => $this->when(($this->user_id === Auth::id() || MeetingParticipant::where('meeting_id', $this->id)->where('user_id', Auth::id())->where('status', 'admitted')->exists() || (session('meeting_participant_id') && MeetingParticipant::where('meeting_id', $this->id)->where('public_id', session('meeting_participant_id'))->where('status', 'admitted')->exists())), function () {
                 return MeetingParticipantResource::collection($this->whenLoaded('participants'));
             }),

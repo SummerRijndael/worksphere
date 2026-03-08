@@ -243,8 +243,19 @@
                                     <Icon name="copy" size="14" class="mr-2" />
                                     Copy Link
                                 </DropdownItem>
-                                <DropdownItem @select="router.push({ name: 'meeting-details', params: { id: meeting.public_id } })">
-                                    <Icon name="bar-chart-2" size="14" class="mr-2" />
+                                <DropdownItem
+                                    @select="
+                                        router.push({
+                                            name: 'meeting-details',
+                                            params: { id: meeting.public_id },
+                                        })
+                                    "
+                                >
+                                    <Icon
+                                        name="bar-chart-2"
+                                        size="14"
+                                        class="mr-2"
+                                    />
                                     View Details
                                 </DropdownItem>
                                 <DropdownItem
@@ -319,8 +330,16 @@
                                 class="w-7 h-7 rounded-full border-2 border-(--surface-primary) overflow-hidden shrink-0"
                             >
                                 <Avatar
-                                    :src="participant.user?.avatar_url"
-                                    :alt="participant.user?.name"
+                                    :src="
+                                        participant.user?.avatar_url ||
+                                        participant.metadata?.avatar_url
+                                    "
+                                    :fallback="
+                                        (participant.user?.name ||
+                                            participant.metadata?.guest_name ||
+                                            'G')[0]
+                                    "
+                                    :color="participant.user?.color"
                                     size="sm"
                                     class="w-full h-full"
                                 />
@@ -720,34 +739,40 @@ const getMeetingDisplayCount = (meeting: Meeting) => {
 // Start listening once echo is available
 const startEchoListener = () => {
     if (authStore.user && isEchoAvailable()) {
-        echo.private(`user.${authStore.user.id}`)
-            .listen('.App\\Events\\Meetings\\MeetingStatusUpdated', (e: any) => {
-                const meeting = meetings.value.find(m => m.public_id === e.id);
+        echo.private(`user.${authStore.user.id}`).listen(
+            ".App\\Events\\Meetings\\MeetingStatusUpdated",
+            (e: any) => {
+                const meeting = meetings.value.find(
+                    (m) => m.public_id === e.id,
+                );
                 if (meeting) {
                     meeting.status = e.status;
                 } else {
                     silentFetchMeetings();
                 }
-            });
+            },
+        );
     }
 };
 
 onMounted(() => {
     fetchMeetings();
     lastFetchTime = Date.now();
-    
+
     // Listen for realtime meeting status updates conditionally
     if (isEchoAvailable()) {
         startEchoListener();
     } else {
-        window.addEventListener('echo:connected', startEchoListener, { once: true });
+        window.addEventListener("echo:connected", startEchoListener, {
+            once: true,
+        });
     }
 });
 
 onUnmounted(() => {
     window.removeEventListener("focus", handleWindowFocus);
-    window.removeEventListener('echo:connected', startEchoListener);
-    
+    window.removeEventListener("echo:connected", startEchoListener);
+
     if (authStore.user && isEchoAvailable()) {
         echo.leave(`user.${authStore.user.id}`);
     }
