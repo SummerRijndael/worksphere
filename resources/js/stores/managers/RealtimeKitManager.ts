@@ -322,7 +322,6 @@ export function createRealtimeKitManager(
                         if (t.kind === kind) {
                             log('TRACK', `Removing ${kind} track from ${pid}`);
                             existingStream.removeTrack(t);
-                            t.stop();
                         }
                     });
 
@@ -359,7 +358,20 @@ export function createRealtimeKitManager(
             removeIfStillPresent();
         };
         track.onmute = () => {
-            removeIfStillPresent();
+            // Don't destroy on transient mute; browser/SFU renegotiation (e.g. screen-share toggles)
+            // can briefly mute tracks and then recover with the same track object.
+            const current = remoteStreams.value.get(pid);
+            const stillPresent = !!current?.getTracks().find((t) => t.id === trackedId);
+            if (stillPresent) {
+                remoteStreams.value = new Map(remoteStreams.value);
+            }
+        };
+        track.onunmute = () => {
+            const current = remoteStreams.value.get(pid);
+            const stillPresent = !!current?.getTracks().find((t) => t.id === trackedId);
+            if (stillPresent) {
+                remoteStreams.value = new Map(remoteStreams.value);
+            }
         };
 
         if (existingStream) {
@@ -370,7 +382,6 @@ export function createRealtimeKitManager(
             if (sameKindTrack && sameKindTrack.id !== track.id) {
                 log('TRACK', `Replacing existing ${track.kind} track for ${pid}`);
                 existingStream.removeTrack(sameKindTrack);
-                sameKindTrack.stop();
                 existingStream.addTrack(track);
             } else if (!sameKindTrack) {
                 log('TRACK', `Adding ${track.kind} track to existing stream for ${pid}`);
@@ -516,9 +527,6 @@ export function createRealtimeKitManager(
         targets.forEach((target) => {
             const stream = newMap.get(target);
             if (!stream) return;
-            stream.getTracks().forEach((t) => {
-                try { t.stop(); } catch {}
-            });
             newMap.delete(target);
             mutated = true;
         });
@@ -537,7 +545,6 @@ export function createRealtimeKitManager(
             .filter((t) => t.kind === kind)
             .forEach((t) => {
                 stream.removeTrack(t);
-                try { t.stop(); } catch {}
             });
 
         const newMap = new Map(remoteStreams.value);

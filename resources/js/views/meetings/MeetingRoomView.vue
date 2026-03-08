@@ -2441,12 +2441,37 @@ onUnmounted(() => {
 const isScreenSharing = ref(false);
 const screenStream = ref<MediaStream | null>(null);
 
+async function recoverCameraAfterScreenShareToggle() {
+    if (!isCameraOn.value) return;
+
+    try {
+        const effect = videoCallStore.videoEffect;
+        if (effect === "blur" || effect === "image") {
+            await rehydrateJoinVideoEffectIfNeeded();
+            meetingStore.sendSignal("camera-toggle", { enabled: true });
+            return;
+        }
+
+        const currentVideoTrack = meetingStore.localStream?.getVideoTracks()[0];
+        if (!currentVideoTrack || currentVideoTrack.readyState !== "live") return;
+
+        await meetingStore.replaceTrack("video", currentVideoTrack);
+        meetingStore.sendSignal("camera-toggle", { enabled: true });
+    } catch (e) {
+        console.warn(
+            "[MeetingRoom] Camera recover after screen-share toggle failed",
+            e,
+        );
+    }
+}
+
 async function toggleScreenShare() {
     if (isScreenSharing.value) {
         isScreenSharing.value = false;
         screenStream.value = null; // Track stops internally by SDK or onended
         await meetingStore.unpublishScreenTrack();
         meetingStore.clearSpotlight();
+        await recoverCameraAfterScreenShareToggle();
     } else {
         try {
             // Let the SDK handle the prompt to avoid "double prompt" issue
@@ -2464,6 +2489,8 @@ async function toggleScreenShare() {
                         if (isScreenSharing.value) toggleScreenShare();
                     };
                 }
+
+                await recoverCameraAfterScreenShareToggle();
             }
         } catch (err) {
             console.error("Screen share failed:", err);
