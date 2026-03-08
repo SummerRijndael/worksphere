@@ -98,7 +98,13 @@ class MeetingController extends Controller
         try {
             $meeting = $this->meetingService->createMeeting($request->user(), $data);
         } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json(['message' => $e->getMessage(), 'errors' => $e->errors()], 422);
+            $errors = $e->errors();
+            $firstError = collect($errors)->flatten()->first();
+
+            return response()->json([
+                'message' => $firstError ?: $e->getMessage(),
+                'errors' => $errors,
+            ], 422);
         }
 
         return new MeetingResource($meeting->load(['host', 'participants.user']));
@@ -930,10 +936,14 @@ class MeetingController extends Controller
 
         $validated = $request->validate([
             'rooms' => 'required|array',
-            'duration_minutes' => 'nullable|integer',
+            'duration_minutes' => 'nullable|integer|min:1|max:180',
         ]);
 
-        $this->meetingService->startBreakout($meeting, $validated['rooms'], $validated['duration_minutes']);
+        $this->meetingService->startBreakout(
+            $meeting,
+            $validated['rooms'],
+            $validated['duration_minutes'] ?? null
+        );
 
         return response()->json(['message' => 'Breakout session started.']);
     }
@@ -947,26 +957,28 @@ class MeetingController extends Controller
         return response()->json(['message' => 'Breakout session ended.']);
     }
 
-    public function joinBreakoutRoom(Request $request, Meeting $meeting, string $roomId): JsonResponse
+    public function joinBreakoutRoom(Request $request, Meeting $meeting, string $room): JsonResponse
     {
         $participant = $this->resolveParticipant($request, $meeting);
         if (! $participant) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $this->meetingService->joinBreakoutRoom($meeting, $participant, $roomId);
+        $normalizedRoomId = in_array(strtolower($room), ['main', 'null', ''], true) ? null : $room;
+
+        $this->meetingService->joinBreakoutRoom($meeting, $participant, $normalizedRoomId);
 
         return response()->json(['message' => 'Joined room.']);
     }
 
-    public function requestBreakoutHelp(Request $request, Meeting $meeting, string $roomId): JsonResponse
+    public function requestBreakoutHelp(Request $request, Meeting $meeting, string $room): JsonResponse
     {
         $participant = $this->resolveParticipant($request, $meeting);
         if (! $participant) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $this->meetingService->requestBreakoutHelp($meeting, $roomId);
+        $this->meetingService->requestBreakoutHelp($meeting, $room);
 
         return response()->json(['message' => 'Help requested.']);
     }
@@ -994,7 +1006,7 @@ class MeetingController extends Controller
         $this->authorize('update', $meeting);
 
         $validated = $request->validate([
-            'additional_minutes' => 'required|integer',
+            'additional_minutes' => 'required|integer|min:-30|max:30|not_in:0',
         ]);
 
         $this->meetingService->updateBreakoutTimer($meeting, $validated['additional_minutes']);
@@ -1010,7 +1022,7 @@ class MeetingController extends Controller
         }
 
         $validated = $request->validate([
-            'message' => 'required|string|max:255',
+            'message' => 'required|string|max:200',
             'target_room_id' => 'nullable|string',
         ]);
 

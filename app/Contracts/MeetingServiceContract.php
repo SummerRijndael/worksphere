@@ -28,11 +28,11 @@ interface MeetingServiceContract
 
     public function generateTurnCredentials(): array;
 
-    public function startBreakout(Meeting $meeting, array $rooms, int $durationMinutes): void;
+    public function startBreakout(Meeting $meeting, array $rooms, ?int $durationMinutes): void;
 
     public function endBreakout(Meeting $meeting): void;
 
-    public function joinBreakoutRoom(Meeting $meeting, MeetingParticipant $participant, string $roomId): void;
+    public function joinBreakoutRoom(Meeting $meeting, MeetingParticipant $participant, ?string $roomId): void;
 
     public function requestBreakoutHelp(Meeting $meeting, string $roomId): void;
 

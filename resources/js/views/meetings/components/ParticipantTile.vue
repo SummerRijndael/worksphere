@@ -208,22 +208,6 @@ watch(
     { immediate: true },
 );
 
-watch(
-    actualHasVideo,
-    (hasVideo) => {
-        if (hasVideo) return;
-
-        // Force-clear stale last-frame rendering when video is considered off.
-        if (isLocal.value && !props.isScreenShare && localVideo.value) {
-            localVideo.value.srcObject = null;
-        }
-        if (!isLocal.value && remoteVideo.value) {
-            remoteVideo.value.srcObject = null;
-        }
-    },
-    { immediate: true },
-);
-
 const isSpeaking = computed(() => {
     return (
         meetingStore.talkingParticipants.has(props.participant.public_id) &&
@@ -396,6 +380,22 @@ watch(
         } else {
             if (videoEl) videoEl.srcObject = null;
             if (audioEl) audioEl.srcObject = null;
+        }
+    },
+    { immediate: true },
+);
+
+watch(
+    actualHasVideo,
+    (hasVideo) => {
+        if (hasVideo) return;
+
+        // Force-clear stale last-frame rendering when video is considered off.
+        if (isLocal.value && !props.isScreenShare && localVideo.value) {
+            localVideo.value.srcObject = null;
+        }
+        if (!isLocal.value && remoteVideo.value) {
+            remoteVideo.value.srcObject = null;
         }
     },
     { immediate: true },

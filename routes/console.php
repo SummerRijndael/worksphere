@@ -108,7 +108,7 @@ Schedule::job(new \App\Jobs\PrunePresenceJob)
     ->withoutOverlapping()
     ->onOneServer();
 
-// Auto-end stale/crashed meetings every minute
+// Detect active meetings with no connected participants every minute
 Schedule::command('meetings:prune')
     ->everyMinute()
     ->withoutOverlapping()

@@ -22,6 +22,7 @@
             <!-- Actions -->
             <div class="flex items-center gap-2 pr-1.5">
                 <button 
+                    v-if="!meetingStore.isModerator"
                     @click="requestHelp"
                     class="h-10 px-4 bg-(--surface-tertiary) hover:bg-(--surface-muted) text-(--text-primary) rounded-xl text-xs font-bold transition-all flex items-center gap-2 border border-(--border-muted)"
                 >

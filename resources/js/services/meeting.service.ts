@@ -163,7 +163,10 @@ class MeetingService extends BaseService {
 
     // --- Breakout Rooms ---
 
-    async createBreakoutSession(meetingId: string, data: { rooms: any[], duration_minutes: number }) {
+    async createBreakoutSession(
+        meetingId: string,
+        data: { rooms: any[]; duration_minutes: number | null },
+    ) {
         return this.post(`/api/meetings/${meetingId}/breakout-sessions`, data);
     }
 
@@ -171,8 +174,12 @@ class MeetingService extends BaseService {
         return this.delete(`/api/meetings/${meetingId}/breakout-sessions`);
     }
 
-    async joinBreakoutRoom(meetingId: string, roomId: string) {
-        return this.post(`/api/meetings/${meetingId}/breakout-rooms/${roomId}/join`, {});
+    async joinBreakoutRoom(meetingId: string, roomId: string | null) {
+        const normalizedRoomId = roomId === null ? "main" : String(roomId);
+        return this.post(
+            `/api/meetings/${meetingId}/breakout-rooms/${normalizedRoomId}/join`,
+            {},
+        );
     }
 
     async requestHostHelp(meetingId: string, roomId: string) {

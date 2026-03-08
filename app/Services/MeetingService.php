@@ -40,6 +40,19 @@ class MeetingService implements MeetingServiceContract
         }
 
         return DB::transaction(function () use ($user, $data, $internalParticipants, $externalParticipants) {
+            // Enforce per-user meeting cap. Delete existing meetings to free slots.
+            $maxMeetingsPerUser = (int) config('worksphere.meetings.limits.max_meetings_per_user', 15);
+            if ($maxMeetingsPerUser > 0) {
+                User::query()->whereKey($user->id)->lockForUpdate()->first();
+
+                $createdMeetingsCount = Meeting::where('user_id', $user->id)->count();
+                if ($createdMeetingsCount >= $maxMeetingsPerUser) {
+                    throw ValidationException::withMessages([
+                        'meetings' => "You've reached the {$maxMeetingsPerUser}-meeting limit. Delete an existing meeting to create a new one.",
+                    ]);
+                }
+            }
+
             $meeting = Meeting::create([
                 'public_id' => (string) Str::ulid(),
                 'user_id' => $user->id,
@@ -663,7 +676,7 @@ class MeetingService implements MeetingServiceContract
         return ['ice_servers' => $iceServers];
     }
 
-    public function startBreakout(Meeting $meeting, array $rooms, int $durationMinutes): void
+    public function startBreakout(Meeting $meeting, array $rooms, ?int $durationMinutes): void
     {
         DB::transaction(function () use ($meeting, $rooms, $durationMinutes) {
             // Cleanup existing active sessions to prevent state bloat/desync
@@ -785,19 +798,54 @@ class MeetingService implements MeetingServiceContract
 
     public function updateBreakoutTimer(Meeting $meeting, int $additionalMinutes): void
     {
-        broadcast(new MeetingSignal(
-            $meeting,
-            'system',
-            'breakout-timer-updated',
-            [
-                'additional_minutes' => $additionalMinutes,
-                'updated_at' => now()->toIso8601String(),
-            ]
-        ));
+        DB::transaction(function () use ($meeting, $additionalMinutes) {
+            $session = BreakoutSession::query()
+                ->where('meeting_id', $meeting->id)
+                ->where('status', 'active')
+                ->latest('id')
+                ->lockForUpdate()
+                ->first();
+
+            if (! $session) {
+                abort(422, 'No active breakout session was found.');
+            }
+
+            if ($session->duration_minutes === null) {
+                abort(422, 'This breakout session has no timer configured.');
+            }
+
+            $newDuration = (int) $session->duration_minutes + $additionalMinutes;
+            if ($newDuration < 1) {
+                abort(422, 'Timer must remain at least 1 minute.');
+            }
+
+            $session->update([
+                'duration_minutes' => $newDuration,
+            ]);
+
+            $elapsedSeconds = max(0, (int) $session->started_at?->diffInSeconds(now()));
+            $remainingSeconds = max(0, ($newDuration * 60) - $elapsedSeconds);
+
+            broadcast(new MeetingSignal(
+                $meeting,
+                'system',
+                'breakout-timer-updated',
+                [
+                    'additional_minutes' => $additionalMinutes,
+                    'duration_minutes' => $newDuration,
+                    'remaining_seconds' => $remainingSeconds,
+                    'updated_at' => now()->toIso8601String(),
+                ]
+            ));
+        });
     }
 
-    public function joinBreakoutRoom(Meeting $meeting, MeetingParticipant $participant, string $roomId): void
+    public function joinBreakoutRoom(Meeting $meeting, MeetingParticipant $participant, ?string $roomId): void
     {
+        if (in_array(strtolower((string) $roomId), ['main', 'null', ''], true)) {
+            $roomId = null;
+        }
+
         // Force refresh from database to avoid race conditions with recent moveParticipantToBreakout updates
         $participant->refresh();
 

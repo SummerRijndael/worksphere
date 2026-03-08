@@ -1,7 +1,7 @@
 <template>
     <div
         v-if="meetingStore.activeBreakoutSession && meetingStore.isHost"
-        class="fixed z-100 w-[400px] select-none"
+        class="fixed z-100 w-[500px] max-w-[calc(100vw-20px)] select-none"
         :style="{
             right: !hasBeenDragged ? '24px' : 'auto',
             bottom: !hasBeenDragged ? '96px' : 'auto',
@@ -10,98 +10,113 @@
         }"
     >
         <div
-            class="bg-(--surface-primary)/85 backdrop-blur-2xl border border-(--border-muted) rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.3)] flex flex-col overflow-visible max-h-[600px] transition-all duration-300"
+            class="relative bg-(--surface-primary) border border-(--border-muted) rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.3)] flex flex-col overflow-hidden max-h-[650px] transition-all duration-300 isolate"
         >
             <!-- Header -->
             <div
-                class="p-4 border-b border-(--border-muted) flex items-center justify-between bg-(--surface-tertiary)/50 cursor-move"
+                class="relative px-5 pt-4 pb-4 border-b border-(--border-muted) bg-(--surface-secondary) cursor-move"
                 @pointerdown="startDragging"
             >
                 <!-- Drag Grip Handle -->
                 <div
-                    class="absolute top-1 left-1/2 -translate-x-1/2 flex gap-1 opacity-20 group-hover:opacity-100 transition-opacity"
+                    class="absolute top-1.5 left-1/2 -translate-x-1/2 flex gap-1 opacity-30"
                 >
                     <div class="w-1 h-1 rounded-full bg-(--text-muted)"></div>
                     <div class="w-1 h-1 rounded-full bg-(--text-muted)"></div>
                     <div class="w-1 h-1 rounded-full bg-(--text-muted)"></div>
                 </div>
 
-                <div class="flex items-center gap-2">
-                    <div class="flex h-2 w-2 relative">
-                        <span
-                            class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"
-                        ></span>
-                        <span
-                            class="relative inline-flex rounded-full h-2 w-2 bg-green-500"
-                        ></span>
-                    </div>
-                    <div>
-                        <span
-                            class="text-xs font-bold uppercase tracking-wider text-(--text-muted)"
-                            >Breakout Control</span
-                        >
-                        <div
-                            v-if="meetingStore.activeBreakoutSession"
-                            class="flex items-center gap-1.5 mt-0.5"
-                        >
-                            <span
-                                class="text-[10px] text-(--text-muted) font-mono"
-                                >{{ meetingStore.formatBreakoutTime }}</span
-                            >
-                            <!-- Timer Adjustments -->
-                            <div
-                                v-if="meetingStore.breakoutTimer > 0"
-                                class="flex gap-1"
-                            >
-                                <button
-                                    @click="adjustTimer(1)"
-                                    class="w-4 h-4 rounded bg-(--surface-muted) hover:bg-(--surface-highlight) text-(--text-muted) border border-(--border-muted) flex items-center justify-center transition-all"
-                                    title="Add 1 minute"
+                <div class="pt-2 space-y-3">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="flex items-start gap-2.5 min-w-0">
+                            <div class="flex h-2 w-2 relative mt-1.5 shrink-0">
+                                <span
+                                    class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"
+                                ></span>
+                                <span
+                                    class="relative inline-flex rounded-full h-2 w-2 bg-green-500"
+                                ></span>
+                            </div>
+                            <div class="min-w-0">
+                                <p
+                                    class="text-[11px] font-extrabold uppercase tracking-[0.14em] text-(--text-muted)"
                                 >
-                                    <Icon name="plus" size="8" />
-                                </button>
-                                <button
-                                    @click="adjustTimer(-1)"
-                                    class="w-4 h-4 rounded bg-(--surface-muted) hover:bg-(--surface-highlight) text-(--text-muted) border border-(--border-muted) flex items-center justify-center transition-all"
-                                    title="Remove 1 minute"
+                                    Breakout Control
+                                </p>
+                                <div
+                                    v-if="meetingStore.activeBreakoutSession"
+                                    class="flex items-center gap-1.5 mt-1"
                                 >
-                                    <Icon name="minus" size="8" />
-                                </button>
+                                    <span
+                                        class="text-[11px] text-(--text-muted) font-mono tabular-nums"
+                                        >{{ meetingStore.formatBreakoutTime }}</span
+                                    >
+                                    <!-- Timer Adjustments -->
+                                    <div
+                                        v-if="meetingStore.breakoutTimer > 0"
+                                        class="flex gap-1"
+                                    >
+                                        <button
+                                            @click="adjustTimer(1)"
+                                            class="w-4 h-4 rounded bg-(--surface-muted) hover:bg-(--surface-highlight) text-(--text-muted) border border-(--border-muted) flex items-center justify-center transition-all"
+                                            title="Add 1 minute"
+                                        >
+                                            <Icon name="plus" size="8" />
+                                        </button>
+                                        <button
+                                            @click="adjustTimer(-1)"
+                                            class="w-4 h-4 rounded bg-(--surface-muted) hover:bg-(--surface-highlight) text-(--text-muted) border border-(--border-muted) flex items-center justify-center transition-all"
+                                            title="Remove 1 minute"
+                                        >
+                                            <Icon name="minus" size="8" />
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
+
+                        <button
+                            @click="isMinimized = !isMinimized"
+                            class="h-8 w-8 shrink-0 flex items-center justify-center hover:bg-(--surface-muted) rounded-lg transition-colors"
+                        >
+                            <Icon
+                                :name="isMinimized ? 'chevron-up' : 'chevron-down'"
+                                size="16"
+                            />
+                        </button>
                     </div>
-                </div>
-                <div class="flex items-center gap-2">
-                    <button
-                        v-if="meetingStore.isInBreakout"
-                        @click="returnToMain"
-                        :disabled="meetingStore.isTransitioningRoom"
-                        class="p-1 px-2 flex items-center gap-1.5 border border-(--color-primary-500)/20 rounded-lg text-[10px] font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                        :class="[
-                            meetingStore.isTransitioningRoom
-                                ? 'bg-(--surface-muted) text-(--text-muted)'
-                                : 'bg-(--color-primary-600)/10 hover:bg-(--color-primary-600) text-(--color-primary-600) hover:text-white',
-                        ]"
-                        title="Leave breakout and return to main meeting"
-                    >
-                        <Icon
-                            v-if="meetingStore.isTransitioningRoom"
-                            name="loader"
-                            size="12"
-                            class="animate-spin"
-                        />
-                        <Icon v-else name="log-out" size="12" />
-                        Main Room
-                    </button>
-                    <button
-                        @click="isMinimized = !isMinimized"
-                        class="p-1 hover:bg-(--surface-muted) rounded-md transition-colors"
-                    >
-                        <Icon
-                            :name="isMinimized ? 'chevron-up' : 'chevron-down'"
-                            size="16"
-                        />
-                    </button>
+
+                    <div class="grid grid-cols-[auto,1fr] items-center gap-2.5">
+                        <button
+                            @click="broadcastToAllRooms"
+                            class="h-9 px-3.5 flex items-center gap-1.5 border border-(--border-muted) rounded-xl text-[11px] font-bold transition-all bg-(--surface-tertiary) hover:bg-(--surface-muted) text-(--text-primary)"
+                            title="Broadcast message to all breakout rooms"
+                        >
+                            <Icon name="megaphone" size="12" />
+                            All Rooms
+                        </button>
+                        <button
+                            v-if="meetingStore.isInBreakout"
+                            @click="returnToMain"
+                            :disabled="meetingStore.isTransitioningRoom"
+                            class="h-9 px-3.5 flex items-center justify-center gap-1.5 border border-(--color-primary-500)/25 rounded-xl text-[11px] font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            :class="[
+                                meetingStore.isTransitioningRoom
+                                    ? 'bg-(--surface-tertiary) text-(--text-muted)'
+                                    : 'bg-(--color-primary-600)/12 hover:bg-(--color-primary-600) text-(--color-primary-600) hover:text-white',
+                            ]"
+                            title="Leave breakout and return to main meeting"
+                        >
+                            <Icon
+                                v-if="meetingStore.isTransitioningRoom"
+                                name="loader"
+                                size="12"
+                                class="animate-spin"
+                            />
+                            <Icon v-else name="log-out" size="12" />
+                            Main Room
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -384,7 +399,7 @@
 
             <div
                 v-show="!isMinimized"
-                class="p-3 bg-(--surface-tertiary)/30 border-t border-(--border-muted) flex items-center justify-between text-[10px] text-(--text-muted)"
+                class="p-3 bg-(--surface-secondary) border-t border-(--border-muted) flex items-center justify-between text-[10px] text-(--text-muted)"
             >
                 <span>Active for {{ formattedTime }}</span>
                 <span class="font-mono">{{
@@ -596,14 +611,22 @@ async function broadcastToRoom(room: any) {
     showBroadcastModal.value = true;
 }
 
+function broadcastToAllRooms() {
+    targetBroadcastRoom.value = null;
+    showBroadcastModal.value = true;
+}
+
 async function handleBroadcastSend(msg: string) {
-    if (!targetBroadcastRoom.value) return;
     try {
         await meetingStore.notifyBreakoutActivity(
-            `Host message: ${msg}`,
-            targetBroadcastRoom.value.id,
+            msg,
+            targetBroadcastRoom.value?.id ?? null,
         );
-        toast.info(`Message broadcast to ${targetBroadcastRoom.value.name}`);
+        toast.info(
+            targetBroadcastRoom.value
+                ? `Message broadcast to ${targetBroadcastRoom.value.name}`
+                : "Message broadcast to all breakout rooms",
+        );
     } catch (e) {
         toast.error("Failed to send broadcast");
     }

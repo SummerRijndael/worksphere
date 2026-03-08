@@ -17,6 +17,9 @@ return [
         'limits' => [
             'free_max_participants' => 25,
             'pro_max_participants' => 50,
+            // Maximum meetings a single user can create and keep.
+            // Delete existing meetings to free up slots.
+            'max_meetings_per_user' => env('MEETING_MAX_PER_USER', 15),
         ],
     ],
 ];
