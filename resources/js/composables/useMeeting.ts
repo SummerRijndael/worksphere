@@ -1,26 +1,47 @@
 import { ref } from 'vue';
 import { toast } from 'vue-sonner';
+import { isValidUlid, normalizeUlid } from '@/utils/meetingId';
 
 let meetingPopup: Window | null = null;
 let broadcastChannel: BroadcastChannel | null = null;
 
 export function useMeeting() {
   function openMeetingPopup(meetingId: string, participantId?: string) {
+    if (!isValidUlid(meetingId)) {
+      toast.error('Invalid meeting ID', {
+        description: 'Please use the meeting link from your invitation email or ask the host to resend it.',
+      });
+      return;
+    }
+
+    const safeMeetingId = normalizeUlid(meetingId);
+
+    let safeParticipantId: string | undefined;
+    if (participantId) {
+      if (!isValidUlid(participantId)) {
+        toast.error('Invalid participant session', {
+          description: 'Your join session has expired. Please start again from the lobby.',
+        });
+        return;
+      }
+      safeParticipantId = normalizeUlid(participantId);
+    }
+
     const width = 1280;
     const height = 800;
     const left = window.screenX + (window.outerWidth - width) / 2;
     const top = window.screenY + (window.outerHeight - height) / 2;
 
-    let url = `/m/${meetingId}`;
-    if (participantId) {
-      url += `?participant=${participantId}`;
+    let url = `/m/${safeMeetingId}`;
+    if (safeParticipantId) {
+      url += `?participant=${safeParticipantId}`;
     }
 
-    console.log('[Meeting] Opening popup for meeting:', meetingId);
+    console.log('[Meeting] Opening popup for meeting:', safeMeetingId);
 
     meetingPopup = window.open(
       url,
-      `worksphere-meeting-${meetingId}`,
+      `worksphere-meeting-${safeMeetingId}`,
       `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=no,toolbar=no,menubar=no,location=no,status=no`
     );
 

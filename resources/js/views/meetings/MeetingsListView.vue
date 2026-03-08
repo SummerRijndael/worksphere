@@ -326,7 +326,7 @@
                                     meeting,
                                 ).slice(0, 3)"
                                 :key="participant.id"
-                                :title="participant.user?.name || 'Guest'"
+                                :title="getParticipantDisplayName(participant)"
                                 class="w-7 h-7 rounded-full border-2 border-(--surface-primary) overflow-hidden shrink-0"
                             >
                                 <Avatar
@@ -499,6 +499,7 @@ import { toast } from "vue-sonner";
 import dayjs from "dayjs";
 import { useAuthStore } from "@/stores/auth";
 import { formatTimeAgo } from "@/utils/date";
+import { isValidUlid, normalizeUlid } from "@/utils/meetingId";
 import { useMeeting } from "@/composables/useMeeting";
 import echo, { isEchoAvailable } from "@/echo";
 
@@ -523,8 +524,17 @@ const POLL_INTERVAL_MS = 30000; // 30 seconds
 const RATE_LIMIT_MS = 5000; // 5s cooldown on manual refresh
 
 const handleJoinById = () => {
-    if (!joinId.value.trim()) return;
-    openMeetingPopup(joinId.value.trim());
+    const rawId = joinId.value.trim();
+    if (!rawId) return;
+
+    if (!isValidUlid(rawId)) {
+        toast.error("Invalid meeting ID", {
+            description: "Please enter the meeting ID from your invite link.",
+        });
+        return;
+    }
+
+    openMeetingPopup(normalizeUlid(rawId));
     joinId.value = "";
 };
 
@@ -605,7 +615,11 @@ const startInstantMeeting = async () => {
         const meeting = await meetingService.createMeeting({
             title: `Instant Meeting - ${dayjs().format("HH:mm")}`,
             start_time: dayjs().toISOString(),
-            settings: { instant: true, lobby_enabled: false },
+            settings: {
+                instant: true,
+                lobby_enabled: false,
+                require_host_or_cohost_present: false,
+            },
         });
 
         toast.success("Instant meeting created");
@@ -734,6 +748,16 @@ const getMeetingDisplayCount = (meeting: Meeting) => {
         return meeting.active_participant_count ?? 0;
     }
     return meeting.participants?.length ?? 0;
+};
+
+const getParticipantDisplayName = (participant: any) => {
+    const name =
+        participant?.user?.name || participant?.metadata?.guest_name || "Guest";
+    const isGuest = !participant?.user?.public_id && !participant?.user?.id;
+    if (isGuest && !/\(guest\)$/i.test(name)) {
+        return `${name} (Guest)`;
+    }
+    return name;
 };
 
 // Start listening once echo is available

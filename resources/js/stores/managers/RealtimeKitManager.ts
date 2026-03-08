@@ -21,6 +21,90 @@ export function createRealtimeKitManager(
     const isInitializing = ref(false);
     const isSessionActive = ref(false);
     const networkScore = ref<number>(0); // 0=Good, 1=Fair, 2=Poor
+    let lastScreenshareProfile: string | null = null;
+
+    const resolveParticipantId = (p: any, isScreen = false) => {
+        const baseId = String(p?.customParticipantId || p?.id || '').toLowerCase();
+        return isScreen ? `${baseId}:screen` : baseId;
+    };
+
+    function syncLocalTrack(kind: 'audio' | 'video', track: MediaStreamTrack | null) {
+        const current = localStream.value ? new MediaStream(localStream.value.getTracks()) : new MediaStream();
+        const keepTrackId = track?.id;
+
+        current.getTracks().forEach((t) => {
+            if (t.kind === kind && t.id !== keepTrackId) {
+                current.removeTrack(t);
+                try { t.stop(); } catch {}
+            }
+        });
+
+        if (!track) {
+            current.getTracks().forEach((t) => {
+                if (t.kind === kind) {
+                    current.removeTrack(t);
+                    try { t.stop(); } catch {}
+                }
+            });
+        } else if (!current.getTracks().some((t) => t.id === track.id)) {
+            current.addTrack(track);
+        }
+
+        // Preserve null when there are truly no local tracks.
+        localStream.value = current.getTracks().length > 0 ? current : null;
+    }
+
+    function getScreenshareConstraintsByNetwork() {
+        // Conservative profiles tuned for stability over sharpness.
+        // 0 = good, 1 = fair, 2 = poor
+        if (networkScore.value >= 2) {
+            return {
+                profile: 'poor',
+                constraints: {
+                    width: { ideal: 960 },
+                    height: { ideal: 540 },
+                    frameRate: { ideal: 10 }
+                }
+            };
+        }
+
+        if (networkScore.value === 1) {
+            return {
+                profile: 'fair',
+                constraints: {
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    frameRate: { ideal: 12 }
+                }
+            };
+        }
+
+        return {
+            profile: 'good',
+            constraints: {
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+                frameRate: { ideal: 15 }
+            }
+        };
+    }
+
+    async function applyScreenshareConstraints(force = false) {
+        if (!cfMeeting || !isSessionActive.value) return;
+        if (typeof cfMeeting.self?.updateScreenshareConstraints !== 'function') return;
+        if (!cfMeeting.self?.screenShareEnabled) return;
+
+        const { profile, constraints } = getScreenshareConstraintsByNetwork();
+        if (!force && lastScreenshareProfile === profile) return;
+
+        try {
+            await cfMeeting.self.updateScreenshareConstraints(constraints as any);
+            lastScreenshareProfile = profile;
+            log('MEDIA', `Applied screenshare constraints profile: ${profile}`, constraints);
+        } catch (e) {
+            log('ERROR', 'Failed to apply screenshare constraints', e);
+        }
+    }
 
 
     /**
@@ -101,13 +185,13 @@ export function createRealtimeKitManager(
         // Remote participant left
         cfMeeting.participants.joined.on('participantLeft', (participant: any) => {
             log('PARTICIPANT', `Remote participant left: ${participant.id}`);
-            removeParticipantStreams(participant.id);
+            removeParticipantStreams(resolveParticipantId(participant));
         });
 
         // Talking state (Active Speaker)
         cfMeeting.participants.active.on('activeSpeakerChanged', (participant: any) => {
             if (participant) {
-                emitTalkingState(participant.id.toLowerCase(), true);
+                emitTalkingState(resolveParticipantId(participant), true);
             }
         });
 
@@ -121,50 +205,78 @@ export function createRealtimeKitManager(
             if (score >= 4) networkScore.value = 0;
             else if (score === 3) networkScore.value = 1;
             else networkScore.value = 2;
+
+            // Adapt screen-share quality in-flight when network degrades/improves.
+            void applyScreenshareConstraints();
+        });
+
+        // Keep local stream in sync even when tracks are stopped externally (device/UI/toolbars).
+        cfMeeting.self.on('videoUpdate', (payload: any) => {
+            const track = payload?.videoEnabled ? (payload?.videoTrack || cfMeeting?.self?.videoTrack || null) : null;
+            syncLocalTrack('video', track);
+        });
+
+        cfMeeting.self.on('audioUpdate', (payload: any) => {
+            const track = payload?.audioEnabled ? (payload?.audioTrack || cfMeeting?.self?.audioTrack || null) : null;
+            syncLocalTrack('audio', track);
+        });
+
+        cfMeeting.self.on('screenShareUpdate', (payload: any) => {
+            const localId = localParticipantRef.value?.public_id?.toLowerCase();
+            if (!localId) return;
+            const screenPid = `${localId}:screen`;
+
+            if (payload?.screenShareEnabled && payload?.screenShareTracks?.video) {
+                handleRemoteTrack(screenPid, payload.screenShareTracks.video, 'screen-video');
+                if (payload.screenShareTracks.audio) {
+                    handleRemoteTrack(screenPid, payload.screenShareTracks.audio, 'screen-audio');
+                }
+                onScreenShareToggle(localId, true);
+            } else {
+                removeParticipantStreams(screenPid);
+                onScreenShareToggle(localId, false);
+            }
         });
     }
 
     function setupParticipantListeners(participant: any) {
-        const resolvePid = (p: any, isScreen = false) => {
-            const baseId = (p.customParticipantId || p.id).toLowerCase();
-            return isScreen ? `${baseId}:screen` : baseId;
-        };
-
         // Handle initial tracks if already available
-        if (participant.videoEnabled) handleRemoteTrack(resolvePid(participant), participant.videoTrack, 'video');
-        if (participant.audioEnabled) handleRemoteTrack(resolvePid(participant), participant.audioTrack, 'audio');
+        if (participant.videoEnabled) handleRemoteTrack(resolveParticipantId(participant), participant.videoTrack, 'video');
+        if (participant.audioEnabled) handleRemoteTrack(resolveParticipantId(participant), participant.audioTrack, 'audio');
         if (participant.screenShareEnabled && participant.screenShareTracks) {
-            handleRemoteTrack(resolvePid(participant, true), participant.screenShareTracks.video, 'screen-video');
-            handleRemoteTrack(resolvePid(participant, true), participant.screenShareTracks.audio, 'screen-audio');
+            handleRemoteTrack(resolveParticipantId(participant, true), participant.screenShareTracks.video, 'screen-video');
+            handleRemoteTrack(resolveParticipantId(participant, true), participant.screenShareTracks.audio, 'screen-audio');
         }
 
         // Listen for Video updates (Webcam)
         participant.on('videoUpdate', (payload: any) => {
             log('TRACK', `Remote videoUpdate from ${participant.id}`, { enabled: payload.videoEnabled });
-            if (payload.videoEnabled && payload.videoTrack) {
-                handleRemoteTrack(resolvePid(participant), payload.videoTrack, 'video');
+            const sourceTrack = payload?.videoTrack || participant?.videoTrack || null;
+            if (payload.videoEnabled && sourceTrack) {
+                handleRemoteTrack(resolveParticipantId(participant), sourceTrack, 'video');
             } else {
                 log('TRACK', `Remote video disabled for ${participant.id}`);
-                handleRemoteTrack(resolvePid(participant), null, 'video');
+                handleRemoteTrack(resolveParticipantId(participant), null, 'video');
             }
         });
 
         // Listen for Audio updates (Mic)
         participant.on('audioUpdate', (payload: any) => {
             log('TRACK', `Remote audioUpdate from ${participant.id}`, { enabled: payload.audioEnabled });
-            if (payload.audioEnabled && payload.audioTrack) {
-                handleRemoteTrack(resolvePid(participant), payload.audioTrack, 'audio');
+            const sourceTrack = payload?.audioTrack || participant?.audioTrack || null;
+            if (payload.audioEnabled && sourceTrack) {
+                handleRemoteTrack(resolveParticipantId(participant), sourceTrack, 'audio');
             } else {
                 log('TRACK', `Remote audio disabled for ${participant.id}`);
-                handleRemoteTrack(resolvePid(participant), null, 'audio');
+                handleRemoteTrack(resolveParticipantId(participant), null, 'audio');
             }
         });
 
         // Listen for Screenshare updates
         participant.on('screenShareUpdate', (payload: any) => {
             log('TRACK', `Remote screenShareUpdate from ${participant.id}`, { enabled: payload.screenShareEnabled });
-            const screenPid = resolvePid(participant, true);
-            const basePid = resolvePid(participant);
+            const screenPid = resolveParticipantId(participant, true);
+            const basePid = resolveParticipantId(participant);
 
             if (payload.screenShareEnabled && payload.screenShareTracks) {
                 if (payload.screenShareTracks.video) handleRemoteTrack(screenPid, payload.screenShareTracks.video, 'screen-video');
@@ -214,6 +326,25 @@ export function createRealtimeKitManager(
         }
 
         // ADDITION / UPDATE CASE
+        const endedTrackKind =
+            trackKind === 'screen-video' ? 'screen-video' :
+            trackKind === 'screen-audio' ? 'screen-audio' :
+            track?.kind === 'audio' ? 'audio' : 'video';
+        const trackedId = track.id;
+        const removeIfStillPresent = () => {
+            const current = remoteStreams.value.get(pid);
+            const stillPresent = !!current?.getTracks().find((t) => t.id === trackedId);
+            if (!stillPresent) return;
+            log('TRACK', `Track inactive for ${pid} (${endedTrackKind}) — removing stale track`);
+            handleRemoteTrack(pid, null, endedTrackKind);
+        };
+        track.onended = () => {
+            removeIfStillPresent();
+        };
+        track.onmute = () => {
+            removeIfStillPresent();
+        };
+
         if (existingStream) {
             // Check if track already exists (avoid duplicates)
             const tracks = existingStream.getTracks();
@@ -270,12 +401,23 @@ export function createRealtimeKitManager(
             } else {
                 await cfMeeting.self.disableAudio();
             }
+            syncLocalTrack('audio', newTrack);
         } else {
             if (newTrack) {
                 await cfMeeting.self.enableVideo(newTrack);
+                const publishedRawId = cfMeeting.self?.rawVideoTrack?.id;
+                if (publishedRawId && publishedRawId !== newTrack.id) {
+                    log(
+                        'MEDIA',
+                        'Video publish verification mismatch. Retrying one more enableVideo() to pin custom track.',
+                        { expected: newTrack.id, actual: publishedRawId }
+                    );
+                    await cfMeeting.self.enableVideo(newTrack);
+                }
             } else {
                 await cfMeeting.self.disableVideo();
             }
+            syncLocalTrack('video', newTrack);
         }
     }
 
@@ -292,6 +434,9 @@ export function createRealtimeKitManager(
             } else {
                 await cfMeeting.self.enableScreenShare();
             }
+
+            // Normalize capture profile after share starts (browser defaults can be too heavy).
+            await applyScreenshareConstraints(true);
 
             log('MEDIA', 'Screen share published successfully');
 
@@ -322,6 +467,7 @@ export function createRealtimeKitManager(
         log('MEDIA', 'Unpublishing screen share via SDK');
         
         await cfMeeting.self.disableScreenShare();
+        lastScreenshareProfile = null;
 
         if (localParticipantRef.value) {
             const pid = localParticipantRef.value.public_id.toLowerCase();
@@ -331,11 +477,44 @@ export function createRealtimeKitManager(
 
     function removeParticipantStreams(pid: string) {
         const id = pid.toLowerCase();
-        if (remoteStreams.value.has(id)) {
-            const newMap = new Map(remoteStreams.value);
-            newMap.delete(id);
+        const targets = id.endsWith(':screen') ? [id] : [id, `${id}:screen`];
+        let mutated = false;
+        const newMap = new Map(remoteStreams.value);
+
+        targets.forEach((target) => {
+            const stream = newMap.get(target);
+            if (!stream) return;
+            stream.getTracks().forEach((t) => {
+                try { t.stop(); } catch {}
+            });
+            newMap.delete(target);
+            mutated = true;
+        });
+
+        if (mutated) {
             remoteStreams.value = newMap;
         }
+    }
+
+    function removeParticipantTrack(pid: string, kind: 'audio' | 'video') {
+        const id = pid.toLowerCase();
+        const stream = remoteStreams.value.get(id);
+        if (!stream) return;
+
+        stream.getTracks()
+            .filter((t) => t.kind === kind)
+            .forEach((t) => {
+                stream.removeTrack(t);
+                try { t.stop(); } catch {}
+            });
+
+        const newMap = new Map(remoteStreams.value);
+        if (stream.getTracks().length === 0) {
+            newMap.delete(id);
+        } else {
+            newMap.set(id, stream);
+        }
+        remoteStreams.value = newMap;
     }
 
     function setLocalStream(stream: MediaStream | null) {
@@ -347,7 +526,13 @@ export function createRealtimeKitManager(
             cfMeeting.leaveRoom();
             cfMeeting = null;
         }
-        remoteStreams.value.clear();
+        remoteStreams.value.forEach((s) => {
+            s.getTracks().forEach((t) => {
+                try { t.stop(); } catch {}
+            });
+        });
+        remoteStreams.value = new Map();
+        localStream.value = null;
     }
 
     return {
@@ -366,6 +551,7 @@ export function createRealtimeKitManager(
         publishScreenTrack,
         unpublishScreenTrack,
         removeParticipantStreams,
+        removeParticipantTrack,
         cleanup,
         
         // Legacy SFU compatibility mocks

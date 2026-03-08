@@ -131,9 +131,35 @@ export function createStreamManager(
                         }
                     }
                 };
+
+                const handleInactive = () => {
+                    const pid = normalizedParticipantId;
+                    const existingStream = remoteStreams.value.get(pid);
+                    if (!existingStream) return;
+
+                    const stale = existingStream.getTracks().find(t => t.id === evt.track.id);
+                    if (!stale) return;
+
+                    existingStream.removeTrack(stale);
+                    try { stale.stop(); } catch {}
+
+                    if (stale.kind === 'audio' && !pid.endsWith(':screen') && existingStream.getAudioTracks().length === 0) {
+                        stopAudioAnalysis(pid);
+                    }
+
+                    if (existingStream.getTracks().length === 0) {
+                        const newMap = new Map(remoteStreams.value);
+                        newMap.delete(pid);
+                        remoteStreams.value = newMap;
+                    } else {
+                        remoteStreams.value = new Map(remoteStreams.value);
+                    }
+                };
                 
                 // Attach handler for when the track becomes unmuted (active)
                 evt.track.onunmute = handleActive;
+                evt.track.onmute = handleInactive;
+                evt.track.onended = handleInactive;
                 // If the track is already unmuted, call the handler immediately
                 if (!evt.track.muted) handleActive();
             } else {
@@ -448,8 +474,34 @@ export function createStreamManager(
                         }
                     }
                 };
+
+                const handleInactive = () => {
+                    const existingStream = remoteStreams.value.get(pid);
+                    if (!existingStream) return;
+
+                    const stale = existingStream.getTracks().find(t => t.id === track.id);
+                    if (!stale) return;
+
+                    existingStream.removeTrack(stale);
+                    try { stale.stop(); } catch {}
+                    log('TRACK', `Track ${track.id} became inactive for ${pid}; pruned from stream`);
+
+                    if (stale.kind === 'audio' && !pid.endsWith(':screen') && existingStream.getAudioTracks().length === 0) {
+                        stopAudioAnalysis(pid);
+                    }
+
+                    if (existingStream.getTracks().length === 0) {
+                        const newMap = new Map(remoteStreams.value);
+                        newMap.delete(pid);
+                        remoteStreams.value = newMap;
+                    } else {
+                        remoteStreams.value = new Map(remoteStreams.value);
+                    }
+                };
                 
                 track.onunmute = handleActive;
+                track.onmute = handleInactive;
+                track.onended = handleInactive;
                 if (!track.muted) handleActive();
             } else {
                 log("TRACK", `No participant mapping for MID ${mid}, buffering...`);
@@ -1106,6 +1158,31 @@ export function createStreamManager(
         stopAudioAnalysis(publicId);
     }
 
+    function removeParticipantTrack(publicId: string, kind: 'audio' | 'video') {
+        const pid = publicId.toLowerCase();
+        const stream = remoteStreams.value.get(pid);
+        if (!stream) return;
+
+        stream.getTracks()
+            .filter((t) => t.kind === kind)
+            .forEach((t) => {
+                stream.removeTrack(t);
+                try { t.stop(); } catch {}
+            });
+
+        if (kind === 'audio' && stream.getAudioTracks().length === 0) {
+            stopAudioAnalysis(pid);
+        }
+
+        const newMap = new Map(remoteStreams.value);
+        if (stream.getTracks().length === 0) {
+            newMap.delete(pid);
+        } else {
+            newMap.set(pid, stream);
+        }
+        remoteStreams.value = newMap;
+    }
+
     function cleanup() {
         if (healthCheckInterval) {
             window.clearInterval(healthCheckInterval);
@@ -1357,6 +1434,7 @@ export function createStreamManager(
         publishScreenTrack,
         unpublishScreenTrack,
         removeParticipantStreams,
+        removeParticipantTrack,
         cleanup,
         
         // Per-participant quality scoring

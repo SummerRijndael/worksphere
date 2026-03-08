@@ -123,6 +123,19 @@
                         />
                     </label>
                     <p v-if="form.lobby_enabled" class="text-[11px] text-(--text-muted) ml-6">Participants wait until the host admits them.</p>
+
+                    <label class="flex items-center justify-between cursor-pointer">
+                        <div class="flex items-center gap-2">
+                            <Icon name="shield" size="16" class="text-(--text-muted)" />
+                            <span class="text-sm">Only allow join after host/co-host enters</span>
+                        </div>
+                        <input
+                            v-model="form.require_host_or_cohost_present"
+                            type="checkbox"
+                            class="w-4 h-4 rounded border-(--border-muted) text-(--color-primary-600) focus:ring-(--color-primary-500)"
+                        />
+                    </label>
+                    <p v-if="form.require_host_or_cohost_present" class="text-[11px] text-(--text-muted) ml-6">Participants can join only after a host or co-host is already inside the room.</p>
                 </div>
 
                 <div class="flex items-center gap-2 pt-4">
@@ -170,6 +183,8 @@ const form = reactive({
     auto_generate_password: false,
     guest_access: props.meeting.settings?.guest_access ?? false,
     lobby_enabled: props.meeting.settings?.lobby_enabled ?? true,
+    require_host_or_cohost_present:
+        props.meeting.settings?.require_host_or_cohost_present ?? false,
 });
 
 const submit = async () => {
@@ -186,6 +201,8 @@ const submit = async () => {
                 ...props.meeting.settings,
                 guest_access: form.guest_access,
                 lobby_enabled: form.lobby_enabled,
+                require_host_or_cohost_present:
+                    form.require_host_or_cohost_present,
             },
         });
         toast.success("Meeting updated successfully");

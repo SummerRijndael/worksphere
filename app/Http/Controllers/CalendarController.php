@@ -120,6 +120,7 @@ class CalendarController extends Controller
                         'lobby_enabled' => true,
                         'guest_access' => true,
                         'invited_only' => $hasGuests,
+                        'require_host_or_cohost_present' => false,
                     ],
                 ]);
                 $event->update(['meeting_id' => $meeting->id]);
@@ -217,6 +218,7 @@ class CalendarController extends Controller
                                 'lobby_enabled' => true,
                                 'guest_access' => true,
                                 'invited_only' => $hasGuests,
+                                'require_host_or_cohost_present' => false,
                             ],
                         ]);
                         $event->update(['meeting_id' => $meeting->id]);

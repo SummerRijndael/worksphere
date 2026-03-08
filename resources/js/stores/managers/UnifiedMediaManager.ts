@@ -85,6 +85,9 @@ export function createUnifiedMediaManager(
         removeParticipantStreams: (pid: string) => 
             activeManager.value.removeParticipantStreams(pid),
 
+        removeParticipantTrack: (pid: string, kind: 'audio' | 'video') =>
+            (activeManager.value as any).removeParticipantTrack?.(pid, kind),
+
         // Legacy Signaling Logic Proxies (become NOPs in SDK mode)
         rebroadcastToJoiner: (pid: string) => {
             return activeManager.value.rebroadcastToJoiner(pid);

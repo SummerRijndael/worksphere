@@ -81,6 +81,15 @@ onMounted(() => {
 onUnmounted(() => {
     stopDrag();
 });
+
+const getDisplayName = (p: any) => {
+    const name = p?.user?.name || p?.metadata?.guest_name || p?.public_id || "Participant";
+    const isGuest = !p?.user?.public_id && !p?.user?.id;
+    if (isGuest && !/\(guest\)$/i.test(name)) {
+        return `${name} (Guest)`;
+    }
+    return name;
+};
 </script>
 
 <template>
@@ -162,7 +171,7 @@ onUnmounted(() => {
                         :key="p.public_id" 
                         :value="p.public_id"
                     >
-                        {{ p.user?.name || p.metadata?.guest_name || p.public_id }}
+                        {{ getDisplayName(p) }}
                     </option>
                 </select>
             </div>

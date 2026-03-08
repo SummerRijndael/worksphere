@@ -15,6 +15,7 @@ export interface Meeting {
     settings: {
         lobby_enabled: boolean;
         guest_access: boolean;
+        require_host_or_cohost_present?: boolean;
         [key: string]: any;
     };
     has_password?: boolean;

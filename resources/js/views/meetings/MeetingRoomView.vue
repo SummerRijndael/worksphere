@@ -23,11 +23,8 @@
                             <div class="ping-dot"></div>
                         </div>
                     </div>
-                    <h1 class="waiting-title">Please wait...</h1>
-                    <p class="waiting-desc">
-                        The meeting host has been notified. They'll let you in
-                        soon.
-                    </p>
+                    <h1 class="waiting-title">{{ waitingTitle }}</h1>
+                    <p class="waiting-desc">{{ waitingDescription }}</p>
                     <div class="waiting-meta">
                         <div class="waiting-host-badge">
                             <Avatar
@@ -168,6 +165,19 @@
                                             .lobby_enabled
                                             ? "Enabled"
                                             : "Disabled"
+                                    }}
+                                </div>
+                            </div>
+                            <div class="detail-row">
+                                <div class="detail-label">
+                                    Host/Co-host First
+                                </div>
+                                <div class="detail-value">
+                                    {{
+                                        meetingStore.meeting.settings
+                                            .require_host_or_cohost_present
+                                            ? "Required"
+                                            : "Not required"
                                     }}
                                 </div>
                             </div>
@@ -792,11 +802,7 @@
                                             <div
                                                 class="user-name text-sm font-medium truncate w-32 text-white"
                                             >
-                                                {{
-                                                    p.user?.name ||
-                                                    p.metadata?.guest_name ||
-                                                    "Guest"
-                                                }}
+                                                {{ getParticipantName(p) }}
                                             </div>
                                             <div
                                                 class="text-[10px] text-gray-500 truncate"
@@ -1790,6 +1796,7 @@ import BreakoutOverlay from "./components/BreakoutOverlay.vue";
 import BreakoutDashboard from "./components/BreakoutDashboard.vue";
 import { usePresenceStore } from "@/stores/presence";
 import { useRecording as useRecordingComposable } from "@/composables/useRecording";
+import { isValidUlid, normalizeUlid } from "@/utils/meetingId";
 
 // Custom v-click-outside directive
 const vClickOutside = {
@@ -1813,8 +1820,31 @@ const videoCallStore = useVideoCallStore();
 const whiteboardStore = useWhiteboardStore();
 const themeStore = useThemeStore();
 
-const meetingId = route.params.id as string;
-const participantId = route.query.participant as string;
+const rawMeetingId = String(route.params.id ?? "");
+const meetingId = isValidUlid(rawMeetingId) ? normalizeUlid(rawMeetingId) : "";
+
+const participantStorageKey = meetingId
+    ? `worksphere_meeting_token_${meetingId}`
+    : "";
+
+const participantFromQuery = Array.isArray(route.query.participant)
+    ? route.query.participant[0]
+    : route.query.participant;
+
+const normalizedParticipantFromQuery =
+    typeof participantFromQuery === "string" && isValidUlid(participantFromQuery)
+        ? normalizeUlid(participantFromQuery)
+        : "";
+
+if (participantStorageKey && normalizedParticipantFromQuery) {
+    localStorage.setItem(participantStorageKey, normalizedParticipantFromQuery);
+}
+
+const participantId = normalizedParticipantFromQuery
+    || (participantStorageKey
+        && isValidUlid(localStorage.getItem(participantStorageKey))
+        ? normalizeUlid(localStorage.getItem(participantStorageKey) as string)
+        : "");
 
 const isCameraOn = ref(false);
 const isMicOn = ref(false);
@@ -1974,6 +2004,21 @@ const isDevMode = computed(() => !!import.meta.env.DEV);
 const meetingHostName = computed(
     () => meetingStore.meeting?.host?.name || "Authorized Personnel",
 );
+const isWaitingForModerator = computed(() => {
+    if (!isWaiting.value) return false;
+    return (
+        meetingStore.localParticipant?.metadata?.waiting_reason ===
+        "awaiting_moderator"
+    );
+});
+const waitingTitle = computed(() =>
+    isWaitingForModerator.value ? "Waiting for host..." : "Please wait...",
+);
+const waitingDescription = computed(() =>
+    isWaitingForModerator.value
+        ? "Waiting for a host or co-host to join the meeting."
+        : "The meeting host has been notified. They'll let you in soon.",
+);
 
 /**
  * Smart Self-View Logic:
@@ -1997,7 +2042,12 @@ function getParticipantInitial(p: any) {
 
 function getParticipantName(p: any) {
     if (!p) return "You";
-    return p.user?.name || p.metadata?.guest_name || "Guest";
+    const name = p.user?.name || p.metadata?.guest_name || "Guest";
+    const isGuest = !p.user?.public_id && !p.user?.id;
+    if (isGuest && !/\(guest\)$/i.test(name)) {
+        return `${name} (Guest)`;
+    }
+    return name;
 }
 
 function isParticipantMicOn(p: any) {
@@ -2191,6 +2241,15 @@ function nextPage() {
 onMounted(async () => {
     updateClock();
 
+    if (!meetingId) {
+        toast.error("Invalid meeting link", {
+            description: "Please re-open the meeting from your invitation link.",
+        });
+        await router.replace("/");
+        initializing.value = false;
+        return;
+    }
+
     // SFU PRO: Synchronize visible participants for selective media pulling
     // Priority order: spotlight > active speaker > talking > visible tiles > local
     watch(
@@ -2251,7 +2310,9 @@ onMounted(async () => {
     clockInterval = window.setInterval(updateClock, 10000);
 
     if (!participantId) {
-        toast.error("No participant ID — returning to lobby.");
+        toast.error("Your join session is missing", {
+            description: "Please rejoin from the lobby.",
+        });
         router.push({ name: "meeting-lobby", params: { id: meetingId } });
         return;
     }
@@ -2279,7 +2340,9 @@ onMounted(async () => {
                 meetingStore.originalVideoTrack = videoTrack;
             }
 
-            await meetingStore.addLocalStream(stream);
+            // Lobby blur processor is torn down on route transition; rehydrate before publishing.
+            await rehydrateJoinVideoEffectIfNeeded();
+            await meetingStore.addLocalStream(meetingStore.localStream);
         } else {
             // Cold start: Join without an initial stream (camera/mic off)
             await meetingStore.addLocalStream(null);
@@ -2432,7 +2495,8 @@ const toggleCamera = async () => {
             ]);
             meetingStore.setStream(updatedStream);
             isCameraOn.value = true;
-            meetingStore.replaceTrack("video", finalTrack);
+            await meetingStore.replaceTrack("video", finalTrack);
+            meetingStore.sendSignal("camera-toggle", { enabled: true });
         } catch (e) {
             console.error("Failed to start camera", e);
             toast.error("Could not access camera hardware.");
@@ -2449,7 +2513,8 @@ const toggleCamera = async () => {
         const updatedStream = new MediaStream(stream.getAudioTracks());
         meetingStore.setStream(updatedStream);
         isCameraOn.value = false;
-        meetingStore.replaceTrack("video", null);
+        await meetingStore.replaceTrack("video", null);
+        meetingStore.sendSignal("camera-toggle", { enabled: false });
     }
 };
 
@@ -2482,7 +2547,7 @@ const toggleMic = async () => {
             ]);
             meetingStore.setStream(updatedStream);
             isMicOn.value = true;
-            meetingStore.replaceTrack("audio", audioTrack);
+            await meetingStore.replaceTrack("audio", audioTrack);
         } catch (e) {
             console.error("Failed to start mic", e);
             toast.error("Could not access microphone hardware.");
@@ -2494,9 +2559,45 @@ const toggleMic = async () => {
         const updatedStream = new MediaStream(stream.getVideoTracks());
         meetingStore.setStream(updatedStream);
         isMicOn.value = false;
-        meetingStore.replaceTrack("audio", null);
+        await meetingStore.replaceTrack("audio", null);
     }
 };
+
+async function rehydrateJoinVideoEffectIfNeeded() {
+    const effect = videoCallStore.videoEffect;
+    if (effect !== "blur" && effect !== "image") return;
+    if (!isCameraOn.value) return;
+    if (!meetingStore.originalVideoTrack || !meetingStore.localStream) return;
+
+    try {
+        const refreshedTrack = await backgroundBlur.startVideoEffect(
+            meetingStore.originalVideoTrack,
+            effect,
+            videoCallStore.backgroundImage || undefined,
+            videoCallStore.autoFraming,
+            videoCallStore.hasPhysicalGreenScreen,
+            videoCallStore.greenScreenColor,
+            videoCallStore.greenScreenThreshold,
+        );
+
+        const stream = meetingStore.localStream;
+        const oldVideo = stream.getVideoTracks()[0];
+        if (oldVideo && oldVideo.id !== refreshedTrack.id) {
+            stream.removeTrack(oldVideo);
+        }
+        if (!stream.getVideoTracks().some((t) => t.id === refreshedTrack.id)) {
+            stream.addTrack(refreshedTrack);
+        }
+
+        // Force-publish the transformed track so recording/remote view matches local effect.
+        await meetingStore.replaceTrack("video", refreshedTrack);
+        console.info(
+            `[MeetingRoom] Rehydrated join-time effect (${effect}) with track ${refreshedTrack.id}`,
+        );
+    } catch (e) {
+        console.warn("[MeetingRoom] Failed to rehydrate join-time video effect", e);
+    }
+}
 
 watch(
     [
@@ -2552,7 +2653,7 @@ watch(
 
                 // ALWAYS call replaceTrack when effect changes to ensure sync,
                 // even if the underlying canvas track ID is recycled.
-                meetingStore.replaceTrack("video", newTrack);
+                await meetingStore.replaceTrack("video", newTrack);
                 console.info(
                     `[MeetingRoom] Applied effect: ${effect}, track: ${newTrack.id}`,
                 );
@@ -2588,7 +2689,7 @@ watch(
                 });
                 const track = newS.getAudioTracks()[0];
                 stream.addTrack(track);
-                meetingStore.replaceTrack("audio", track);
+                await meetingStore.replaceTrack("audio", track);
             } catch (e) {
                 console.error(e);
             }
@@ -2632,7 +2733,7 @@ watch(
                 const oldTrack = stream.getVideoTracks()[0];
                 if (oldTrack) stream.removeTrack(oldTrack);
                 stream.addTrack(finalTrack);
-                meetingStore.replaceTrack("video", finalTrack);
+                await meetingStore.replaceTrack("video", finalTrack);
             } catch (e) {
                 console.error(e);
             }
@@ -4403,7 +4504,33 @@ onBeforeUnmount(() => {
     height: 100%;
     width: 100%;
     overflow: hidden;
-    background-color: transparent; /* Blend with stage */
+    background:
+        radial-gradient(
+            900px circle at 16% 10%,
+            rgba(59, 130, 246, 0.12),
+            transparent 58%
+        ),
+        radial-gradient(
+            850px circle at 82% 86%,
+            rgba(139, 92, 246, 0.1),
+            transparent 60%
+        ),
+        var(--surface-primary);
+}
+
+.dark .solo-empty-state {
+    background:
+        radial-gradient(
+            900px circle at 16% 10%,
+            rgba(59, 130, 246, 0.22),
+            transparent 58%
+        ),
+        radial-gradient(
+            850px circle at 82% 86%,
+            rgba(139, 92, 246, 0.18),
+            transparent 60%
+        ),
+        var(--surface-primary);
 }
 
 .ambient-background {
@@ -4411,16 +4538,24 @@ onBeforeUnmount(() => {
     inset: 0;
     overflow: hidden;
     z-index: 0;
-    opacity: 0.6;
+    opacity: 0.42;
+}
+
+.dark .ambient-background {
+    opacity: 0.62;
 }
 
 .blob {
     position: absolute;
     border-radius: 50%;
     filter: blur(90px);
-    opacity: 0.5;
+    opacity: 0.38;
     animation: floatBlob 20s infinite ease-in-out alternate;
     will-change: transform;
+}
+
+.dark .blob {
+    opacity: 0.52;
 }
 
 .blob-1 {
@@ -4475,25 +4610,39 @@ onBeforeUnmount(() => {
     align-items: center;
     justify-content: center;
     padding: 64px 96px;
-    background: transparent;
-    border: none;
-    border-radius: 0;
-    box-shadow: none;
+    background: rgba(255, 255, 255, 0.68);
+    border: 1px solid rgba(255, 255, 255, 0.72);
+    border-radius: 24px;
+    box-shadow: 0 24px 48px rgba(15, 23, 42, 0.14);
+    backdrop-filter: blur(14px) saturate(110%);
+    -webkit-backdrop-filter: blur(14px) saturate(110%);
     animation: soloFadeIn 1s cubic-bezier(0.16, 1, 0.3, 1);
     text-align: center;
 }
 
+.dark .solo-content {
+    background: rgba(17, 20, 28, 0.56);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    box-shadow: 0 24px 56px rgba(0, 0, 0, 0.45);
+}
+
 @media (max-width: 768px) {
     .solo-content {
-        border-radius: 0;
-        border: none;
+        border-radius: 16px;
+        border: 1px solid rgba(255, 255, 255, 0.66);
         padding: 48px 24px;
-        box-shadow: none;
+        box-shadow: 0 16px 36px rgba(15, 23, 42, 0.14);
         width: 100%;
-        height: 100%;
-        background: transparent;
-        backdrop-filter: none;
-        -webkit-backdrop-filter: none;
+        max-width: calc(100% - 24px);
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(12px) saturate(105%);
+        -webkit-backdrop-filter: blur(12px) saturate(105%);
+    }
+
+    .dark .solo-content {
+        border-color: rgba(255, 255, 255, 0.16);
+        box-shadow: 0 18px 40px rgba(0, 0, 0, 0.42);
+        background: rgba(17, 20, 28, 0.6);
     }
 }
 
@@ -4546,20 +4695,25 @@ onBeforeUnmount(() => {
 .solo-name {
     font-size: 28px;
     font-weight: 600;
-    color: #ffffff;
+    color: var(--text-primary);
     margin: 0;
     letter-spacing: -0.5px;
+    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.35);
 }
 .solo-hint {
     font-size: 18px;
-    color: #e8eaed;
+    color: var(--text-secondary);
     margin: 12px 0 0 0;
     font-weight: 400;
 }
 .solo-hint-sub {
     font-size: 15px;
-    color: #9aa0a6;
+    color: var(--text-muted);
     margin: 8px 0 0 0;
+}
+
+.dark .solo-name {
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.45);
 }
 
 /* ─── Waiting Room Overlay ─────────────────────────────────────────────────── */

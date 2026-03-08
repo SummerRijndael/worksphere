@@ -166,6 +166,30 @@ export const useMeetingStore = defineStore('meeting', () => {
         async () => {
             log('SYS', 'onAdmittedCallback triggered - initializing media engine');
             await initMediaEngine();
+
+            // Admission transition guard: refresh roster/state so waiting-room joins
+            // can reliably see existing participants immediately after admission.
+            if (meeting.value?.public_id) {
+                try {
+                    const latest = await meetingService.getMeeting(meeting.value.public_id) as any;
+                    const latestParticipants = (latest?.participants || []).map((p: any) => ({
+                        ...p,
+                        public_id: String(p.public_id || '').toLowerCase(),
+                    }));
+
+                    meeting.value = { ...meeting.value, ...latest };
+                    presence.participants.value = latestParticipants;
+
+                    const me = latestParticipants.find(
+                        (p: any) => p.public_id === localParticipant.value?.public_id?.toLowerCase()
+                    );
+                    if (me) {
+                        localParticipant.value = me;
+                    }
+                } catch (e) {
+                    log('ERROR', 'Failed to refresh meeting roster after admission', e);
+                }
+            }
             
             // Fetch any polls that were already created before we joined
             if (meeting.value?.public_id) {

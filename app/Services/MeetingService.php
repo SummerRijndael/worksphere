@@ -12,6 +12,7 @@ use App\Models\Event;
 use App\Models\Meeting;
 use App\Models\MeetingParticipant;
 use App\Models\User;
+use App\Services\Chat\PresenceService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -198,6 +199,17 @@ class MeetingService implements MeetingServiceContract
         }
         Log::channel('videocall')->info('[504_DEBUG] Step 4: Lock check done', ['time' => microtime(true) - $start]);
 
+        // 4.25 Optional gate: participants may only join after a host/co-host is already in-room.
+        // Instead of hard-rejecting, we place them in waiting state with a specific reason
+        // so the frontend can show "waiting for host/co-host to join".
+        $requiresModeratorPresent = (bool) ($meeting->settings['require_host_or_cohost_present'] ?? false);
+        $mustWaitForModerator = false;
+        if ($requiresModeratorPresent && ! $this->isJoiningAsModerator($meeting, $user, $participantSessionId)) {
+            if (! $this->hasActiveHostOrCohostInRoom($meeting)) {
+                $mustWaitForModerator = true;
+            }
+        }
+
         // 4.5 Capacity Check
         $isPro = config('worksphere.meetings.pro_mode', false);
         $maxParticipants = $isPro
@@ -229,7 +241,7 @@ class MeetingService implements MeetingServiceContract
         $lobbyEnabled = $meeting->settings['lobby_enabled'] ?? true;
         $status = 'waiting';
 
-        if ($meeting->user_id === ($user ? $user->id : null) || $isWhitelistMatch || ! $lobbyEnabled) {
+        if (! $mustWaitForModerator && ($meeting->user_id === ($user ? $user->id : null) || $isWhitelistMatch || ! $lobbyEnabled)) {
             $status = 'admitted';
         }
 
@@ -238,12 +250,12 @@ class MeetingService implements MeetingServiceContract
         if (! $isCompanion) {
             if ($user) {
                 $existing = MeetingParticipant::where('meeting_id', $meeting->id)->where('user_id', $user->id)->first();
-                if ($existing && $existing->status === 'admitted') {
+                if ($existing && $existing->status === 'admitted' && ! $mustWaitForModerator) {
                     $status = 'admitted';
                 }
             } elseif ($participantSessionId) {
                 $existing = MeetingParticipant::where('meeting_id', $meeting->id)->where('public_id', $participantSessionId)->first();
-                if ($existing && $existing->status === 'admitted') {
+                if ($existing && $existing->status === 'admitted' && ! $mustWaitForModerator) {
                     $status = 'admitted';
                 }
             }
@@ -307,6 +319,28 @@ class MeetingService implements MeetingServiceContract
                 ]);
             }
         }
+        // Keep status/metadata in sync even for existing participant records.
+        // This is required for gate transitions (e.g. host absent -> waiting with reason).
+        $metadata = $participant->metadata ?? [];
+        $metadataChanged = false;
+        if ($mustWaitForModerator) {
+            if (($metadata['waiting_reason'] ?? null) !== 'awaiting_moderator') {
+                $metadata['waiting_reason'] = 'awaiting_moderator';
+                $metadataChanged = true;
+            }
+        } elseif (($metadata['waiting_reason'] ?? null) === 'awaiting_moderator') {
+            unset($metadata['waiting_reason']);
+            $metadataChanged = true;
+        }
+
+        if ($participant->status !== $status || $metadataChanged) {
+            $participant->status = $status;
+            if ($metadataChanged) {
+                $participant->metadata = $metadata;
+            }
+            $participant->save();
+            $participant->refresh();
+        }
         Log::channel('videocall')->info('[504_DEBUG] Step 6: Participant DB done', ['time' => microtime(true) - $start]);
 
         // 7. Broadcasts
@@ -337,6 +371,62 @@ class MeetingService implements MeetingServiceContract
             'meeting' => $meeting->load(['host', 'participants.user', 'activeBreakoutSession']),
             'participant' => $participant,
         ];
+    }
+
+    private function isJoiningAsModerator(Meeting $meeting, ?User $user, ?string $participantSessionId): bool
+    {
+        // Meeting owner is always the host.
+        if ($user && $meeting->user_id === $user->id) {
+            return true;
+        }
+
+        $query = MeetingParticipant::where('meeting_id', $meeting->id)
+            ->whereIn('role', ['host', 'co-host']);
+
+        if ($user) {
+            $query->where('user_id', $user->id);
+        } elseif (! empty($participantSessionId)) {
+            $query->whereRaw('LOWER(public_id) = ?', [strtolower($participantSessionId)]);
+        } else {
+            return false;
+        }
+
+        return $query->exists();
+    }
+
+    private function hasActiveHostOrCohostInRoom(Meeting $meeting): bool
+    {
+        try {
+            $activeParticipantIds = app(PresenceService::class)->getActiveMeetingParticipantIds($meeting->public_id);
+
+            if (! is_array($activeParticipantIds) || empty($activeParticipantIds)) {
+                return false;
+            }
+
+            $normalizedIds = collect($activeParticipantIds)
+                ->map(fn ($id) => strtolower((string) $id))
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+
+            if (empty($normalizedIds)) {
+                return false;
+            }
+
+            return MeetingParticipant::where('meeting_id', $meeting->id)
+                ->whereIn('role', ['host', 'co-host'])
+                ->whereIn(DB::raw('LOWER(public_id)'), $normalizedIds)
+                ->exists();
+        } catch (\Throwable $e) {
+            // Fail-open if live presence cannot be queried (e.g., Redis unavailable).
+            Log::warning('[MEETING_GUARD] Failed to validate active host/co-host presence; allowing join', [
+                'meeting' => $meeting->public_id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return true;
+        }
     }
 
     public function admitParticipant(Meeting $meeting, MeetingParticipant $participant): MeetingParticipant

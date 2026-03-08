@@ -488,12 +488,16 @@ const formattedTime = computed(() => {
 });
 
 function getDisplayName(p: any) {
-    return (
+    const name =
         p.display_name ||
         p.user?.name ||
         p.metadata?.guest_name ||
-        "Participant"
-    );
+        "Participant";
+    const isGuest = !p.user?.public_id && !p.user?.id;
+    if (isGuest && !/\(guest\)$/i.test(name)) {
+        return `${name} (Guest)`;
+    }
+    return name;
 }
 
 async function joinRoom(room: any) {

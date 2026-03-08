@@ -294,6 +294,7 @@ import DeviceSettingsModal from "./components/DeviceSettingsModal.vue";
 import { Icon, Avatar } from "@/components/ui";
 import { toast } from "vue-sonner";
 import { logManager } from "@/utils/LogManager";
+import { isValidUlid, normalizeUlid } from "@/utils/meetingId";
 
 const route = useRoute();
 const router = useRouter();
@@ -302,7 +303,8 @@ const themeStore = useThemeStore();
 const meetingStore = useMeetingStore();
 const videoCallStore = useVideoCallStore();
 
-const meetingId = route.params.id as string;
+const rawMeetingId = String(route.params.id ?? "");
+const meetingId = isValidUlid(rawMeetingId) ? normalizeUlid(rawMeetingId) : "";
 const meeting = ref<Meeting | null>(null);
 const loading = ref(true);
 const joining = ref(false);
@@ -336,6 +338,15 @@ const isHost = computed(() => {
 });
 
 onMounted(async () => {
+    if (!meetingId) {
+        toast.error("Invalid meeting link", {
+            description: "Please open the meeting using the invite link from the host.",
+        });
+        await router.replace("/");
+        loading.value = false;
+        return;
+    }
+
     try {
         meeting.value = await meetingService.getMeeting(meetingId);
         const savedPwd = localStorage.getItem(
@@ -588,6 +599,8 @@ watch(showSettings, (isOpen) => {
 });
 
 const joinMeeting = async () => {
+    if (!meetingId) return;
+
     try {
         joining.value = true;
         guestEmailError.value = "";
@@ -642,6 +655,8 @@ const joinMeeting = async () => {
 };
 
 const joinAndPresent = async () => {
+    if (!meetingId) return;
+
     try {
         joining.value = true;
         guestEmailError.value = "";

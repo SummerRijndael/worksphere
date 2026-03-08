@@ -115,7 +115,12 @@ function getParticipantName(publicId: string) {
     const p = meetingStore.allParticipants.find(
         (x) => x.public_id === publicId,
     );
-    return p?.user?.name || p?.metadata?.guest_name || "Guest";
+    const name = p?.user?.name || p?.metadata?.guest_name || "Guest";
+    const isGuest = !p?.user?.public_id && !p?.user?.id;
+    if (isGuest && !/\(guest\)$/i.test(name)) {
+        return `${name} (Guest)`;
+    }
+    return name;
 }
 
 function getParticipantAvatar(publicId: string) {

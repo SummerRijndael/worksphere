@@ -78,7 +78,12 @@ function getParticipantName(publicId: string) {
     if (publicId === meetingStore.localParticipant?.public_id) return 'You';
     const p = meetingStore.allParticipants.find(x => x.public_id === publicId);
     if (!p) return '';
-    return (p.user?.name || p.metadata?.guest_name || 'Guest').split(' ')[0]; // Just first name
+    const base = (p.user?.name || p.metadata?.guest_name || 'Guest').split(' ')[0]; // Just first name
+    const isGuest = !p.user?.public_id && !p.user?.id;
+    if (isGuest && !/\(guest\)$/i.test(base)) {
+        return `${base} (Guest)`;
+    }
+    return base;
 }
 
 function sendReaction(emoji: string) {

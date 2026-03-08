@@ -159,21 +159,33 @@ const activeStream = computed(() => {
 const actualHasVideo = ref(false);
 
 const checkVideoStatus = () => {
+    const hasLiveVideo = (s: MediaStream | null | undefined) => {
+        if (!s) return false;
+        return s
+            .getVideoTracks()
+            .some((t) => t.readyState === "live" && t.enabled && !t.muted);
+    };
+
     if (isLocal.value) {
-        actualHasVideo.value = !!(props.localCameraOn || props.isScreenShare);
+        // Use real track state so UI recovers when a track is externally stopped.
+        if (props.isScreenShare) {
+            actualHasVideo.value = hasLiveVideo(activeStream.value);
+        } else {
+            actualHasVideo.value = !!props.localCameraOn && hasLiveVideo(activeStream.value);
+        }
         return;
     }
+
     const s = activeStream.value;
     if (!s) {
         actualHasVideo.value = false;
         return;
     }
-    const vTracks = s.getVideoTracks();
-    actualHasVideo.value =
-        vTracks.length > 0 &&
-        vTracks[0].enabled &&
-        vTracks[0].readyState === "live" &&
-        !vTracks[0].muted;
+
+    // For remote tracks, rely on live/non-muted state across any video track.
+    actualHasVideo.value = s
+        .getVideoTracks()
+        .some((t) => t.readyState === "live" && !t.muted);
 };
 
 let videoStatusInterval: ReturnType<typeof setInterval>;
@@ -192,6 +204,22 @@ watch(
     [activeStream, () => props.localCameraOn, () => props.isScreenShare],
     () => {
         checkVideoStatus();
+    },
+    { immediate: true },
+);
+
+watch(
+    actualHasVideo,
+    (hasVideo) => {
+        if (hasVideo) return;
+
+        // Force-clear stale last-frame rendering when video is considered off.
+        if (isLocal.value && !props.isScreenShare && localVideo.value) {
+            localVideo.value.srcObject = null;
+        }
+        if (!isLocal.value && remoteVideo.value) {
+            remoteVideo.value.srcObject = null;
+        }
     },
     { immediate: true },
 );
@@ -253,6 +281,12 @@ const displayName = computed(() => {
         : props.participant.user?.name ||
           props.participant.metadata?.guest_name ||
           "Participant";
+
+    const isGuest = !props.participant.user?.public_id && !props.participant.user?.id;
+    if (!isLocal.value && isGuest) {
+        name = `${name} (Guest)`;
+    }
+
     if (props.isScreenShare) name += " (presenting)";
     return name;
 });
@@ -337,6 +371,9 @@ function updateRemoteStream() {
         if (remoteAudio.value && remoteAudio.value.srcObject !== stream) {
             remoteAudio.value.srcObject = stream;
         }
+    } else {
+        if (remoteVideo.value) remoteVideo.value.srcObject = null;
+        if (remoteAudio.value) remoteAudio.value.srcObject = null;
     }
 }
 
@@ -356,6 +393,9 @@ watch(
                     );
                 });
             }
+        } else {
+            if (videoEl) videoEl.srcObject = null;
+            if (audioEl) audioEl.srcObject = null;
         }
     },
     { immediate: true },
