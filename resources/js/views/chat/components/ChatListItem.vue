@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useDate } from "@/composables/useDate";
+import { useAvatar } from "@/composables/useAvatar";
 import { Avatar } from "@/components/ui";
 const { formatDate } = useDate();
+const avatar = useAvatar();
 import type { Chat } from "@/types/models/chat";
 
 interface Props {
@@ -20,54 +22,28 @@ const emit = defineEmits<{
     click: [];
 }>();
 
-// Get other participant for DM
-const otherParticipant = computed(() => {
-    if (props.chat.type !== "dm") return null;
-    return (
-        props.chat.participants.find(
-            (p) => p.public_id !== props.currentUserPublicId,
-        ) ?? props.chat.participants[0]
-    );
-});
-
 const chatTitle = computed(() => {
     if (props.chat.name) return props.chat.name;
-    if (props.chat.type === "dm" && otherParticipant.value) {
-        return otherParticipant.value.name;
+    if (props.chat.type === "dm" && props.chat.participants.length) {
+        const other =
+            props.chat.participants.find(
+                (p) => p.public_id !== props.currentUserPublicId,
+            ) ?? props.chat.participants[0];
+        return other?.name || "Chat";
     }
     return "Group Chat";
 });
 
-const avatarUrl = computed(() => {
-    if (props.chat.avatar_url) return props.chat.avatar_url;
-    if (props.chat.type === "dm" && otherParticipant.value) {
-        return (
-            otherParticipant.value.avatar_url || otherParticipant.value.avatar
-        );
-    }
-    return null;
-});
-
-const avatarColor = computed(() => {
-    if (props.chat.color) return props.chat.color;
-    if (props.chat.type === "dm" && otherParticipant.value) {
-        return otherParticipant.value.color;
-    }
-    return null;
-});
-
-const initials = computed(() => {
-    const name = chatTitle.value;
-    const words = name.split(" ");
-    return words
-        .slice(0, 2)
-        .map((w) => w[0]?.toUpperCase())
-        .join("");
-});
+const avatarData = computed(() =>
+    avatar.resolveChatAvatar(props.chat, props.currentUserPublicId || null),
+);
 
 const isOnline = computed(() => {
-    if (props.chat.type === "dm" && otherParticipant.value) {
-        return otherParticipant.value.is_online;
+    if (props.chat.type === "dm") {
+        const other = props.chat.participants.find(
+            (p) => p.public_id !== props.currentUserPublicId,
+        );
+        return other?.is_online;
     }
     return false;
 });
@@ -99,9 +75,9 @@ const itemClasses = computed(() => {
     <button type="button" :class="itemClasses" @click="emit('click')">
         <div class="relative shrink-0">
             <Avatar
-                :src="avatarUrl"
-                :fallback="initials"
-                :color="avatarColor"
+                :src="avatarData.url"
+                :fallback="avatarData.initials"
+                :color="avatarData.color"
                 size="md"
                 class="w-12 h-12"
             />

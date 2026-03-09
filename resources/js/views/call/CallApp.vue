@@ -1700,13 +1700,12 @@ function findMeshVideoSender(
 
 async function publishLocalCameraTrack(track: MediaStreamTrack) {
     if (callMode.value === "sfu") {
-        await sfuMediaManager.replaceLocalTrack("video", track);
-        return;
+        return sfuMediaManager.replaceLocalTrack("video", track);
     }
 
     // In mesh mode, screen share reuses the primary video sender.
     // Do not overwrite active screen sharing track with camera.
-    if (isScreenSharing.value) return;
+    if (isScreenSharing.value) return true;
 
     const replaceOps: Promise<void>[] = [];
     peers.forEach((peer) => {
@@ -1729,16 +1728,17 @@ async function publishLocalCameraTrack(track: MediaStreamTrack) {
     if (replaceOps.length > 0) {
         await Promise.allSettled(replaceOps);
     }
+
+    return true;
 }
 
 async function unpublishLocalCameraTrack() {
     if (callMode.value === "sfu") {
-        await sfuMediaManager.replaceLocalTrack("video", null);
-        return;
+        return sfuMediaManager.replaceLocalTrack("video", null);
     }
 
     // Keep active screen share untouched.
-    if (isScreenSharing.value) return;
+    if (isScreenSharing.value) return true;
 
     const replaceOps: Promise<void>[] = [];
     peers.forEach((peer) => {
@@ -1755,6 +1755,8 @@ async function unpublishLocalCameraTrack() {
     if (replaceOps.length > 0) {
         await Promise.allSettled(replaceOps);
     }
+
+    return true;
 }
 
 function toggleMute() {
@@ -1803,13 +1805,34 @@ async function toggleCamera() {
 
             localStream.value.addTrack(acquired.track);
             originalVideoTrack.value = acquired.originalTrack;
-            isCameraOff.value = false;
 
-            await publishLocalCameraTrack(acquired.track);
+            const published = await publishLocalCameraTrack(acquired.track);
+            if (!published) {
+                localStream.value.removeTrack(acquired.track);
+                try {
+                    acquired.track.stop();
+                } catch {}
+
+                if (acquired.originalTrack && acquired.originalTrack !== acquired.track) {
+                    try {
+                        acquired.originalTrack.stop();
+                    } catch {}
+                }
+
+                originalVideoTrack.value = null;
+                isCameraOff.value = true;
+                toast.error("Could not start camera stream. Please try again.");
+                return;
+            }
+
+            isCameraOff.value = false;
         } else {
             isCameraOff.value = true;
 
-            await unpublishLocalCameraTrack();
+            const unpublished = await unpublishLocalCameraTrack();
+            if (!unpublished) {
+                toast.error("Could not stop camera stream cleanly.");
+            }
 
             localStream.value?.getVideoTracks().forEach((track) => {
                 localStream.value?.removeTrack(track);

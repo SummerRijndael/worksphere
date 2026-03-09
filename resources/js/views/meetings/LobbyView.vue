@@ -125,13 +125,13 @@
                             The host has ended this meeting for everyone.
                         </p>
                     </div>
-                    <router-link
-                        to="/"
+                    <button
+                        @click="closeLobby"
                         class="w-full bg-surface-secondary hover:bg-surface-tertiary text-primary px-6 py-4 rounded-xl font-medium transition-colors flex items-center justify-center border border-white/10"
                     >
-                        <Icon name="home" size="20" class="mr-2" />
-                        Return to Home
-                    </router-link>
+                        <Icon name="x" size="20" class="mr-2" />
+                        Close
+                    </button>
                 </template>
 
                 <!-- Regular Join UI -->
@@ -373,6 +373,18 @@ onUnmounted(() => {
         meetingStore.originalVideoTrack = null;
     }
 });
+
+const closeLobby = () => {
+    try {
+        window.close();
+    } catch {}
+
+    // Best-effort fallback for browsers that require script-opened windows.
+    try {
+        window.open("", "_self");
+        window.close();
+    } catch {}
+};
 
 const requestPermissionsAndStream = async () => {
     try {

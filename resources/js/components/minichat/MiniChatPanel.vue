@@ -8,6 +8,7 @@ import { useChatStore } from "@/stores/chat";
 import { useAuthStore } from "@/stores/auth";
 import { useThemeStore } from "@/stores/theme";
 import { usePresence } from "@/composables/usePresence"; // Import usePresence
+import { useAvatar } from "@/composables/useAvatar";
 import { useToast } from "@/composables/useToast";
 import { Icon, Avatar } from "@/components/ui";
 import type { Chat, DiscoverablePerson, ChatInvite } from "@/types/models/chat";
@@ -21,6 +22,7 @@ const miniChatStore = useMiniChatStore();
 const chatStore = useChatStore();
 const authStore = useAuthStore();
 const themeStore = useThemeStore();
+const avatar = useAvatar();
 const toast = useToast();
 
 // Use shared presence state (lifecycle managed by App/Layout)
@@ -173,34 +175,8 @@ function getChatName(chat: Chat): string {
     return "Chat";
 }
 
-function getChatAvatar(chat: Chat): string | null {
-    if (chat.avatar_url) return chat.avatar_url;
-    if (chat.type === "dm" && chat.participants.length) {
-        const currentUserId = authStore.user?.public_id;
-        const other = chat.participants.find(
-            (p) => p.public_id !== currentUserId,
-        );
-        return (
-            other?.avatar_url ||
-            other?.avatar ||
-            chat.participants[0]?.avatar_url ||
-            chat.participants[0]?.avatar ||
-            null
-        );
-    }
-    return null;
-}
-
-function getChatColor(chat: Chat): string | null {
-    if (chat.color) return chat.color;
-    if (chat.type === "dm" && chat.participants.length) {
-        const currentUserId = authStore.user?.public_id;
-        const other = chat.participants.find(
-            (p) => p.public_id !== currentUserId,
-        );
-        return other?.color || chat.participants[0]?.color || null;
-    }
-    return null;
+function getChatAvatarData(chat: Chat) {
+    return avatar.resolveChatAvatar(chat, authStore.user?.public_id || null);
 }
 
 function getLastMessagePreview(chat: Chat): string {
@@ -392,8 +368,9 @@ function getChatPresenceStatus(chat: Chat): string {
                     @click="handleChatClick(chat)"
                 >
                     <Avatar
-                        :src="getChatAvatar(chat)"
-                        :fallback="getChatName(chat)?.charAt(0) || '?'"
+                        :src="getChatAvatarData(chat).url"
+                        :fallback="getChatAvatarData(chat).initials"
+                        :color="getChatAvatarData(chat).color"
                         size="md"
                         :status="getChatPresenceStatus(chat)"
                         variant="ring"
@@ -443,8 +420,9 @@ function getChatPresenceStatus(chat: Chat): string {
                     @click="handleChatClick(chat)"
                 >
                     <Avatar
-                        :src="getChatAvatar(chat)"
-                        :fallback="getChatName(chat)?.charAt(0) || '?'"
+                        :src="getChatAvatarData(chat).url"
+                        :fallback="getChatAvatarData(chat).initials"
+                        :color="getChatAvatarData(chat).color"
                         size="md"
                         :status="getChatPresenceStatus(chat)"
                         variant="ring"

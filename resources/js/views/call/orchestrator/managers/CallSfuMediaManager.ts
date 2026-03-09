@@ -458,7 +458,9 @@ export class CallSfuMediaManager {
     async replaceLocalTrack(
         kind: "audio" | "video",
         newTrack: MediaStreamTrack | null,
-    ): Promise<void> {
+    ): Promise<boolean> {
+        let replaceSucceeded = false;
+
         await this.runInQueue(async () => {
             const queuePc = this.options.getPeerConnection();
             const queueSessionId = this.options.getSessionId();
@@ -513,6 +515,12 @@ export class CallSfuMediaManager {
                 // Cloudflare needs track registration for newly-published camera track.
                 if (kind === "video" && newTrack) {
                     await queuePc.setLocalDescription(await queuePc.createOffer());
+                    if (!transceiver.mid) {
+                        throw new Error(
+                            "[SFU] Local video transceiver has no MID after offer.",
+                        );
+                    }
+
                     const registerRes = await videoCallService.sfuSessionTracks(
                         callData.chatId,
                         queueSessionId,
@@ -526,6 +534,21 @@ export class CallSfuMediaManager {
                         this.options.mungeSdp(queuePc.localDescription!.sdp!),
                     );
 
+                    const registeredVideo = Array.isArray(registerRes.tracks)
+                        ? registerRes.tracks.find(
+                              (track: any) =>
+                                  track.trackName === "video" &&
+                                  !!track.mid &&
+                                  !track.errorCode,
+                          )
+                        : null;
+
+                    if (!registeredVideo) {
+                        throw new Error(
+                            "[SFU] Local video track registration returned no valid video track.",
+                        );
+                    }
+
                     if (registerRes.sessionDescription) {
                         await queuePc.setRemoteDescription(
                             new RTCSessionDescription(
@@ -534,6 +557,8 @@ export class CallSfuMediaManager {
                         );
                     }
                 }
+
+                replaceSucceeded = true;
             } catch (error: any) {
                 console.warn(
                     `[SFU] Failed replacing local ${kind} track`,
@@ -550,10 +575,12 @@ export class CallSfuMediaManager {
                 }
             }
 
-            if (kind === "video") {
+            if (kind === "video" && replaceSucceeded) {
                 this.broadcastLocalMediaReady(queuePc, callData, queueSessionId);
             }
         });
+
+        return replaceSucceeded;
     }
 
     async attemptIceRestart(): Promise<void> {
