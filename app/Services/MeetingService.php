@@ -664,15 +664,18 @@ class MeetingService implements MeetingServiceContract
 
         if ($turnKeyId && $turnApiToken) {
             try {
+                $ttl = (int) config('services.cloudflare.turn_credential_ttl', 14400);
+                $ttl = max(60, min($ttl, 172800));
+
                 $response = Http::withToken($turnApiToken)
                     ->post("https://rtc.live.cloudflare.com/v1/turn/keys/{$turnKeyId}/credentials/generate-ice-servers", [
-                        'ttl' => 3600,
+                        'ttl' => $ttl,
                     ]);
 
                 if ($response->successful()) {
                     $data = $response->json();
                     if (! empty($data['iceServers'])) {
-                        $iceServers = $data['iceServers'];
+                        $iceServers = $this->normalizeIceServersForBrowser($data['iceServers']);
                     }
                 }
             } catch (\Exception $e) {
@@ -681,6 +684,36 @@ class MeetingService implements MeetingServiceContract
         }
 
         return ['ice_servers' => $iceServers];
+    }
+
+    /**
+     * Cloudflare may return port 53 alternatives, which major browsers often block.
+     * Keep the list browser-safe by default while preserving username/credential.
+     */
+    private function normalizeIceServersForBrowser(array $iceServers): array
+    {
+        if (! (bool) config('services.cloudflare.turn_filter_blocked_browser_ports', true)) {
+            return $iceServers;
+        }
+
+        $normalized = [];
+        foreach ($iceServers as $server) {
+            $urls = $server['urls'] ?? [];
+            $urlList = is_array($urls) ? $urls : [$urls];
+            $urlList = array_values(array_filter($urlList, fn ($url) => ! preg_match('/:53(?:\\?|$)/', (string) $url)));
+
+            if (count($urlList) === 0) {
+                continue;
+            }
+
+            $entry = $server;
+            $entry['urls'] = count($urlList) === 1 ? $urlList[0] : $urlList;
+            $normalized[] = $entry;
+        }
+
+        return count($normalized) > 0
+            ? $normalized
+            : [['urls' => 'stun:stun.cloudflare.com:3478']];
     }
 
     public function startBreakout(Meeting $meeting, array $rooms, ?int $durationMinutes): void

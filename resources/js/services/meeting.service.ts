@@ -232,6 +232,14 @@ class MeetingService extends BaseService {
         return response.data;
     }
 
+    async sfuTracksClose(id: string, sessionId: string, tracks: any[], force = false): Promise<any> {
+        const response = await this.api.put(`/api/meetings/${id}/sfu/sessions/${sessionId}/tracks/close`, {
+            tracks,
+            force,
+        });
+        return response.data;
+    }
+
     async sfuSessionRenegotiate(id: string, sessionId: string, sdp: string | null | undefined, type: 'offer' | 'answer' | 'rollback' = 'offer', method: 'PUT' | 'POST' = 'PUT'): Promise<any> {
         const body: any = {};
         if (sdp || type !== 'rollback') {

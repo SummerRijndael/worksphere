@@ -20,8 +20,11 @@ export const useMeetingStore = defineStore('meeting', () => {
     const isDevMode = ref(false);
     const chatMessages = ref<any[]>([]);
     const isLocked = ref(false);
+    const isLockToggleBusy = ref(false);
     const originalVideoTrack = ref<MediaStreamTrack | null>(null);
     let lockHeartbeatInterval: any = null;
+    const LOCK_TOGGLE_DEBOUNCE_MS = 600;
+    let lastLockToggleAt = 0;
 
     // ── Polls ──────────────────────────────────────────────────────────────────
     interface Poll {
@@ -653,6 +656,13 @@ export const useMeetingStore = defineStore('meeting', () => {
             return;
         }
 
+        const now = Date.now();
+        if (isLockToggleBusy.value || now - lastLockToggleAt < LOCK_TOGGLE_DEBOUNCE_MS) {
+            return;
+        }
+        isLockToggleBusy.value = true;
+        lastLockToggleAt = now;
+
         try {
             const { toast } = await import('vue-sonner');
             if (isLocked.value) {
@@ -670,6 +680,12 @@ export const useMeetingStore = defineStore('meeting', () => {
             log('ERROR', 'Failed to toggle meeting lock', e);
             const { toast } = await import('vue-sonner');
             toast.error('Failed to toggle meeting lock');
+        } finally {
+            const elapsed = Date.now() - now;
+            const unlockIn = Math.max(0, LOCK_TOGGLE_DEBOUNCE_MS - elapsed);
+            setTimeout(() => {
+                isLockToggleBusy.value = false;
+            }, unlockIn);
         }
     }
 
@@ -1293,6 +1309,7 @@ export const useMeetingStore = defineStore('meeting', () => {
         meeting,
         localParticipant,
         isLocked,
+        isLockToggleBusy,
         originalVideoTrack,
         isDevMode,
         
@@ -1357,6 +1374,9 @@ export const useMeetingStore = defineStore('meeting', () => {
         sfuIceState: stream.sfuIceState,
         sfuPc: stream.sfuPc,
         networkScore: stream.networkScore,
+        networkBitrate: stream.networkBitrate,
+        networkPacketLoss: stream.networkPacketLoss,
+        networkRtt: stream.networkRtt,
         
         // Layout Manager
         pinnedParticipantId: layout.pinnedParticipantId,

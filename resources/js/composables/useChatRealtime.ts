@@ -13,6 +13,30 @@ const isConnected = ref(false);
 const connectionState = ref<'connected' | 'connecting' | 'disconnected'>('disconnected');
 const typingTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 const initializationPending = ref(false);
+const callSignalCounters = new Map<string, { count: number; windowStart: number }>();
+
+function logCallSignalSample(channelName: string, event: any): void {
+  const now = Date.now();
+  const counter = callSignalCounters.get(channelName);
+  if (!counter || now - counter.windowStart > 5000) {
+    callSignalCounters.set(channelName, { count: 1, windowStart: now });
+    console.log(
+      `[ChatRealtime] 📡 .CallSignal on ${channelName} (sample)`,
+      {
+        callId: event.call_id ?? event.callId ?? null,
+        signalType: event.signal_data?.type ?? event.signal_type ?? null,
+        sender: event.sender_public_id ?? event.senderPublicId ?? null,
+        target: event.target_public_id ?? event.targetPublicId ?? null,
+      },
+    );
+    return;
+  }
+
+  counter.count += 1;
+  if (counter.count % 25 === 0) {
+    console.log(`[ChatRealtime] 📡 .CallSignal on ${channelName}: ${counter.count} events in current 5s window`);
+  }
+}
 
 /**
  * Composable for managing chat realtime subscriptions via Laravel Echo.
@@ -64,7 +88,19 @@ export function useChatRealtime() {
       window.dispatchEvent(new CustomEvent('videocall:incoming', { detail: event }));
     })
     .listen('.CallSignal', (event: any) => {
-      console.log(`[ChatRealtime] 📡 RECEIVED .CallSignal on ${channelName}`, event);
+      const senderPublicId = String(event.sender_public_id ?? event.senderPublicId ?? '').toLowerCase();
+      const targetPublicId = String(event.target_public_id ?? event.targetPublicId ?? '').toLowerCase();
+      const selfPublicId = String(authStore.user?.public_id ?? '').toLowerCase();
+
+      // Skip self-echo and irrelevant targeted signals to reduce noisy call signaling fan-out.
+      if (selfPublicId && senderPublicId && senderPublicId === selfPublicId) {
+        return;
+      }
+      if (targetPublicId && selfPublicId && targetPublicId !== selfPublicId) {
+        return;
+      }
+
+      logCallSignalSample(channelName, event);
       window.dispatchEvent(new CustomEvent('videocall:signal', { detail: event }));
     })
     .listen('.CallEnded', (event: any) => {

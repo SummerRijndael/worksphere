@@ -973,7 +973,8 @@
                         class="ctrl-btn ctrl-btn--media"
                         style="z-index: 1"
                         :class="{ 'ctrl-btn--off': !isMicOn }"
-                        @click="toggleMic"
+                        @click="toggleMicDebounced"
+                        :disabled="isMicToggleBusy"
                         :title="micToggleTitle"
                     >
                         <Icon :name="isMicOn ? 'mic' : 'mic-off'" size="20" />
@@ -982,7 +983,8 @@
                 <button
                     class="ctrl-btn ctrl-btn--media"
                     :class="{ 'ctrl-btn--off': !isCameraOn }"
-                    @click="toggleCamera"
+                    @click="toggleCameraDebounced"
+                    :disabled="isCameraToggleBusy"
                     :title="cameraToggleTitle"
                 >
                     <Icon
@@ -1028,8 +1030,11 @@
                     v-if="showScreenShareControl"
                     class="ctrl-btn ctrl-btn--screen"
                     :class="{ 'ctrl-btn--sharing': isScreenSharing }"
-                    @click="toggleScreenShare"
-                    :disabled="!canStartScreenShare && !isScreenSharing"
+                    @click="toggleScreenShareDebounced"
+                    :disabled="
+                        isScreenShareToggleBusy ||
+                        (!canStartScreenShare && !isScreenSharing)
+                    "
                     :title="screenShareToggleTitle"
                 >
                     <Icon
@@ -1121,11 +1126,12 @@
 
                     <button
                         v-if="meetingStore.isHost"
-                        class="ctrl-btn ctrl-btn--lock lock-btn-wrap"
+                        class="ctrl-btn ctrl-btn--lock lock-btn-wrap disabled:opacity-60 disabled:cursor-not-allowed"
                         :class="{
                             'ctrl-btn--lock-active': meetingStore.isLocked,
                         }"
                         @click="meetingStore.toggleLock()"
+                        :disabled="meetingStore.isLockToggleBusy"
                         :title="
                             meetingStore.isLocked
                                 ? 'Unlock Meeting'
@@ -1561,7 +1567,8 @@
                                             meetingStore.toggleLock();
                                             showMoreMenu = false;
                                         "
-                                        class="w-full p-3 rounded-xl flex items-center gap-4 transition-all hover:bg-white/5 active:bg-white/10 group text-white"
+                                        :disabled="meetingStore.isLockToggleBusy"
+                                        class="w-full p-3 rounded-xl flex items-center gap-4 transition-all hover:bg-white/5 active:bg-white/10 group text-white disabled:opacity-60 disabled:cursor-not-allowed"
                                     >
                                         <div
                                             class="w-10 h-10 flex items-center justify-center rounded-xl group-hover:bg-surface-tertiary transition-colors shrink-0"
@@ -2501,6 +2508,82 @@ onUnmounted(() => {
 
 const isScreenSharing = ref(false);
 const screenStream = ref<MediaStream | null>(null);
+let videoEffectApplyToken = 0;
+const MIC_TOGGLE_DEBOUNCE_MS = 250;
+const CAMERA_TOGGLE_DEBOUNCE_MS = 350;
+const SCREEN_SHARE_TOGGLE_DEBOUNCE_MS = 500;
+const isMicToggleBusy = ref(false);
+const isCameraToggleBusy = ref(false);
+const isScreenShareToggleBusy = ref(false);
+let lastMicToggleAt = 0;
+let lastCameraToggleAt = 0;
+let lastScreenShareToggleAt = 0;
+
+async function toggleMicDebounced() {
+    const now = Date.now();
+    if (isMicToggleBusy.value || now - lastMicToggleAt < MIC_TOGGLE_DEBOUNCE_MS) {
+        return;
+    }
+
+    isMicToggleBusy.value = true;
+    lastMicToggleAt = now;
+
+    try {
+        await toggleMic();
+    } finally {
+        const elapsed = Date.now() - now;
+        const unlockIn = Math.max(0, MIC_TOGGLE_DEBOUNCE_MS - elapsed);
+        window.setTimeout(() => {
+            isMicToggleBusy.value = false;
+        }, unlockIn);
+    }
+}
+
+async function toggleCameraDebounced() {
+    const now = Date.now();
+    if (
+        isCameraToggleBusy.value ||
+        now - lastCameraToggleAt < CAMERA_TOGGLE_DEBOUNCE_MS
+    ) {
+        return;
+    }
+
+    isCameraToggleBusy.value = true;
+    lastCameraToggleAt = now;
+
+    try {
+        await toggleCamera();
+    } finally {
+        const elapsed = Date.now() - now;
+        const unlockIn = Math.max(0, CAMERA_TOGGLE_DEBOUNCE_MS - elapsed);
+        window.setTimeout(() => {
+            isCameraToggleBusy.value = false;
+        }, unlockIn);
+    }
+}
+
+async function toggleScreenShareDebounced() {
+    const now = Date.now();
+    if (
+        isScreenShareToggleBusy.value ||
+        now - lastScreenShareToggleAt < SCREEN_SHARE_TOGGLE_DEBOUNCE_MS
+    ) {
+        return;
+    }
+
+    isScreenShareToggleBusy.value = true;
+    lastScreenShareToggleAt = now;
+
+    try {
+        await toggleScreenShare();
+    } finally {
+        const elapsed = Date.now() - now;
+        const unlockIn = Math.max(0, SCREEN_SHARE_TOGGLE_DEBOUNCE_MS - elapsed);
+        window.setTimeout(() => {
+            isScreenShareToggleBusy.value = false;
+        }, unlockIn);
+    }
+}
 
 async function recoverCameraAfterScreenShareToggle() {
     if (!isCameraOn.value) return;
@@ -2735,6 +2818,24 @@ const toggleMic = async () => {
     }
 };
 
+async function applyLocalVideoTrack(
+    newTrack: MediaStreamTrack,
+    previousTrack: MediaStreamTrack | null = null,
+) {
+    const currentStream = meetingStore.localStream;
+    const audioTracks = currentStream
+        ? currentStream.getAudioTracks().filter((t) => t.readyState === "live")
+        : [];
+
+    if (previousTrack) {
+        newTrack.enabled = previousTrack.enabled;
+    }
+
+    const updatedStream = new MediaStream([...audioTracks, newTrack]);
+    meetingStore.setStream(updatedStream);
+    await meetingStore.replaceTrack("video", newTrack);
+}
+
 async function rehydrateJoinVideoEffectIfNeeded() {
     const effect = videoCallStore.videoEffect;
     if (effect !== "blur" && effect !== "image") return;
@@ -2752,17 +2853,8 @@ async function rehydrateJoinVideoEffectIfNeeded() {
             videoCallStore.greenScreenThreshold,
         );
 
-        const stream = meetingStore.localStream;
-        const oldVideo = stream.getVideoTracks()[0];
-        if (oldVideo && oldVideo.id !== refreshedTrack.id) {
-            stream.removeTrack(oldVideo);
-        }
-        if (!stream.getVideoTracks().some((t) => t.id === refreshedTrack.id)) {
-            stream.addTrack(refreshedTrack);
-        }
-
-        // Force-publish the transformed track so recording/remote view matches local effect.
-        await meetingStore.replaceTrack("video", refreshedTrack);
+        const oldVideo = meetingStore.localStream.getVideoTracks()[0] || null;
+        await applyLocalVideoTrack(refreshedTrack, oldVideo);
         console.info(
             `[MeetingRoom] Rehydrated join-time effect (${effect}) with track ${refreshedTrack.id}`,
         );
@@ -2788,6 +2880,7 @@ watch(
         greenColor,
         threshold,
     ]) => {
+        const applyToken = ++videoEffectApplyToken;
         if (
             !isCameraOn.value ||
             !meetingStore.originalVideoTrack ||
@@ -2812,24 +2905,19 @@ watch(
                 newTrack = meetingStore.originalVideoTrack;
             }
 
-            const stream = meetingStore.localStream;
-            const oldTrack = stream.getVideoTracks()[0];
-
-            if (oldTrack) {
-                if (oldTrack.id !== newTrack.id) {
-                    stream.removeTrack(oldTrack);
-                    stream.addTrack(newTrack);
-                    // Keep enabled state synced
-                    newTrack.enabled = oldTrack.enabled;
-                }
-
-                // ALWAYS call replaceTrack when effect changes to ensure sync,
-                // even if the underlying canvas track ID is recycled.
-                await meetingStore.replaceTrack("video", newTrack);
-                console.info(
-                    `[MeetingRoom] Applied effect: ${effect}, track: ${newTrack.id}`,
-                );
+            if (
+                applyToken !== videoEffectApplyToken ||
+                !isCameraOn.value ||
+                !meetingStore.localStream
+            ) {
+                return;
             }
+
+            const oldTrack = meetingStore.localStream.getVideoTracks()[0] || null;
+            await applyLocalVideoTrack(newTrack, oldTrack);
+            console.info(
+                `[MeetingRoom] Applied effect: ${effect}, track: ${newTrack.id}`,
+            );
         } catch (e) {
             console.error("[MeetingRoom] Failed to swap effect track", e);
         }
@@ -2903,9 +2991,7 @@ watch(
                 }
 
                 const oldTrack = stream.getVideoTracks()[0];
-                if (oldTrack) stream.removeTrack(oldTrack);
-                stream.addTrack(finalTrack);
-                await meetingStore.replaceTrack("video", finalTrack);
+                await applyLocalVideoTrack(finalTrack, oldTrack || null);
             } catch (e) {
                 console.error(e);
             }
@@ -3084,6 +3170,9 @@ async function updateNetworkStats() {
         // SDK Mode Fallback: Sync score from store
         if (meetingStore.meeting?.recording_enabled) {
             networkStats.score = meetingStore.networkScore;
+            networkStats.bitrate = meetingStore.networkBitrate || 0;
+            networkStats.packetLoss = meetingStore.networkPacketLoss || 0;
+            networkStats.rtt = meetingStore.networkRtt || 0;
         }
         return;
     }

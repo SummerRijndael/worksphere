@@ -180,6 +180,8 @@ const checkVideoStatus = () => {
         } else {
             actualHasVideo.value = !!props.localCameraOn && hasLiveVideo(activeStream.value);
         }
+        // Keep local preview resilient during track swaps/layout remounts.
+        updateLocalStream();
         return;
     }
 

@@ -1092,6 +1092,7 @@ Route::middleware(['throttle:meetings'])->prefix('meetings')->group(function () 
         Route::post('/{meeting}/sfu/sessions/new', [\App\Http\Controllers\Api\MeetingController::class, 'sfuSessionNew']);
         Route::post('/{meeting}/sfu/sessions/{sessionId}/tracks/new', [\App\Http\Controllers\Api\MeetingController::class, 'sfuSessionTracks']);
         Route::put('/{meeting}/sfu/sessions/{sessionId}/tracks/update', [\App\Http\Controllers\Api\MeetingController::class, 'sfuTracksUpdate']);
+        Route::put('/{meeting}/sfu/sessions/{sessionId}/tracks/close', [\App\Http\Controllers\Api\MeetingController::class, 'sfuTracksClose']);
         Route::put('/{meeting}/sfu/sessions/{sessionId}/renegotiate', [\App\Http\Controllers\Api\MeetingController::class, 'sfuSessionRenegotiate']);
     });
 });

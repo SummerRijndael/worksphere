@@ -21,7 +21,22 @@ export function createRealtimeKitManager(
     const isInitializing = ref(false);
     const isSessionActive = ref(false);
     const networkScore = ref<number>(0); // 0=Good, 1=Fair, 2=Poor
+    const networkBitrate = ref<number>(0); // kbps
+    const networkPacketLoss = ref<number>(0); // %
+    const networkRtt = ref<number>(0); // ms (estimated from jitter when RTT is unavailable)
     let lastScreenshareProfile: string | null = null;
+
+    function normalizeBitrateToKbps(value: number): number {
+        if (!Number.isFinite(value) || value <= 0) return 0;
+        // SDKs vary: some expose bps, some kbps. Normalize heuristically.
+        return value > 100000 ? value / 1000 : value;
+    }
+
+    function normalizeJitterToMs(value: number): number {
+        if (!Number.isFinite(value) || value <= 0) return 0;
+        // WebRTC jitter is usually seconds; convert small values to ms.
+        return value <= 2 ? value * 1000 : value;
+    }
 
     const resolveParticipantId = (p: any, isScreen = false) => {
         const baseId = String(p?.customParticipantId || p?.userId || p?.id || '').toLowerCase();
@@ -246,6 +261,27 @@ export function createRealtimeKitManager(
 
             // Adapt screen-share quality in-flight when network degrades/improves.
             void applyScreenshareConstraints();
+        });
+
+        // Detailed local media quality updates (Realtime Kit mode only).
+        cfMeeting.self.on('mediaScoreUpdate', (payload: any) => {
+            const scoreStats = payload?.scoreStats;
+            if (!scoreStats || payload?.isScreenshare) return;
+
+            const bitrateKbps = normalizeBitrateToKbps(Number(scoreStats.bitrate || 0));
+            const packetLoss = Number(scoreStats.packetsLostPercentage || 0);
+            const jitterMs = normalizeJitterToMs(Number(scoreStats.jitter || 0));
+
+            if (bitrateKbps >= 0) {
+                networkBitrate.value = bitrateKbps;
+            }
+            if (packetLoss >= 0) {
+                networkPacketLoss.value = packetLoss;
+            }
+            // Realtime Kit currently does not expose RTT directly in this event; use jitter estimate.
+            if (jitterMs >= 0) {
+                networkRtt.value = jitterMs;
+            }
         });
 
         // Keep local stream in sync even when tracks are stopped externally (device/UI/toolbars).
@@ -581,6 +617,9 @@ export function createRealtimeKitManager(
         sfuConnectionState: ref('connected'),
         sfuSessionId: ref('realtime-kit'),
         networkScore,
+        networkBitrate,
+        networkPacketLoss,
+        networkRtt,
 
         // Actions
         initSDK,
