@@ -59,7 +59,7 @@
                         </button>
                         <button
                             @click="handleSend"
-                            :disabled="isSending"
+                            :disabled="isSending || !selectedAccount"
                             class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-(--interactive-primary) hover:bg-(--interactive-primary-hover) shadow-lg shadow-(--interactive-primary)/25 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
                         >
                             <span v-if="isSending">Sending...</span>
@@ -223,7 +223,7 @@
                 </div>
                 <!-- Signature Preview -->
                 <div
-                    v-if="selectedSignature?.content"
+                    v-if="safeSignatureHtml"
                     class="mt-4 pt-4 border-t border-dashed border-(--border-default)"
                 >
                     <div class="text-xs text-(--text-muted) mb-2">
@@ -231,7 +231,7 @@
                     </div>
                     <div
                         class="text-sm text-(--text-secondary)"
-                        v-html="selectedSignature.content"
+                        v-html="safeSignatureHtml"
                     ></div>
                 </div>
 
@@ -252,7 +252,7 @@
                     </div>
                     <div
                         class="pl-3 border-l-2 border-(--border-default) text-sm text-(--text-secondary)"
-                        v-html="replyTo.body_html || replyTo.body_plain"
+                        v-html="safeReplyPreviewHtml"
                     ></div>
                 </div>
             </div>
@@ -706,7 +706,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onBeforeUnmount, markRaw, onMounted } from "vue";
+import { ref, computed, onBeforeUnmount, markRaw, onMounted, watch } from "vue";
 import { useEditor, EditorContent } from "@tiptap/vue-3";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -743,7 +743,6 @@ import {
 import { useDate } from "@/composables/useDate";
 
 const { formatDate } = useDate();
-import { watch } from "vue";
 import type { Email } from "@/types/models/email";
 import { useEmailStore } from "@/stores/emailStore";
 import { useAuthStore } from "@/stores/auth";
@@ -766,6 +765,7 @@ import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
 import { FontSize } from "@/components/ui/editor/extensions/FontSize";
 import { useDebounceFn } from "@vueuse/core";
+import { escapeHtml, sanitizeHtml } from "@/utils/sanitize";
 
 const props = defineProps<{
     mode: string;
@@ -963,6 +963,24 @@ const ccEmails = ref<string[]>([]);
 const bccEmails = ref<string[]>([]);
 const showCc = ref(false);
 const showBcc = ref(false);
+
+const toSafeHtml = (html?: string | null): string => {
+    if (!html) return "";
+    return sanitizeHtml(html);
+};
+
+const toSafePlainTextHtml = (text?: string | null): string => {
+    if (!text) return "";
+    return escapeHtml(text).replace(/\n/g, "<br>");
+};
+
+const getSafeReplyBodyHtml = (email?: Email | null): string => {
+    if (!email) return "";
+    if (email.body_html) {
+        return toSafeHtml(email.body_html);
+    }
+    return toSafePlainTextHtml(email.body_plain);
+};
 const subject = ref("");
 const attachments = ref<File[]>([]);
 const fileInput = ref<HTMLInputElement | null>(null);
@@ -1164,8 +1182,7 @@ watch(
             }
 
             // Set Body
-            let body =
-                props.replyTo.body_html || props.replyTo.body_plain || "";
+            let body = getSafeReplyBodyHtml(props.replyTo);
 
             // Resolve CID images if any
             if (body.includes("cid:") && props.replyTo.attachments) {
@@ -1224,14 +1241,19 @@ function setQuotedContent(mode: string) {
     )
         return;
 
-    const body = props.replyTo.body_html || props.replyTo.body_plain || "";
+    const body = getSafeReplyBodyHtml(props.replyTo);
     if (!body) return;
 
     const date = props.replyTo.date
         ? formatDate(props.replyTo.date)
         : "Unknown date";
+    const safeDate = escapeHtml(date);
     const sender =
         props.replyTo.from_name || props.replyTo.from_email || "Unknown";
+    const safeSender = escapeHtml(sender);
+    const safeFromName = escapeHtml(props.replyTo.from_name || sender);
+    const safeFromEmail = escapeHtml(props.replyTo.from_email || "");
+    const safeSubject = escapeHtml(props.replyTo.subject || "");
 
     let quotedHtml = "";
 
@@ -1240,7 +1262,7 @@ function setQuotedContent(mode: string) {
             <br><br>
             <div class="gmail_quote">
                 <div dir="ltr" class="gmail_attr">
-                    On ${date}, ${sender} wrote:<br>
+                    On ${safeDate}, ${safeSender} wrote:<br>
                 </div>
                 <blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex">
                     ${body}
@@ -1251,13 +1273,17 @@ function setQuotedContent(mode: string) {
         const toList =
             props.replyTo.to
                 ?.map((t) =>
-                    t.name ? `${t.name} &lt;${t.email}&gt;` : t.email,
+                    t.name
+                        ? `${escapeHtml(t.name)} &lt;${escapeHtml(t.email || "")}&gt;`
+                        : escapeHtml(t.email || ""),
                 )
                 .join(", ") || "";
         const ccList =
             props.replyTo.cc
                 ?.map((c) =>
-                    c.name ? `${c.name} &lt;${c.email}&gt;` : c.email,
+                    c.name
+                        ? `${escapeHtml(c.name)} &lt;${escapeHtml(c.email || "")}&gt;`
+                        : escapeHtml(c.email || ""),
                 )
                 .join(", ") || "";
 
@@ -1266,9 +1292,9 @@ function setQuotedContent(mode: string) {
             <div class="gmail_quote">
                 <div dir="ltr" class="gmail_attr">
                     ---------- Forwarded message ---------<br>
-                    From: <strong>${props.replyTo.from_name || sender}</strong> &lt;${props.replyTo.from_email}&gt;<br>
-                    Date: ${date}<br>
-                    Subject: ${props.replyTo.subject}<br>
+                    From: <strong>${safeFromName}</strong> &lt;${safeFromEmail}&gt;<br>
+                    Date: ${safeDate}<br>
+                    Subject: ${safeSubject}<br>
                     To: ${toList}<br>
                     ${ccList ? `Cc: ${ccList}<br>` : ""}
                 </div>
@@ -1305,6 +1331,12 @@ const templateItems = computed(() =>
 const selectedSignature = computed(() =>
     getSignatureById(selectedSignatureId.value),
 );
+const safeSignatureHtml = computed(() =>
+    selectedSignature.value?.content
+        ? toSafeHtml(selectedSignature.value.content)
+        : "",
+);
+const safeReplyPreviewHtml = computed(() => getSafeReplyBodyHtml(props.replyTo));
 
 // Dropdown items for signatures
 const signatureItems = computed(() =>
@@ -1379,8 +1411,8 @@ async function handleSend() {
 
         let bodyContent = emailData.body_html;
         // Append signature if selected
-        if (selectedSignature.value?.content) {
-            bodyContent += `<br><br>${selectedSignature.value.content}`;
+        if (safeSignatureHtml.value) {
+            bodyContent += `<br><br>${safeSignatureHtml.value}`;
         }
         formData.append("body", bodyContent);
 

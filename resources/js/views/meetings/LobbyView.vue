@@ -33,15 +33,17 @@
                     v-if="!isCameraOn && !loading"
                     class="absolute inset-0 flex items-center justify-center p-4"
                 >
-                    <div
-                        class="w-24 h-24 sm:w-32 sm:h-32 rounded-full bg-white/10 flex items-center justify-center text-3xl sm:text-4xl text-white shadow-lg backdrop-blur-sm"
-                    >
-                        <span>{{
+                    <Avatar
+                        :src="authStore.user?.avatar_url"
+                        :fallback="
                             (authStore.user?.name ||
                                 guestName ||
-                                "?")[0].toUpperCase()
-                        }}</span>
-                    </div>
+                                '?')[0].toUpperCase()
+                        "
+                        :color="authStore.user?.color"
+                        size="5xl"
+                        class="w-32 h-32 sm:w-40 sm:h-40 shadow-2xl border-4 border-white/5"
+                    />
                 </div>
 
                 <div
@@ -148,17 +150,15 @@
                         class="w-full mb-4 sm:mb-6 py-2.5 sm:py-3 px-4 bg-surface-elevated border-y sm:border border-white/10 rounded-none sm:rounded-lg flex items-center justify-between text-left"
                     >
                         <div class="flex items-center gap-3">
-                            <img
-                                v-if="authStore.user?.avatar_url"
-                                :src="authStore.user.avatar_url"
-                                class="w-8 h-8 sm:w-10 sm:h-10 rounded-full border border-white/10"
+                            <Avatar
+                                :src="authStore.user?.avatar_url"
+                                :fallback="
+                                    authStore.user?.name?.[0]?.toUpperCase()
+                                "
+                                :color="authStore.user?.color"
+                                size="md"
+                                class="border border-white/10"
                             />
-                            <div
-                                v-else
-                                class="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-xs sm:text-base"
-                            >
-                                {{ authStore.user?.name?.[0]?.toUpperCase() }}
-                            </div>
                             <div>
                                 <p
                                     class="text-xs sm:text-sm font-medium text-primary"
@@ -291,9 +291,10 @@ import { useVideoCallStore } from "@/stores/videocall";
 import { useBackgroundBlur } from "@/composables/useBackgroundBlur";
 import { useThemeStore } from "@/stores/theme";
 import DeviceSettingsModal from "./components/DeviceSettingsModal.vue";
-import { Icon } from "@/components/ui";
+import { Icon, Avatar } from "@/components/ui";
 import { toast } from "vue-sonner";
 import { logManager } from "@/utils/LogManager";
+import { isValidUlid, normalizeUlid } from "@/utils/meetingId";
 
 const route = useRoute();
 const router = useRouter();
@@ -302,7 +303,8 @@ const themeStore = useThemeStore();
 const meetingStore = useMeetingStore();
 const videoCallStore = useVideoCallStore();
 
-const meetingId = route.params.id as string;
+const rawMeetingId = String(route.params.id ?? "");
+const meetingId = isValidUlid(rawMeetingId) ? normalizeUlid(rawMeetingId) : "";
 const meeting = ref<Meeting | null>(null);
 const loading = ref(true);
 const joining = ref(false);
@@ -336,6 +338,15 @@ const isHost = computed(() => {
 });
 
 onMounted(async () => {
+    if (!meetingId) {
+        toast.error("Invalid meeting link", {
+            description: "Please open the meeting using the invite link from the host.",
+        });
+        await router.replace("/");
+        loading.value = false;
+        return;
+    }
+
     try {
         meeting.value = await meetingService.getMeeting(meetingId);
         const savedPwd = localStorage.getItem(
@@ -588,6 +599,8 @@ watch(showSettings, (isOpen) => {
 });
 
 const joinMeeting = async () => {
+    if (!meetingId) return;
+
     try {
         joining.value = true;
         guestEmailError.value = "";
@@ -642,6 +655,8 @@ const joinMeeting = async () => {
 };
 
 const joinAndPresent = async () => {
+    if (!meetingId) return;
+
     try {
         joining.value = true;
         guestEmailError.value = "";

@@ -84,10 +84,19 @@ export function createStreamManager(
         }
     }
 
+    function toSdpDescription(sd: any, fallbackType: RTCSdpType = 'answer'): RTCSessionDescriptionInit {
+        const type = sd?.type;
+        if (type === 'offer' || type === 'answer' || type === 'pranswer' || type === 'rollback') {
+            return { type, sdp: sd?.sdp || '' };
+        }
+
+        return { type: fallbackType, sdp: sd?.sdp || '' };
+    }
+
     // Cloudflare Calls API often returns sessionDescription without a 'type' field.
     // RTCSessionDescription requires a valid type ('answer') for setRemoteDescription.
     function toSdpAnswer(sd: any): RTCSessionDescriptionInit {
-        return { type: sd?.type || 'answer', sdp: sd?.sdp || '' };
+        return toSdpDescription(sd, 'answer');
     }
 
     function flushPendingTracks() {
@@ -131,9 +140,35 @@ export function createStreamManager(
                         }
                     }
                 };
+
+                const handleInactive = () => {
+                    const pid = normalizedParticipantId;
+                    const existingStream = remoteStreams.value.get(pid);
+                    if (!existingStream) return;
+
+                    const stale = existingStream.getTracks().find(t => t.id === evt.track.id);
+                    if (!stale) return;
+
+                    existingStream.removeTrack(stale);
+                    try { stale.stop(); } catch {}
+
+                    if (stale.kind === 'audio' && !pid.endsWith(':screen') && existingStream.getAudioTracks().length === 0) {
+                        stopAudioAnalysis(pid);
+                    }
+
+                    if (existingStream.getTracks().length === 0) {
+                        const newMap = new Map(remoteStreams.value);
+                        newMap.delete(pid);
+                        remoteStreams.value = newMap;
+                    } else {
+                        remoteStreams.value = new Map(remoteStreams.value);
+                    }
+                };
                 
                 // Attach handler for when the track becomes unmuted (active)
                 evt.track.onunmute = handleActive;
+                evt.track.onmute = handleInactive;
+                evt.track.onended = handleInactive;
                 // If the track is already unmuted, call the handler immediately
                 if (!evt.track.muted) handleActive();
             } else {
@@ -283,6 +318,39 @@ export function createStreamManager(
             signal_data: {},
             target_participant_public_id: participantPublicId
         }).catch(() => {});
+    }
+
+    function isSfuConnected(pc: RTCPeerConnection): boolean {
+        return pc.connectionState === 'connected' || pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed';
+    }
+
+    async function waitForSfuConnected(timeoutMs = 4500): Promise<boolean> {
+        if (!sfuPc) return false;
+        const pc = sfuPc;
+
+        if (isSfuConnected(pc)) return true;
+
+        return new Promise((resolve) => {
+            let settled = false;
+            const timer = window.setTimeout(() => finalize(false), timeoutMs);
+
+            const onStateChange = () => {
+                if (pc !== sfuPc) return finalize(false);
+                if (isSfuConnected(pc)) finalize(true);
+            };
+
+            function finalize(result: boolean) {
+                if (settled) return;
+                settled = true;
+                window.clearTimeout(timer);
+                pc.removeEventListener('connectionstatechange', onStateChange);
+                pc.removeEventListener('iceconnectionstatechange', onStateChange);
+                resolve(result);
+            }
+
+            pc.addEventListener('connectionstatechange', onStateChange);
+            pc.addEventListener('iceconnectionstatechange', onStateChange);
+        });
     }
 
     function startHealthCheck() {
@@ -448,8 +516,34 @@ export function createStreamManager(
                         }
                     }
                 };
+
+                const handleInactive = () => {
+                    const existingStream = remoteStreams.value.get(pid);
+                    if (!existingStream) return;
+
+                    const stale = existingStream.getTracks().find(t => t.id === track.id);
+                    if (!stale) return;
+
+                    existingStream.removeTrack(stale);
+                    try { stale.stop(); } catch {}
+                    log('TRACK', `Track ${track.id} became inactive for ${pid}; pruned from stream`);
+
+                    if (stale.kind === 'audio' && !pid.endsWith(':screen') && existingStream.getAudioTracks().length === 0) {
+                        stopAudioAnalysis(pid);
+                    }
+
+                    if (existingStream.getTracks().length === 0) {
+                        const newMap = new Map(remoteStreams.value);
+                        newMap.delete(pid);
+                        remoteStreams.value = newMap;
+                    } else {
+                        remoteStreams.value = new Map(remoteStreams.value);
+                    }
+                };
                 
                 track.onunmute = handleActive;
+                track.onmute = handleInactive;
+                track.onended = handleInactive;
                 if (!track.muted) handleActive();
             } else {
                 log("TRACK", `No participant mapping for MID ${mid}, buffering...`);
@@ -739,6 +833,16 @@ export function createStreamManager(
                     return req;
                 });
 
+                const connected = await waitForSfuConnected();
+                if (!connected) {
+                    const delay = retryDelays[currentAttempts - 1] || 5000;
+                    log('SFU', `PeerConnection not connected yet for pull ${participantPublicId}, retrying in ${delay}ms...`);
+                    setTimeout(() => {
+                        pullParticipantTracks(participantPublicId, targetSessionId, actualAudioMid, actualVideoMid, actualScreenMid);
+                    }, delay);
+                    return;
+                }
+
                 log('SFU', `Attempt ${currentAttempts}: Pulling tracks for ${participantPublicId} [Audio: ${audioTransceiver?.mid || 'None'}, Video: ${videoTransceiver?.mid || 'None'}, Screen: ${screenTransceiver?.mid || 'None'}] using local session ${sfuSessionId.value}, remote session ${targetSessionId}...`);
 
                 // SERVER-INITIATED OFFER FLOW (from CallApp.vue L2895-2955)
@@ -840,7 +944,7 @@ export function createStreamManager(
                     log('SFU', `Pull attempt ${currentAttempts} for ${participantPublicId} returned no valid tracks. Rescheduling...`);
                     const delay = retryDelays[currentAttempts - 1] || 5000;
                     setTimeout(() => {
-                        pullParticipantTracks(participantPublicId, targetSessionId, actualAudioMid, actualVideoMid, screenMid);
+                        pullParticipantTracks(participantPublicId, targetSessionId, actualAudioMid, actualVideoMid, actualScreenMid);
                     }, delay);
                 }
             } catch (error: any) {
@@ -853,7 +957,7 @@ export function createStreamManager(
                 const delay = retryDelays[currentAttempts - 1] || 5000;
                 log('ERROR', `Failed to pull tracks (attempt ${currentAttempts}), retrying in ${delay}ms...`, error);
                 setTimeout(() => {
-                    pullParticipantTracks(participantPublicId, targetSessionId, actualAudioMid, actualVideoMid, screenMid);
+                    pullParticipantTracks(participantPublicId, targetSessionId, actualAudioMid, actualVideoMid, actualScreenMid);
                 }, delay);
             }
         });
@@ -1106,6 +1210,31 @@ export function createStreamManager(
         stopAudioAnalysis(publicId);
     }
 
+    function removeParticipantTrack(publicId: string, kind: 'audio' | 'video') {
+        const pid = publicId.toLowerCase();
+        const stream = remoteStreams.value.get(pid);
+        if (!stream) return;
+
+        stream.getTracks()
+            .filter((t) => t.kind === kind)
+            .forEach((t) => {
+                stream.removeTrack(t);
+                try { t.stop(); } catch {}
+            });
+
+        if (kind === 'audio' && stream.getAudioTracks().length === 0) {
+            stopAudioAnalysis(pid);
+        }
+
+        const newMap = new Map(remoteStreams.value);
+        if (stream.getTracks().length === 0) {
+            newMap.delete(pid);
+        } else {
+            newMap.set(pid, stream);
+        }
+        remoteStreams.value = newMap;
+    }
+
     function cleanup() {
         if (healthCheckInterval) {
             window.clearInterval(healthCheckInterval);
@@ -1155,6 +1284,9 @@ export function createStreamManager(
 
         if (removed.length > 0) {
             log('SFU', `Visibility updated: Removed ${removed.length} participants from active view.`);
+            unsubscribeTracks(removed).catch((err) => {
+                log('SFU', 'Non-fatal unsubscribe error on visibility change', err);
+            });
         }
 
         // Debounced simulcast layer update
@@ -1207,6 +1339,12 @@ export function createStreamManager(
 
         if (tracksToUpdate.length === 0) return;
 
+        const connected = await waitForSfuConnected();
+        if (!connected) {
+            log('SFU', 'Skipping simulcast layer update: PeerConnection not connected');
+            return;
+        }
+
         try {
             await meetingService.sfuTracksUpdate(
                 meetingRef.value.public_id,
@@ -1220,14 +1358,79 @@ export function createStreamManager(
         }
     }
 
+    async function closeTracksByMid(trackMids: string[], reason: string) {
+        if (!sfuPc || !sfuSessionId.value || !meetingRef.value) return;
+
+        const uniqueMids = [...new Set(trackMids.filter(Boolean))];
+        if (uniqueMids.length === 0) return;
+
+        const connected = await waitForSfuConnected();
+        if (!connected) {
+            log('SFU', `Skipping tracks/close (${reason}): PeerConnection not connected`);
+            return;
+        }
+
+        try {
+            const response = await meetingService.sfuTracksClose(
+                meetingRef.value.public_id,
+                sfuSessionId.value,
+                uniqueMids.map(mid => ({ mid })),
+                false
+            );
+
+            if (response?.sessionDescription?.sdp) {
+                await sfuPc.setRemoteDescription(toSdpDescription(response.sessionDescription, 'offer'));
+
+                const answer = await sfuPc.createAnswer();
+                await sfuPc.setLocalDescription(answer);
+                await meetingService.sfuSessionRenegotiate(
+                    meetingRef.value.public_id,
+                    sfuSessionId.value,
+                    mungeSdp(answer.sdp || ''),
+                    'answer',
+                    'PUT'
+                );
+            }
+        } catch (error) {
+            log('SFU', `tracks/close failed (${reason})`, error);
+        }
+    }
+
     async function unsubscribeTracks(participantPublicIds: string[]) {
         if (!sfuPc || !sfuSessionId.value) return;
 
         return runInSFUQueue(async () => {
             if (!sfuPc || !sfuSessionId.value) return;
-            log('SFU', `Unsubscribing tracks for: ${participantPublicIds.join(', ')}`);
-            // Implementation would involve setting transceiver direction to 'inactive'
-            // and potentially calling a server endpoint if supported.
+            const normalizedIds = [...new Set(participantPublicIds.map(id => id.toLowerCase()))]
+                .filter(id => id !== localParticipantRef.value?.public_id?.toLowerCase());
+
+            if (normalizedIds.length === 0) return;
+
+            const midsToClose: string[] = [];
+            for (const [tc, meta] of sfuTransceiverMap.entries()) {
+                if (meta.trackName !== 'video') continue;
+                if (tc.direction !== 'recvonly') continue;
+                if (!tc.mid) continue;
+                if (!normalizedIds.includes(meta.participantId)) continue;
+                midsToClose.push(tc.mid);
+            }
+
+            if (midsToClose.length > 0) {
+                log('SFU', `Unsubscribing ${midsToClose.length} remote video track(s) for: ${normalizedIds.join(', ')}`);
+                await closeTracksByMid(midsToClose, `visibility:${normalizedIds.join(',')}`);
+                midsToClose.forEach(mid => midToParticipantMap.delete(mid));
+            }
+
+            // Keep remote audio subscribed, but drop video tiles for off-screen participants.
+            normalizedIds.forEach(pid => {
+                removeParticipantTrack(pid, 'video');
+                trackPreferredLayers.delete(pid);
+
+                const mids = remoteParticipantMids.get(pid);
+                if (mids) {
+                    remoteParticipantMids.set(pid, { ...mids, video: undefined });
+                }
+            });
         });
     }
 
@@ -1357,6 +1560,7 @@ export function createStreamManager(
         publishScreenTrack,
         unpublishScreenTrack,
         removeParticipantStreams,
+        removeParticipantTrack,
         cleanup,
         
         // Per-participant quality scoring

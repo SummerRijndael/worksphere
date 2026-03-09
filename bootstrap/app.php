@@ -37,6 +37,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'audit' => AuditRequest::class,
             '2fa.enforce' => \App\Http\Middleware\EnforceTwoFactor::class,
             'demo' => \App\Http\Middleware\CheckDemoMode::class,
+            'impersonation.block' => \App\Http\Middleware\BlockImpersonatedAccess::class,
             // Firewall Aliases
             'firewall.agent' => \Akaunting\Firewall\Middleware\Agent::class,
             'firewall.bot' => \Akaunting\Firewall\Middleware\Bot::class,

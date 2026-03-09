@@ -16,13 +16,13 @@ class MeetingParticipantResource extends JsonResource
             'role' => $this->role,
             'status' => $this->status,
             'metadata' => $this->metadata,
-            'user' => $this->whenLoaded('user', function () {
-                return [
-                    'public_id' => $this->user->public_id,
-                    'name' => $this->user->name,
-                    'avatar_url' => $this->user->avatar_url,
-                ];
-            }),
+            'user' => $this->user ? [
+                'id' => $this->user->id,
+                'public_id' => $this->user->public_id,
+                'name' => $this->user->name,
+                'avatar_url' => $this->user->getAvatarData()->getUrl(),
+                'color' => $this->user->getAvatarData()->color,
+            ] : null,
         ];
     }
 }

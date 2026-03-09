@@ -56,17 +56,19 @@ class TicketResource extends JsonResource
             'children' => $this->whenLoaded('children', fn () => TicketResource::collection($this->children)),
 
             // Relationships
-            'reporter' => $this->whenLoaded('reporter', fn () => [
-                'id' => $this->reporter->public_id,
+            'reporter' => $this->whenLoaded('reporter', fn () => $this->reporter ? [
+                'id' => $this->reporter->id,
+                'public_id' => $this->reporter->public_id,
                 'name' => $this->reporter->name,
-                'initials' => $this->reporter->initials,
-                'avatar_thumb_url' => $this->reporter->avatar_thumb_url,
-            ]),
+                'avatar_url' => $this->reporter->getAvatarData()->getUrl(),
+                'color' => $this->reporter->getAvatarData()->color,
+            ] : null),
             'assignee' => $this->whenLoaded('assignee', fn () => $this->assignee ? [
-                'id' => $this->assignee->public_id,
+                'id' => $this->assignee->id,
+                'public_id' => $this->assignee->public_id,
                 'name' => $this->assignee->name,
-                'initials' => $this->assignee->initials,
-                'avatar_thumb_url' => $this->assignee->avatar_thumb_url,
+                'avatar_url' => $this->assignee->getAvatarData()->getUrl(),
+                'color' => $this->assignee->getAvatarData()->color,
             ] : null),
             'team' => $this->whenLoaded('team', fn () => $this->team ? [
                 'id' => $this->team->public_id,
@@ -106,11 +108,12 @@ class TicketResource extends JsonResource
                 $request->user()?->can('viewInternalNotes', $this->resource),
                 fn () => TicketInternalNoteResource::collection($this->whenLoaded('internalNotes'))
             ),
-            'followers' => $this->whenLoaded('followers', fn () => $this->followers->map(fn ($user) => [
-                'id' => $user->public_id,
-                'name' => $user->name,
-                'initials' => $user->initials,
-                'avatar_url' => $user->avatar_thumb_url,
+            'followers' => $this->whenLoaded('followers', fn () => $this->followers->map(fn ($participant) => [
+                'id' => $participant->id,
+                'public_id' => $participant->public_id,
+                'name' => $participant->name,
+                'avatar_url' => $participant->getAvatarData()->getUrl(),
+                'color' => $participant->getAvatarData()->color,
             ])),
             'is_following' => $this->when(
                 $request->user(),

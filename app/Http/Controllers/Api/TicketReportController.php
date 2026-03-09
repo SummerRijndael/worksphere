@@ -17,7 +17,7 @@ class TicketReportController extends Controller
     public function stats(Request $request): JsonResponse
     {
         $user = $request->user();
-        
+
         // Ensure user has permission to view ticket reports (Admin or IT Support)
         if (! $user->hasRole('administrator') && ! $user->hasPermissionTo('tickets.reports')) {
             abort(403, 'You do not have permission to view ticket reports.');

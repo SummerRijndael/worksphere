@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed } from "vue";
-import { User, ChevronDown, ChevronUp } from "lucide-vue-next";
+import { Avatar } from "@/components/ui";
+import { ChevronDown, ChevronUp } from "lucide-vue-next";
 import { useDate } from "@/composables/useDate";
 
 const { formatDateTime } = useDate();
@@ -12,9 +12,14 @@ const props = defineProps<{
         content: string;
         created_at: string;
         user_avatar?: string | null;
+        user_color?: string | null;
+        user_initials?: string | null;
     };
     maxChars?: number;
+    showAvatar?: boolean;
 }>();
+
+const { showAvatar = true } = props;
 
 const isExpanded = ref(false);
 const MAX_CHARS = props.maxChars || 1000;
@@ -37,23 +42,15 @@ const toggleExpand = () => {
 
 <template>
     <div class="flex gap-4 animate-fade-in-up">
-        <div class="flex-shrink-0">
-            <div
-                v-if="comment.user_avatar"
-                class="w-10 h-10 rounded-full overflow-hidden border border-[var(--border-default)]"
-            >
-                <img
-                    :src="comment.user_avatar"
-                    alt="Avatar"
-                    class="w-full h-full object-cover"
-                />
-            </div>
-            <div
-                v-else
-                class="w-10 h-10 rounded-full bg-[var(--surface-tertiary)] flex items-center justify-center border border-[var(--border-default)] text-[var(--text-secondary)]"
-            >
-                <User class="w-5 h-5" />
-            </div>
+        <div v-if="showAvatar" class="flex-shrink-0">
+            <Avatar
+                :src="comment.user_avatar"
+                :fallback="
+                    comment.user_initials || comment.name?.charAt(0) || '?'
+                "
+                :color="comment.user_color"
+                size="md"
+            />
         </div>
         <div class="flex-grow min-w-0">
             <div
@@ -66,9 +63,7 @@ const toggleExpand = () => {
                     >
                     <span
                         class="text-xs text-[var(--text-tertiary)] whitespace-nowrap flex-shrink-0"
-                        >{{
-                            formatDateTime(comment.created_at)
-                        }}</span
+                        >{{ formatDateTime(comment.created_at) }}</span
                     >
                 </div>
                 <p

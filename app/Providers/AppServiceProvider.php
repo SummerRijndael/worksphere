@@ -2,15 +2,24 @@
 
 namespace App\Providers;
 
+use Illuminate\Cache\Events\CacheHit;
+use Illuminate\Cache\Events\CacheMissed;
+use Illuminate\Cache\Events\KeyWritten;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Pulse\Facades\Pulse;
 
 class AppServiceProvider extends ServiceProvider
 {
+    protected const CACHE_OBSERVABILITY_PREFIX = 'metrics:cache:observed';
+
+    protected const CACHE_OBSERVABILITY_TTL_SECONDS = 7200;
+
     /**
      * Register any application services.
      */
@@ -87,6 +96,7 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureRateLimiting();
+        $this->registerCacheObservabilityListeners();
 
         \Illuminate\Support\Facades\Event::subscribe(\App\Listeners\ScheduledTaskSubscriber::class);
         \App\Models\Event::observe(\App\Observers\EventObserver::class);
@@ -210,5 +220,34 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('meetings', function (Request $request) {
             return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
         });
+    }
+
+    /**
+     * Track Laravel cache effectiveness via cache events.
+     * Uses direct Redis ops to avoid recursive cache event loops.
+     */
+    protected function registerCacheObservabilityListeners(): void
+    {
+        Event::listen(CacheHit::class, fn () => $this->recordCacheObservation('hit'));
+        Event::listen(CacheMissed::class, fn () => $this->recordCacheObservation('miss'));
+        Event::listen(KeyWritten::class, fn () => $this->recordCacheObservation('write'));
+    }
+
+    protected function recordCacheObservation(string $metric): void
+    {
+        try {
+            $connection = config('cache.stores.redis.connection', 'cache');
+            $redis = Redis::connection($connection);
+
+            $bucket = now()->format('YmdHi');
+            $bucketKey = self::CACHE_OBSERVABILITY_PREFIX.":{$metric}:{$bucket}";
+            $totalKey = self::CACHE_OBSERVABILITY_PREFIX.":{$metric}:total";
+
+            $redis->incr($bucketKey);
+            $redis->expire($bucketKey, self::CACHE_OBSERVABILITY_TTL_SECONDS);
+            $redis->incr($totalKey);
+        } catch (\Throwable) {
+            // Observability must never impact request flow.
+        }
     }
 }

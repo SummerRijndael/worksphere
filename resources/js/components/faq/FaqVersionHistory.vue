@@ -1,7 +1,8 @@
 <script setup>
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import api from "@/lib/api";
 import { useDate } from "@/composables/useDate";
+import { sanitizeHtml } from "@/utils/sanitize";
 
 const { formatDate, formatDateTime } = useDate();
 import { 
@@ -33,6 +34,10 @@ const totalPages = ref(1);
 // Preview State
 const selectedVersion = ref(null);
 const previewLoading = ref(false);
+const safeSelectedVersionContent = computed(() => {
+    const content = selectedVersion.value?.content;
+    return content ? sanitizeHtml(content) : "";
+});
 
 const openPreview = async (version) => {
     selectedVersion.value = version; // Instant feedback
@@ -242,7 +247,7 @@ watch(() => props.articleId, (newId) => {
                          <!-- Body -->
                         <div class="prose max-w-none dark:prose-invert">
                             <h4 class="text-xs uppercase font-bold text-[var(--text-muted)] mb-3 tracking-wider">Content</h4>
-                            <div class="p-6 border border-[var(--border-default)] rounded-xl bg-[var(--surface-elevated)] shadow-sm text-[var(--text-primary)] min-h-[200px]" v-html="selectedVersion.content"></div>
+                            <div class="p-6 border border-[var(--border-default)] rounded-xl bg-[var(--surface-elevated)] shadow-sm text-[var(--text-primary)] min-h-[200px]" v-html="safeSelectedVersionContent"></div>
                         </div>
                     </div>
                 </div>

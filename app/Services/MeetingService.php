@@ -12,6 +12,7 @@ use App\Models\Event;
 use App\Models\Meeting;
 use App\Models\MeetingParticipant;
 use App\Models\User;
+use App\Services\Chat\PresenceService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -25,6 +26,13 @@ class MeetingService implements MeetingServiceContract
 {
     public function createMeeting(User $user, array $data): Meeting
     {
+        $data['settings'] = array_merge([
+            'guest_access' => false,
+            'lobby_enabled' => true,
+            'require_host_or_cohost_present' => false,
+            'screen_share_host_cohost_only' => false,
+        ], $data['settings'] ?? []);
+
         $participants = $data['participants'] ?? [];
         $internalParticipants = collect($participants)->filter(fn ($p) => ($p['type'] ?? 'user') === 'user');
         $externalParticipants = collect($participants)->filter(fn ($p) => ($p['type'] ?? 'user') === 'email');
@@ -39,6 +47,19 @@ class MeetingService implements MeetingServiceContract
         }
 
         return DB::transaction(function () use ($user, $data, $internalParticipants, $externalParticipants) {
+            // Enforce per-user meeting cap. Delete existing meetings to free slots.
+            $maxMeetingsPerUser = (int) config('worksphere.meetings.limits.max_meetings_per_user', 15);
+            if ($maxMeetingsPerUser > 0) {
+                User::query()->whereKey($user->id)->lockForUpdate()->first();
+
+                $createdMeetingsCount = Meeting::where('user_id', $user->id)->count();
+                if ($createdMeetingsCount >= $maxMeetingsPerUser) {
+                    throw ValidationException::withMessages([
+                        'meetings' => "You've reached the {$maxMeetingsPerUser}-meeting limit. Delete an existing meeting to create a new one.",
+                    ]);
+                }
+            }
+
             $meeting = Meeting::create([
                 'public_id' => (string) Str::ulid(),
                 'user_id' => $user->id,
@@ -198,6 +219,17 @@ class MeetingService implements MeetingServiceContract
         }
         Log::channel('videocall')->info('[504_DEBUG] Step 4: Lock check done', ['time' => microtime(true) - $start]);
 
+        // 4.25 Optional gate: participants may only join after a host/co-host is already in-room.
+        // Instead of hard-rejecting, we place them in waiting state with a specific reason
+        // so the frontend can show "waiting for host/co-host to join".
+        $requiresModeratorPresent = (bool) ($meeting->settings['require_host_or_cohost_present'] ?? false);
+        $mustWaitForModerator = false;
+        if ($requiresModeratorPresent && ! $this->isJoiningAsModerator($meeting, $user, $participantSessionId)) {
+            if (! $this->hasActiveHostOrCohostInRoom($meeting)) {
+                $mustWaitForModerator = true;
+            }
+        }
+
         // 4.5 Capacity Check
         $isPro = config('worksphere.meetings.pro_mode', false);
         $maxParticipants = $isPro
@@ -229,7 +261,7 @@ class MeetingService implements MeetingServiceContract
         $lobbyEnabled = $meeting->settings['lobby_enabled'] ?? true;
         $status = 'waiting';
 
-        if ($meeting->user_id === ($user ? $user->id : null) || $isWhitelistMatch || ! $lobbyEnabled) {
+        if (! $mustWaitForModerator && ($meeting->user_id === ($user ? $user->id : null) || $isWhitelistMatch || ! $lobbyEnabled)) {
             $status = 'admitted';
         }
 
@@ -238,12 +270,12 @@ class MeetingService implements MeetingServiceContract
         if (! $isCompanion) {
             if ($user) {
                 $existing = MeetingParticipant::where('meeting_id', $meeting->id)->where('user_id', $user->id)->first();
-                if ($existing && $existing->status === 'admitted') {
+                if ($existing && $existing->status === 'admitted' && ! $mustWaitForModerator) {
                     $status = 'admitted';
                 }
             } elseif ($participantSessionId) {
                 $existing = MeetingParticipant::where('meeting_id', $meeting->id)->where('public_id', $participantSessionId)->first();
-                if ($existing && $existing->status === 'admitted') {
+                if ($existing && $existing->status === 'admitted' && ! $mustWaitForModerator) {
                     $status = 'admitted';
                 }
             }
@@ -307,6 +339,28 @@ class MeetingService implements MeetingServiceContract
                 ]);
             }
         }
+        // Keep status/metadata in sync even for existing participant records.
+        // This is required for gate transitions (e.g. host absent -> waiting with reason).
+        $metadata = $participant->metadata ?? [];
+        $metadataChanged = false;
+        if ($mustWaitForModerator) {
+            if (($metadata['waiting_reason'] ?? null) !== 'awaiting_moderator') {
+                $metadata['waiting_reason'] = 'awaiting_moderator';
+                $metadataChanged = true;
+            }
+        } elseif (($metadata['waiting_reason'] ?? null) === 'awaiting_moderator') {
+            unset($metadata['waiting_reason']);
+            $metadataChanged = true;
+        }
+
+        if ($participant->status !== $status || $metadataChanged) {
+            $participant->status = $status;
+            if ($metadataChanged) {
+                $participant->metadata = $metadata;
+            }
+            $participant->save();
+            $participant->refresh();
+        }
         Log::channel('videocall')->info('[504_DEBUG] Step 6: Participant DB done', ['time' => microtime(true) - $start]);
 
         // 7. Broadcasts
@@ -337,6 +391,62 @@ class MeetingService implements MeetingServiceContract
             'meeting' => $meeting->load(['host', 'participants.user', 'activeBreakoutSession']),
             'participant' => $participant,
         ];
+    }
+
+    private function isJoiningAsModerator(Meeting $meeting, ?User $user, ?string $participantSessionId): bool
+    {
+        // Meeting owner is always the host.
+        if ($user && $meeting->user_id === $user->id) {
+            return true;
+        }
+
+        $query = MeetingParticipant::where('meeting_id', $meeting->id)
+            ->whereIn('role', ['host', 'co-host']);
+
+        if ($user) {
+            $query->where('user_id', $user->id);
+        } elseif (! empty($participantSessionId)) {
+            $query->whereRaw('LOWER(public_id) = ?', [strtolower($participantSessionId)]);
+        } else {
+            return false;
+        }
+
+        return $query->exists();
+    }
+
+    private function hasActiveHostOrCohostInRoom(Meeting $meeting): bool
+    {
+        try {
+            $activeParticipantIds = app(PresenceService::class)->getActiveMeetingParticipantIds($meeting->public_id);
+
+            if (! is_array($activeParticipantIds) || empty($activeParticipantIds)) {
+                return false;
+            }
+
+            $normalizedIds = collect($activeParticipantIds)
+                ->map(fn ($id) => strtolower((string) $id))
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+
+            if (empty($normalizedIds)) {
+                return false;
+            }
+
+            return MeetingParticipant::where('meeting_id', $meeting->id)
+                ->whereIn('role', ['host', 'co-host'])
+                ->whereIn(DB::raw('LOWER(public_id)'), $normalizedIds)
+                ->exists();
+        } catch (\Throwable $e) {
+            // Fail-open if live presence cannot be queried (e.g., Redis unavailable).
+            Log::warning('[MEETING_GUARD] Failed to validate active host/co-host presence; allowing join', [
+                'meeting' => $meeting->public_id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return true;
+        }
     }
 
     public function admitParticipant(Meeting $meeting, MeetingParticipant $participant): MeetingParticipant
@@ -554,15 +664,18 @@ class MeetingService implements MeetingServiceContract
 
         if ($turnKeyId && $turnApiToken) {
             try {
+                $ttl = (int) config('services.cloudflare.turn_credential_ttl', 14400);
+                $ttl = max(60, min($ttl, 172800));
+
                 $response = Http::withToken($turnApiToken)
                     ->post("https://rtc.live.cloudflare.com/v1/turn/keys/{$turnKeyId}/credentials/generate-ice-servers", [
-                        'ttl' => 3600,
+                        'ttl' => $ttl,
                     ]);
 
                 if ($response->successful()) {
                     $data = $response->json();
                     if (! empty($data['iceServers'])) {
-                        $iceServers = $data['iceServers'];
+                        $iceServers = $this->normalizeIceServersForBrowser($data['iceServers']);
                     }
                 }
             } catch (\Exception $e) {
@@ -573,7 +686,37 @@ class MeetingService implements MeetingServiceContract
         return ['ice_servers' => $iceServers];
     }
 
-    public function startBreakout(Meeting $meeting, array $rooms, int $durationMinutes): void
+    /**
+     * Cloudflare may return port 53 alternatives, which major browsers often block.
+     * Keep the list browser-safe by default while preserving username/credential.
+     */
+    private function normalizeIceServersForBrowser(array $iceServers): array
+    {
+        if (! (bool) config('services.cloudflare.turn_filter_blocked_browser_ports', true)) {
+            return $iceServers;
+        }
+
+        $normalized = [];
+        foreach ($iceServers as $server) {
+            $urls = $server['urls'] ?? [];
+            $urlList = is_array($urls) ? $urls : [$urls];
+            $urlList = array_values(array_filter($urlList, fn ($url) => ! preg_match('/:53(?:\\?|$)/', (string) $url)));
+
+            if (count($urlList) === 0) {
+                continue;
+            }
+
+            $entry = $server;
+            $entry['urls'] = count($urlList) === 1 ? $urlList[0] : $urlList;
+            $normalized[] = $entry;
+        }
+
+        return count($normalized) > 0
+            ? $normalized
+            : [['urls' => 'stun:stun.cloudflare.com:3478']];
+    }
+
+    public function startBreakout(Meeting $meeting, array $rooms, ?int $durationMinutes): void
     {
         DB::transaction(function () use ($meeting, $rooms, $durationMinutes) {
             // Cleanup existing active sessions to prevent state bloat/desync
@@ -695,19 +838,54 @@ class MeetingService implements MeetingServiceContract
 
     public function updateBreakoutTimer(Meeting $meeting, int $additionalMinutes): void
     {
-        broadcast(new MeetingSignal(
-            $meeting,
-            'system',
-            'breakout-timer-updated',
-            [
-                'additional_minutes' => $additionalMinutes,
-                'updated_at' => now()->toIso8601String(),
-            ]
-        ));
+        DB::transaction(function () use ($meeting, $additionalMinutes) {
+            $session = BreakoutSession::query()
+                ->where('meeting_id', $meeting->id)
+                ->where('status', 'active')
+                ->latest('id')
+                ->lockForUpdate()
+                ->first();
+
+            if (! $session) {
+                abort(422, 'No active breakout session was found.');
+            }
+
+            if ($session->duration_minutes === null) {
+                abort(422, 'This breakout session has no timer configured.');
+            }
+
+            $newDuration = (int) $session->duration_minutes + $additionalMinutes;
+            if ($newDuration < 1) {
+                abort(422, 'Timer must remain at least 1 minute.');
+            }
+
+            $session->update([
+                'duration_minutes' => $newDuration,
+            ]);
+
+            $elapsedSeconds = max(0, (int) $session->started_at?->diffInSeconds(now()));
+            $remainingSeconds = max(0, ($newDuration * 60) - $elapsedSeconds);
+
+            broadcast(new MeetingSignal(
+                $meeting,
+                'system',
+                'breakout-timer-updated',
+                [
+                    'additional_minutes' => $additionalMinutes,
+                    'duration_minutes' => $newDuration,
+                    'remaining_seconds' => $remainingSeconds,
+                    'updated_at' => now()->toIso8601String(),
+                ]
+            ));
+        });
     }
 
-    public function joinBreakoutRoom(Meeting $meeting, MeetingParticipant $participant, string $roomId): void
+    public function joinBreakoutRoom(Meeting $meeting, MeetingParticipant $participant, ?string $roomId): void
     {
+        if (in_array(strtolower((string) $roomId), ['main', 'null', ''], true)) {
+            $roomId = null;
+        }
+
         // Force refresh from database to avoid race conditions with recent moveParticipantToBreakout updates
         $participant->refresh();
 

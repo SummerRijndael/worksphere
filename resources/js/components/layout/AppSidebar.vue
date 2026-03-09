@@ -745,20 +745,8 @@ onMounted(() => {
                             </p>
                             <p
                                 class="text-[11px] text-[var(--text-muted)] truncate"
-                            >
-                                {{ authStore.user?.email }}
-                            </p>
+                            ></p>
                         </div>
-                        <MoreVertical
-                            :class="
-                                cn(
-                                    'h-4 w-4 text-[var(--text-muted)] transition-all duration-300 ease-in-out shrink-0',
-                                    !showExpanded
-                                        ? 'w-0 opacity-0'
-                                        : 'w-4 opacity-100',
-                                )
-                            "
-                        />
                     </button>
                 </template>
 

@@ -20,6 +20,7 @@ import {
     Upload,
     X,
     Lock,
+    Search,
 } from "lucide-vue-next";
 import { toast } from "vue-sonner";
 import axios from "axios";
@@ -36,6 +37,10 @@ const authStore = useAuthStore();
 const isLoading = ref(true);
 const isSaving = ref(false);
 const showPasswords = ref({});
+
+const currentOrigin = computed(() => {
+    return typeof window !== "undefined" ? window.location.origin : "";
+});
 
 // Settings state - organized by group
 const originalSettings = ref({});
@@ -96,6 +101,15 @@ const settings = ref({
     "contact.legal": "",
     "contact.dmca": "",
     "contact.privacy": "",
+    // SEO & Open Graph
+    "seo.description": "",
+    "seo.keywords": "",
+    "seo.author": "WorkSphere",
+    "seo.robots": "index, follow",
+    "og.title": "",
+    "og.description": "",
+    "og.type": "website",
+    "twitter.card": "summary_large_image",
     // Tickets SLA
     "tickets.sla.enabled": true,
     "tickets.sla.business_hours_enabled": false,
@@ -114,8 +128,8 @@ const settings = ref({
     "tickets.sla.default_resolution_hours.medium": 24,
     "tickets.sla.default_resolution_hours.low": 48,
     // Analytics
-    "analytics_ga_enabled": false,
-    "analytics_ga_measurement_id": "",
+    analytics_ga_enabled: false,
+    analytics_ga_measurement_id: "",
     // Social Links
     "contact.social.twitter": "",
     "contact.social.github": "",
@@ -655,363 +669,690 @@ onMounted(async () => {
 </script>
 
 <template>
-    <div>
+    <div class="general-settings-view">
         <div class="p-6 space-y-6">
-        <!-- Header -->
-        <div
-            class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4"
-        >
-            <div>
-                <h1 class="text-2xl font-bold text-[var(--text-primary)]">
-                    General Settings
-                </h1>
-                <p class="text-[var(--text-secondary)]">
-                    Configure system-wide settings and preferences.
-                </p>
-            </div>
-            <Button variant="primary" @click="saveSettings" :loading="isSaving">
-                <Save class="w-4 h-4" />
-                Save Changes
-            </Button>
-        </div>
-
-        <!-- Loading State -->
-        <div v-if="isLoading" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Header -->
             <div
-                v-for="i in 4"
-                :key="i"
-                class="bg-[var(--surface-elevated)] rounded-xl border border-[var(--border-default)] p-6 animate-pulse"
+                class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4"
             >
-                <div
-                    class="h-4 bg-[var(--surface-secondary)] rounded w-32 mb-4"
-                ></div>
-                <div class="space-y-3">
-                    <div
-                        class="h-10 bg-[var(--surface-secondary)] rounded"
-                    ></div>
-                    <div
-                        class="h-10 bg-[var(--surface-secondary)] rounded"
-                    ></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Settings Sections -->
-        <div v-else class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <!-- Application Settings -->
-            <div
-                class="bg-[var(--surface-elevated)] rounded-xl border border-[var(--border-default)] overflow-hidden"
-            >
-                <div
-                    class="p-4 border-b border-[var(--border-default)] flex items-center gap-3"
-                >
-                    <div
-                        class="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center"
-                    >
-                        <Globe class="w-4 h-4 text-blue-600" />
-                    </div>
-                    <h3 class="font-medium text-[var(--text-primary)]">
-                        Application
-                    </h3>
-                </div>
-                <div class="p-6 space-y-4">
-                    <div class="space-y-1.5">
-                        <label
-                            class="text-sm font-medium text-[var(--text-secondary)]"
-                            >Application Name</label
-                        >
-                        <Input
-                            v-model="settings['app.name']"
-                            placeholder="My Application"
-                        />
-                    </div>
-                    <div class="space-y-1.5">
-                        <label
-                            class="text-sm font-medium text-[var(--text-secondary)] flex items-center gap-1.5"
-                            >Application URL
-                            <Lock class="w-3 h-3 text-amber-500"
-                        /></label>
-                        <Input
-                            v-model="settings['app.url']"
-                            type="url"
-                            placeholder="https://example.com"
-                        />
-                    </div>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div class="space-y-1.5">
-                            <label
-                                class="text-sm font-medium text-[var(--text-secondary)]"
-                                >Timezone</label
-                            >
-                            <select
-                                v-model="settings['app.timezone']"
-                                class="w-full px-3 py-2 text-sm bg-[var(--surface-primary)] border border-[var(--border-default)] rounded-lg text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
-                            >
-                                <option
-                                    v-for="tz in timezones"
-                                    :key="tz"
-                                    :value="tz"
-                                >
-                                    {{ tz }}
-                                </option>
-                            </select>
-                        </div>
-                        <div class="space-y-1.5">
-                            <label
-                                class="text-sm font-medium text-[var(--text-secondary)]"
-                                >Locale</label
-                            >
-                            <select
-                                v-model="settings['app.locale']"
-                                class="w-full px-3 py-2 text-sm bg-[var(--surface-primary)] border border-[var(--border-default)] rounded-lg text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
-                            >
-                                <option
-                                    v-for="loc in locales"
-                                    :key="loc.value"
-                                    :value="loc.value"
-                                >
-                                    {{ loc.label }}
-                                </option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <!-- Demo Mode Toggle -->
-                    <div
-                        class="p-4 bg-orange-500/5 rounded-lg border border-orange-200 mt-4 flex items-center justify-between"
-                    >
-                        <div class="flex items-start gap-3">
-                            <div
-                                class="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center shrink-0"
-                            >
-                                <Key class="w-4 h-4 text-orange-600" />
-                            </div>
-                            <div>
-                                <h4 class="text-sm font-medium text-orange-900">
-                                    Demo Mode
-                                </h4>
-                                <p class="text-xs text-orange-700 mt-0.5">
-                                    Restrict destructive actions. Requires
-                                    secret phrase to toggle.
-                                </p>
-                            </div>
-                        </div>
-                        <Switch
-                            :model-value="settings['app.is_demo_mode']"
-                            @update:model-value="handleDemoModeToggle"
-                        />
-                    </div>
-
-                    <!-- Public Pricing Toggle -->
-                    <div
-                        class="p-4 bg-blue-500/5 rounded-lg border border-blue-200 mt-4 flex items-center justify-between"
-                    >
-                        <div class="flex items-start gap-3">
-                            <div
-                                class="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0"
-                            >
-                                <Settings class="w-4 h-4 text-blue-600" />
-                            </div>
-                            <div>
-                                <h4 class="text-sm font-medium text-blue-900">
-                                    Public Pricing Page
-                                </h4>
-                                <p class="text-xs text-blue-700 mt-0.5">
-                                    Show or hide the pricing section on the landing page and header/footer links.
-                                </p>
-                            </div>
-                        </div>
-                        <Switch
-                            v-model="settings['features.public_pricing_page.enabled']"
-                        />
-                    </div>
-                </div>
-            </div>
-
-            <!-- Contact Information Settings -->
-            <div
-                class="bg-[var(--surface-elevated)] rounded-xl border border-[var(--border-default)] overflow-hidden"
-            >
-                <div
-                    class="p-4 border-b border-[var(--border-default)] flex items-center gap-3"
-                >
-                    <div
-                        class="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center"
-                    >
-                        <Mail class="w-4 h-4 text-green-600" />
-                    </div>
-                    <h3 class="font-medium text-[var(--text-primary)]">
-                        Contact Information
-                    </h3>
-                </div>
-                <div class="p-6 space-y-4">
-                    <p class="text-sm text-[var(--text-secondary)] mb-4">
-                        These email addresses will be displayed in legal
-                        documents (Terms, Privacy) and throughout the
-                        application.
+                <div>
+                    <h1 class="text-2xl font-bold text-[var(--text-primary)]">
+                        General Settings
+                    </h1>
+                    <p class="text-[var(--text-secondary)]">
+                        Configure system-wide settings and preferences.
                     </p>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                </div>
+                <Button
+                    variant="primary"
+                    @click="saveSettings"
+                    :loading="isSaving"
+                >
+                    <Save class="w-4 h-4" />
+                    Save Changes
+                </Button>
+            </div>
+
+            <!-- Loading State -->
+            <div v-if="isLoading" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div
+                    v-for="i in 4"
+                    :key="i"
+                    class="bg-[var(--surface-elevated)] rounded-xl border border-[var(--border-default)] p-6 animate-pulse"
+                >
+                    <div
+                        class="h-4 bg-[var(--surface-secondary)] rounded w-32 mb-4"
+                    ></div>
+                    <div class="space-y-3">
+                        <div
+                            class="h-10 bg-[var(--surface-secondary)] rounded"
+                        ></div>
+                        <div
+                            class="h-10 bg-[var(--surface-secondary)] rounded"
+                        ></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings Sections -->
+            <div v-else class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Application Settings -->
+                <div
+                    class="bg-[var(--surface-elevated)] rounded-xl border border-[var(--border-default)] overflow-hidden"
+                >
+                    <div
+                        class="p-4 border-b border-[var(--border-default)] flex items-center gap-3"
+                    >
+                        <div
+                            class="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center"
+                        >
+                            <Globe class="w-4 h-4 text-blue-600" />
+                        </div>
+                        <h3 class="font-medium text-[var(--text-primary)]">
+                            Application
+                        </h3>
+                    </div>
+                    <div class="p-6 space-y-4">
                         <div class="space-y-1.5">
                             <label
                                 class="text-sm font-medium text-[var(--text-secondary)]"
-                                >Support Email</label
+                                >Application Name</label
                             >
                             <Input
-                                v-model="settings['contact.support']"
-                                type="email"
-                                placeholder="support@example.com"
+                                v-model="settings['app.name']"
+                                placeholder="My Application"
                             />
                         </div>
                         <div class="space-y-1.5">
                             <label
-                                class="text-sm font-medium text-[var(--text-secondary)]"
-                                >Legal Email</label
-                            >
+                                class="text-sm font-medium text-[var(--text-secondary)] flex items-center gap-1.5"
+                                >Application URL
+                                <Lock class="w-3 h-3 text-amber-500"
+                            /></label>
                             <Input
-                                v-model="settings['contact.legal']"
-                                type="email"
-                                placeholder="legal@example.com"
+                                v-model="settings['app.url']"
+                                type="url"
+                                placeholder="https://example.com"
                             />
                         </div>
-                        <div class="space-y-1.5">
-                            <label
-                                class="text-sm font-medium text-[var(--text-secondary)]"
-                                >DMCA / Copyright Email</label
-                            >
-                            <Input
-                                v-model="settings['contact.dmca']"
-                                type="email"
-                                placeholder="dmca@example.com"
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="space-y-1.5">
+                                <label
+                                    class="text-sm font-medium text-[var(--text-secondary)]"
+                                    >Timezone</label
+                                >
+                                <select
+                                    v-model="settings['app.timezone']"
+                                    class="w-full px-3 py-2 text-sm bg-[var(--surface-primary)] border border-[var(--border-default)] rounded-lg text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+                                >
+                                    <option
+                                        v-for="tz in timezones"
+                                        :key="tz"
+                                        :value="tz"
+                                    >
+                                        {{ tz }}
+                                    </option>
+                                </select>
+                            </div>
+                            <div class="space-y-1.5">
+                                <label
+                                    class="text-sm font-medium text-[var(--text-secondary)]"
+                                    >Locale</label
+                                >
+                                <select
+                                    v-model="settings['app.locale']"
+                                    class="w-full px-3 py-2 text-sm bg-[var(--surface-primary)] border border-[var(--border-default)] rounded-lg text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+                                >
+                                    <option
+                                        v-for="loc in locales"
+                                        :key="loc.value"
+                                        :value="loc.value"
+                                    >
+                                        {{ loc.label }}
+                                    </option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Demo Mode Toggle -->
+                        <div
+                            class="p-4 bg-orange-500/5 rounded-lg border border-orange-200 mt-4 flex items-center justify-between"
+                        >
+                            <div class="flex items-start gap-3">
+                                <div
+                                    class="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center shrink-0"
+                                >
+                                    <Key class="w-4 h-4 text-orange-600" />
+                                </div>
+                                <div>
+                                    <h4
+                                        class="text-sm font-medium text-orange-900"
+                                    >
+                                        Demo Mode
+                                    </h4>
+                                    <p class="text-xs text-orange-700 mt-0.5">
+                                        Restrict destructive actions. Requires
+                                        secret phrase to toggle.
+                                    </p>
+                                </div>
+                            </div>
+                            <Switch
+                                :model-value="settings['app.is_demo_mode']"
+                                @update:model-value="handleDemoModeToggle"
                             />
                         </div>
-                        <div class="space-y-1.5">
-                            <label
-                                class="text-sm font-medium text-[var(--text-secondary)]"
-                                >Privacy Officer Email</label
-                            >
-                            <Input
-                                v-model="settings['contact.privacy']"
-                                type="email"
-                                placeholder="privacy@example.com"
+
+                        <!-- Public Pricing Toggle -->
+                        <div
+                            class="p-4 bg-blue-500/5 rounded-lg border border-blue-200 mt-4 flex items-center justify-between"
+                        >
+                            <div class="flex items-start gap-3">
+                                <div
+                                    class="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0"
+                                >
+                                    <Settings class="w-4 h-4 text-blue-600" />
+                                </div>
+                                <div>
+                                    <h4
+                                        class="text-sm font-medium text-blue-900"
+                                    >
+                                        Public Pricing Page
+                                    </h4>
+                                    <p class="text-xs text-blue-700 mt-0.5">
+                                        Show or hide the pricing section on the
+                                        landing page and header/footer links.
+                                    </p>
+                                </div>
+                            </div>
+                            <Switch
+                                v-model="
+                                    settings[
+                                        'features.public_pricing_page.enabled'
+                                    ]
+                                "
                             />
                         </div>
                     </div>
+                </div>
 
-                    <div class="mt-8 mb-4 border-t border-[var(--border-default)] pt-6">
-                        <h4 class="font-medium text-[var(--text-primary)] mb-4">
-                            Social Media Links
-                        </h4>
+                <!-- Contact Information Settings -->
+                <div
+                    class="bg-[var(--surface-elevated)] rounded-xl border border-[var(--border-default)] overflow-hidden"
+                >
+                    <div
+                        class="p-4 border-b border-[var(--border-default)] flex items-center gap-3"
+                    >
+                        <div
+                            class="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center"
+                        >
+                            <Mail class="w-4 h-4 text-green-600" />
+                        </div>
+                        <h3 class="font-medium text-[var(--text-primary)]">
+                            Contact Information
+                        </h3>
+                    </div>
+                    <div class="p-6 space-y-4">
                         <p class="text-sm text-[var(--text-secondary)] mb-4">
-                            These links will be displayed in the public footer. Leave blank to hide the icon.
+                            These email addresses will be displayed in legal
+                            documents (Terms, Privacy) and throughout the
+                            application.
                         </p>
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div class="space-y-1.5">
-                                <label class="text-sm font-medium text-[var(--text-secondary)]">Twitter/X Profile</label>
-                                <Input v-model="settings['contact.social.twitter']" type="url" placeholder="https://twitter.com/..." />
+                                <label
+                                    class="text-sm font-medium text-[var(--text-secondary)]"
+                                    >Support Email</label
+                                >
+                                <Input
+                                    v-model="settings['contact.support']"
+                                    type="email"
+                                    placeholder="support@example.com"
+                                />
                             </div>
                             <div class="space-y-1.5">
-                                <label class="text-sm font-medium text-[var(--text-secondary)]">GitHub Profile</label>
-                                <Input v-model="settings['contact.social.github']" type="url" placeholder="https://github.com/..." />
+                                <label
+                                    class="text-sm font-medium text-[var(--text-secondary)]"
+                                    >Legal Email</label
+                                >
+                                <Input
+                                    v-model="settings['contact.legal']"
+                                    type="email"
+                                    placeholder="legal@example.com"
+                                />
                             </div>
                             <div class="space-y-1.5">
-                                <label class="text-sm font-medium text-[var(--text-secondary)]">LinkedIn Profile</label>
-                                <Input v-model="settings['contact.social.linkedin']" type="url" placeholder="https://linkedin.com/in/..." />
+                                <label
+                                    class="text-sm font-medium text-[var(--text-secondary)]"
+                                    >DMCA / Copyright Email</label
+                                >
+                                <Input
+                                    v-model="settings['contact.dmca']"
+                                    type="email"
+                                    placeholder="dmca@example.com"
+                                />
+                            </div>
+                            <div class="space-y-1.5">
+                                <label
+                                    class="text-sm font-medium text-[var(--text-secondary)]"
+                                    >Privacy Officer Email</label
+                                >
+                                <Input
+                                    v-model="settings['contact.privacy']"
+                                    type="email"
+                                    placeholder="privacy@example.com"
+                                />
+                            </div>
+                        </div>
+
+                        <div
+                            class="mt-8 mb-4 border-t border-[var(--border-default)] pt-6"
+                        >
+                            <h4
+                                class="font-medium text-[var(--text-primary)] mb-4"
+                            >
+                                Social Media Links
+                            </h4>
+                            <p
+                                class="text-sm text-[var(--text-secondary)] mb-4"
+                            >
+                                These links will be displayed in the public
+                                footer. Leave blank to hide the icon.
+                            </p>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <div class="space-y-1.5">
+                                    <label
+                                        class="text-sm font-medium text-[var(--text-secondary)]"
+                                        >Twitter/X Profile</label
+                                    >
+                                    <Input
+                                        v-model="
+                                            settings['contact.social.twitter']
+                                        "
+                                        type="url"
+                                        placeholder="https://twitter.com/..."
+                                    />
+                                </div>
+                                <div class="space-y-1.5">
+                                    <label
+                                        class="text-sm font-medium text-[var(--text-secondary)]"
+                                        >GitHub Profile</label
+                                    >
+                                    <Input
+                                        v-model="
+                                            settings['contact.social.github']
+                                        "
+                                        type="url"
+                                        placeholder="https://github.com/..."
+                                    />
+                                </div>
+                                <div class="space-y-1.5">
+                                    <label
+                                        class="text-sm font-medium text-[var(--text-secondary)]"
+                                        >LinkedIn Profile</label
+                                    >
+                                    <Input
+                                        v-model="
+                                            settings['contact.social.linkedin']
+                                        "
+                                        type="url"
+                                        placeholder="https://linkedin.com/in/..."
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Branding Settings -->
+                <div
+                    class="bg-[var(--surface-elevated)] rounded-xl border border-[var(--border-default)] overflow-hidden"
+                >
+                    <div
+                        class="p-4 border-b border-[var(--border-default)] flex items-center gap-3"
+                    >
+                        <div
+                            class="w-8 h-8 rounded-lg bg-pink-500/10 flex items-center justify-center"
+                        >
+                            <Megaphone class="w-4 h-4 text-pink-600" />
+                        </div>
+                        <h3 class="font-medium text-[var(--text-primary)]">
+                            Branding
+                        </h3>
+                    </div>
+                    <div class="p-6 space-y-6">
+                        <!-- Logo Upload -->
+                        <div
+                            class="flex flex-col sm:flex-row items-center gap-4"
+                        >
+                            <div class="flex-1 space-y-1">
+                                <label
+                                    class="text-sm font-medium text-[var(--text-secondary)]"
+                                >
+                                    Application Logo
+                                </label>
+                                <p class="text-xs text-[var(--text-muted)]">
+                                    Upload a logo for your application (min
+                                    100x100).
+                                </p>
+                            </div>
+                            <div
+                                class="flex flex-row items-center gap-4 w-full sm:w-auto"
+                            >
+                                <div
+                                    class="w-16 h-16 shrink-0 rounded-lg border border-[var(--border-default)] bg-[var(--surface-secondary)] flex items-center justify-center overflow-hidden relative group"
+                                >
+                                    <img
+                                        v-if="settings['app.logo']"
+                                        :src="settings['app.logo']"
+                                        alt="Logo"
+                                        class="w-full h-full object-contain p-2"
+                                    />
+                                    <span
+                                        v-else
+                                        class="text-[10px] text-[var(--text-muted)]"
+                                        >No Logo</span
+                                    >
+                                </div>
+
+                                <div class="flex flex-col gap-2 min-w-[120px]">
+                                    <div class="relative w-full">
+                                        <input
+                                            id="logo-upload"
+                                            type="file"
+                                            @change="
+                                                (e) =>
+                                                    handleFileSelect(e, 'logo')
+                                            "
+                                            class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                            accept="image/*"
+                                        />
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            class="w-full justify-center"
+                                        >
+                                            <div class="truncate">
+                                                {{
+                                                    selectedFiles.logo
+                                                        ? "Change"
+                                                        : "Select File"
+                                                }}
+                                            </div>
+                                        </Button>
+                                    </div>
+                                    <Button
+                                        v-if="selectedFiles.logo"
+                                        variant="primary"
+                                        size="xs"
+                                        class="w-full"
+                                        :loading="brandingUploading.logo"
+                                        @click="uploadBranding('logo')"
+                                    >
+                                        <Upload class="w-3 h-3 mr-1" />
+                                        Upload
+                                    </Button>
+                                    <p
+                                        v-if="selectedFiles.logo"
+                                        class="text-[10px] text-[var(--text-primary)] truncate max-w-[120px]"
+                                    >
+                                        {{ selectedFiles.logo.name }}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="h-px bg-[var(--border-default)]"></div>
+
+                        <!-- Favicon Upload -->
+                        <div
+                            class="flex flex-col sm:flex-row items-center gap-4"
+                        >
+                            <div class="flex-1 space-y-1">
+                                <label
+                                    class="text-sm font-medium text-[var(--text-secondary)]"
+                                >
+                                    Favicon
+                                </label>
+                                <p class="text-xs text-[var(--text-muted)]">
+                                    Upload a favicon (max 512x512). ICO, PNG, or
+                                    SVG.
+                                </p>
+                            </div>
+                            <div
+                                class="flex flex-row items-center gap-4 w-full sm:w-auto"
+                            >
+                                <div
+                                    class="w-12 h-12 shrink-0 rounded-lg border border-[var(--border-default)] bg-[var(--surface-secondary)] flex items-center justify-center overflow-hidden"
+                                >
+                                    <img
+                                        v-if="settings['app.favicon']"
+                                        :src="settings['app.favicon']"
+                                        alt="Favicon"
+                                        class="w-6 h-6 object-contain"
+                                    />
+                                    <span
+                                        v-else
+                                        class="text-[10px] text-[var(--text-muted)]"
+                                        >None</span
+                                    >
+                                </div>
+
+                                <div class="flex flex-col gap-2 min-w-[120px]">
+                                    <div class="relative w-full">
+                                        <input
+                                            id="favicon-upload"
+                                            type="file"
+                                            @change="
+                                                (e) =>
+                                                    handleFileSelect(
+                                                        e,
+                                                        'favicon',
+                                                    )
+                                            "
+                                            class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                            accept="image/x-icon,image/png,image/svg+xml"
+                                        />
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            class="w-full justify-center"
+                                        >
+                                            <div class="truncate">
+                                                {{
+                                                    selectedFiles.favicon
+                                                        ? "Change"
+                                                        : "Select File"
+                                                }}
+                                            </div>
+                                        </Button>
+                                    </div>
+                                    <Button
+                                        v-if="selectedFiles.favicon"
+                                        variant="primary"
+                                        size="xs"
+                                        class="w-full"
+                                        :loading="brandingUploading.favicon"
+                                        @click="uploadBranding('favicon')"
+                                    >
+                                        <Upload class="w-3 h-3 mr-1" />
+                                        Upload
+                                    </Button>
+                                    <p
+                                        v-if="selectedFiles.favicon"
+                                        class="text-[10px] text-[var(--text-primary)] truncate max-w-[120px]"
+                                    >
+                                        {{ selectedFiles.favicon.name }}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="h-px bg-[var(--border-default)]"></div>
+
+                        <!-- OpenGraph Upload -->
+                        <div
+                            class="flex flex-col sm:flex-row items-center gap-4"
+                        >
+                            <div class="flex-1 space-y-1">
+                                <label
+                                    class="text-sm font-medium text-[var(--text-secondary)]"
+                                >
+                                    Social Share Image (OpenGraph)
+                                </label>
+                                <p class="text-xs text-[var(--text-muted)]">
+                                    The image displayed when sharing links on
+                                    social media.
+                                </p>
+                            </div>
+                            <div
+                                class="flex flex-row items-center gap-4 w-full sm:w-auto"
+                            >
+                                <div
+                                    class="w-32 h-16 shrink-0 rounded-lg border border-[var(--border-default)] bg-[var(--surface-secondary)] flex items-center justify-center overflow-hidden relative"
+                                >
+                                    <img
+                                        v-if="settings['app.opengraph']"
+                                        :src="settings['app.opengraph']"
+                                        alt="OpenGraph Image"
+                                        class="w-full h-full object-cover"
+                                    />
+                                    <div
+                                        v-else
+                                        class="flex flex-col items-center justify-center text-[var(--text-muted)]"
+                                    >
+                                        <Share2
+                                            class="w-4 h-4 mb-1 opacity-50"
+                                        />
+                                        <span class="text-[10px]"
+                                            >No Image</span
+                                        >
+                                    </div>
+                                </div>
+
+                                <div class="flex flex-col gap-2 min-w-[120px]">
+                                    <div class="relative w-full">
+                                        <input
+                                            id="opengraph-upload"
+                                            type="file"
+                                            @change="
+                                                (e) =>
+                                                    handleFileSelect(
+                                                        e,
+                                                        'opengraph',
+                                                    )
+                                            "
+                                            class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                            accept="image/png,image/jpeg,image/webp"
+                                        />
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            class="w-full justify-center"
+                                        >
+                                            <div class="truncate">
+                                                {{
+                                                    selectedFiles.opengraph
+                                                        ? "Change"
+                                                        : "Select File"
+                                                }}
+                                            </div>
+                                        </Button>
+                                    </div>
+                                    <Button
+                                        v-if="selectedFiles.opengraph"
+                                        variant="primary"
+                                        size="xs"
+                                        class="w-full"
+                                        :loading="brandingUploading.opengraph"
+                                        @click="uploadBranding('opengraph')"
+                                    >
+                                        <Upload class="w-3 h-3 mr-1" />
+                                        Upload
+                                    </Button>
+                                    <p
+                                        v-if="selectedFiles.opengraph"
+                                        class="text-[10px] text-[var(--text-primary)] truncate max-w-[120px]"
+                                    >
+                                        {{ selectedFiles.opengraph.name }}
+                                    </p>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Branding Settings -->
+            <!-- SEO & Open Graph Settings -->
             <div
-                class="bg-[var(--surface-elevated)] rounded-xl border border-[var(--border-default)] overflow-hidden"
+                class="bg-[var(--surface-elevated)] rounded-xl border border-[var(--border-default)] overflow-hidden lg:col-span-2"
             >
                 <div
                     class="p-4 border-b border-[var(--border-default)] flex items-center gap-3"
                 >
                     <div
-                        class="w-8 h-8 rounded-lg bg-pink-500/10 flex items-center justify-center"
+                        class="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center"
                     >
-                        <Megaphone class="w-4 h-4 text-pink-600" />
+                        <Search class="w-4 h-4 text-indigo-600" />
                     </div>
                     <h3 class="font-medium text-[var(--text-primary)]">
-                        Branding
+                        SEO & Open Graph
                     </h3>
                 </div>
-                <div class="p-6 space-y-6">
-                    <!-- Logo Upload -->
-                    <div class="flex flex-col sm:flex-row items-center gap-4">
-                        <div class="flex-1 space-y-1">
-                            <label
-                                class="text-sm font-medium text-[var(--text-secondary)]"
+                <div class="p-6 space-y-8">
+                    <!-- SEO Details -->
+                    <div class="space-y-4">
+                        <div class="flex items-center gap-2 mb-2">
+                            <Search class="w-4 h-4 text-[var(--text-muted)]" />
+                            <h4
+                                class="text-sm font-semibold text-[var(--text-primary)]"
                             >
-                                Application Logo
-                            </label>
-                            <p class="text-xs text-[var(--text-muted)]">
-                                Upload a logo for your application (min
-                                100x100).
-                            </p>
+                                Search Engine Optimization (SEO)
+                            </h4>
                         </div>
-                        <div
-                            class="flex flex-row items-center gap-4 w-full sm:w-auto"
-                        >
-                            <div
-                                class="w-16 h-16 shrink-0 rounded-lg border border-[var(--border-default)] bg-[var(--surface-secondary)] flex items-center justify-center overflow-hidden relative group"
-                            >
-                                <img
-                                    v-if="settings['app.logo']"
-                                    :src="settings['app.logo']"
-                                    alt="Logo"
-                                    class="w-full h-full object-contain p-2"
-                                />
-                                <span
-                                    v-else
-                                    class="text-[10px] text-[var(--text-muted)]"
-                                    >No Logo</span
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div class="space-y-1.5 md:col-span-2">
+                                <label
+                                    class="text-sm font-medium text-[var(--text-secondary)]"
+                                    >Meta Description</label
                                 >
+                                <textarea
+                                    v-model="settings['seo.description']"
+                                    class="w-full px-3 py-2 text-sm bg-[var(--surface-primary)] border border-[var(--border-default)] rounded-lg text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] min-h-[80px]"
+                                    placeholder="Enter a compelling description for search engines..."
+                                ></textarea>
+                                <p class="text-xs text-[var(--text-muted)]">
+                                    Recommended length: 150-160 characters. This
+                                    appears in search results.
+                                </p>
                             </div>
-
-                            <div class="flex flex-col gap-2 min-w-[120px]">
-                                <div class="relative w-full">
-                                    <input
-                                        id="logo-upload"
-                                        type="file"
-                                        @change="
-                                            (e) => handleFileSelect(e, 'logo')
-                                        "
-                                        class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                                        accept="image/*"
-                                    />
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        class="w-full justify-center"
-                                    >
-                                        <div class="truncate">
-                                            {{
-                                                selectedFiles.logo
-                                                    ? "Change"
-                                                    : "Select File"
-                                            }}
-                                        </div>
-                                    </Button>
-                                </div>
-                                <Button
-                                    v-if="selectedFiles.logo"
-                                    variant="primary"
-                                    size="xs"
-                                    class="w-full"
-                                    :loading="brandingUploading.logo"
-                                    @click="uploadBranding('logo')"
+                            <div class="space-y-1.5">
+                                <label
+                                    class="text-sm font-medium text-[var(--text-secondary)]"
+                                    >Meta Keywords</label
                                 >
-                                    <Upload class="w-3 h-3 mr-1" />
-                                    Upload
-                                </Button>
-                                <p
-                                    v-if="selectedFiles.logo"
-                                    class="text-[10px] text-[var(--text-primary)] truncate max-w-[120px]"
+                                <Input
+                                    v-model="settings['seo.keywords']"
+                                    placeholder="project, management, saas, workflow"
+                                />
+                                <p class="text-xs text-[var(--text-muted)]">
+                                    Comma-separated tags that describe your
+                                    site.
+                                </p>
+                            </div>
+                            <div class="space-y-1.5">
+                                <label
+                                    class="text-sm font-medium text-[var(--text-secondary)]"
+                                    >Author</label
                                 >
-                                    {{ selectedFiles.logo.name }}
+                                <Input
+                                    v-model="settings['seo.author']"
+                                    placeholder="WorkSphere Team"
+                                />
+                            </div>
+                            <div class="space-y-1.5">
+                                <label
+                                    class="text-sm font-medium text-[var(--text-secondary)]"
+                                    >Robots Tag</label
+                                >
+                                <select
+                                    v-model="settings['seo.robots']"
+                                    class="w-full px-3 py-2 text-sm bg-[var(--surface-primary)] border border-[var(--border-default)] rounded-lg text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+                                >
+                                    <option value="index, follow">
+                                        Index, Follow (Default)
+                                    </option>
+                                    <option value="noindex, follow">
+                                        No-Index, Follow
+                                    </option>
+                                    <option value="index, nofollow">
+                                        Index, No-Follow
+                                    </option>
+                                    <option value="noindex, nofollow">
+                                        No-Index, No-Follow
+                                    </option>
+                                </select>
+                                <p class="text-xs text-[var(--text-muted)]">
+                                    Instructions for search engine crawlers.
                                 </p>
                             </div>
                         </div>
@@ -1019,164 +1360,113 @@ onMounted(async () => {
 
                     <div class="h-px bg-[var(--border-default)]"></div>
 
-                    <!-- Favicon Upload -->
-                    <div class="flex flex-col sm:flex-row items-center gap-4">
-                        <div class="flex-1 space-y-1">
-                            <label
-                                class="text-sm font-medium text-[var(--text-secondary)]"
+                    <!-- Open Graph Details -->
+                    <div class="space-y-4">
+                        <div class="flex items-center gap-2 mb-2">
+                            <Share2 class="w-4 h-4 text-[var(--text-muted)]" />
+                            <h4
+                                class="text-sm font-semibold text-[var(--text-primary)]"
                             >
-                                Favicon
-                            </label>
-                            <p class="text-xs text-[var(--text-muted)]">
-                                Upload a favicon (max 512x512). ICO, PNG, or
-                                SVG.
-                            </p>
+                                Social Sharing (Open Graph)
+                            </h4>
                         </div>
-                        <div
-                            class="flex flex-row items-center gap-4 w-full sm:w-auto"
-                        >
-                            <div
-                                class="w-12 h-12 shrink-0 rounded-lg border border-[var(--border-default)] bg-[var(--surface-secondary)] flex items-center justify-center overflow-hidden"
-                            >
-                                <img
-                                    v-if="settings['app.favicon']"
-                                    :src="settings['app.favicon']"
-                                    alt="Favicon"
-                                    class="w-6 h-6 object-contain"
+                        <p class="text-xs text-[var(--text-muted)] mb-4">
+                            How your site appears when shared on social media
+                            platforms like Facebook, Twitter, and LinkedIn.
+                        </p>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div class="space-y-1.5">
+                                <label
+                                    class="text-sm font-medium text-[var(--text-secondary)]"
+                                    >OG Title</label
+                                >
+                                <Input
+                                    v-model="settings['og.title']"
+                                    placeholder="The Operating System for Modern Work"
                                 />
-                                <span
-                                    v-else
-                                    class="text-[10px] text-[var(--text-muted)]"
-                                    >None</span
-                                >
                             </div>
-
-                            <div class="flex flex-col gap-2 min-w-[120px]">
-                                <div class="relative w-full">
-                                    <input
-                                        id="favicon-upload"
-                                        type="file"
-                                        @change="
-                                            (e) =>
-                                                handleFileSelect(e, 'favicon')
-                                        "
-                                        class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                                        accept="image/x-icon,image/png,image/svg+xml"
-                                    />
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        class="w-full justify-center"
-                                    >
-                                        <div class="truncate">
-                                            {{
-                                                selectedFiles.favicon
-                                                    ? "Change"
-                                                    : "Select File"
-                                            }}
-                                        </div>
-                                    </Button>
-                                </div>
-                                <Button
-                                    v-if="selectedFiles.favicon"
-                                    variant="primary"
-                                    size="xs"
-                                    class="w-full"
-                                    :loading="brandingUploading.favicon"
-                                    @click="uploadBranding('favicon')"
+                            <div class="space-y-1.5">
+                                <label
+                                    class="text-sm font-medium text-[var(--text-secondary)]"
+                                    >OG Type</label
                                 >
-                                    <Upload class="w-3 h-3 mr-1" />
-                                    Upload
-                                </Button>
-                                <p
-                                    v-if="selectedFiles.favicon"
-                                    class="text-[10px] text-[var(--text-primary)] truncate max-w-[120px]"
+                                <Input
+                                    v-model="settings['og.type']"
+                                    placeholder="website"
+                                />
+                            </div>
+                            <div class="space-y-1.5 md:col-span-2">
+                                <label
+                                    class="text-sm font-medium text-[var(--text-secondary)]"
+                                    >OG Description</label
                                 >
-                                    {{ selectedFiles.favicon.name }}
-                                </p>
+                                <textarea
+                                    v-model="settings['og.description']"
+                                    class="w-full px-3 py-2 text-sm bg-[var(--surface-primary)] border border-[var(--border-default)] rounded-lg text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] min-h-[60px]"
+                                    placeholder="Brief summary for social shares..."
+                                ></textarea>
+                            </div>
+                            <div class="space-y-1.5">
+                                <label
+                                    class="text-sm font-medium text-[var(--text-secondary)]"
+                                    >Twitter Card Type</label
+                                >
+                                <select
+                                    v-model="settings['twitter.card']"
+                                    class="w-full px-3 py-2 text-sm bg-[var(--surface-primary)] border border-[var(--border-default)] rounded-lg text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+                                >
+                                    <option value="summary">Summary</option>
+                                    <option value="summary_large_image">
+                                        Summary with Large Image
+                                    </option>
+                                    <option value="app">App</option>
+                                    <option value="player">Player</option>
+                                </select>
                             </div>
                         </div>
                     </div>
 
                     <div class="h-px bg-[var(--border-default)]"></div>
 
-                    <!-- OpenGraph Upload -->
-                    <div class="flex flex-col sm:flex-row items-center gap-4">
-                        <div class="flex-1 space-y-1">
+                    <!-- Robots.txt Configuration -->
+                    <div class="space-y-4">
+                        <div class="flex items-center gap-2 mb-2">
+                            <Lock class="w-4 h-4 text-amber-500" />
+                            <h4
+                                class="text-sm font-semibold text-[var(--text-primary)]"
+                            >
+                                Crawler Configuration (Robots.txt)
+                            </h4>
+                        </div>
+                        <p class="text-xs text-[var(--text-muted)] mb-4">
+                            Directly edit your site's
+                            <code>robots.txt</code> file. This file tells search
+                            engine crawlers which pages or files the crawler can
+                            or can't request from your site.
+                        </p>
+                        <div class="space-y-1.5">
                             <label
                                 class="text-sm font-medium text-[var(--text-secondary)]"
+                                >Robots.txt Content</label
                             >
-                                Social Share Image (OpenGraph)
-                            </label>
-                            <p class="text-xs text-[var(--text-muted)]">
-                                The image displayed when sharing links on social
-                                media.
-                            </p>
-                        </div>
-                        <div
-                            class="flex flex-row items-center gap-4 w-full sm:w-auto"
-                        >
+                            <textarea
+                                v-model="settings['seo.robots_txt']"
+                                class="w-full px-4 py-3 text-sm font-mono bg-[var(--surface-primary)] border border-[var(--border-default)] rounded-lg text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] min-h-[150px]"
+                                placeholder="User-agent: *&#10;Disallow: /admin&#10;Allow: /"
+                            ></textarea>
                             <div
-                                class="w-32 h-16 shrink-0 rounded-lg border border-[var(--border-default)] bg-[var(--surface-secondary)] flex items-center justify-center overflow-hidden relative"
+                                class="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-3 mt-2"
                             >
-                                <img
-                                    v-if="settings['app.opengraph']"
-                                    :src="settings['app.opengraph']"
-                                    alt="OpenGraph Image"
-                                    class="w-full h-full object-cover"
+                                <Shield
+                                    class="w-4 h-4 text-amber-600 shrink-0 mt-0.5"
                                 />
-                                <div
-                                    v-else
-                                    class="flex flex-col items-center justify-center text-[var(--text-muted)]"
-                                >
-                                    <Share2 class="w-4 h-4 mb-1 opacity-50" />
-                                    <span class="text-[10px]">No Image</span>
+                                <div class="text-xs text-amber-800">
+                                    <strong>Important:</strong> Changes here
+                                    will only take effect if the static
+                                    <code>public/robots.txt</code> file is
+                                    removed, allowing the system to serve this
+                                    dynamic content instead.
                                 </div>
-                            </div>
-
-                            <div class="flex flex-col gap-2 min-w-[120px]">
-                                <div class="relative w-full">
-                                    <input
-                                        id="opengraph-upload"
-                                        type="file"
-                                        @change="
-                                            (e) =>
-                                                handleFileSelect(e, 'opengraph')
-                                        "
-                                        class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                                        accept="image/png,image/jpeg,image/webp"
-                                    />
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        class="w-full justify-center"
-                                    >
-                                        <div class="truncate">
-                                            {{
-                                                selectedFiles.opengraph
-                                                    ? "Change"
-                                                    : "Select File"
-                                            }}
-                                        </div>
-                                    </Button>
-                                </div>
-                                <Button
-                                    v-if="selectedFiles.opengraph"
-                                    variant="primary"
-                                    size="xs"
-                                    class="w-full"
-                                    :loading="brandingUploading.opengraph"
-                                    @click="uploadBranding('opengraph')"
-                                >
-                                    <Upload class="w-3 h-3 mr-1" />
-                                    Upload
-                                </Button>
-                                <p
-                                    v-if="selectedFiles.opengraph"
-                                    class="text-[10px] text-[var(--text-primary)] truncate max-w-[120px]"
-                                >
-                                    {{ selectedFiles.opengraph.name }}
-                                </p>
                             </div>
                         </div>
                     </div>
@@ -1726,7 +2016,7 @@ onMounted(async () => {
                                     >
                                         {{
                                             settings["app.url"] ||
-                                            window.location.origin
+                                            currentOrigin
                                         }}/api/auth/google/callback
                                     </code>
                                     <Button
@@ -1735,7 +2025,7 @@ onMounted(async () => {
                                         @click="
                                             copyToClipboard(
                                                 (settings['app.url'] ||
-                                                    window.location.origin) +
+                                                    currentOrigin) +
                                                     '/api/auth/google/callback',
                                             )
                                         "
@@ -1837,7 +2127,7 @@ onMounted(async () => {
                                     >
                                         {{
                                             settings["app.url"] ||
-                                            window.location.origin
+                                            currentOrigin
                                         }}/api/auth/github/callback
                                     </code>
                                     <Button
@@ -1846,7 +2136,7 @@ onMounted(async () => {
                                         @click="
                                             copyToClipboard(
                                                 (settings['app.url'] ||
-                                                    window.location.origin) +
+                                                    currentOrigin) +
                                                     '/api/auth/github/callback',
                                             )
                                         "
@@ -1926,12 +2216,20 @@ onMounted(async () => {
                             <h4
                                 class="text-sm font-medium text-[var(--text-primary)] flex items-center gap-2"
                             >
-                                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9L16 12l-5 4.5z"/>
+                                <svg
+                                    class="w-4 h-4"
+                                    viewBox="0 0 24 24"
+                                    fill="currentColor"
+                                >
+                                    <path
+                                        d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9L16 12l-5 4.5z"
+                                    />
                                 </svg>
                                 Google Analytics (GA4)
                             </h4>
-                            <Switch v-model="settings['analytics_ga_enabled']" />
+                            <Switch
+                                v-model="settings['analytics_ga_enabled']"
+                            />
                         </div>
                         <div
                             class="space-y-4"
@@ -1946,10 +2244,14 @@ onMounted(async () => {
                                     >Measurement ID (G-XXXXXXXXXX)</label
                                 >
                                 <Input
-                                    v-model="settings['analytics_ga_measurement_id']"
+                                    v-model="
+                                        settings['analytics_ga_measurement_id']
+                                    "
                                     placeholder="G-XXXXXXXXXX"
                                 />
-                                <p class="text-xs text-[var(--text-muted)] mt-1">
+                                <p
+                                    class="text-xs text-[var(--text-muted)] mt-1"
+                                >
                                     Your Google Analytics 4 Measurement ID.
                                 </p>
                             </div>
@@ -2093,7 +2395,7 @@ onMounted(async () => {
                 <div
                     class="p-4 border-b border-[var(--border-default)] flex items-center justify-between"
                 >
-                    <div class="flex items-center gap-3">
+                    <div class="flex flex-wrap items-center gap-2 sm:gap-3">
                         <div
                             class="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center"
                         >
@@ -2397,7 +2699,6 @@ onMounted(async () => {
                 </div>
             </div>
         </Modal>
-    </div>
 
     <!-- Critical Settings Confirmation Modal -->
     <Modal
@@ -2457,6 +2758,6 @@ onMounted(async () => {
                 </Button>
             </div>
         </div>
-    </Modal>
+        </Modal>
     </div>
 </template>

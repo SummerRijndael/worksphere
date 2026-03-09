@@ -143,8 +143,50 @@ export function createSignalingManager(
             return;
         }
 
+        if (type === 'force-stop-screen-share') {
+            const targetId = String(data?.targetId || '').toLowerCase();
+            if (!targetId || !myId || targetId !== myId) return;
+
+            const senderParticipant = presenceManager.participants.value.find(
+                (p: any) => p.public_id === normalizedSenderId
+            );
+            const senderIsModerator =
+                senderParticipant?.role === 'host' || senderParticipant?.role === 'co-host';
+
+            if (!senderIsModerator) {
+                log('SIGNAL', `Ignoring force-stop-screen-share from non-moderator ${normalizedSenderId}`);
+                return;
+            }
+
+            log('SIGNAL', 'Received forced stop for local screen share');
+            try {
+                await streamManager.unpublishScreenTrack();
+            } catch (e) {
+                log('ERROR', 'Failed to unpublish local screen share after force-stop', e);
+            } finally {
+                presenceManager.toggleScreenShareState(myId, false);
+                sendSignal('screen-share-toggle', { sharing: false });
+            }
+            return;
+        }
+
         if (type === 'screen-share-toggle') {
             const { sharing, mid } = data;
+
+            // Single active sharer policy:
+            // If another participant starts sharing while we are sharing, stop ours.
+            if (sharing && myId && normalizedSenderId !== myId && presenceManager.screenShares.value.has(myId)) {
+                log('SIGNAL', `Another participant (${normalizedSenderId}) started sharing; stopping local share`);
+                try {
+                    await streamManager.unpublishScreenTrack();
+                } catch (e) {
+                    log('ERROR', 'Failed to stop local share after remote sharer started', e);
+                } finally {
+                    presenceManager.toggleScreenShareState(myId, false);
+                    sendSignal('screen-share-toggle', { sharing: false });
+                }
+            }
+
             presenceManager.toggleScreenShareState(normalizedSenderId, sharing);
             
             if (sharing) {
@@ -153,6 +195,31 @@ export function createSignalingManager(
                 if (sessionId) {
                     log('SIGNAL', `Proactively pulling screen share for ${normalizedSenderId} with MID: ${mid}`);
                     streamManager.pullParticipantTracks(normalizedSenderId, sessionId, undefined, undefined, mid || "true");
+                }
+            } else {
+                // Explicitly clear remote screen tile/UI immediately.
+                streamManager.removeParticipantStreams(`${normalizedSenderId}:screen`);
+            }
+            return;
+        }
+
+        if (type === 'camera-toggle') {
+            const enabled = !!data.enabled;
+            if (!enabled) {
+                // Force-remove stale remote camera track so tile falls back to avatar immediately.
+                streamManager.removeParticipantTrack?.(normalizedSenderId, 'video');
+            } else {
+                // Ask for latest media metadata/tracks when camera turns back on.
+                const sessionId = streamManager.remoteSfuSessions.get(normalizedSenderId);
+                const mids = streamManager.remoteSfuTracks.get(normalizedSenderId) || {};
+                if (sessionId) {
+                    streamManager.pullParticipantTracks(
+                        normalizedSenderId,
+                        sessionId,
+                        mids.audioMid,
+                        mids.videoMid,
+                        mids.screenMid
+                    );
                 }
             }
             return;
@@ -461,6 +528,18 @@ export function createSignalingManager(
                 ...(screenMid !== undefined ? { screenMid } : {}),
             };
             streamManager.remoteSfuTracks.set(normalizedSenderId, updatedTracks);
+
+            // IMPORTANT: null means explicit OFF from sender, clear stale tiles/tracks now.
+            if (videoMid !== undefined && !updatedTracks.videoMid) {
+                streamManager.removeParticipantTrack?.(normalizedSenderId, 'video');
+            }
+            if (audioMid !== undefined && !updatedTracks.audioMid) {
+                streamManager.removeParticipantTrack?.(normalizedSenderId, 'audio');
+            }
+            if (screenMid !== undefined && !updatedTracks.screenMid) {
+                presenceManager.toggleScreenShareState(normalizedSenderId, false);
+                streamManager.removeParticipantStreams(`${normalizedSenderId}:screen`);
+            }
             
             // Late joiner sync for screenshares
             if (screenMid || updatedTracks.screenMid) {
@@ -523,7 +602,10 @@ export function createSignalingManager(
         sendSignal('signal', {
             type: 'sfu-media-ready',
             sessionId: streamManager.sfuSessionId.value,
-            audioMid, videoMid, screenMid,
+            // Use null (not undefined) so receivers can clear stale track state.
+            audioMid: audioMid ?? null,
+            videoMid: videoMid ?? null,
+            screenMid: screenMid ?? null,
             current_room_id: roomId !== undefined ? roomId : null
         });
     }

@@ -147,6 +147,44 @@
                         <p v-if="form.lobby_enabled" class="text-[11px] text-(--text-muted) ml-6">
                             Participants wait until the host admits them.
                         </p>
+
+                        <!-- Require host/co-host before entry -->
+                        <label class="flex items-center justify-between cursor-pointer group">
+                            <div class="flex items-center gap-2">
+                                <Icon name="shield" size="16" class="text-(--text-muted)" />
+                                <span class="text-sm">Only allow join after host/co-host enters</span>
+                            </div>
+                            <div class="relative inline-flex items-center">
+                                <input
+                                    v-model="form.require_host_or_cohost_present"
+                                    type="checkbox"
+                                    class="sr-only peer"
+                                />
+                                <div class="w-9 h-5 bg-(--surface-tertiary) peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-(--color-primary-600) border border-(--border-muted)"></div>
+                            </div>
+                        </label>
+                        <p v-if="form.require_host_or_cohost_present" class="text-[11px] text-(--text-muted) ml-6">
+                            Participants can join only after a host or co-host is already inside the room.
+                        </p>
+
+                        <!-- Restrict screen share to host/co-host -->
+                        <label class="flex items-center justify-between cursor-pointer group">
+                            <div class="flex items-center gap-2">
+                                <Icon name="monitor" size="16" class="text-(--text-muted)" />
+                                <span class="text-sm">Only host/co-host can share screen</span>
+                            </div>
+                            <div class="relative inline-flex items-center">
+                                <input
+                                    v-model="form.screen_share_host_cohost_only"
+                                    type="checkbox"
+                                    class="sr-only peer"
+                                />
+                                <div class="w-9 h-5 bg-(--surface-tertiary) peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-(--color-primary-600) border border-(--border-muted)"></div>
+                            </div>
+                        </label>
+                        <p v-if="form.screen_share_host_cohost_only" class="text-[11px] text-(--text-muted) ml-6">
+                            Participants can view shared screens but only host or co-host can start sharing.
+                        </p>
                     </div>
 
                     <!-- Save to Calendar toggle -->
@@ -316,6 +354,8 @@ const form = reactive({
     auto_generate_password: true,
     guest_access: false,
     lobby_enabled: true,
+    require_host_or_cohost_present: false,
+    screen_share_host_cohost_only: false,
     // New fields
     save_to_calendar: false,
     enable_reminder: false,
@@ -385,6 +425,9 @@ const submit = async () => {
                 host_only_cam: false,
                 guest_access: form.guest_access,
                 lobby_enabled: form.lobby_enabled,
+                require_host_or_cohost_present: form.require_host_or_cohost_present,
+                screen_share_host_cohost_only:
+                    form.screen_share_host_cohost_only,
             },
             save_to_calendar: form.save_to_calendar,
             reminder_minutes_before: form.save_to_calendar && form.enable_reminder ? form.reminder_minutes_before : null,

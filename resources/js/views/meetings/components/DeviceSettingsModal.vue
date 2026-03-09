@@ -50,8 +50,14 @@ const previewVideo = ref<HTMLVideoElement | null>(null);
 const cameraStream = ref<MediaStream | null>(null);
 const previewProcessedStream = ref<MediaStream | null>(null);
 const cameraError = ref<string | null>(null);
+const showPreviewFps = ref(false);
+const previewFps = ref<number | null>(null);
 const backgroundBlur = useBackgroundBlur();
 let originalPreviewTrack: MediaStreamTrack | null = null;
+let previewFpsRaf: number | null = null;
+let previewFpsWindowStart = 0;
+let previewFpsFrames = 0;
+let previewLastVideoTime = -1;
 
 const tabs = [
     { id: "audio", label: "Audio", icon: "Mic" },
@@ -320,8 +326,60 @@ async function startCameraPreview(deviceId?: string) {
     }
 }
 
+function stopPreviewFpsMeter(reset = true) {
+    if (previewFpsRaf) {
+        cancelAnimationFrame(previewFpsRaf);
+        previewFpsRaf = null;
+    }
+    previewFpsFrames = 0;
+    previewFpsWindowStart = 0;
+    previewLastVideoTime = -1;
+    if (reset) {
+        previewFps.value = null;
+    }
+}
+
+function startPreviewFpsMeter() {
+    const videoEl = previewVideo.value;
+    if (!videoEl) return;
+
+    stopPreviewFpsMeter(false);
+    previewFpsWindowStart = performance.now();
+
+    const tick = () => {
+        if (
+            !showPreviewFps.value ||
+            !props.open ||
+            activeTab.value !== "video" ||
+            !previewVideo.value
+        ) {
+            stopPreviewFpsMeter(true);
+            return;
+        }
+
+        const now = performance.now();
+        const currentTime = videoEl.currentTime;
+        if (videoEl.readyState >= 2 && currentTime !== previewLastVideoTime) {
+            previewFpsFrames++;
+            previewLastVideoTime = currentTime;
+        }
+
+        const elapsedMs = now - previewFpsWindowStart;
+        if (elapsedMs >= 1000) {
+            previewFps.value = Math.round((previewFpsFrames * 1000) / elapsedMs);
+            previewFpsFrames = 0;
+            previewFpsWindowStart = now;
+        }
+
+        previewFpsRaf = requestAnimationFrame(tick);
+    };
+
+    previewFpsRaf = requestAnimationFrame(tick);
+}
+
 function stopCameraPreview() {
     console.info("[MODAL-TRACE] stopCameraPreview called");
+    stopPreviewFpsMeter();
     backgroundBlur.stopProcessing();
     if (cameraStream.value) {
         console.info("[MODAL-TRACE] Stopping base camera stream tracks");
@@ -358,6 +416,26 @@ watch(
         } else if (videoEl && !stream) {
             (videoEl as HTMLVideoElement).srcObject = null;
         }
+    },
+    { immediate: true },
+);
+
+watch(
+    () => [
+        props.open,
+        activeTab.value,
+        showPreviewFps.value,
+        !!previewVideo.value,
+        !!cameraStream.value,
+        !!previewProcessedStream.value,
+    ],
+    ([isOpen, tab, showFps, hasVideoEl, hasRawStream, hasProcessedStream]) => {
+        const hasPreviewStream = hasRawStream || hasProcessedStream;
+        if (isOpen && tab === "video" && showFps && hasVideoEl && hasPreviewStream) {
+            startPreviewFpsMeter();
+            return;
+        }
+        stopPreviewFpsMeter(true);
     },
     { immediate: true },
 );
@@ -523,6 +601,7 @@ onBeforeUnmount(() => {
     stopVisualizer();
     stopCameraPreview();
     stopSpeakerTest();
+    stopPreviewFpsMeter();
 });
 </script>
 
@@ -799,6 +878,20 @@ onBeforeUnmount(() => {
                                         class="w-full"
                                     />
 
+                                    <label
+                                        class="flex items-center justify-between gap-3 px-3 py-2 rounded-lg border border-(--border-subtle) bg-(--surface-tertiary)/20"
+                                    >
+                                        <span
+                                            class="text-xs font-medium text-(--text-secondary)"
+                                            >Show FPS in preview</span
+                                        >
+                                        <input
+                                            v-model="showPreviewFps"
+                                            type="checkbox"
+                                            class="w-4 h-4 rounded border-(--border-muted) text-(--color-primary-600) focus:ring-(--color-primary-500)"
+                                        />
+                                    </label>
+
                                     <!-- Camera Preview -->
                                     <div
                                         class="aspect-video bg-black rounded-xl border border-(--border-muted) flex items-center justify-center relative overflow-hidden shadow-inner"
@@ -851,6 +944,23 @@ onBeforeUnmount(() => {
                                             <span
                                                 class="text-[9px] font-bold text-white uppercase tracking-wider"
                                                 >Live</span
+                                            >
+                                        </div>
+                                        <div
+                                            v-if="
+                                                showPreviewFps &&
+                                                cameraStream &&
+                                                !cameraError
+                                            "
+                                            class="absolute top-2 right-2 flex items-center gap-1 bg-black/60 px-2 py-1 rounded-md"
+                                        >
+                                            <span
+                                                class="text-[9px] font-bold text-white uppercase tracking-wider"
+                                                >FPS:</span
+                                            >
+                                            <span
+                                                class="text-[10px] font-mono font-bold text-white"
+                                                >{{ previewFps ?? "..." }}</span
                                             >
                                         </div>
                                     </div>

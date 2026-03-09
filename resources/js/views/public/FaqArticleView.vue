@@ -3,7 +3,15 @@ import { ref, onMounted, computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import PublicLayout from "@/layouts/PublicLayout.vue";
 import CommentItem from "@/components/public/CommentItem.vue";
-import { PageLoader, Button } from "@/components/ui";
+import {
+    PageLoader,
+    Button,
+    Alert,
+    Modal,
+    Textarea,
+    ComboBox,
+    Avatar,
+} from "@/components/ui";
 import {
     ChevronLeft,
     Calendar,
@@ -103,9 +111,9 @@ const fetchArticle = async () => {
     } catch (error: any) {
         console.error("Failed to fetch article", error);
         if (error.response?.status === 404) {
-            router.push({ name: 'not-found' });
+            router.push({ name: "not-found" });
         } else {
-            router.push({ name: 'public.faq' });
+            router.push({ name: "public.faq" });
         }
     } finally {
         isLoading.value = false;
@@ -237,7 +245,7 @@ const loadMoreComments = async () => {
     try {
         const nextPage = currentPage.value + 1;
         const response = await api.get(
-            `/api/public/faq/${article.value.id}/comments?page=${nextPage}`
+            `/api/public/faq/${article.value.id}/comments?page=${nextPage}`,
         );
 
         // Append new comments
@@ -306,7 +314,12 @@ onMounted(() => {
                     class="mt-3 flex flex-wrap items-center gap-6 text-sm text-[var(--text-muted)]"
                 >
                     <div class="flex items-center gap-2">
-                        <User class="h-4 w-4" />
+                        <Avatar
+                            :src="article.author?.avatar_url"
+                            :fallback="article.author?.name?.charAt(0) || '?'"
+                            :color="article.author?.color"
+                            size="xs"
+                        />
                         <span>{{
                             article.author?.name || `${appConfig.name} Team`
                         }}</span>
@@ -317,7 +330,10 @@ onMounted(() => {
                             >Updated
                             {{
                                 article.updated_at
-                                    ? formatDate(article.updated_at, "MMM d, yyyy")
+                                    ? formatDate(
+                                          article.updated_at,
+                                          "MMM d, yyyy",
+                                      )
                                     : "Recently"
                             }}</span
                         >
@@ -529,43 +545,41 @@ onMounted(() => {
                 </div>
 
                 <!-- Comments List -->
-                    <div class="space-y-6">
-                         <!-- Comments List -->
-                         <div v-if="article.comments && article.comments.length > 0">
-                            <CommentItem
-                                v-for="comment in article.comments"
-                                :key="comment.id"
-                                :comment="comment"
-                                class="mb-6 last:mb-0"
-                            />
-                         </div>
-                         <div
-                            v-else
-                            class="text-center py-8 text-[var(--text-secondary)]"
-                         >
-                            No comments yet. Be the first to start the discussion!
-                         </div>
-
-                         <!-- Load More Button -->
-                         <div
-                            v-if="hasMoreComments"
-                            class="flex justify-center pt-4"
-                         >
-                            <Button
-                                variant="secondary"
-                                :disabled="isLoadingMoreComments"
-                                @click="loadMoreComments"
-                            >
-                                <template v-if="isLoadingMoreComments">
-                                    <span class="animate-spin mr-2">⟳</span>
-                                    Loading...
-                                </template>
-                                <template v-else>
-                                    Load older comments
-                                </template>
-                            </Button>
-                         </div>
+                <div class="space-y-6">
+                    <!-- Comments List -->
+                    <div v-if="article.comments && article.comments.length > 0">
+                        <CommentItem
+                            v-for="comment in article.comments"
+                            :key="comment.id"
+                            :comment="comment"
+                            class="mb-6 last:mb-0"
+                        />
                     </div>
+                    <div
+                        v-else
+                        class="text-center py-8 text-[var(--text-secondary)]"
+                    >
+                        No comments yet. Be the first to start the discussion!
+                    </div>
+
+                    <!-- Load More Button -->
+                    <div
+                        v-if="hasMoreComments"
+                        class="flex justify-center pt-4"
+                    >
+                        <Button
+                            variant="secondary"
+                            :disabled="isLoadingMoreComments"
+                            @click="loadMoreComments"
+                        >
+                            <template v-if="isLoadingMoreComments">
+                                <span class="animate-spin mr-2">⟳</span>
+                                Loading...
+                            </template>
+                            <template v-else> Load older comments </template>
+                        </Button>
+                    </div>
+                </div>
             </div>
 
             <!-- Privacy Notice -->

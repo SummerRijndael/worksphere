@@ -53,12 +53,19 @@
             class="hidden"
         ></audio>
 
-        <!-- Avatar Fallback (Initials) -->
+        <!-- Avatar Fallback -->
         <div v-if="!actualHasVideo" class="tile-avatar-wrap">
             <div class="tile-avatar-content">
-                <div class="tile-avatar">
-                    {{ initials }}
-                </div>
+                <Avatar
+                    :src="
+                        participant.user?.avatar_url ||
+                        participant.metadata?.avatar_url
+                    "
+                    :fallback="initials"
+                    :color="participant.user?.color"
+                    size="3xl"
+                    class="tile-avatar-comp"
+                />
             </div>
         </div>
 
@@ -112,7 +119,7 @@
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onUnmounted } from "vue";
 import { useMeetingStore } from "@/stores/meeting";
-import { Icon } from "@/components/ui";
+import { Icon, Avatar } from "@/components/ui";
 import LaserPointerOverlay from "./LaserPointerOverlay.vue";
 import AnnotationOverlay from "./AnnotationOverlay.vue";
 
@@ -151,22 +158,42 @@ const activeStream = computed(() => {
 
 const actualHasVideo = ref(false);
 
+const hasLiveVideo = (s: MediaStream | null | undefined) => {
+    if (!s) return false;
+    return s
+        .getVideoTracks()
+        .some((t) => t.readyState === "live" && t.enabled && !t.muted);
+};
+
+const hasLiveAudio = (s: MediaStream | null | undefined) => {
+    if (!s) return false;
+    return s
+        .getAudioTracks()
+        .some((t) => t.readyState === "live" && t.enabled && !t.muted);
+};
+
 const checkVideoStatus = () => {
     if (isLocal.value) {
-        actualHasVideo.value = !!(props.localCameraOn || props.isScreenShare);
+        // Use real track state so UI recovers when a track is externally stopped.
+        if (props.isScreenShare) {
+            actualHasVideo.value = hasLiveVideo(activeStream.value);
+        } else {
+            actualHasVideo.value = !!props.localCameraOn && hasLiveVideo(activeStream.value);
+        }
+        // Keep local preview resilient during track swaps/layout remounts.
+        updateLocalStream();
         return;
     }
+
     const s = activeStream.value;
     if (!s) {
         actualHasVideo.value = false;
         return;
     }
-    const vTracks = s.getVideoTracks();
-    actualHasVideo.value =
-        vTracks.length > 0 &&
-        vTracks[0].enabled &&
-        vTracks[0].readyState === "live" &&
-        !vTracks[0].muted;
+
+    // For remote tracks, include `enabled` so tiles fall back to avatar when
+    // publishers disable camera without immediately ending the track object.
+    actualHasVideo.value = hasLiveVideo(s);
 };
 
 let videoStatusInterval: ReturnType<typeof setInterval>;
@@ -246,6 +273,12 @@ const displayName = computed(() => {
         : props.participant.user?.name ||
           props.participant.metadata?.guest_name ||
           "Participant";
+
+    const isGuest = !props.participant.user?.public_id && !props.participant.user?.id;
+    if (!isLocal.value && isGuest) {
+        name = `${name} (Guest)`;
+    }
+
     if (props.isScreenShare) name += " (presenting)";
     return name;
 });
@@ -274,6 +307,28 @@ const bindLocalVideo = (el: any) => {
     }
 };
 
+function updateLocalStream() {
+    const videoEl = localVideo.value;
+    if (!videoEl) return;
+
+    const stream =
+        props.isScreenShare && props.localStreamOverride
+            ? props.localStreamOverride
+            : meetingStore.localStream;
+    const shouldBindVideo = !!stream && hasLiveVideo(stream) && actualHasVideo.value;
+
+    if (shouldBindVideo) {
+        if (videoEl.srcObject !== stream) {
+            videoEl.srcObject = stream as MediaStream;
+        }
+        videoEl.play().catch((e) =>
+            console.warn("[LocalVideo] Auto-play prevented", e),
+        );
+    } else {
+        videoEl.srcObject = null;
+    }
+}
+
 watch(
     () => [
         localVideo.value,
@@ -281,20 +336,7 @@ watch(
         props.isScreenShare,
         props.localStreamOverride,
     ],
-    ([videoEl, camStream, isScreen, overrideStream]) => {
-        const stream = isScreen && overrideStream ? overrideStream : camStream;
-        if (videoEl && stream) {
-            const el = videoEl as HTMLVideoElement;
-            if (el.srcObject !== stream) {
-                el.srcObject = stream as MediaStream;
-                el.play().catch((e) =>
-                    console.warn("[LocalVideo] Auto-play prevented", e),
-                );
-            }
-        } else if (videoEl && !stream) {
-            (videoEl as HTMLVideoElement).srcObject = null;
-        }
-    },
+    () => updateLocalStream(),
     { immediate: true, flush: "post" },
 );
 
@@ -323,39 +365,59 @@ const bindRemoteAudio = (el: any) => {
 
 function updateRemoteStream() {
     const stream = activeStream.value;
-    if (stream) {
-        if (remoteVideo.value && remoteVideo.value.srcObject !== stream) {
-            remoteVideo.value.srcObject = stream;
+    const hasVideo = hasLiveVideo(stream) && actualHasVideo.value;
+    const hasAudio = hasLiveAudio(stream);
+
+    if (remoteVideo.value) {
+        if (hasVideo && stream) {
+            if (remoteVideo.value.srcObject !== stream) {
+                remoteVideo.value.srcObject = stream;
+            }
+            remoteVideo.value.play().catch(() => {});
+        } else {
+            remoteVideo.value.srcObject = null;
         }
-        if (remoteAudio.value && remoteAudio.value.srcObject !== stream) {
-            remoteAudio.value.srcObject = stream;
+    }
+
+    if (remoteAudio.value) {
+        if (hasAudio && stream) {
+            if (remoteAudio.value.srcObject !== stream) {
+                remoteAudio.value.srcObject = stream;
+            }
+            remoteAudio.value.play().catch((e: any) => {
+                console.warn(
+                    `[AudioPlayback] Playback failed for ${props.participant.public_id}:`,
+                    e,
+                );
+            });
+        } else {
+            remoteAudio.value.srcObject = null;
         }
     }
 }
 
 watch(
     [activeStream, remoteVideo, remoteAudio],
-    ([newStream, videoEl, audioEl]) => {
-        if (newStream) {
-            if (videoEl && videoEl.srcObject !== newStream) {
-                videoEl.srcObject = newStream;
-            }
-            if (audioEl && audioEl.srcObject !== newStream) {
-                audioEl.srcObject = newStream;
-                audioEl.play().catch((e: any) => {
-                    console.warn(
-                        `[AudioPlayback] Playback failed for ${props.participant.public_id}:`,
-                        e,
-                    );
-                });
-            }
+    () => updateRemoteStream(),
+    { immediate: true },
+);
+
+watch(
+    actualHasVideo,
+    () => {
+        if (isLocal.value) {
+            updateLocalStream();
+        } else {
+            updateRemoteStream();
         }
     },
     { immediate: true },
 );
 
 onMounted(() => {
-    if (!isLocal.value) {
+    if (isLocal.value) {
+        updateLocalStream();
+    } else {
         updateRemoteStream();
     }
 });
@@ -396,18 +458,12 @@ watch(
     width: 100%;
     height: 100%;
     position: relative;
-    background: #3c4043;
+    background: transparent; /* Seamless blend */
     display: flex;
     align-items: center;
     justify-content: center;
     overflow: hidden;
-    border-radius: 8px;
-}
-
-@media (max-width: 768px) {
-    .tile-root {
-        border-radius: 0;
-    }
+    border-radius: 0; /* Match grid-tile */
 }
 
 .tile-speaking {
@@ -468,6 +524,14 @@ watch(
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.tile-avatar-comp {
+    width: 80px;
+    height: 80px;
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    background: #3c4043;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .tile-avatar {

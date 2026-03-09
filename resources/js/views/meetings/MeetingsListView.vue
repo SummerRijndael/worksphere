@@ -58,7 +58,7 @@
                     <input
                         v-model="joinId"
                         placeholder="Enter Meeting ID"
-                        class="bg-transparent border-none outline-none focus:ring-0 focus:outline-none px-2 py-1 text-sm w-40 text-(--text-primary)"
+                        class="join-meeting-input bg-transparent border-none! shadow-none! outline-none! ring-0! focus:ring-0! focus:ring-transparent! focus:ring-offset-0! focus:outline-none! focus:border-none! px-2 py-1 text-sm w-40 text-(--text-primary)"
                         @keyup.enter="handleJoinById"
                     />
                     <button
@@ -146,7 +146,7 @@
                             <div>
                                 <div class="flex items-center gap-2">
                                     <h3
-                                        class="font-bold text-lg leading-tight truncate max-w-[12rem] sm:max-w-[14rem]"
+                                        class="font-bold text-lg leading-tight truncate max-w-48 sm:max-w-56"
                                         :title="meeting.title"
                                     >
                                         {{ meeting.title }}
@@ -243,8 +243,19 @@
                                     <Icon name="copy" size="14" class="mr-2" />
                                     Copy Link
                                 </DropdownItem>
-                                <DropdownItem @select="router.push({ name: 'meeting-details', params: { id: meeting.public_id } })">
-                                    <Icon name="bar-chart-2" size="14" class="mr-2" />
+                                <DropdownItem
+                                    @select="
+                                        router.push({
+                                            name: 'meeting-details',
+                                            params: { id: meeting.public_id },
+                                        })
+                                    "
+                                >
+                                    <Icon
+                                        name="bar-chart-2"
+                                        size="14"
+                                        class="mr-2"
+                                    />
                                     View Details
                                 </DropdownItem>
                                 <DropdownItem
@@ -315,12 +326,20 @@
                                     meeting,
                                 ).slice(0, 3)"
                                 :key="participant.id"
-                                :title="participant.user?.name || 'Guest'"
+                                :title="getParticipantDisplayName(participant)"
                                 class="w-7 h-7 rounded-full border-2 border-(--surface-primary) overflow-hidden shrink-0"
                             >
                                 <Avatar
-                                    :src="participant.user?.avatar_url"
-                                    :alt="participant.user?.name"
+                                    :src="
+                                        participant.user?.avatar_url ||
+                                        participant.metadata?.avatar_url
+                                    "
+                                    :fallback="
+                                        (participant.user?.name ||
+                                            participant.metadata?.guest_name ||
+                                            'G')[0]
+                                    "
+                                    :color="participant.user?.color"
                                     size="sm"
                                     class="w-full h-full"
                                 />
@@ -480,6 +499,7 @@ import { toast } from "vue-sonner";
 import dayjs from "dayjs";
 import { useAuthStore } from "@/stores/auth";
 import { formatTimeAgo } from "@/utils/date";
+import { isValidUlid, normalizeUlid } from "@/utils/meetingId";
 import { useMeeting } from "@/composables/useMeeting";
 import echo, { isEchoAvailable } from "@/echo";
 
@@ -504,8 +524,17 @@ const POLL_INTERVAL_MS = 30000; // 30 seconds
 const RATE_LIMIT_MS = 5000; // 5s cooldown on manual refresh
 
 const handleJoinById = () => {
-    if (!joinId.value.trim()) return;
-    openMeetingPopup(joinId.value.trim());
+    const rawId = joinId.value.trim();
+    if (!rawId) return;
+
+    if (!isValidUlid(rawId)) {
+        toast.error("Invalid meeting ID", {
+            description: "Please enter the meeting ID from your invite link.",
+        });
+        return;
+    }
+
+    openMeetingPopup(normalizeUlid(rawId));
     joinId.value = "";
 };
 
@@ -586,14 +615,22 @@ const startInstantMeeting = async () => {
         const meeting = await meetingService.createMeeting({
             title: `Instant Meeting - ${dayjs().format("HH:mm")}`,
             start_time: dayjs().toISOString(),
-            settings: { instant: true, lobby_enabled: false },
+            settings: {
+                instant: true,
+                lobby_enabled: false,
+                require_host_or_cohost_present: false,
+                screen_share_host_cohost_only: false,
+            },
         });
 
         toast.success("Instant meeting created");
         openMeetingPopup(meeting.public_id);
     } catch (error) {
         console.error("Instant meeting creation failed:", error);
-        toast.error("Failed to create meeting");
+        const msg =
+            (error as any)?.response?.data?.message ||
+            "Failed to create meeting";
+        toast.error(msg);
         isCreatingInstant.value = false;
     } finally {
         // Enforce a strict 1-second debounce after successful API attempts to prevent rapid-fire clicking
@@ -717,39 +754,64 @@ const getMeetingDisplayCount = (meeting: Meeting) => {
     return meeting.participants?.length ?? 0;
 };
 
+const getParticipantDisplayName = (participant: any) => {
+    const name =
+        participant?.user?.name || participant?.metadata?.guest_name || "Guest";
+    const isGuest = !participant?.user?.public_id && !participant?.user?.id;
+    if (isGuest && !/\(guest\)$/i.test(name)) {
+        return `${name} (Guest)`;
+    }
+    return name;
+};
+
 // Start listening once echo is available
 const startEchoListener = () => {
     if (authStore.user && isEchoAvailable()) {
-        echo.private(`user.${authStore.user.id}`)
-            .listen('.App\\Events\\Meetings\\MeetingStatusUpdated', (e: any) => {
-                const meeting = meetings.value.find(m => m.public_id === e.id);
+        echo.private(`user.${authStore.user.id}`).listen(
+            ".App\\Events\\Meetings\\MeetingStatusUpdated",
+            (e: any) => {
+                const meeting = meetings.value.find(
+                    (m) => m.public_id === e.id,
+                );
                 if (meeting) {
                     meeting.status = e.status;
                 } else {
                     silentFetchMeetings();
                 }
-            });
+            },
+        );
     }
 };
 
 onMounted(() => {
     fetchMeetings();
     lastFetchTime = Date.now();
-    
+
     // Listen for realtime meeting status updates conditionally
     if (isEchoAvailable()) {
         startEchoListener();
     } else {
-        window.addEventListener('echo:connected', startEchoListener, { once: true });
+        window.addEventListener("echo:connected", startEchoListener, {
+            once: true,
+        });
     }
 });
 
 onUnmounted(() => {
     window.removeEventListener("focus", handleWindowFocus);
-    window.removeEventListener('echo:connected', startEchoListener);
-    
+    window.removeEventListener("echo:connected", startEchoListener);
+
     if (authStore.user && isEchoAvailable()) {
         echo.leave(`user.${authStore.user.id}`);
     }
 });
 </script>
+
+<style scoped>
+.join-meeting-input:focus {
+    outline: none !important;
+    box-shadow: none !important;
+    border: none !important;
+    ring: none !important;
+}
+</style>

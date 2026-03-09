@@ -15,6 +15,8 @@ export interface Meeting {
     settings: {
         lobby_enabled: boolean;
         guest_access: boolean;
+        require_host_or_cohost_present?: boolean;
+        screen_share_host_cohost_only?: boolean;
         [key: string]: any;
     };
     has_password?: boolean;
@@ -162,7 +164,10 @@ class MeetingService extends BaseService {
 
     // --- Breakout Rooms ---
 
-    async createBreakoutSession(meetingId: string, data: { rooms: any[], duration_minutes: number }) {
+    async createBreakoutSession(
+        meetingId: string,
+        data: { rooms: any[]; duration_minutes: number | null },
+    ) {
         return this.post(`/api/meetings/${meetingId}/breakout-sessions`, data);
     }
 
@@ -170,8 +175,12 @@ class MeetingService extends BaseService {
         return this.delete(`/api/meetings/${meetingId}/breakout-sessions`);
     }
 
-    async joinBreakoutRoom(meetingId: string, roomId: string) {
-        return this.post(`/api/meetings/${meetingId}/breakout-rooms/${roomId}/join`, {});
+    async joinBreakoutRoom(meetingId: string, roomId: string | null) {
+        const normalizedRoomId = roomId === null ? "main" : String(roomId);
+        return this.post(
+            `/api/meetings/${meetingId}/breakout-rooms/${normalizedRoomId}/join`,
+            {},
+        );
     }
 
     async requestHostHelp(meetingId: string, roomId: string) {
@@ -220,6 +229,14 @@ class MeetingService extends BaseService {
 
     async sfuTracksUpdate(id: string, sessionId: string, tracks: any[]): Promise<any> {
         const response = await this.api.put(`/api/meetings/${id}/sfu/sessions/${sessionId}/tracks/update`, { tracks });
+        return response.data;
+    }
+
+    async sfuTracksClose(id: string, sessionId: string, tracks: any[], force = false): Promise<any> {
+        const response = await this.api.put(`/api/meetings/${id}/sfu/sessions/${sessionId}/tracks/close`, {
+            tracks,
+            force,
+        });
         return response.data;
     }
 

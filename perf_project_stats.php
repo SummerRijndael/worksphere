@@ -1,14 +1,14 @@
 <?php
 
-require __DIR__ . '/vendor/autoload.php';
+require __DIR__.'/vendor/autoload.php';
 
-$app = require_once __DIR__ . '/bootstrap/app.php';
+$app = require_once __DIR__.'/bootstrap/app.php';
 
+use App\Http\Controllers\Api\ProjectController;
 use App\Models\Project;
 use App\Models\Team;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use App\Http\Controllers\Api\ProjectController;
 
 $kernel = $app->make(Illuminate\Contracts\Http\Kernel::class);
 $kernel->handle(Request::capture());
@@ -16,10 +16,10 @@ $kernel->handle(Request::capture());
 // Find any project
 $project = Project::first();
 
-if (!$project) {
+if (! $project) {
     echo "No project found for testing. Creating one...\n";
-    $team = Team::factory()->create(['name' => 'Perf Team ' . uniqid()]);
-    $project = Project::factory()->for($team)->create(['name' => 'Perf Test Project ' . uniqid()]);
+    $team = Team::factory()->create(['name' => 'Perf Team '.uniqid()]);
+    $project = Project::factory()->for($team)->create(['name' => 'Perf Test Project '.uniqid()]);
 }
 
 $team = $project->team;
@@ -30,7 +30,7 @@ if ($project->tasks()->count() === 0) {
     echo "Adding a task to project for testing...\n";
     $project->tasks()->create([
         'team_id' => $team->id,
-        'title' => 'Test Task ' . uniqid(),
+        'title' => 'Test Task '.uniqid(),
         'status' => \App\Enums\TaskStatus::Open,
         'created_by' => $user->id,
     ]);
@@ -55,9 +55,9 @@ $queries = DB::getQueryLog();
 DB::disableQueryLog();
 
 echo "\n--- Performance Baseline ---\n";
-echo "Execution Time: " . round(($end - $start) * 1000, 2) . "ms\n";
-echo "Query Count: " . count($queries) . "\n";
-echo "Response Data: " . json_encode(json_decode($response->getContent()), JSON_PRETTY_PRINT) . "\n";
+echo 'Execution Time: '.round(($end - $start) * 1000, 2)."ms\n";
+echo 'Query Count: '.count($queries)."\n";
+echo 'Response Data: '.json_encode(json_decode($response->getContent()), JSON_PRETTY_PRINT)."\n";
 
 // Analyze queries
 if (count($queries) > 0) {

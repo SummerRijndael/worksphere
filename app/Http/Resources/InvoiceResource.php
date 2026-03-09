@@ -101,14 +101,14 @@ class InvoiceResource extends JsonResource
             'items_count' => $this->whenCounted('items'),
 
             // Media
-            'proofs' => $this->getMedia('payment_proofs')->map(fn($media) => [
+            'proofs' => $this->getMedia('payment_proofs')->map(fn ($media) => [
                 'id' => $media->id,
                 'name' => $media->file_name,
                 'url' => route('api.media.secure-download', ['media' => $media->id]),
                 'size' => $media->size,
                 'mime_type' => $media->mime_type,
             ]),
-            'receipts' => $this->getMedia('receipts')->map(fn($media) => [
+            'receipts' => $this->getMedia('receipts')->map(fn ($media) => [
                 'id' => $media->id,
                 'name' => $media->file_name,
                 'url' => route('api.media.secure-download', ['media' => $media->id]),

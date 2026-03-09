@@ -2,23 +2,29 @@
     <div
         class="flex-1 flex flex-col h-full bg-(--surface-primary) overflow-hidden min-h-0"
     >
-        <!-- Mobile Header (Back Button) -->
+        <!-- Mobile Header (Navigation) -->
         <div
-            v-if="props.email"
-            class="md:hidden shrink-0 h-14 flex items-center gap-3 px-4 border-b border-(--border-default) bg-(--surface-secondary) z-10"
+            class="lg:hidden shrink-0 h-14 flex items-center gap-1.5 px-3 border-b border-(--border-default) bg-(--surface-secondary) z-10"
         >
             <button
+                @click="emit('toggle-sidebar')"
+                class="p-2 text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--surface-tertiary) rounded-full transition-colors"
+                title="Toggle sidebar"
+            >
+                <MenuIcon class="w-5 h-5" />
+            </button>
+            <button
                 @click="emit('back')"
-                class="p-2 -ml-2 text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--surface-tertiary) rounded-full transition-colors"
+                class="p-2 text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--surface-tertiary) rounded-full transition-colors"
                 title="Back to list"
             >
                 <ArrowLeftIcon class="w-5 h-5" />
             </button>
-            <div class="flex-1 min-w-0">
+            <div class="flex-1 min-w-0 ml-1">
                 <h2
                     class="text-sm font-semibold text-(--text-primary) truncate"
                 >
-                    {{ props.email?.subject || "(No Subject)" }}
+                    {{ props.email?.subject || activeTabLabel }}
                 </h2>
             </div>
         </div>
@@ -296,7 +302,7 @@
                 class="px-4 py-3 grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[180px] overflow-y-auto scrollbar-thin"
             >
                 <div
-                    v-for="(att) in visibleAttachments"
+                    v-for="att in visibleAttachments"
                     :key="att.id"
                     class="group relative flex items-center p-2 border border-(--border-default) rounded-lg bg-(--surface-primary) hover:bg-(--surface-tertiary) transition-all cursor-pointer select-none"
                     :class="{
@@ -366,7 +372,8 @@
                     <button
                         v-if="props.email.is_draft"
                         @click="openTab('edit', props.email)"
-                        class="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-bold tracking-tight text-white bg-(--interactive-primary) hover:bg-(--interactive-primary-hover) transition-all shadow-sm"
+                        :disabled="!store.selectedAccount"
+                        class="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-bold tracking-tight text-white bg-(--interactive-primary) hover:bg-(--interactive-primary-hover) transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         <PencilIcon class="w-3.5 h-3.5" />
                         EDIT DRAFT
@@ -379,7 +386,8 @@
                                     replyTargetEmail || props.email,
                                 )
                             "
-                            class="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-bold tracking-tight text-white bg-(--interactive-primary) hover:bg-(--interactive-primary-hover) transition-all shadow-sm"
+                            :disabled="!store.selectedAccount"
+                            class="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-bold tracking-tight text-white bg-(--interactive-primary) hover:bg-(--interactive-primary-hover) transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <ReplyIcon class="w-3.5 h-3.5" />
                             REPLY
@@ -391,7 +399,8 @@
                                     replyTargetEmail || props.email,
                                 )
                             "
-                            class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold text-(--text-primary) hover:bg-(--surface-tertiary) transition-all shadow-sm border border-transparent hover:border-(--border-default)"
+                            :disabled="!store.selectedAccount"
+                            class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold text-(--text-primary) hover:bg-(--surface-tertiary) transition-all shadow-sm border border-transparent hover:border-(--border-default) disabled:opacity-50 disabled:cursor-not-allowed"
                             title="Reply All"
                         >
                             <ReplyAllIcon class="w-3.5 h-3.5" />
@@ -404,7 +413,8 @@
                                     replyTargetEmail || props.email,
                                 )
                             "
-                            class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold text-(--text-primary) hover:bg-(--surface-tertiary) transition-all shadow-sm border border-transparent hover:border-(--border-default)"
+                            :disabled="!store.selectedAccount"
+                            class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold text-(--text-primary) hover:bg-(--surface-tertiary) transition-all shadow-sm border border-transparent hover:border-(--border-default) disabled:opacity-50 disabled:cursor-not-allowed"
                             title="Forward"
                         >
                             <ForwardIcon class="w-3.5 h-3.5" />
@@ -520,7 +530,8 @@
                 <!-- New Compose Button -->
                 <button
                     @click="openTab('compose')"
-                    class="flex items-center gap-1.5 px-3 py-1.5 text-sm text-(--interactive-primary) hover:bg-(--surface-tertiary) rounded-md transition-colors"
+                    :disabled="!store.selectedAccount"
+                    class="flex items-center gap-1.5 px-3 py-1.5 text-sm text-(--interactive-primary) hover:bg-(--surface-tertiary) rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:grayscale"
                     title="New Email"
                 >
                     <PlusIcon class="w-3.5 h-3.5" />
@@ -546,7 +557,6 @@ import {
     InboxIcon,
     LoaderIcon,
     TrashIcon,
-    
     DownloadIcon,
     FileIcon,
     ImageIcon,
@@ -554,9 +564,8 @@ import {
     ChevronDownIcon,
     ChevronsUpDownIcon,
     StarIcon,
-    MailIcon as 
-    
-    ArrowLeftIcon,
+    ArrowLeft as ArrowLeftIcon,
+    Menu as MenuIcon,
 } from "lucide-vue-next";
 import axios from "axios";
 import EmailPreviewContent from "./EmailPreviewContent.vue";
@@ -599,6 +608,7 @@ watch(
 
 const emit = defineEmits<{
     (e: "back"): void;
+    (e: "toggle-sidebar"): void;
     (e: "tab-closed", id: string): void;
 }>();
 
@@ -609,6 +619,11 @@ const activeTab = ref<string>("read");
 const tabs = ref<Tab[]>([
     { id: "read", label: "Read", icon: markRaw(InboxIcon), closable: false },
 ]);
+
+const activeTabLabel = computed(() => {
+    const t = tabs.value.find((t) => t.id === activeTab.value);
+    return t ? t.label : "Email";
+});
 // --- Export as EML ---
 function exportAsEml() {
     if (!props.email) return;

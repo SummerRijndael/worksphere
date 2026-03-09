@@ -97,6 +97,13 @@ return [
                 'tickets.view_own',
                 'tickets.create',
                 'tickets.update_own',
+                'projects.view',
+                'projects.view_assigned',
+                'tasks.view',
+                'tasks.view_assigned',
+                'clients.view',
+                'reports.view',
+                'invoices.view',
                 'notes.view',
                 'notes.create',
                 'notes.update',
@@ -265,7 +272,6 @@ return [
             'tasks.comment' => 'Add comments to tasks',
             'tasks.client_response' => 'Record client approval/rejection',
         ],
-
 
         // Team Management (Team context)
         'teams' => [

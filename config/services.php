@@ -110,6 +110,8 @@ return [
     'cloudflare' => [
         'turn_key_id' => env('TURN_KEY_ID'),
         'turn_api_token' => env('TURN_KEY_API_TOKEN'),
+        'turn_credential_ttl' => (int) env('TURN_CREDENTIAL_TTL', 14400),
+        'turn_filter_blocked_browser_ports' => env('TURN_FILTER_BLOCKED_BROWSER_PORTS', true),
         'app_id' => env('CLOUDFLARE_APP_ID_SFU'),
         'app_secret' => env('CLOUDFLARE_APP_SECRET_SFU'),
     ],

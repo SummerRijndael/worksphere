@@ -5,15 +5,12 @@ import {
     StepperItem,
     StepperIndicator,
     StepperTrigger,
-    
     StepperTitle,
-    
 } from "reka-ui";
 import { Modal, Button, Input } from "@/components/ui";
 import {
     Mail,
     ArrowRight,
-    
     CheckCircle2,
     AlertTriangle,
     AlertCircle,
@@ -343,17 +340,24 @@ const runHealthCheck = async () => {
             email: form.value.email,
         });
         healthResults.value = data.data;
-        
+
         // Smart Logic: Check for duplicates
         if (healthResults.value.existing_account) {
             const existing = healthResults.value.existing_account;
-            if (existing.has_full_sync && form.value.account_type === 'smtp') {
-                toast.warning(`${form.value.email} is already connected with Full Sync. SMTP-only setup is not recommended.`);
-            } else if (existing.has_full_sync && form.value.account_type === 'full') {
-                toast.info(`${form.value.email} is already connected. Checking health only.`);
+            if (existing.has_full_sync && form.value.account_type === "smtp") {
+                toast.warning(
+                    `${form.value.email} is already connected with Full Sync. SMTP-only setup is not recommended.`,
+                );
+            } else if (
+                existing.has_full_sync &&
+                form.value.account_type === "full"
+            ) {
+                toast.info(
+                    `${form.value.email} is already connected. Checking health only.`,
+                );
             }
         }
-        
+
         toast.success("Health check completed.");
     } catch (e: any) {
         toast.error("Health check failed.");
@@ -438,12 +442,12 @@ const handleOAuthMessage = (event: MessageEvent) => {
             form.value.email = event.data.email;
         }
         toast.success("Account connected successfully!");
-        
+
         // Refresh health check if we have email
         if (form.value.email) {
             runHealthCheck();
         }
-        
+
         step.value = 5; // Go to Health Check step next
     } else if (event.data?.type === "oauth_error") {
         window.removeEventListener("message", handleOAuthMessage);
@@ -463,12 +467,12 @@ const connectCustom = async () => {
 
         accountId.value = data.data.id;
         toast.success("Account connected successfully!");
-        
+
         // Proactive health check after connection if not already run
         if (!healthResults.value) {
             runHealthCheck();
         }
-        
+
         step.value = 5; // Always go to Health Check for full sync too
     } catch (e: any) {
         toast.error(e.response?.data?.message || "Connection failed");
@@ -580,7 +584,7 @@ onUnmounted(() => {
             <!-- Stepper -->
             <StepperRoot
                 :model-value="step"
-                class="flex items-start justify-between px-10 w-full max-w-2xl mx-auto relative mb-10"
+                class="flex items-start justify-between px-2 md:px-10 w-full max-w-2xl mx-auto relative mb-6 sm:mb-10"
             >
                 <StepperItem
                     v-for="s in steps"
@@ -613,7 +617,7 @@ onUnmounted(() => {
                         class="flex flex-col items-center justify-center w-full min-h-6 px-1"
                     >
                         <StepperTitle
-                            class="text-[10px] font-bold transition-all duration-300 text-center leading-tight whitespace-nowrap"
+                            class="hidden sm:block text-[10px] font-bold transition-all duration-300 text-center leading-tight whitespace-nowrap"
                             :class="[
                                 step > s.number
                                     ? 'text-emerald-600 dark:text-emerald-400'
@@ -641,7 +645,7 @@ onUnmounted(() => {
 
             <!-- Content Area -->
             <div
-                class="flex-1 relative mt-4 overflow-hidden flex flex-col min-h-[420px]"
+                class="flex-1 relative mt-4 overflow-y-auto sm:overflow-hidden flex flex-col min-h-[350px] sm:min-h-[420px]"
             >
                 <Transition name="fade" mode="out-in">
                     <!-- Step 1: Privacy Notice -->
@@ -820,9 +824,20 @@ onUnmounted(() => {
                                         : "Select Email Provider"
                                 }}
                             </h2>
-                            <div v-if="healthResults?.existing_account?.has_full_sync" class="mt-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[12px] text-amber-600 flex items-center gap-3">
+                            <div
+                                v-if="
+                                    healthResults?.existing_account
+                                        ?.has_full_sync
+                                "
+                                class="mt-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[12px] text-amber-600 flex items-center gap-3"
+                            >
                                 <AlertTriangle class="w-4 h-4 shrink-0" />
-                                <p>You already have a <strong>Full Sync</strong> account for this email. We recommend using it instead of adding another SMTP-only account.</p>
+                                <p>
+                                    You already have a
+                                    <strong>Full Sync</strong> account for this
+                                    email. We recommend using it instead of
+                                    adding another SMTP-only account.
+                                </p>
                             </div>
                             <p class="text-(--text-secondary) text-sm">
                                 Choose the service you're currently using.
@@ -987,14 +1002,40 @@ onUnmounted(() => {
                                             v-model="form.email"
                                             placeholder="Email Address"
                                             class="h-11 rounded-xl"
-                                            @blur="form.email && runHealthCheck()"
+                                            @blur="
+                                                form.email && runHealthCheck()
+                                            "
                                         />
-                                        <div v-if="healthResults?.existing_account?.has_full_sync" class="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[11px] text-amber-600 flex items-start gap-2">
-                                            <AlertTriangle class="w-4 h-4 shrink-0 mt-0.5" />
+                                        <div
+                                            v-if="
+                                                healthResults?.existing_account
+                                                    ?.has_full_sync
+                                            "
+                                            class="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[11px] text-amber-600 flex items-start gap-2"
+                                        >
+                                            <AlertTriangle
+                                                class="w-4 h-4 shrink-0 mt-0.5"
+                                            />
                                             <div>
-                                                <p class="font-bold">Account already exists</p>
-                                                <p v-if="form.account_type === 'smtp'">A Full Sync account for this email is already connected. Adding SMTP-only is redundant.</p>
-                                                <p v-else>A Full Sync account for this email is already connected. You can edit it instead.</p>
+                                                <p class="font-bold">
+                                                    Account already exists
+                                                </p>
+                                                <p
+                                                    v-if="
+                                                        form.account_type ===
+                                                        'smtp'
+                                                    "
+                                                >
+                                                    A Full Sync account for this
+                                                    email is already connected.
+                                                    Adding SMTP-only is
+                                                    redundant.
+                                                </p>
+                                                <p v-else>
+                                                    A Full Sync account for this
+                                                    email is already connected.
+                                                    You can edit it instead.
+                                                </p>
                                             </div>
                                         </div>
                                         <Input
@@ -1131,7 +1172,13 @@ onUnmounted(() => {
                                 </Button>
                                 <Button
                                     class="flex-1 rounded-xl h-12 font-bold shadow-lg shadow-(--brand-primary)/20"
-                                    :disabled="isLoading || isTestingConfig || (form.account_type === 'smtp' && healthResults?.existing_account?.has_full_sync)"
+                                    :disabled="
+                                        isLoading ||
+                                        isTestingConfig ||
+                                        (form.account_type === 'smtp' &&
+                                            healthResults?.existing_account
+                                                ?.has_full_sync)
+                                    "
                                     @click="connectCustom"
                                 >
                                     <Loader2
@@ -1139,7 +1186,13 @@ onUnmounted(() => {
                                         class="w-4 h-4 animate-spin mr-2"
                                     />
                                     <Check v-else class="w-4 h-4 mr-2" />
-                                    {{ (form.account_type === 'smtp' && healthResults?.existing_account?.has_full_sync) ? 'Already Connected' : 'Connect' }}
+                                    {{
+                                        form.account_type === "smtp" &&
+                                        healthResults?.existing_account
+                                            ?.has_full_sync
+                                            ? "Already Connected"
+                                            : "Connect"
+                                    }}
                                 </Button>
                             </div>
                         </div>
@@ -1525,12 +1578,12 @@ onUnmounted(() => {
 
                         <div class="space-y-4">
                             <h2
-                                class="text-4xl font-black tracking-tight text-(--text-primary)"
+                                class="text-2xl sm:text-4xl font-black tracking-tight text-(--text-primary)"
                             >
                                 You're all set!
                             </h2>
                             <p
-                                class="text-(--text-secondary) text-lg font-medium leading-relaxed"
+                                class="text-(--text-secondary) text-base sm:text-lg font-medium leading-relaxed"
                             >
                                 Your account is now connected. We've started
                                 syncing your emails in the background.

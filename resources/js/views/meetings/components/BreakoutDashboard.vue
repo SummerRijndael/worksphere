@@ -1,104 +1,134 @@
 <template>
     <div
         v-if="meetingStore.activeBreakoutSession && meetingStore.isHost"
-        class="fixed z-100 w-[400px] select-none"
-        :style="{ 
+        class="fixed z-100 w-[500px] max-w-[calc(100vw-20px)] select-none"
+        :style="{
             right: !hasBeenDragged ? '24px' : 'auto',
             bottom: !hasBeenDragged ? '96px' : 'auto',
             left: hasBeenDragged ? `${position.x}px` : 'auto',
-            top: hasBeenDragged ? `${position.y}px` : 'auto'
+            top: hasBeenDragged ? `${position.y}px` : 'auto',
         }"
     >
-        <div class="bg-(--surface-primary)/85 backdrop-blur-2xl border border-(--border-muted) rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.3)] flex flex-col overflow-visible max-h-[600px] transition-all duration-300">
+        <div
+            class="relative bg-(--surface-primary) border border-(--border-muted) rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.3)] flex flex-col overflow-hidden max-h-[650px] transition-all duration-300 isolate"
+        >
             <!-- Header -->
             <div
-                class="p-4 border-b border-(--border-muted) flex items-center justify-between bg-(--surface-tertiary)/50 cursor-move"
+                class="relative px-5 pt-4 pb-4 border-b border-(--border-muted) bg-(--surface-secondary) cursor-move"
                 @pointerdown="startDragging"
             >
                 <!-- Drag Grip Handle -->
-                <div class="absolute top-1 left-1/2 -translate-x-1/2 flex gap-1 opacity-20 group-hover:opacity-100 transition-opacity">
+                <div
+                    class="absolute top-1.5 left-1/2 -translate-x-1/2 flex gap-1 opacity-30"
+                >
                     <div class="w-1 h-1 rounded-full bg-(--text-muted)"></div>
                     <div class="w-1 h-1 rounded-full bg-(--text-muted)"></div>
                     <div class="w-1 h-1 rounded-full bg-(--text-muted)"></div>
                 </div>
 
-                <div class="flex items-center gap-2">
-                    <div class="flex h-2 w-2 relative">
-                        <span
-                            class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"
-                        ></span>
-                        <span
-                            class="relative inline-flex rounded-full h-2 w-2 bg-green-500"
-                        ></span>
-                    </div>
-                    <div>
-                        <span
-                            class="text-xs font-bold uppercase tracking-wider text-(--text-muted)"
-                            >Breakout Control</span
-                        >
-                        <div
-                            v-if="meetingStore.activeBreakoutSession"
-                            class="flex items-center gap-1.5 mt-0.5"
-                        >
-                            <span
-                                class="text-[10px] text-(--text-muted) font-mono"
-                                >{{ meetingStore.formatBreakoutTime }}</span
-                            >
-                            <!-- Timer Adjustments -->
-                            <div
-                                v-if="meetingStore.breakoutTimer > 0"
-                                class="flex gap-1"
-                            >
-                                <button
-                                    @click="adjustTimer(1)"
-                                    class="w-4 h-4 rounded bg-(--surface-muted) hover:bg-(--surface-highlight) text-(--text-muted) border border-(--border-muted) flex items-center justify-center transition-all"
-                                    title="Add 1 minute"
+                <div class="pt-2 space-y-3">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="flex items-start gap-2.5 min-w-0">
+                            <div class="flex h-2 w-2 relative mt-1.5 shrink-0">
+                                <span
+                                    class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"
+                                ></span>
+                                <span
+                                    class="relative inline-flex rounded-full h-2 w-2 bg-green-500"
+                                ></span>
+                            </div>
+                            <div class="min-w-0">
+                                <p
+                                    class="text-[11px] font-extrabold uppercase tracking-[0.14em] text-(--text-muted)"
                                 >
-                                    <Icon name="plus" size="8" />
-                                </button>
-                                <button
-                                    @click="adjustTimer(-1)"
-                                    class="w-4 h-4 rounded bg-(--surface-muted) hover:bg-(--surface-highlight) text-(--text-muted) border border-(--border-muted) flex items-center justify-center transition-all"
-                                    title="Remove 1 minute"
+                                    Breakout Control
+                                </p>
+                                <div
+                                    v-if="meetingStore.activeBreakoutSession"
+                                    class="flex items-center gap-1.5 mt-1"
                                 >
-                                    <Icon name="minus" size="8" />
-                                </button>
+                                    <span
+                                        class="text-[11px] text-(--text-muted) font-mono tabular-nums"
+                                        >{{ meetingStore.formatBreakoutTime }}</span
+                                    >
+                                    <!-- Timer Adjustments -->
+                                    <div
+                                        v-if="meetingStore.breakoutTimer > 0"
+                                        class="flex gap-1"
+                                    >
+                                        <button
+                                            @click="adjustTimer(1)"
+                                            class="w-4 h-4 rounded bg-(--surface-muted) hover:bg-(--surface-highlight) text-(--text-muted) border border-(--border-muted) flex items-center justify-center transition-all"
+                                            title="Add 1 minute"
+                                        >
+                                            <Icon name="plus" size="8" />
+                                        </button>
+                                        <button
+                                            @click="adjustTimer(-1)"
+                                            class="w-4 h-4 rounded bg-(--surface-muted) hover:bg-(--surface-highlight) text-(--text-muted) border border-(--border-muted) flex items-center justify-center transition-all"
+                                            title="Remove 1 minute"
+                                        >
+                                            <Icon name="minus" size="8" />
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
+
+                        <button
+                            @click="isMinimized = !isMinimized"
+                            class="h-8 w-8 shrink-0 flex items-center justify-center hover:bg-(--surface-muted) rounded-lg transition-colors"
+                        >
+                            <Icon
+                                :name="isMinimized ? 'chevron-up' : 'chevron-down'"
+                                size="16"
+                            />
+                        </button>
                     </div>
-                </div>
-                <div class="flex items-center gap-2">
-                    <button
-                        v-if="meetingStore.isInBreakout"
-                        @click="returnToMain"
-                        :disabled="meetingStore.isTransitioningRoom"
-                        class="p-1 px-2 flex items-center gap-1.5 border border-(--color-primary-500)/20 rounded-lg text-[10px] font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                        :class="[
-                            meetingStore.isTransitioningRoom 
-                                ? 'bg-(--surface-muted) text-(--text-muted)' 
-                                : 'bg-(--color-primary-600)/10 hover:bg-(--color-primary-600) text-(--color-primary-600) hover:text-white'
-                        ]"
-                        title="Leave breakout and return to main meeting"
-                    >
-                        <Icon v-if="meetingStore.isTransitioningRoom" name="loader" size="12" class="animate-spin" />
-                        <Icon v-else name="log-out" size="12" />
-                        Main Room
-                    </button>
-                    <button
-                        @click="isMinimized = !isMinimized"
-                        class="p-1 hover:bg-(--surface-muted) rounded-md transition-colors"
-                    >
-                        <Icon
-                            :name="isMinimized ? 'chevron-up' : 'chevron-down'"
-                            size="16"
-                        />
-                    </button>
+
+                    <div class="grid grid-cols-[auto,1fr] items-center gap-2.5">
+                        <button
+                            @click="broadcastToAllRooms"
+                            class="h-9 px-3.5 flex items-center gap-1.5 border border-(--border-muted) rounded-xl text-[11px] font-bold transition-all bg-(--surface-tertiary) hover:bg-(--surface-muted) text-(--text-primary)"
+                            title="Broadcast message to all breakout rooms"
+                        >
+                            <Icon name="megaphone" size="12" />
+                            All Rooms
+                        </button>
+                        <button
+                            v-if="meetingStore.isInBreakout"
+                            @click="returnToMain"
+                            :disabled="meetingStore.isTransitioningRoom"
+                            class="h-9 px-3.5 flex items-center justify-center gap-1.5 border border-(--color-primary-500)/25 rounded-xl text-[11px] font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            :class="[
+                                meetingStore.isTransitioningRoom
+                                    ? 'bg-(--surface-tertiary) text-(--text-muted)'
+                                    : 'bg-(--color-primary-600)/12 hover:bg-(--color-primary-600) text-(--color-primary-600) hover:text-white',
+                            ]"
+                            title="Leave breakout and return to main meeting"
+                        >
+                            <Icon
+                                v-if="meetingStore.isTransitioningRoom"
+                                name="loader"
+                                size="12"
+                                class="animate-spin"
+                            />
+                            <Icon v-else name="log-out" size="12" />
+                            Main Room
+                        </button>
+                    </div>
                 </div>
             </div>
 
             <!-- Content -->
-            <div v-show="!isMinimized" class="flex-1 overflow-visible p-5 space-y-5">
-                <div class="h-full overflow-y-auto pr-2 -mr-2 custom-scrollbar overflow-x-visible pb-32" style="max-height: calc(600px - 140px);">
+            <div
+                v-show="!isMinimized"
+                class="flex-1 overflow-visible p-5 space-y-5"
+            >
+                <div
+                    class="h-full overflow-y-auto pr-2 -mr-2 custom-scrollbar overflow-x-visible pb-32"
+                    style="max-height: calc(600px - 140px)"
+                >
                     <!-- Unassigned Participants -->
                     <div
                         v-if="unassignedParticipants.length > 0"
@@ -124,30 +154,63 @@
                                 class="group relative"
                             >
                                 <DropdownMenuRoot>
-                                <DropdownMenuTrigger as-child>
-                                    <button class="w-7 h-7 rounded-full bg-amber-500/20 flex items-center justify-center text-[10px] font-bold text-amber-600 border border-amber-500/30 hover:border-amber-500 transition-all">
-                                        {{ getDisplayName(p).charAt(0) }}
-                                    </button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuPortal>
-                                    <DropdownMenuContent
-                                        side="top"
-                                        :side-offset="4"
-                                        align="start"
-                                        class="w-60 bg-(--surface-primary)/95 backdrop-blur-xl border border-(--border-muted) rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.3)] z-1060 overflow-hidden outline-none ring-1 ring-(--border-muted)/50 animate-in fade-in zoom-in-95 duration-100"
-                                    >
-                                        <div class="px-3 py-2 border-b border-(--border-muted) bg-(--surface-tertiary)/50">
-                                            <p class="text-[10px] font-bold uppercase text-(--text-muted) truncate">{{ getDisplayName(p) }}</p>
-                                        </div>
-                                        <div class="p-1">
-                                            <DropdownMenuItem v-for="room in (meetingStore.activeBreakoutSession?.rooms || [])" :key="room.id" @select="assignParticipant(p, room)" class="flex w-full items-center px-3 py-2 text-xs rounded-lg transition-colors text-(--text-primary) hover:bg-(--color-primary-600) hover:text-white outline-none cursor-pointer">
-                                                <Icon name="plus" size="12" class="mr-2 opacity-50" />
-                                                Move to {{ room.name }}
-                                            </DropdownMenuItem>
-                                        </div>
-                                    </DropdownMenuContent>
-                                </DropdownMenuPortal>
-                            </DropdownMenuRoot>
+                                    <DropdownMenuTrigger as-child>
+                                        <button class="outline-none group">
+                                            <Avatar
+                                                :src="
+                                                    p.user?.avatar_url ||
+                                                    p.metadata?.avatar_url
+                                                "
+                                                :fallback="
+                                                    getDisplayName(p).charAt(0)
+                                                "
+                                                :color="p.user?.color"
+                                                size="xs"
+                                                class="w-7 h-7 border border-amber-500/30 group-hover:border-amber-500 transition-all"
+                                            />
+                                        </button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuPortal>
+                                        <DropdownMenuContent
+                                            side="top"
+                                            :side-offset="4"
+                                            align="start"
+                                            class="w-60 bg-(--surface-primary)/95 backdrop-blur-xl border border-(--border-muted) rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.3)] z-1060 overflow-hidden outline-none ring-1 ring-(--border-muted)/50 animate-in fade-in zoom-in-95 duration-100"
+                                        >
+                                            <div
+                                                class="px-3 py-2 border-b border-(--border-muted) bg-(--surface-tertiary)/50"
+                                            >
+                                                <p
+                                                    class="text-[10px] font-bold uppercase text-(--text-muted) truncate"
+                                                >
+                                                    {{ getDisplayName(p) }}
+                                                </p>
+                                            </div>
+                                            <div class="p-1">
+                                                <DropdownMenuItem
+                                                    v-for="room in meetingStore
+                                                        .activeBreakoutSession
+                                                        ?.rooms || []"
+                                                    :key="room.id"
+                                                    @select="
+                                                        assignParticipant(
+                                                            p,
+                                                            room,
+                                                        )
+                                                    "
+                                                    class="flex w-full items-center px-3 py-2 text-xs rounded-lg transition-colors text-(--text-primary) hover:bg-(--color-primary-600) hover:text-white outline-none cursor-pointer"
+                                                >
+                                                    <Icon
+                                                        name="plus"
+                                                        size="12"
+                                                        class="mr-2 opacity-50"
+                                                    />
+                                                    Move to {{ room.name }}
+                                                </DropdownMenuItem>
+                                            </div>
+                                        </DropdownMenuContent>
+                                    </DropdownMenuPortal>
+                                </DropdownMenuRoot>
                             </div>
                         </div>
                         <p class="text-[10px] text-amber-600/70 italic">
@@ -192,43 +255,93 @@
                                 class="group relative"
                             >
                                 <DropdownMenuRoot>
-                                <DropdownMenuTrigger as-child>
-                                    <button 
-                                        class="w-6 h-6 rounded-full bg-(--color-primary-500)/20 flex items-center justify-center text-[10px] font-bold text-(--color-primary-500) border border-(--color-primary-500)/30 hover:border-(--color-primary-500) transition-all"
-                                        :title="getDisplayName(p)"
-                                    >
-                                        {{ getDisplayName(p).charAt(0) }}
-                                    </button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuPortal>
-                                    <DropdownMenuContent
-                                        side="top"
-                                        :side-offset="4"
-                                        align="start"
-                                        class="w-60 bg-(--surface-primary)/95 backdrop-blur-xl border border-(--border-muted) rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.3)] z-1060 overflow-hidden outline-none ring-1 ring-(--border-muted)/50 animate-in fade-in zoom-in-95 duration-100"
-                                    >
-                                        <div class="px-3 py-2 border-b border-(--border-muted) bg-(--surface-tertiary)/50">
-                                            <p class="text-[10px] font-bold uppercase text-(--text-muted) truncate">{{ getDisplayName(p) }}</p>
-                                        </div>
-                                        <div class="p-1">
-                                            <!-- Move to other rooms -->
-                                            <template v-for="targetRoom in (meetingStore.activeBreakoutSession?.rooms || [])" :key="targetRoom.id">
-                                                <DropdownMenuItem v-if="String(targetRoom.id) !== String(room.id)" @select="assignParticipant(p, targetRoom)" class="flex w-full items-center px-3 py-2 text-xs rounded-lg transition-colors text-(--text-primary) hover:bg-(--color-primary-600) hover:text-white outline-none cursor-pointer">
-                                                    <Icon name="shuffle" size="12" class="mr-2 opacity-50" />
-                                                    Move to {{ targetRoom.name }}
+                                    <DropdownMenuTrigger as-child>
+                                        <button
+                                            class="outline-none group"
+                                            :title="getDisplayName(p)"
+                                        >
+                                            <Avatar
+                                                :src="
+                                                    p.user?.avatar_url ||
+                                                    p.metadata?.avatar_url
+                                                "
+                                                :fallback="
+                                                    getDisplayName(p).charAt(0)
+                                                "
+                                                :color="p.user?.color"
+                                                size="xs"
+                                                class="w-6 h-6 border border-(--color-primary-500)/30 group-hover:border-(--color-primary-500) transition-all"
+                                            />
+                                        </button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuPortal>
+                                        <DropdownMenuContent
+                                            side="top"
+                                            :side-offset="4"
+                                            align="start"
+                                            class="w-60 bg-(--surface-primary)/95 backdrop-blur-xl border border-(--border-muted) rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.3)] z-1060 overflow-hidden outline-none ring-1 ring-(--border-muted)/50 animate-in fade-in zoom-in-95 duration-100"
+                                        >
+                                            <div
+                                                class="px-3 py-2 border-b border-(--border-muted) bg-(--surface-tertiary)/50"
+                                            >
+                                                <p
+                                                    class="text-[10px] font-bold uppercase text-(--text-muted) truncate"
+                                                >
+                                                    {{ getDisplayName(p) }}
+                                                </p>
+                                            </div>
+                                            <div class="p-1">
+                                                <!-- Move to other rooms -->
+                                                <template
+                                                    v-for="targetRoom in meetingStore
+                                                        .activeBreakoutSession
+                                                        ?.rooms || []"
+                                                    :key="targetRoom.id"
+                                                >
+                                                    <DropdownMenuItem
+                                                        v-if="
+                                                            String(
+                                                                targetRoom.id,
+                                                            ) !==
+                                                            String(room.id)
+                                                        "
+                                                        @select="
+                                                            assignParticipant(
+                                                                p,
+                                                                targetRoom,
+                                                            )
+                                                        "
+                                                        class="flex w-full items-center px-3 py-2 text-xs rounded-lg transition-colors text-(--text-primary) hover:bg-(--color-primary-600) hover:text-white outline-none cursor-pointer"
+                                                    >
+                                                        <Icon
+                                                            name="shuffle"
+                                                            size="12"
+                                                            class="mr-2 opacity-50"
+                                                        />
+                                                        Move to
+                                                        {{ targetRoom.name }}
+                                                    </DropdownMenuItem>
+                                                </template>
+
+                                                <!-- Pull back to main -->
+                                                <div
+                                                    class="my-1 border-t border-(--border-muted)"
+                                                ></div>
+                                                <DropdownMenuItem
+                                                    @select="pullBack(p, room)"
+                                                    class="flex w-full items-center px-3 py-2 text-xs rounded-lg transition-colors text-red-500 hover:bg-red-600 hover:text-white outline-none cursor-pointer"
+                                                >
+                                                    <Icon
+                                                        name="arrow-down-left"
+                                                        size="12"
+                                                        class="mr-2 opacity-50"
+                                                    />
+                                                    Pull to Main Room
                                                 </DropdownMenuItem>
-                                            </template>
-                                            
-                                            <!-- Pull back to main -->
-                                            <div class="my-1 border-t border-(--border-muted)"></div>
-                                            <DropdownMenuItem @select="pullBack(p, room)" class="flex w-full items-center px-3 py-2 text-xs rounded-lg transition-colors text-red-500 hover:bg-red-600 hover:text-white outline-none cursor-pointer">
-                                                <Icon name="arrow-down-left" size="12" class="mr-2 opacity-50" />
-                                                Pull to Main Room
-                                            </DropdownMenuItem>
-                                        </div>
-                                    </DropdownMenuContent>
-                                </DropdownMenuPortal>
-                            </DropdownMenuRoot>
+                                            </div>
+                                        </DropdownMenuContent>
+                                    </DropdownMenuPortal>
+                                </DropdownMenuRoot>
                             </div>
                         </div>
 
@@ -241,17 +354,35 @@
                                 :disabled="meetingStore.isTransitioningRoom"
                                 class="flex-1 h-8 flex items-center justify-center gap-2 text-[10px] font-bold rounded-lg transition-all"
                                 :class="[
-                                    String(meetingStore.currentRoomId) === String(room.id)
+                                    String(meetingStore.currentRoomId) ===
+                                    String(room.id)
                                         ? 'bg-green-500/10 text-green-500 border border-green-500/20 cursor-default'
-                                        : 'bg-(--color-primary-600) hover:bg-(--color-primary-500) text-white'
+                                        : 'bg-(--color-primary-600) hover:bg-(--color-primary-500) text-white',
                                 ]"
                             >
-                                <Icon v-if="meetingStore.isTransitioningRoom" name="loader" size="12" class="animate-spin" />
-                                <Icon v-else :name="String(meetingStore.currentRoomId) === String(room.id) ? 'check' : 'log-in'" size="12" />
+                                <Icon
+                                    v-if="meetingStore.isTransitioningRoom"
+                                    name="loader"
+                                    size="12"
+                                    class="animate-spin"
+                                />
+                                <Icon
+                                    v-else
+                                    :name="
+                                        String(meetingStore.currentRoomId) ===
+                                        String(room.id)
+                                            ? 'check'
+                                            : 'log-in'
+                                    "
+                                    size="12"
+                                />
                                 {{
-                                    String(meetingStore.currentRoomId) === String(room.id)
+                                    String(meetingStore.currentRoomId) ===
+                                    String(room.id)
                                         ? "Currently Here"
-                                        : (meetingStore.isInBreakout ? "Move Here" : "Join Room")
+                                        : meetingStore.isInBreakout
+                                          ? "Move Here"
+                                          : "Join Room"
                                 }}
                             </button>
                             <button
@@ -268,7 +399,7 @@
 
             <div
                 v-show="!isMinimized"
-                class="p-3 bg-(--surface-tertiary)/30 border-t border-(--border-muted) flex items-center justify-between text-[10px] text-(--text-muted)"
+                class="p-3 bg-(--surface-secondary) border-t border-(--border-muted) flex items-center justify-between text-[10px] text-(--text-muted)"
             >
                 <span>Active for {{ formattedTime }}</span>
                 <span class="font-mono">{{
@@ -289,7 +420,7 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
 import { useMeetingStore } from "@/stores/meeting";
-import { Icon } from "@/components/ui";
+import { Icon, Avatar } from "@/components/ui";
 import { toast } from "vue-sonner";
 import {
     DropdownMenuRoot,
@@ -297,7 +428,7 @@ import {
     DropdownMenuPortal,
     DropdownMenuContent,
     DropdownMenuItem,
-} from 'reka-ui';
+} from "reka-ui";
 import BreakoutBroadcastModal from "./BreakoutBroadcastModal.vue";
 
 const meetingStore = useMeetingStore();
@@ -312,19 +443,21 @@ const position = ref({ x: 0, y: 0 });
 let startPos = { x: 0, y: 0 };
 
 function startDragging(e: PointerEvent) {
-    if ((e.target as HTMLElement).closest('button')) return;
-    
+    if ((e.target as HTMLElement).closest("button")) return;
+
     isDragging.value = true;
     hasBeenDragged.value = true;
-    const rect = (e.currentTarget as HTMLElement).closest('.fixed')?.getBoundingClientRect();
+    const rect = (e.currentTarget as HTMLElement)
+        .closest(".fixed")
+        ?.getBoundingClientRect();
     if (rect) {
         position.value = { x: rect.left, y: rect.top };
         startPos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
     }
 
-    window.addEventListener('pointermove', onDragging);
-    window.addEventListener('pointerup', stopDragging);
-    
+    window.addEventListener("pointermove", onDragging);
+    window.addEventListener("pointerup", stopDragging);
+
     // Set pointer capture to ensure we get events even if mouse leaves the element
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
 }
@@ -333,14 +466,14 @@ function onDragging(e: PointerEvent) {
     if (!isDragging.value) return;
     position.value = {
         x: e.clientX - startPos.x,
-        y: e.clientY - startPos.y
+        y: e.clientY - startPos.y,
     };
 }
 
 function stopDragging() {
     isDragging.value = false;
-    window.removeEventListener('pointermove', onDragging);
-    window.removeEventListener('pointerup', stopDragging);
+    window.removeEventListener("pointermove", onDragging);
+    window.removeEventListener("pointerup", stopDragging);
 }
 
 const unassignedParticipants = computed(() => {
@@ -370,12 +503,16 @@ const formattedTime = computed(() => {
 });
 
 function getDisplayName(p: any) {
-    return (
+    const name =
         p.display_name ||
         p.user?.name ||
         p.metadata?.guest_name ||
-        "Participant"
-    );
+        "Participant";
+    const isGuest = !p.user?.public_id && !p.user?.id;
+    if (isGuest && !/\(guest\)$/i.test(name)) {
+        return `${name} (Guest)`;
+    }
+    return name;
 }
 
 async function joinRoom(room: any) {
@@ -474,14 +611,22 @@ async function broadcastToRoom(room: any) {
     showBroadcastModal.value = true;
 }
 
+function broadcastToAllRooms() {
+    targetBroadcastRoom.value = null;
+    showBroadcastModal.value = true;
+}
+
 async function handleBroadcastSend(msg: string) {
-    if (!targetBroadcastRoom.value) return;
     try {
         await meetingStore.notifyBreakoutActivity(
-            `Host message: ${msg}`,
-            targetBroadcastRoom.value.id,
+            msg,
+            targetBroadcastRoom.value?.id ?? null,
         );
-        toast.info(`Message broadcast to ${targetBroadcastRoom.value.name}`);
+        toast.info(
+            targetBroadcastRoom.value
+                ? `Message broadcast to ${targetBroadcastRoom.value.name}`
+                : "Message broadcast to all breakout rooms",
+        );
     } catch (e) {
         toast.error("Failed to send broadcast");
     }

@@ -53,7 +53,8 @@
                         class="w-full h-full bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 dark:from-indigo-900 dark:via-purple-900 dark:to-pink-900 relative overflow-hidden"
                     >
                         <div
-                            class="absolute inset-0 bg-[url('/patterns/grid.svg')] opacity-20"
+                            class="absolute inset-0 bg-repeat opacity-20"
+                            style="background-image: url('/patterns/grid.svg')"
                         ></div>
                         <div
                             class="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent"

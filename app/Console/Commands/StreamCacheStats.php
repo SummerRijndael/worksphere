@@ -40,11 +40,17 @@ class StreamCacheStats extends Command
                     'cache_driver' => $cacheInfo['driver'],
                     'cache_status' => $cacheInfo['status'],
                     'cache_keys' => $cacheInfo['keys'] ?? 0,
+                    'cache_keys_cache_db' => $cacheInfo['keys_cache_db'] ?? null,
+                    'cache_keys_default_db' => $cacheInfo['keys_default_db'] ?? null,
                     'cache_memory_used' => $cacheInfo['memory_used'] ?? '0 B',
                     'cache_memory_peak' => $cacheInfo['memory_peak'] ?? '0 B',
                     'cache_memory_limit' => $cacheInfo['memory_limit'] ?? 'Unlimited',
                     'cache_hits' => $cacheInfo['hits'] ?? '0',
                     'cache_misses' => $cacheInfo['misses'] ?? '0',
+                    'cache_hit_rate' => $cacheInfo['hit_rate'] ?? null,
+                    'cache_hit_rate_5m' => $cacheInfo['hit_rate_5m'] ?? null,
+                    'redis_instance_metrics' => $cacheInfo['redis_instance_metrics'] ?? null,
+                    'laravel_cache_metrics' => $cacheInfo['laravel_cache_metrics'] ?? null,
                     'reverb_connections' => $cacheInfo['reverb_connections'] ?? 0,
                 ]);
 

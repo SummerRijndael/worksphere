@@ -45,6 +45,25 @@ export function createPresenceManager(
             .here((users: any[]) => {
                 log('CHANNEL', `Members here: ${users.length}`, users);
                 activeParticipantIds.value = new Set(users.map(u => u.public_id.toLowerCase()));
+
+                // IMPORTANT: hydrate participant records from current occupants.
+                // Waiting-room users may only have themselves in initial meeting payload,
+                // so without this they can get "You're the only one here" after admission.
+                users.forEach((user: any) => {
+                    upsertParticipant({
+                        public_id: user.public_id,
+                        role: user.role,
+                        status: user.status || 'admitted',
+                        user: user.avatar ? { name: user.name, avatar_url: user.avatar } : undefined,
+                        metadata: { guest_name: user.name },
+                        current_room_id:
+                            user.current_room_id !== undefined && user.current_room_id !== null
+                                ? String(user.current_room_id)
+                                : user.assigned_room_id !== undefined && user.assigned_room_id !== null
+                                  ? String(user.assigned_room_id)
+                                  : null,
+                    });
+                });
             })
             .joining(async (user: any) => {
                 const pid = user.public_id.toLowerCase();
@@ -169,7 +188,8 @@ export function createPresenceManager(
 
     function toggleScreenShareState(publicId: string, isSharing: boolean) {
         if (isSharing) {
-            screenShares.value = new Set(screenShares.value).add(publicId);
+            // Single active sharer policy: the latest "ON" event becomes the sole sharer.
+            screenShares.value = new Set([publicId]);
         } else {
             const newSet = new Set(screenShares.value);
             newSet.delete(publicId);

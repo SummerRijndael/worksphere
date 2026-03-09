@@ -60,7 +60,7 @@ class NotificationController extends Controller
     public function markAllAsRead()
     {
         try {
-            Auth::user()->unreadNotifications->markAsRead();
+            Auth::user()->unreadNotifications()->update(['read_at' => now()]);
 
             return response()->json(['message' => 'All marked as read']);
         } catch (\Exception $e) {

@@ -29,6 +29,8 @@ export function useBackgroundBlur() {
     let blurCtx: CanvasRenderingContext2D | null = null;
     let personCanvas: HTMLCanvasElement | null = null;
     let personCtx: CanvasRenderingContext2D | null = null;
+    let segCanvas: HTMLCanvasElement | null = null;
+    let segCtx: CanvasRenderingContext2D | null = null;
     let cachedBgCanvas: HTMLCanvasElement | null = null;
     let cachedBgCtx: CanvasRenderingContext2D | null = null;
     
@@ -61,8 +63,8 @@ export function useBackgroundBlur() {
 
     // Adaptive quality: track actual FPS to decide if we should downgrade model
     const FPS_WINDOW = 30; // sliding window of last N frame timestamps
-    const FPS_DOWNGRADE_THRESHOLD = 15; // fps below this = struggling
-    const FPS_DOWNGRADE_WINDOW_MS = 5000; // must sustain low fps for this long
+    const FPS_DOWNGRADE_THRESHOLD = 20; // fps below this = struggling (was 15)
+    const FPS_DOWNGRADE_WINDOW_MS = 2000; // must sustain low fps for this long (was 5000)
     let fpsFrameTimes: number[] = [];
     let lowFpsStartTime: number | null = null;
     let hasDowngraded = false;
@@ -236,55 +238,64 @@ export function useBackgroundBlur() {
             ctx = canvas.getContext("2d");
         }
         
-        // Resolution Strategy: True 720p for recording, 360p fallback for true potatoes
-        let targetWidth = video.videoWidth;
-        let targetHeight = video.videoHeight;
+        // Resolution Strategy:
+        // Output remains High Fidelity (720p) for recordings/presentation
+        // Processing (Segmentation) happens at 480p to eliminate lag
+        const outputWidth = video.videoWidth;
+        const outputHeight = video.videoHeight;
         
-        const MAX_DIMENSION = isLowEnd ? 360 : 720; 
+        const MAX_PROCESSING_DIM = isLowEnd ? 360 : 480; 
+        let procWidth = outputWidth;
+        let procHeight = outputHeight;
         
-        if (targetWidth > MAX_DIMENSION || targetHeight > MAX_DIMENSION) {
-            const ratio = targetWidth / targetHeight;
-            if (targetWidth > targetHeight) {
-                 targetWidth = MAX_DIMENSION;
-                 targetHeight = Math.round(MAX_DIMENSION / ratio);
+        if (procWidth > MAX_PROCESSING_DIM || procHeight > MAX_PROCESSING_DIM) {
+            const ratio = procWidth / procHeight;
+            if (procWidth > procHeight) {
+                 procWidth = MAX_PROCESSING_DIM;
+                 procHeight = Math.round(MAX_PROCESSING_DIM / ratio);
             } else {
-                 targetHeight = MAX_DIMENSION;
-                 targetWidth = Math.round(MAX_DIMENSION * ratio);
+                 procHeight = MAX_PROCESSING_DIM;
+                 procWidth = Math.round(MAX_PROCESSING_DIM * ratio);
             }
         }
         
-        // Setting width/height resets the canvas context state!
-        canvas.width = targetWidth;
-        canvas.height = targetHeight;
+        canvas.width = outputWidth;
+        canvas.height = outputHeight;
+        
         if (ctx) {
             ctx.imageSmoothingEnabled = true;
             ctx.imageSmoothingQuality = 'medium';
         }
 
+        // Person Canvas (full resolution for composition)
+        if (!personCanvas) personCanvas = document.createElement("canvas");
+        personCanvas.width = outputWidth;
+        personCanvas.height = outputHeight;
+        personCtx = personCanvas.getContext("2d", { willReadFrequently: false });
 
-        
+        // Segmentation Canvas (internal downsampled source for segmenter)
+        if (!segCanvas) segCanvas = document.createElement("canvas");
+        segCanvas.width = procWidth;
+        segCanvas.height = procHeight;
+        // willReadFrequently is only helpful if we call getImageData/putImageData (ChromaKey)
+        segCtx = segCanvas.getContext("2d", { willReadFrequently: useChromaKey });
+        if (segCtx) {
+            segCtx.imageSmoothingEnabled = true;
+            segCtx.imageSmoothingQuality = 'medium';
+        }
+
         // Setup offscreen canvases
         if (!blurCanvas) blurCanvas = document.createElement("canvas");
-        const blurDownsample = isMobile ? 12 : 8; // Heavier downsample for a massive Gaussian effect
-        // Blur canvas is even smaller for performance
-        blurCanvas.width = Math.round(targetWidth / blurDownsample); 
-        blurCanvas.height = Math.round(targetHeight / blurDownsample);
-        blurCtx = blurCanvas.getContext("2d", { alpha: false, willReadFrequently: true });
+        const blurDownsample = isMobile ? 12 : 8;
+        blurCanvas.width = Math.round(outputWidth / blurDownsample); 
+        blurCanvas.height = Math.round(outputHeight / blurDownsample);
+        blurCtx = blurCanvas.getContext("2d", { alpha: false, willReadFrequently: false });
         if (blurCtx) {
             blurCtx.imageSmoothingEnabled = true;
-            blurCtx.imageSmoothingQuality = 'high';
+            blurCtx.imageSmoothingQuality = 'medium';
         }
 
-        if (!personCanvas) personCanvas = document.createElement("canvas");
-        personCanvas.width = targetWidth;
-        personCanvas.height = targetHeight;
-        personCtx = personCanvas.getContext("2d", { willReadFrequently: true });
-        if (personCtx) {
-            personCtx.imageSmoothingEnabled = true;
-            personCtx.imageSmoothingQuality = 'high';
-        }
-
-        console.log(`[BackgroundBlur] Processing dimensions: ${targetWidth}x${targetHeight} (Source: ${video.videoWidth}x${video.videoHeight}), mode: ${currentRunningMode}`);
+        console.log(`[BackgroundBlur] Quality: Output ${outputWidth}x${outputHeight}, Processing ${procWidth}x${procHeight}, Mode: ${currentRunningMode}`);
 
 
         let lastFrameTime = 0;
@@ -353,10 +364,19 @@ export function useBackgroundBlur() {
                     if (personCanvas) {
                         personCanvas.width = newTargetWidth;
                         personCanvas.height = newTargetHeight;
-                        if (personCtx) {
-                            personCtx.imageSmoothingEnabled = true;
-                            personCtx.imageSmoothingQuality = 'high';
+                    }
+                    if (segCanvas) {
+                        // Re-apply capping logic for segCanvas
+                        const MAX_DIM = isLowEnd ? 360 : 480;
+                        let sw = newTargetWidth;
+                        let sh = newTargetHeight;
+                        if (sw > MAX_DIM || sh > MAX_DIM) {
+                            const r = sw / sh;
+                            if (sw > sh) { sw = MAX_DIM; sh = Math.round(MAX_DIM / r); }
+                            else { sh = MAX_DIM; sw = Math.round(MAX_DIM * r); }
                         }
+                        segCanvas.width = sw;
+                        segCanvas.height = sh;
                     }
                     if (currentEffect === 'image' && currentImageUrl) {
                         updateBackgroundImage(currentImageUrl, canvas.width, canvas.height);
@@ -395,14 +415,19 @@ export function useBackgroundBlur() {
                 if (useChromaKey) {
                     // Manual Chroma Key Path
                     const maskData = processChromaKey(video);
-                    renderChromaKeyResult(maskData, canvas.width, canvas.height);
+                    renderChromaKeyResult(maskData, segCanvas.width, segCanvas.height);
                 } else if (segmenter.value) {
-                    if (currentRunningMode === 'IMAGE') {
-                        const result = segmenter.value.segment(video);
-                        renderResult(result);
-                    } else {
-                        const startTime = performance.now();
-                        segmenter.value.segmentForVideo(video, startTime, renderResult);
+                    // Draw video to segmentation canvas (downsampled)
+                    if (segCtx && segCanvas) {
+                        segCtx.drawImage(video, 0, 0, segCanvas.width, segCanvas.height);
+                        
+                        if (currentRunningMode === 'IMAGE') {
+                            const result = segmenter.value.segment(segCanvas);
+                            renderResult(result);
+                        } else {
+                            const startTime = performance.now();
+                            segmenter.value.segmentForVideo(segCanvas, startTime, renderResult);
+                        }
                     }
                 } else {
                     // No segmenter and no chroma key? Just draw raw
@@ -420,11 +445,11 @@ export function useBackgroundBlur() {
         };
 
         const processChromaKey = (video: HTMLVideoElement): Float32Array => {
-            if (!personCtx || !personCanvas) return new Float32Array(0);
+            if (!segCtx || !segCanvas) return new Float32Array(0);
             
-            // Draw video to personCanvas to get pixel data
-            personCtx.drawImage(video, 0, 0, personCanvas.width, personCanvas.height);
-            const imageData = personCtx.getImageData(0, 0, personCanvas.width, personCanvas.height);
+            // Draw video to segCanvas to get pixel data
+            segCtx.drawImage(video, 0, 0, segCanvas.width, segCanvas.height);
+            const imageData = segCtx.getImageData(0, 0, segCanvas.width, segCanvas.height);
             const data = imageData.data;
             const mask = new Float32Array(data.length / 4);
             
@@ -548,7 +573,10 @@ export function useBackgroundBlur() {
                  }
 
                  // Software blur on the float mask data directly for superior soft-edge rendering
-                 fastBoxBlur(maskData, width, height, isMobile ? 2 : 3);
+                 // Skip manual blur on low-end devices to save CPU; MediaPipe is usually enough.
+                 if (!isLowEnd && !hasDowngraded) {
+                     fastBoxBlur(maskData, width, height, isMobile ? 2 : 3);
+                 }
 
                  // Reuse or create ImageData for mask
                  if (!maskImageData || maskImageDataWidth !== width || maskImageDataHeight !== height) {
@@ -671,6 +699,9 @@ export function useBackgroundBlur() {
                  framing.centerX = 0.5;
                  framing.centerY = 0.5;
                  framing.zoom = 1.0;
+                 framing.targetCenterX = 0.5;
+                 framing.targetCenterY = 0.5;
+                 framing.targetZoom = 1.0;
              }
 
               const drawOptimized = (targetCtx: CanvasRenderingContext2D, source: CanvasImageSource, targetWidth: number, targetHeight: number) => {
@@ -702,17 +733,18 @@ export function useBackgroundBlur() {
              drawOptimized(blurCtx, video, blurCanvas.width, blurCanvas.height);
              blurCtx.filter = 'none';
 
-             // 2. Prepare person with mask feathering — single draw, no redundant pass
-             personCtx.clearRect(0, 0, w, h);
-             personCtx.save();
-             // Mask is already mathematically feathered. No CSS filter required here.
-             personCtx.filter = 'none';
-             drawOptimized(personCtx, mask, w, h);
-             personCtx.restore();
-             
-             personCtx.globalCompositeOperation = 'source-in';
-             drawOptimized(personCtx, video, w, h);
-             personCtx.globalCompositeOperation = 'source-over';
+              // 2. Prepare person with mask feathering
+              personCtx.setTransform(1, 0, 0, 1, 0, 0);
+              personCtx.clearRect(0, 0, w, h);
+              
+              // Draw mask - always stretched to full output resolution
+              // We avoid drawOptimized for the mask to ensure it always matches output geometry perfectly
+              personCtx.drawImage(mask, 0, 0, (mask as any).width, (mask as any).height, 0, 0, w, h);
+              
+              personCtx.globalCompositeOperation = 'source-in';
+              // Draw video - applied with framing (if enabled)
+              drawOptimized(personCtx, video, w, h);
+              personCtx.globalCompositeOperation = 'source-over';
 
              // 3. Final composition on main canvas
              ctx.clearRect(0, 0, w, h);
@@ -733,36 +765,46 @@ export function useBackgroundBlur() {
         };
 
         const updateFraming = (maskData: Float32Array, width: number, height: number) => {
+            if (!isAutoFramingEnabled) return;
+            
             let minX = width, minY = height, maxX = 0, maxY = 0;
             let found = false;
+            let sumX = 0, sumY = 0, count = 0;
 
             // Sample mask to find person bounds
-            const step = 4; // Faster sampling
-            for (let y = 0; y < height; y += step) {
-                for (let x = 0; x < width; x += step) {
+            // Ignore outer 10% edges to filter sensor/segmentation noise (fixes "zoomed to corner" bug)
+            const marginX = Math.floor(width * 0.1);
+            const marginY = Math.floor(height * 0.1);
+            const step = 4; 
+            
+            for (let y = marginY; y < height - marginY; y += step) {
+                for (let x = marginX; x < width - marginX; x += step) {
                     const val = maskData[y * width + x];
-                    if (val > 0.5) {
+                    if (val > 0.6) { // Higher threshold for framing stability
                         if (x < minX) minX = x;
                         if (x > maxX) maxX = x;
                         if (y < minY) minY = y;
                         if (y > maxY) maxY = y;
+                        sumX += x;
+                        sumY += y;
+                        count++;
                         found = true;
                     }
                 }
             }
 
-            if (found) {
-                // Calculate target center and zoom
-//                 const personWidth = (maxX - minX) / width;
+            if (found && count > 50) { // Require minimum mass to move "camera"
                 const personHeight = (maxY - minY) / height;
+                const centroidX = sumX / (count * width);
+                const centroidY = sumY / (count * height);
                 
-                framing.targetCenterX = (minX + maxX) / (2 * width);
-                framing.targetCenterY = (minY + maxY) / (2 * height);
-                // Target zoom to keep person at ~60% of frame height (better balance)
-                 const desiredHeight = 0.6;
-                 const zoomFactor = desiredHeight / personHeight;
-                 framing.targetZoom = Math.max(1.0, Math.min(2.5, zoomFactor));
-
+                framing.targetCenterX = centroidX;
+                framing.targetCenterY = centroidY;
+                
+                // Target zoom to keep person at ~60% of frame height
+                const desiredHeight = 0.6;
+                const zoomFactor = desiredHeight / Math.max(0.2, personHeight);
+                framing.targetZoom = Math.max(1.0, Math.min(2.0, zoomFactor));
             } else {
                 framing.targetCenterX = 0.5;
                 framing.targetCenterY = 0.5;
@@ -887,12 +929,17 @@ export function useBackgroundBlur() {
         }
         isLoaded.value = false;
         
-        // Clear cached canvases
-        canvas = null;
-        blurCanvas = null;
-        personCanvas = null;
-        cachedBgCanvas = null;
-        bgImage = null;
+        if (personCanvas) personCanvas = null;
+        if (personCtx) personCtx = null;
+        if (segCanvas) segCanvas = null;
+        if (segCtx) segCtx = null;
+        if (blurCanvas) blurCanvas = null;
+        if (blurCtx) blurCtx = null;
+        if (cachedBgCanvas) cachedBgCanvas = null;
+        if (cachedBgCtx) cachedBgCtx = null;
+        
+        hasDowngraded = false;
+        isDowngrading = false;
     }
     
     onUnmounted(() => {

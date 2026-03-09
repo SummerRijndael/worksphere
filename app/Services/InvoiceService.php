@@ -244,9 +244,9 @@ class InvoiceService
         }
 
         if ($note) {
-            $paymentNote = "Payment Note: " . $note;
+            $paymentNote = 'Payment Note: '.$note;
             $invoice->notes = $invoice->notes
-                ? $invoice->notes . "\n\n" . $paymentNote
+                ? $invoice->notes."\n\n".$paymentNote
                 : $paymentNote;
         }
 
@@ -333,7 +333,7 @@ class InvoiceService
         }
 
         if ($reason) {
-            $invoice->update(['notes' => $invoice->notes ? $invoice->notes . "\n\nCancellation Reason: " . $reason : "Cancellation Reason: " . $reason]);
+            $invoice->update(['notes' => $invoice->notes ? $invoice->notes."\n\nCancellation Reason: ".$reason : 'Cancellation Reason: '.$reason]);
         }
 
         // Audit log

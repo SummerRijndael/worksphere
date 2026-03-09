@@ -36,6 +36,7 @@ class SystemNotification extends Notification implements ShouldBroadcast, Should
      */
     public function __construct($type, $title, $message, $actionUrl = null, $actionLabel = null, $metadata = [])
     {
+        $this->onQueue('notifications');
         $this->type = $type;
         $this->title = $title;
         $this->message = $message;

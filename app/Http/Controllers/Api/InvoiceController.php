@@ -174,7 +174,7 @@ class InvoiceController extends Controller
             abort(404);
         }
 
-        return DB::transaction(function () use ($request, $team, $invoice) {
+        return DB::transaction(function () use ($request, $invoice) {
             $client = null;
             if ($request->filled('client_id')) {
                 $client = Client::where('public_id', $request->input('client_id'))->first();

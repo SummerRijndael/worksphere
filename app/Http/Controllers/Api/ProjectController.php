@@ -15,11 +15,10 @@ use App\Models\Team;
 use App\Models\User;
 use App\Services\AuditService;
 use App\Services\PermissionService;
-use App\Services\MediaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
@@ -66,7 +65,7 @@ class ProjectController extends Controller
             $allowedTeamIds = $user->teams()->pluck('teams.id')
                 ->merge($user->ownedTeams()->pluck('id'))
                 ->unique();
-            
+
             $query->whereIn('team_id', $allowedTeamIds);
         }
         // Admins with no team_id see global stats (original behavior)
@@ -139,7 +138,7 @@ class ProjectController extends Controller
             $allowedTeamIds = $user->teams()->pluck('teams.id')
                 ->merge($user->ownedTeams()->pluck('id'))
                 ->unique();
-            
+
             $query->whereIn('team_id', $allowedTeamIds);
         }
 
@@ -675,9 +674,9 @@ class ProjectController extends Controller
                 ->first();
 
             $invoiceStats = $project->invoices()
-                ->selectRaw("SUM(CASE WHEN status != ? THEN total ELSE 0 END) as total_invoiced", [InvoiceStatus::Cancelled->value])
-                ->selectRaw("SUM(CASE WHEN status = ? THEN total ELSE 0 END) as total_paid", [InvoiceStatus::Paid->value])
-                ->selectRaw("SUM(CASE WHEN status IN (?, ?, ?) THEN total ELSE 0 END) as pending_amount", [
+                ->selectRaw('SUM(CASE WHEN status != ? THEN total ELSE 0 END) as total_invoiced', [InvoiceStatus::Cancelled->value])
+                ->selectRaw('SUM(CASE WHEN status = ? THEN total ELSE 0 END) as total_paid', [InvoiceStatus::Paid->value])
+                ->selectRaw('SUM(CASE WHEN status IN (?, ?, ?) THEN total ELSE 0 END) as pending_amount', [
                     InvoiceStatus::Sent->value,
                     InvoiceStatus::Viewed->value,
                     InvoiceStatus::Overdue->value,

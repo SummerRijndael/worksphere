@@ -55,11 +55,22 @@ class VideoCallController extends Controller
 
         if ($turnKeyId && $turnApiToken) {
             try {
+                $ttl = (int) config('services.cloudflare.turn_credential_ttl', 14400);
+                $ttl = max(60, min($ttl, 172800));
+
+                $customIdentifier = null;
+                if (Auth::check()) {
+                    $customIdentifier = 'chat:'.$chat->public_id.':user:'.Auth::id();
+                }
+
+                $payload = ['ttl' => $ttl];
+                if ($customIdentifier) {
+                    $payload['customIdentifier'] = $customIdentifier;
+                }
+
                 /** @var \Illuminate\Http\Client\Response $response */
                 $response = Http::withToken($turnApiToken)
-                    ->post("https://rtc.live.cloudflare.com/v1/turn/keys/{$turnKeyId}/credentials/generate-ice-servers", [
-                        'ttl' => 3600, // 1 hour (Cloudflare recommended max)
-                    ]);
+                    ->post("https://rtc.live.cloudflare.com/v1/turn/keys/{$turnKeyId}/credentials/generate-ice-servers", $payload);
 
                 if ($response->successful()) {
                     $data = $response->json();
@@ -67,7 +78,7 @@ class VideoCallController extends Controller
                     // Cloudflare returns { iceServers: [{ urls: [...], username, credential }] }
                     // Pass through directly — includes STUN + TURN in one entry
                     if (! empty($data['iceServers'])) {
-                        $iceServers = $data['iceServers'];
+                        $iceServers = $this->normalizeIceServersForBrowser($data['iceServers']);
                     }
                 }
             } catch (\Exception $e) {
@@ -81,6 +92,32 @@ class VideoCallController extends Controller
         return response()->json([
             'ice_servers' => $iceServers,
         ]);
+    }
+
+    private function normalizeIceServersForBrowser(array $iceServers): array
+    {
+        if (! (bool) config('services.cloudflare.turn_filter_blocked_browser_ports', true)) {
+            return $iceServers;
+        }
+
+        $normalized = [];
+        foreach ($iceServers as $server) {
+            $urls = $server['urls'] ?? [];
+            $urlList = is_array($urls) ? $urls : [$urls];
+            $urlList = array_values(array_filter($urlList, fn ($url) => ! preg_match('/:53(?:\\?|$)/', (string) $url)));
+
+            if (count($urlList) === 0) {
+                continue;
+            }
+
+            $entry = $server;
+            $entry['urls'] = count($urlList) === 1 ? $urlList[0] : $urlList;
+            $normalized[] = $entry;
+        }
+
+        return count($normalized) > 0
+            ? $normalized
+            : [['urls' => 'stun:stun.cloudflare.com:3478']];
     }
 
     /**
@@ -535,14 +572,16 @@ class VideoCallController extends Controller
 
         $user = Auth::user();
 
-        event(new CallSignal(
+        $callSignalEvent = new CallSignal(
             $chat,
             $user->public_id,
             $request->input('call_id'),
             $request->input('signal_type'),
             $request->input('signal_data'),
             $request->input('target_public_id')
-        ));
+        );
+        $callSignalEvent->dontBroadcastToCurrentUser();
+        event($callSignalEvent);
 
         return response()->json(['status' => 'ok']);
     }

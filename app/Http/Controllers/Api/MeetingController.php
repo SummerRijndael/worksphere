@@ -16,11 +16,35 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
 
 class MeetingController extends Controller
 {
+    private const ALLOWED_SIGNAL_TYPES = [
+        'allow-camera',
+        'allow-unmute',
+        'annotation-update',
+        'camera-toggle',
+        'force-camera-off',
+        'force-mute',
+        'force-stop-screen-share',
+        'hand-toggle',
+        'laser-mode-changed',
+        'participant-kicked',
+        'reaction',
+        'request-media-info',
+        'role-changed',
+        'screen-share-toggle',
+        'signal',
+    ];
+
+    private const MEDIA_TOGGLE_SIGNAL_TYPES = [
+        'camera-toggle',
+        'screen-share-toggle',
+    ];
+
     public function __construct(
         protected MeetingServiceContract $meetingService
     ) {}
@@ -50,6 +74,10 @@ class MeetingController extends Controller
             'start_time' => 'required|date',
             'end_time' => 'nullable|date|after:start_time',
             'settings' => 'nullable|array',
+            'settings.guest_access' => 'sometimes|boolean',
+            'settings.lobby_enabled' => 'sometimes|boolean',
+            'settings.require_host_or_cohost_present' => 'sometimes|boolean',
+            'settings.screen_share_host_cohost_only' => 'sometimes|boolean',
             'password' => [
                 'nullable',
                 'string',
@@ -98,7 +126,13 @@ class MeetingController extends Controller
         try {
             $meeting = $this->meetingService->createMeeting($request->user(), $data);
         } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json(['message' => $e->getMessage(), 'errors' => $e->errors()], 422);
+            $errors = $e->errors();
+            $firstError = collect($errors)->flatten()->first();
+
+            return response()->json([
+                'message' => $firstError ?: $e->getMessage(),
+                'errors' => $errors,
+            ], 422);
         }
 
         return new MeetingResource($meeting->load(['host', 'participants.user']));
@@ -190,7 +224,7 @@ class MeetingController extends Controller
     public function signal(Request $request, Meeting $meeting): JsonResponse
     {
         $request->validate([
-            'signal_type' => 'required|string',
+            'signal_type' => 'required|string|in:'.implode(',', self::ALLOWED_SIGNAL_TYPES),
             'signal_data' => 'present|array',
             'target_participant_public_id' => 'nullable|string',
             'sender_participant_public_id' => 'required|string',
@@ -217,6 +251,61 @@ class MeetingController extends Controller
 
         if (! $sender) {
             return response()->json(['message' => 'Unauthorized or invalid sender session'], 403);
+        }
+
+        $signalType = (string) $request->signal_type;
+        $signalData = $request->signal_data ?? [];
+
+        if (in_array($signalType, self::MEDIA_TOGGLE_SIGNAL_TYPES, true)) {
+            $rateKey = sprintf(
+                'meeting_media_toggle:%s:%s:%s',
+                $meeting->id,
+                strtolower((string) $sender->public_id),
+                $signalType
+            );
+
+            $maxAttempts = 60;
+            $decaySeconds = 10;
+            if (RateLimiter::tooManyAttempts($rateKey, $maxAttempts)) {
+                return response()->json([
+                    'message' => 'Too many media updates sent too quickly. Please slow down.',
+                    'retry_after_seconds' => RateLimiter::availableIn($rateKey),
+                ], 429);
+            }
+            RateLimiter::hit($rateKey, $decaySeconds);
+        }
+
+        if ($signalType === 'screen-share-toggle') {
+            $isSharing = (bool) ($signalData['sharing'] ?? false);
+            if ($isSharing) {
+                $restrictToModerators = (bool) ($meeting->settings['screen_share_host_cohost_only'] ?? false);
+                $isModerator = in_array($sender->role, ['host', 'co-host'], true);
+
+                if ($restrictToModerators && ! $isModerator) {
+                    return response()->json(['message' => 'Only host or co-host can share screen in this meeting.'], 403);
+                }
+            }
+        }
+
+        if ($signalType === 'force-stop-screen-share') {
+            $isModerator = in_array($sender->role, ['host', 'co-host'], true);
+            if (! $isModerator) {
+                return response()->json(['message' => 'Only host or co-host can control screen sharing.'], 403);
+            }
+
+            $targetId = strtolower((string) ($signalData['targetId'] ?? ''));
+            if ($targetId === '') {
+                return response()->json(['message' => 'Missing target participant.'], 422);
+            }
+
+            $targetExists = MeetingParticipant::where('meeting_id', $meeting->id)
+                ->whereRaw('LOWER(public_id) = ?', [$targetId])
+                ->where('status', 'admitted')
+                ->exists();
+
+            if (! $targetExists) {
+                return response()->json(['message' => 'Target participant not found in meeting.'], 404);
+            }
         }
 
         Log::channel('videocall')->debug('[SIGNAL] Broadcasting signal', [
@@ -248,6 +337,10 @@ class MeetingController extends Controller
             'start_time' => 'required|date',
             'end_time' => 'nullable|date|after:start_time',
             'settings' => 'nullable|array',
+            'settings.guest_access' => 'sometimes|boolean',
+            'settings.lobby_enabled' => 'sometimes|boolean',
+            'settings.require_host_or_cohost_present' => 'sometimes|boolean',
+            'settings.screen_share_host_cohost_only' => 'sometimes|boolean',
             'password' => [
                 'nullable',
                 'string',
@@ -454,6 +547,43 @@ class MeetingController extends Controller
             return response()->json($responseData, $response->status());
         } catch (\Exception $e) {
             return response()->json(['error' => 'SFU Track Update Error', 'details' => $e->getMessage()], 500);
+        }
+    }
+
+    public function sfuTracksClose(Request $request, Meeting $meeting, string $sessionId): JsonResponse
+    {
+        $participant = $this->resolveParticipant($request, $meeting);
+        if (! $participant || $participant->status !== 'admitted') {
+            return response()->json(['message' => 'Unauthorized or participant not admitted.'], 403);
+        }
+
+        $appId = config('services.cloudflare.app_id');
+        $secret = config('services.cloudflare.app_secret');
+
+        Log::channel('videocall')->info('[SFU] Closing tracks', [
+            'meeting' => $meeting->public_id,
+            'sessionId' => $sessionId,
+            'tracks' => $request->input('tracks'),
+        ]);
+
+        try {
+            $payload = $request->only(['tracks', 'force', 'sessionDescription']);
+            $response = Http::withToken($secret)
+                ->timeout(30)
+                ->put("https://rtc.live.cloudflare.com/v1/apps/{$appId}/sessions/{$sessionId}/tracks/close", $payload);
+
+            $responseData = $response->json();
+            if (! $response->successful()) {
+                Log::channel('videocall')->error('[SFU] Cloudflare tracks/close error', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                    'sessionId' => $sessionId,
+                ]);
+            }
+
+            return response()->json($responseData, $response->status());
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'SFU Track Close Error', 'details' => $e->getMessage()], 500);
         }
     }
 
@@ -930,10 +1060,14 @@ class MeetingController extends Controller
 
         $validated = $request->validate([
             'rooms' => 'required|array',
-            'duration_minutes' => 'nullable|integer',
+            'duration_minutes' => 'nullable|integer|min:1|max:180',
         ]);
 
-        $this->meetingService->startBreakout($meeting, $validated['rooms'], $validated['duration_minutes']);
+        $this->meetingService->startBreakout(
+            $meeting,
+            $validated['rooms'],
+            $validated['duration_minutes'] ?? null
+        );
 
         return response()->json(['message' => 'Breakout session started.']);
     }
@@ -947,26 +1081,28 @@ class MeetingController extends Controller
         return response()->json(['message' => 'Breakout session ended.']);
     }
 
-    public function joinBreakoutRoom(Request $request, Meeting $meeting, string $roomId): JsonResponse
+    public function joinBreakoutRoom(Request $request, Meeting $meeting, string $room): JsonResponse
     {
         $participant = $this->resolveParticipant($request, $meeting);
         if (! $participant) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $this->meetingService->joinBreakoutRoom($meeting, $participant, $roomId);
+        $normalizedRoomId = in_array(strtolower($room), ['main', 'null', ''], true) ? null : $room;
+
+        $this->meetingService->joinBreakoutRoom($meeting, $participant, $normalizedRoomId);
 
         return response()->json(['message' => 'Joined room.']);
     }
 
-    public function requestBreakoutHelp(Request $request, Meeting $meeting, string $roomId): JsonResponse
+    public function requestBreakoutHelp(Request $request, Meeting $meeting, string $room): JsonResponse
     {
         $participant = $this->resolveParticipant($request, $meeting);
         if (! $participant) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $this->meetingService->requestBreakoutHelp($meeting, $roomId);
+        $this->meetingService->requestBreakoutHelp($meeting, $room);
 
         return response()->json(['message' => 'Help requested.']);
     }
@@ -994,7 +1130,7 @@ class MeetingController extends Controller
         $this->authorize('update', $meeting);
 
         $validated = $request->validate([
-            'additional_minutes' => 'required|integer',
+            'additional_minutes' => 'required|integer|min:-30|max:30|not_in:0',
         ]);
 
         $this->meetingService->updateBreakoutTimer($meeting, $validated['additional_minutes']);
@@ -1010,7 +1146,7 @@ class MeetingController extends Controller
         }
 
         $validated = $request->validate([
-            'message' => 'required|string|max:255',
+            'message' => 'required|string|max:200',
             'target_room_id' => 'nullable|string',
         ]);
 

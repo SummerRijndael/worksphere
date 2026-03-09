@@ -244,9 +244,7 @@ async function bulkPin() {
             <!-- Header -->
             <div class="flex flex-col gap-4 mb-6 shrink-0">
                 <!-- Title Row -->
-                <div
-                    class="flex flex-col md:flex-row md:items-center justify-between gap-4"
-                >
+                <div class="flex items-center justify-between gap-4">
                     <div class="min-w-0">
                         <h1
                             class="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight text-[var(--text-primary)]"
@@ -254,7 +252,7 @@ async function bulkPin() {
                             Personal Notes
                         </h1>
                         <p
-                            class="text-sm sm:text-base text-[var(--text-secondary)] mt-1"
+                            class="hidden sm:block text-sm sm:text-base text-[var(--text-secondary)] mt-1"
                         >
                             Manage your personal thoughts and ideas.
                         </p>
@@ -491,12 +489,12 @@ async function bulkPin() {
                 >
                     <!-- Left side: Info & Per page -->
                     <div
-                        class="flex items-center gap-2 text-xs sm:text-sm text-[var(--text-secondary)]"
+                        class="flex items-center gap-2 text-[10px] sm:text-sm text-[var(--text-secondary)]"
                     >
                         <span class="hidden sm:inline">{{
                             paginationInfo
                         }}</span>
-                        <span class="sm:hidden"
+                        <span class="sm:hidden font-medium"
                             >{{ noteStore.meta?.from || 0 }}-{{
                                 noteStore.meta?.to || 0
                             }}/{{ noteStore.meta?.total || 0 }}</span

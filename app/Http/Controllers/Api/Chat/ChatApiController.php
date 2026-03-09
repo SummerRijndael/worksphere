@@ -556,7 +556,8 @@ class ChatApiController extends Controller
                     'name' => $u->name ?? $u->email ?? $u->public_id,
                     'email' => $u->email,
                     'public_id' => $u->public_id,
-                    'avatar' => $u->avatar_url,
+                    'avatar_url' => $u->getAvatarData()->getUrl(),
+                    'color' => $u->getAvatarData()->color,
                     'is_online' => $status === 'online',
                     'presence_status' => $status,
                 ];

@@ -4,62 +4,72 @@
     <div
         class="flex w-full h-full overflow-hidden bg-(--surface-primary) relative"
     >
-        <!-- Sidebar Backdrop (Mobile) -->
-        <div
-            v-if="isMobileSidebarOpen"
-            class="fixed inset-0 bg-black/50 z-20 md:hidden backdrop-blur-sm"
-            @click="isMobileSidebarOpen = false"
-        ></div>
+        <template v-if="!authStore.isImpersonating">
+            <!-- Sidebar Backdrop (Mobile) -->
+            <div
+                v-if="isMobileSidebarOpen"
+                class="fixed inset-0 bg-black/50 z-20 md:hidden backdrop-blur-sm"
+                @click="isMobileSidebarOpen = false"
+            ></div>
 
-        <!-- 1. Left Sidebar (Folders) -->
-        <!-- Mobile: Fixed overlay | Desktop: Static width column -->
-        <aside
-            class="shrink-0 flex flex-col h-full min-h-0 bg-(--surface-secondary) border-r border-(--border-default) transition-all duration-500 z-30 overflow-hidden"
-            :class="{
-                'fixed inset-y-0 left-0 shadow-xl w-64': isMobileSidebarOpen,
-                'hidden md:flex md:static': !isMobileSidebarOpen,
-                'w-64': !isMobileSidebarOpen && !isCollapsed,
-                'w-20': !isMobileSidebarOpen && isCollapsed
-            }"
-        >
-            <EmailSidebar @compose="handleCompose" />
-        </aside>
+            <!-- 1. Left Sidebar (Folders) -->
+            <!-- Mobile: Fixed overlay | Desktop: Static width column -->
+            <aside
+                class="shrink-0 flex flex-col h-full min-h-0 bg-(--surface-secondary) border-r border-(--border-default) transition-all duration-500 z-30 overflow-hidden"
+                :class="{
+                    'fixed inset-y-0 left-0 shadow-xl w-64':
+                        isMobileSidebarOpen,
+                    'hidden md:flex md:static': !isMobileSidebarOpen,
+                    'w-64': !isMobileSidebarOpen && !isCollapsed,
+                    'w-20': !isMobileSidebarOpen && isCollapsed,
+                }"
+            >
+                <EmailSidebar @compose="handleCompose" />
+            </aside>
 
-        <!-- 2. Middle Column (List) -->
-        <!-- Flex item that sends events to parent -->
-        <div
-            class="flex flex-col w-full md:w-[289px] lg:w-[346px] border-r border-(--border-default) h-full min-h-0 shrink-0 bg-(--surface-primary)"
-            :class="{
-                'hidden md:flex': selectedEmailId || isComposing,
-                flex: !selectedEmailId && !isComposing,
-            }"
-        >
-            <EmailList
-                @select="handleSelectEmail"
-                @toggle-sidebar="isMobileSidebarOpen = !isMobileSidebarOpen"
-                @compose="handleCompose"
-            />
-        </div>
+            <!-- 2. Middle Column (List) -->
+            <!-- Flex item that sends events to parent -->
+            <div
+                class="flex flex-col w-full md:w-[289px] lg:w-[346px] border-r border-(--border-default) h-full min-h-0 shrink-0 bg-(--surface-primary)"
+                :class="{
+                    'hidden md:flex': selectedEmail || isComposing,
+                    flex: !selectedEmail && !isComposing,
+                }"
+            >
+                <EmailList
+                    @select="handleSelectEmail"
+                    @toggle-sidebar="isMobileSidebarOpen = !isMobileSidebarOpen"
+                    @compose="handleCompose"
+                />
+            </div>
 
-        <!-- 3. Right Column (Preview) -->
-        <!-- Flex-1 to take remaining space -->
-        <main
-            class="flex-1 flex flex-col h-full min-h-0 min-w-0 bg-(--surface-primary)"
-            :class="{
-                'hidden md:flex': !selectedEmailId && !isComposing,
-                flex: selectedEmailId || isComposing,
-            }"
-        >
-            <EmailPreviewPane
-                ref="previewPaneRef"
-                :email="selectedEmail"
-                @tab-closed="handleTabClosed"
-                @back="
-                    selectedEmailId = null;
-                    isComposing = false;
-                "
-            />
-        </main>
+            <!-- 3. Right Column (Preview) -->
+            <!-- Flex-1 to take remaining space -->
+            <main
+                class="flex-1 flex flex-col h-full min-h-0 min-w-0 bg-(--surface-primary)"
+                :class="{
+                    'hidden md:flex': !selectedEmail && !isComposing,
+                    flex: selectedEmail || isComposing,
+                }"
+            >
+                <EmailPreviewPane
+                    ref="previewPaneRef"
+                    :email="selectedEmail"
+                    @tab-closed="handleTabClosed"
+                    @toggle-sidebar="isMobileSidebarOpen = !isMobileSidebarOpen"
+                    @back="
+                        selectedEmailId = null;
+                        isComposing = false;
+                    "
+                />
+            </main>
+        </template>
+
+        <LockedFeature
+            v-else
+            title="Email is Locked"
+            description="To protect user privacy and security, email access is disabled during impersonation. You cannot read, send, or manage emails."
+        />
     </div>
 </template>
 
@@ -69,10 +79,19 @@ import EmailSidebar from "./components/EmailSidebar.vue";
 import EmailList from "./components/EmailList.vue";
 import EmailPreviewPane from "./components/EmailPreviewPane.vue";
 import { useEmailStore, type Email } from "@/stores/emailStore";
+import { useAuthStore } from "@/stores/auth";
+import LockedFeature from "@/components/ui/LockedFeature.vue";
 import { storeToRefs } from "pinia";
 
+const authStore = useAuthStore();
+
 const store = useEmailStore();
-const { emails, selectedEmailId, loading, isSidebarCollapsed: isCollapsed } = storeToRefs(store);
+const {
+    emails,
+    selectedEmailId,
+    loading,
+    isSidebarCollapsed: isCollapsed,
+} = storeToRefs(store);
 
 const selectedEmail = computed(() => {
     return emails.value.find((e) => e.id === selectedEmailId.value) || null;

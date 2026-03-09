@@ -106,11 +106,22 @@
                                 <span class="text-xs text-(--text-muted)">{{ room.participants.length }} participants</span>
                             </div>
 
-                            <div v-if="assignmentMode === 'manual'" class="space-y-2 min-h-[60px] p-2 rounded-xl bg-(--surface-primary)/50 border border-dashed border-(--border-muted)">
+                            <div
+                                v-if="assignmentMode === 'manual'"
+                                class="space-y-2 min-h-[60px] p-2 rounded-xl bg-(--surface-primary)/50 border border-dashed transition-colors"
+                                :class="dragOverRoomId === room.id ? 'border-(--color-primary-500) bg-(--color-primary-500)/10' : 'border-(--border-muted)'"
+                                @dragover.prevent="onRoomDragOver(room.id)"
+                                @dragleave="onRoomDragLeave(room.id)"
+                                @drop.prevent="onDropToRoom(room.id)"
+                            >
                                 <div 
                                     v-for="p in room.participants" 
                                     :key="p.public_id"
                                     class="flex items-center justify-between gap-2 p-2 bg-(--surface-primary) border border-(--border-muted) rounded-xl shadow-sm group"
+                                    :class="draggingParticipantId === p.public_id ? 'opacity-60' : ''"
+                                    :draggable="assignmentMode === 'manual'"
+                                    @dragstart="onDragStart(p)"
+                                    @dragend="onDragEnd"
                                 >
                                     <div class="flex items-center gap-2 overflow-hidden flex-1">
                                         <Icon name="grip-vertical" size="14" class="text-(--text-muted) cursor-grab active:cursor-grabbing opacity-50 group-hover:opacity-100" />
@@ -137,12 +148,21 @@
                 <!-- Unassigned Participants (Manual Mode) -->
                 <div v-if="assignmentMode === 'manual' && unassignedParticipants.length > 0" class="space-y-3">
                     <label class="text-sm font-semibold">Unassigned ({{ unassignedParticipants.length }})</label>
-                    <div class="flex flex-wrap gap-2">
-                        <button 
+                    <div
+                        class="flex flex-wrap gap-2 min-h-[56px] p-2 rounded-xl border border-dashed transition-colors"
+                        :class="isDragging && !dragOverRoomId ? 'border-(--color-primary-500) bg-(--color-primary-500)/10' : 'border-(--border-muted)'"
+                        @dragover.prevent
+                        @drop.prevent="onDropToUnassigned"
+                    >
+                        <button
                             v-for="p in unassignedParticipants" 
                             :key="p.public_id"
                             @click="assignToNextRoom(p)"
                             class="flex items-center gap-2 px-4 py-2 bg-(--surface-tertiary) border border-(--border-muted) rounded-xl hover:border-(--color-primary-500) hover:bg-(--surface-primary) transition-all group"
+                            :class="draggingParticipantId === p.public_id ? 'opacity-60' : ''"
+                            :draggable="assignmentMode === 'manual'"
+                            @dragstart="onDragStart(p)"
+                            @dragend="onDragEnd"
                         >
                             <div class="w-5 h-5 rounded-full bg-(--color-primary-500)/20 flex items-center justify-center text-[10px] font-bold text-(--color-primary-500)">
                                 {{ getDisplayName(p).charAt(0) }}
@@ -178,7 +198,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, reactive } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useMeetingStore } from '@/stores/meeting';
 import { Icon } from '@/components/ui';
 import { toast } from 'vue-sonner';
@@ -191,6 +211,9 @@ const roomCount = ref(2);
 const duration = ref(10);
 const hasTimer = ref(true);
 const assignmentMode = ref<'auto' | 'manual'>('auto');
+const isDragging = ref(false);
+const draggingParticipantId = ref<string | null>(null);
+const dragOverRoomId = ref<number | null>(null);
 
 interface Room {
     id: number;
@@ -229,7 +252,17 @@ watch(roomCount, (val) => {
 function getDisplayName(p: any) {
     if (!p) return 'Participant';
     if (p.public_id === meetingStore.localParticipant?.public_id) return 'You';
-    return p.display_name || p.user?.name || (p.metadata && p.metadata.guest_name) || p.name || 'Participant';
+    const name =
+        p.display_name ||
+        p.user?.name ||
+        (p.metadata && p.metadata.guest_name) ||
+        p.name ||
+        'Participant';
+    const isGuest = !p.user?.public_id && !p.user?.id;
+    if (isGuest && !/\(guest\)$/i.test(name)) {
+        return `${name} (Guest)`;
+    }
+    return name;
 }
 
 function unassign(participant: any) {
@@ -252,6 +285,66 @@ function assignToNextRoom(participant: any) {
     }
 }
 
+function onDragStart(participant: any) {
+    if (assignmentMode.value !== 'manual') return;
+    isDragging.value = true;
+    draggingParticipantId.value = participant.public_id;
+}
+
+function onDragEnd() {
+    isDragging.value = false;
+    draggingParticipantId.value = null;
+    dragOverRoomId.value = null;
+}
+
+function onRoomDragOver(roomId: number) {
+    if (!isDragging.value) return;
+    dragOverRoomId.value = roomId;
+}
+
+function onRoomDragLeave(roomId: number) {
+    if (dragOverRoomId.value === roomId) {
+        dragOverRoomId.value = null;
+    }
+}
+
+function onDropToRoom(roomId: number) {
+    if (!draggingParticipantId.value) return;
+    moveParticipantToRoom(draggingParticipantId.value, roomId);
+    onDragEnd();
+}
+
+function onDropToUnassigned() {
+    if (!draggingParticipantId.value) return;
+    moveParticipantToRoom(draggingParticipantId.value, null);
+    onDragEnd();
+}
+
+function moveParticipantToRoom(participantPublicId: string, roomId: number | null) {
+    const participant = participantsToAssign.value.find((p: any) => p.public_id === participantPublicId);
+    if (!participant) return;
+
+    // Remove from any existing room first
+    rooms.value = rooms.value.map((room) => ({
+        ...room,
+        participants: room.participants.filter((p: any) => p.public_id !== participantPublicId),
+    }));
+
+    if (roomId === null) return;
+
+    const roomIndex = rooms.value.findIndex((room) => room.id === roomId);
+    if (roomIndex === -1) return;
+
+    if (rooms.value[roomIndex].participants.some((p: any) => p.public_id === participantPublicId)) {
+        return;
+    }
+
+    rooms.value[roomIndex] = {
+        ...rooms.value[roomIndex],
+        participants: [...rooms.value[roomIndex].participants, participant],
+    };
+}
+
 async function start() {
     loading.value = true;
     try {
@@ -271,7 +364,7 @@ async function start() {
             duration: hasTimer.value ? duration.value : null
         });
 
-        await meetingStore.startBreakout(finalRooms, hasTimer.value ? duration.value : 0);
+        await meetingStore.startBreakout(finalRooms, hasTimer.value ? duration.value : null);
         toast.success(`Breakout session started with ${finalRooms.length} rooms`);
         emit('close');
     } catch (e: any) {

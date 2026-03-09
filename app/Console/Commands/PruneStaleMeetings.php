@@ -2,8 +2,6 @@
 
 namespace App\Console\Commands;
 
-use App\Events\Meetings\MeetingSignal;
-use App\Events\Meetings\MeetingStatusUpdated;
 use App\Models\Meeting;
 use App\Services\Chat\PresenceService;
 use Illuminate\Console\Command;
@@ -23,7 +21,7 @@ class PruneStaleMeetings extends Command
      *
      * @var string
      */
-    protected $description = 'Automatically close abandoned or crashed meetings';
+    protected $description = 'Detect abandoned meetings without auto-ending them';
 
     /**
      * Execute the console command.
@@ -35,33 +33,22 @@ class PruneStaleMeetings extends Command
             ->where('actual_start_time', '<=', now()->subMinutes(5))
             ->get();
 
-        $pruned = 0;
+        $abandoned = 0;
 
         foreach ($meetings as $meeting) {
             $activeCount = count($presenceService->getActiveMeetingParticipantIds($meeting->public_id));
 
             if ($activeCount === 0) {
-                $meeting->update([
-                    'status' => 'ended',
-                    'actual_end_time' => now()->subMinutes(5), // End time reflects when the last person likely dropped (with leeway)
+                $abandoned++;
+                Log::info('[meetings:prune] Active meeting has no connected participants. Auto-end is disabled.', [
+                    'meeting' => $meeting->public_id,
+                    'active_count' => $activeCount,
                 ]);
-
-                broadcast(new MeetingSignal(
-                    $meeting,
-                    'system',
-                    'meeting-ended',
-                    ['ended_by' => 'system']
-                ));
-
-                broadcast(new MeetingStatusUpdated($meeting));
-
-                $pruned++;
             }
         }
 
-        $this->info("Pruned {$pruned} stale meetings.");
-        if ($pruned > 0) {
-            Log::info("Pruned {$pruned} stale meetings.");
-        }
+        $this->info("Checked {$meetings->count()} active meetings. {$abandoned} currently have no active participants.");
+
+        return self::SUCCESS;
     }
 }

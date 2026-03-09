@@ -22,7 +22,8 @@ class TicketInternalNoteResource extends JsonResource
                 'id' => $this->author->public_id,
                 'name' => $this->author->name,
                 'initials' => $this->author->initials,
-                'avatar_thumb_url' => $this->author->avatar_thumb_url,
+                'avatar_url' => $this->author->getAvatarData()->getUrl(),
+                'color' => $this->author->getAvatarData()->color,
             ]),
             'attachments' => $this->getMedia('attachments')->map(fn ($media) => [
                 'id' => $media->uuid,

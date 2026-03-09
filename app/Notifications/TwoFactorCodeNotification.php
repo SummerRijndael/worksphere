@@ -42,6 +42,7 @@ class TwoFactorCodeNotification extends Notification implements ShouldQueue
     public function toMail(object $notifiable): MailMessage
     {
         $appName = config('app.name', 'WorkSphere');
+
         return (new MailMessage)
             ->subject("Your {$appName} Verification Code")
             ->greeting('Hello!')

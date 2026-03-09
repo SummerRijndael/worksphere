@@ -25,11 +25,12 @@ class FaqArticleResource extends JsonResource
                 return FaqCommentResource::collection($this->comments);
             }),
             'author' => $this->whenLoaded('author', function () {
-                return [
-                    'id' => $this->author->id,
+                return $this->author ? [
+                    'public_id' => $this->author->public_id,
                     'name' => $this->author->name,
-                    'avatar' => $this->author->avatar_url, // assuming user has this accessor
-                ];
+                    'avatar_url' => $this->author->getAvatarData()->getUrl(),
+                    'color' => $this->author->getAvatarData()->color,
+                ] : null;
             }),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,

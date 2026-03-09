@@ -36,7 +36,6 @@ import {
     ArrowUpRight,
     ArrowDownRight,
     Minus,
-    
     UserPlus,
     X,
     Lock,
@@ -75,9 +74,8 @@ const { formatDate, formatRelativeTime } = useDate();
 interface UserLite {
     id: number;
     name: string;
-    initials: string;
-    avatarUrl?: string | null;
-    avatar_url?: string | null; // For followers
+    avatar_url?: string | null;
+    color?: string | null;
     public_id?: string;
 }
 
@@ -446,7 +444,8 @@ async function fetchTicket() {
                       id: data.assignee.id,
                       name: data.assignee.name,
                       initials: data.assignee.initials,
-                      avatarUrl: data.assignee.avatar_thumb_url,
+                      avatar_url: data.assignee.avatar_url,
+                      color: data.assignee.color,
                   }
                 : null,
             reporter: data.reporter
@@ -454,7 +453,8 @@ async function fetchTicket() {
                       id: data.reporter.id,
                       name: data.reporter.name,
                       initials: data.reporter.initials,
-                      avatarUrl: data.reporter.avatar_thumb_url,
+                      avatar_url: data.reporter.avatar_url,
+                      color: data.reporter.color,
                   }
                 : null,
             createdAt: data.created_at,
@@ -467,7 +467,8 @@ async function fetchTicket() {
                 author: {
                     name: c.author?.name || "Unknown",
                     initials: c.author?.initials || "??",
-                    avatarUrl: c.author?.avatar_thumb_url,
+                    avatar_url: c.author?.avatar_url,
+                    color: c.author?.color,
                 },
                 content: c.content,
                 createdAt: c.created_at,
@@ -479,7 +480,8 @@ async function fetchTicket() {
                 author: {
                     name: n.author?.name || "Unknown",
                     initials: n.author?.initials || "??",
-                    avatarUrl: n.author?.avatar_thumb_url,
+                    avatar_url: n.author?.avatar_url,
+                    color: n.author?.color,
                 },
                 content: n.content,
                 createdAt: n.created_at,
@@ -1259,9 +1261,12 @@ const processUploadQueue = async () => {
                 {
                     headers: { "Content-Type": "multipart/form-data" },
                     onUploadProgress: (progressEvent) => {
-                        const percentCompleted = progressEvent.total ? Math.round(
-                            (progressEvent.loaded * 100) / progressEvent.total,
-                        ) : 0;
+                        const percentCompleted = progressEvent.total
+                            ? Math.round(
+                                  (progressEvent.loaded * 100) /
+                                      progressEvent.total,
+                              )
+                            : 0;
                         item.progress = percentCompleted;
                     },
                 },
@@ -1650,10 +1655,11 @@ function isVisualMedia(att: Attachment) {
                                     ]"
                                 >
                                     <Avatar
+                                        :src="comment.author.avatar_url"
                                         :fallback="comment.author.initials"
-                                        :src="comment.author.avatarUrl"
+                                        :color="comment.author.color"
                                         size="sm"
-                                        class="shrink-0 mt-1"
+                                        class="rounded-md"
                                     />
                                     <div class="flex-1 min-w-0">
                                         <div
@@ -1801,7 +1807,12 @@ function isVisualMedia(att: Attachment) {
                             >
                                 <div class="flex gap-3">
                                     <Avatar
-                                        fallback="YO"
+                                        :src="authStore.user?.avatar_url"
+                                        :fallback="
+                                            authStore.user?.name?.charAt(0) ||
+                                            '?'
+                                        "
+                                        :color="authStore.user?.color"
                                         size="sm"
                                         class="shrink-0 mt-1"
                                     />
@@ -1870,14 +1881,29 @@ function isVisualMedia(att: Attachment) {
                                             <div
                                                 class="flex items-center gap-2"
                                             >
+                                                <div
+                                                    class="flex -space-x-2 mr-2"
+                                                >
+                                                    <Avatar
+                                                        v-for="follower in ticket.followers"
+                                                        :key="follower.id"
+                                                        :src="
+                                                            follower.avatar_url
+                                                        "
+                                                        :fallback="
+                                                            follower.initials
+                                                        "
+                                                        :color="follower.color"
+                                                        size="xs"
+                                                        class="border-2 border-[var(--surface-elevated)] ring-0"
+                                                    />
+                                                </div>
                                                 <Button
                                                     variant="ghost"
                                                     size="sm"
                                                     class="px-2 h-7"
                                                     title="Attach files"
-                                                    @click="
-                                                        fileInput?.click()
-                                                    "
+                                                    @click="fileInput?.click()"
                                                     :disabled="ticket.isLocked"
                                                 >
                                                     <Paperclip
@@ -2334,7 +2360,8 @@ function isVisualMedia(att: Attachment) {
                                             'text-orange-500':
                                                 (ticket.slaResponseProgress ||
                                                     0) >=
-                                                (ticket.slaResponseWarningAt || 80)
+                                                (ticket.slaResponseWarningAt ||
+                                                    80)
                                                     ? 80
                                                     : 101,
                                         }"
@@ -2538,9 +2565,10 @@ function isVisualMedia(att: Attachment) {
                                     class="flex items-center gap-2"
                                 >
                                     <Avatar
-                                        :fallback="ticket.assignee.initials"
-                                        :src="ticket.assignee.avatarUrl"
-                                        size="xs"
+                                        :src="ticket.assignee?.avatar_url"
+                                        :fallback="ticket.assignee?.initials"
+                                        :color="ticket.assignee?.color"
+                                        size="sm"
                                     />
                                     <span
                                         class="text-sm font-medium text-[var(--text-primary)]"
@@ -2568,9 +2596,10 @@ function isVisualMedia(att: Attachment) {
                                 >
                                 <div class="flex items-center gap-2">
                                     <Avatar
+                                        :src="ticket.reporter?.avatar_url"
                                         :fallback="ticket.reporter?.initials"
-                                        :src="ticket.reporter?.avatarUrl"
-                                        size="xs"
+                                        :color="ticket.reporter?.color"
+                                        size="sm"
                                     />
                                     <span
                                         class="text-sm font-medium text-[var(--text-primary)]"

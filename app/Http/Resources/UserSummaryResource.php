@@ -20,8 +20,9 @@ class UserSummaryResource extends JsonResource
             'username' => $this->username,
             'display_name' => $this->display_name,
             'initials' => $this->initials,
-            'avatar_url' => $this->avatar_url,
+            'avatar_url' => $this->getAvatarData()->getUrl(),
             'avatar_thumb_url' => $this->avatar_thumb_url,
+            'color' => $this->getAvatarData()->color,
             'presence' => $this->last_login_at && $this->last_login_at->diffInMinutes(now()) < 5 ? 'online' : 'offline',
             'status' => $this->pivot ? $this->pivot->status : null,
         ];

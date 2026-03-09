@@ -6,7 +6,6 @@ import {
     HardDriveIcon,
     PlusIcon,
     Trash2Icon,
-    
     FileTextIcon,
     ImageIcon,
     SearchIcon,
@@ -85,7 +84,9 @@ const activeSignature = computed(() =>
 const filteredSignatures = computed(() => {
     if (!searchQuery.value) return signatures.value;
     return signatures.value.filter((s) =>
-        (s.name || '').toLowerCase().includes((searchQuery.value || '').toLowerCase()),
+        (s.name || "")
+            .toLowerCase()
+            .includes((searchQuery.value || "").toLowerCase()),
     );
 });
 
@@ -311,9 +312,12 @@ const processUploadQueue = async () => {
             await api.post(endpoint, formData, {
                 headers: { "Content-Type": "multipart/form-data" },
                 onUploadProgress: (progressEvent) => {
-                    const percentCompleted = progressEvent.total ? Math.round(
-                        (progressEvent.loaded * 100) / progressEvent.total,
-                    ) : 0;
+                    const percentCompleted = progressEvent.total
+                        ? Math.round(
+                              (progressEvent.loaded * 100) /
+                                  progressEvent.total,
+                          )
+                        : 0;
                     item.progress = percentCompleted;
                 },
             });
@@ -473,25 +477,29 @@ function getUsageDetails(account: any) {
 </script>
 
 <template>
-    <div class="p-6 space-y-8 w-full mx-auto animate-in fade-in duration-500">
+    <div
+        class="p-4 sm:p-6 space-y-6 sm:space-y-8 w-full mx-auto animate-in fade-in duration-500"
+    >
         <!-- Header -->
-        <div class="flex items-center gap-5">
+        <div class="flex items-center gap-4 sm:gap-5">
             <Button
                 variant="secondary"
                 size="icon"
-                class="rounded-xl h-12 w-12 bg-(--surface-primary) border-(--border-default) shadow-sm hover:shadow-md transition-all shrink-0"
+                class="rounded-xl h-10 w-10 sm:h-12 sm:w-12 bg-(--surface-primary) border-(--border-default) shadow-sm hover:shadow-md transition-all shrink-0"
                 @click="$router.push({ name: 'email' })"
             >
-                <ArrowLeftIcon class="w-5 h-5 text-(--text-secondary)" />
+                <ArrowLeftIcon
+                    class="w-4 h-4 sm:w-5 sm:h-5 text-(--text-secondary)"
+                />
             </Button>
-            <div class="space-y-1">
+            <div class="space-y-0.5 sm:space-y-1 min-w-0">
                 <h1
-                    class="text-3xl font-bold tracking-tight text-(--text-primary)"
+                    class="text-xl sm:text-3xl font-bold tracking-tight text-(--text-primary) truncate"
                 >
                     Email Settings
                 </h1>
                 <p
-                    class="text-(--text-secondary) text-sm font-medium opacity-80"
+                    class="hidden sm:block text-(--text-secondary) text-sm font-medium opacity-80"
                 >
                     Configuration and management for your email experience.
                 </p>
@@ -592,15 +600,15 @@ function getUsageDetails(account: any) {
                         </div>
                         <Button
                             size="sm"
-                            class="rounded-xl shadow-sm hover:shadow-md transition-all font-semibold px-4"
+                            class="rounded-xl shadow-sm hover:shadow-md transition-all font-semibold px-2.5 sm:px-4"
                             @click="
                                 activeTab === 'signatures'
                                     ? handleNewSignature()
                                     : handleNewTemplate()
                             "
                         >
-                            <PlusIcon class="w-4 h-4 mr-2" />
-                            Create New
+                            <PlusIcon class="w-4 h-4 sm:mr-2" />
+                            <span class="hidden sm:inline">Create New</span>
                         </Button>
                     </div>
 
@@ -724,7 +732,7 @@ function getUsageDetails(account: any) {
                                 "
                             >
                                 <div
-                                    class="p-6 border-b border-(--border-default) bg-(--surface-primary) space-y-4"
+                                    class="p-4 sm:p-6 border-b border-(--border-default) bg-(--surface-primary) space-y-4"
                                 >
                                     <div
                                         class="grid grid-cols-1 md:grid-cols-2 gap-4"
@@ -781,7 +789,9 @@ function getUsageDetails(account: any) {
                                         >
                                             <RichTextEditor
                                                 v-if="
-                                                    activeTab === 'signatures' && activeSignature
+                                                    activeTab ===
+                                                        'signatures' &&
+                                                    activeSignature
                                                 "
                                                 ref="signatureEditorRef"
                                                 v-model="
@@ -822,7 +832,10 @@ function getUsageDetails(account: any) {
                                                 </template>
                                             </RichTextEditor>
                                             <RichTextEditor
-                                                v-else-if="activeTab === 'templates' && activeTemplate"
+                                                v-else-if="
+                                                    activeTab === 'templates' &&
+                                                    activeTemplate
+                                                "
                                                 ref="templateEditorRef"
                                                 v-model="activeTemplate.body"
                                                 :content="templateContent"
@@ -922,7 +935,9 @@ function getUsageDetails(account: any) {
                                                             (e: any) =>
                                                                 handleMediaUpload(
                                                                     Array.from(
-                                                                        e.target?.files || [],
+                                                                        e.target
+                                                                            ?.files ||
+                                                                            [],
                                                                     ),
                                                                 )
                                                         "
@@ -1006,7 +1021,9 @@ function getUsageDetails(account: any) {
                                                         draggable="true"
                                                         @dragstart="
                                                             (e) => {
-                                                                if(e.dataTransfer) {
+                                                                if (
+                                                                    e.dataTransfer
+                                                                ) {
                                                                     e.dataTransfer.setData(
                                                                         'text/plain',
                                                                         media.url,
@@ -1176,7 +1193,7 @@ function getUsageDetails(account: any) {
                                         </div>
                                         <div>
                                             <div
-                                                class="font-bold text-(--text-primary) text-lg"
+                                                class="font-bold text-(--text-primary) text-base sm:text-lg break-all sm:break-normal line-clamp-1"
                                             >
                                                 {{ account.email }}
                                             </div>

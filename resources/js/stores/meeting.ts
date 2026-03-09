@@ -20,8 +20,11 @@ export const useMeetingStore = defineStore('meeting', () => {
     const isDevMode = ref(false);
     const chatMessages = ref<any[]>([]);
     const isLocked = ref(false);
+    const isLockToggleBusy = ref(false);
     const originalVideoTrack = ref<MediaStreamTrack | null>(null);
     let lockHeartbeatInterval: any = null;
+    const LOCK_TOGGLE_DEBOUNCE_MS = 600;
+    let lastLockToggleAt = 0;
 
     // ── Polls ──────────────────────────────────────────────────────────────────
     interface Poll {
@@ -72,6 +75,40 @@ export const useMeetingStore = defineStore('meeting', () => {
     const breakoutTimer = ref(0);
     const showBreakoutManager = ref(false);
     let timerInterval: any = null;
+
+    function stopBreakoutTimerTicker() {
+        if (timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+        }
+    }
+
+    function ensureBreakoutTimerTicker() {
+        if (timerInterval || breakoutTimer.value <= 0) return;
+        timerInterval = setInterval(() => {
+            if (breakoutTimer.value > 0) {
+                breakoutTimer.value--;
+                return;
+            }
+
+            stopBreakoutTimerTicker();
+
+            // Host auto-ends the breakout when timer reaches 0.
+            if (presence.isHost.value) {
+                log('BREAKOUT', 'Timer expired, auto-ending breakout session');
+                endBreakout();
+            }
+        }, 1000);
+    }
+
+    function applyBreakoutTimerSeconds(seconds: number) {
+        breakoutTimer.value = Math.max(0, Math.floor(seconds));
+        if (breakoutTimer.value > 0) {
+            ensureBreakoutTimerTicker();
+        } else {
+            stopBreakoutTimerTicker();
+        }
+    }
 
     // ── PRO Recording ──────────────────────────────────────────────────────────
     // Reactive recording state. Set via signal handlers so ALL participants see
@@ -166,6 +203,30 @@ export const useMeetingStore = defineStore('meeting', () => {
         async () => {
             log('SYS', 'onAdmittedCallback triggered - initializing media engine');
             await initMediaEngine();
+
+            // Admission transition guard: refresh roster/state so waiting-room joins
+            // can reliably see existing participants immediately after admission.
+            if (meeting.value?.public_id) {
+                try {
+                    const latest = await meetingService.getMeeting(meeting.value.public_id) as any;
+                    const latestParticipants = (latest?.participants || []).map((p: any) => ({
+                        ...p,
+                        public_id: String(p.public_id || '').toLowerCase(),
+                    }));
+
+                    meeting.value = { ...meeting.value, ...latest };
+                    presence.participants.value = latestParticipants;
+
+                    const me = latestParticipants.find(
+                        (p: any) => p.public_id === localParticipant.value?.public_id?.toLowerCase()
+                    );
+                    if (me) {
+                        localParticipant.value = me;
+                    }
+                } catch (e) {
+                    log('ERROR', 'Failed to refresh meeting roster after admission', e);
+                }
+            }
             
             // Fetch any polls that were already created before we joined
             if (meeting.value?.public_id) {
@@ -274,6 +335,20 @@ export const useMeetingStore = defineStore('meeting', () => {
                          duration: activeSession.duration_minutes,
                          started_at: activeSession.started_at
                      };
+
+                     if ((activeSession.duration_minutes ?? 0) > 0 && activeSession.started_at) {
+                         const elapsedSeconds = Math.max(
+                             0,
+                             Math.floor((Date.now() - new Date(activeSession.started_at).getTime()) / 1000),
+                         );
+                         const remainingSeconds = Math.max(
+                             0,
+                             Number(activeSession.duration_minutes) * 60 - elapsedSeconds,
+                         );
+                         applyBreakoutTimerSeconds(remainingSeconds);
+                     } else {
+                         applyBreakoutTimerSeconds(0);
+                     }
                      
                      // Restore specific room
                      const myAssignedRoomId = localParticipant.value.assigned_room_id;
@@ -392,6 +467,26 @@ export const useMeetingStore = defineStore('meeting', () => {
     }
 
     async function publishScreenTrack(s?: MediaStream) {
+        if (!meeting.value || !localParticipant.value) return null;
+
+        const restrictToModerators = !!meeting.value.settings?.screen_share_host_cohost_only;
+        if (restrictToModerators && !presence.isModerator.value) {
+            const { toast } = await import('vue-sonner');
+            toast.error('Only host or co-host can share screen in this meeting.');
+            return null;
+        }
+
+        const localId = localParticipant.value.public_id.toLowerCase();
+        const activeOtherSharer = Array.from(presence.screenShares.value).find(
+            (id) => String(id).toLowerCase() !== localId
+        );
+
+        if (activeOtherSharer && !presence.isModerator.value) {
+            const { toast } = await import('vue-sonner');
+            toast.error('Another participant is already sharing their screen.');
+            return null;
+        }
+
         let streamToPublish = s;
 
         // Legacy SFU REQUIRES a stream (it doesn't have a built-in prompt like the SDK)
@@ -561,6 +656,13 @@ export const useMeetingStore = defineStore('meeting', () => {
             return;
         }
 
+        const now = Date.now();
+        if (isLockToggleBusy.value || now - lastLockToggleAt < LOCK_TOGGLE_DEBOUNCE_MS) {
+            return;
+        }
+        isLockToggleBusy.value = true;
+        lastLockToggleAt = now;
+
         try {
             const { toast } = await import('vue-sonner');
             if (isLocked.value) {
@@ -578,6 +680,12 @@ export const useMeetingStore = defineStore('meeting', () => {
             log('ERROR', 'Failed to toggle meeting lock', e);
             const { toast } = await import('vue-sonner');
             toast.error('Failed to toggle meeting lock');
+        } finally {
+            const elapsed = Date.now() - now;
+            const unlockIn = Math.max(0, LOCK_TOGGLE_DEBOUNCE_MS - elapsed);
+            setTimeout(() => {
+                isLockToggleBusy.value = false;
+            }, unlockIn);
         }
     }
 
@@ -860,24 +968,20 @@ export const useMeetingStore = defineStore('meeting', () => {
                 await stream.resetSFUSession(stream.localStream.value);
             }
 
-            // Start timer only if duration is positive
-            if (normalizedData.duration > 0) {
-                breakoutTimer.value = data.duration * 60;
-                if (timerInterval) clearInterval(timerInterval);
-                timerInterval = setInterval(() => {
-                    if (breakoutTimer.value > 0) {
-                        breakoutTimer.value--;
-                    } else {
-                        clearInterval(timerInterval);
-                        // If we're the host, automatically end the session for everyone
-                        if (presence.isHost.value) {
-                            log('BREAKOUT', 'Timer expired, auto-ending breakout session');
-                            endBreakout();
-                        }
-                    }
-                }, 1000);
+            // Start timer only if duration is positive and compute accurate remaining
+            // time from the shared started_at timestamp.
+            if ((normalizedData.duration ?? 0) > 0 && normalizedData.started_at) {
+                const elapsedSeconds = Math.max(
+                    0,
+                    Math.floor((Date.now() - new Date(normalizedData.started_at).getTime()) / 1000),
+                );
+                const remainingSeconds = Math.max(
+                    0,
+                    Number(normalizedData.duration) * 60 - elapsedSeconds,
+                );
+                applyBreakoutTimerSeconds(remainingSeconds);
             } else {
-                breakoutTimer.value = 0;
+                applyBreakoutTimerSeconds(0);
             }
         });
     }
@@ -899,7 +1003,7 @@ export const useMeetingStore = defineStore('meeting', () => {
                 });
             });
             
-            if (timerInterval) clearInterval(timerInterval);
+            stopBreakoutTimerTicker();
             
             // Return to main SFU context - IMPORTANT: Must be awaited to ensure clean state
             await stream.resetSFUSession(stream.localStream.value);
@@ -912,7 +1016,7 @@ export const useMeetingStore = defineStore('meeting', () => {
     async function handleBreakoutHelpRequest(data: any) {
         if (!presence.isHost.value) return;
         const { toast } = await import('vue-sonner');
-        toast.info(`🆘 Help requested in ${data.room_name || 'Room'}`, {
+        toast.info(`Help requested in ${data.room_name || 'Room'}`, {
             duration: 15000,
             description: `A participant in ${data.room_name || 'Room'} is asking for assistance.`,
             action: {
@@ -980,7 +1084,19 @@ export const useMeetingStore = defineStore('meeting', () => {
 
     async function handleBreakoutTimerUpdated(data: any) {
         log('BREAKOUT', 'Timer updated', data);
-        breakoutTimer.value += (data.additional_minutes * 60);
+        if (typeof data.remaining_seconds === 'number') {
+            applyBreakoutTimerSeconds(data.remaining_seconds);
+        } else {
+            applyBreakoutTimerSeconds(breakoutTimer.value + (Number(data.additional_minutes || 0) * 60));
+        }
+
+        if (activeBreakoutSession.value && typeof data.duration_minutes === 'number') {
+            activeBreakoutSession.value = {
+                ...activeBreakoutSession.value,
+                duration: data.duration_minutes,
+            };
+        }
+
         const { toast } = await import('vue-sonner');
         const actionText = data.additional_minutes > 0 ? 'added' : 'removed';
         toast.info(`Host ${actionText} ${Math.abs(data.additional_minutes)} minute(s) to the session.`);
@@ -1119,7 +1235,7 @@ export const useMeetingStore = defineStore('meeting', () => {
         }
     }
 
-    async function startBreakout(rooms: any[], duration: number) {
+    async function startBreakout(rooms: any[], duration: number | null) {
         if (!meeting.value) return;
         try {
             await meetingService.createBreakoutSession(meeting.value.public_id, {
@@ -1138,6 +1254,20 @@ export const useMeetingStore = defineStore('meeting', () => {
             await meetingService.endBreakoutSession(meeting.value.public_id);
         } catch (e) {
             log('ERROR', 'Failed to end breakout', e);
+            throw e;
+        }
+    }
+
+    async function updateBreakoutTimer(additionalMinutes: number) {
+        if (!meeting.value) return;
+        if (!Number.isFinite(additionalMinutes) || additionalMinutes === 0) return;
+        try {
+            await meetingService.updateBreakoutTimer(
+                meeting.value.public_id,
+                Math.trunc(additionalMinutes),
+            );
+        } catch (e) {
+            log('ERROR', 'Failed to update breakout timer', e);
             throw e;
         }
     }
@@ -1179,6 +1309,7 @@ export const useMeetingStore = defineStore('meeting', () => {
         meeting,
         localParticipant,
         isLocked,
+        isLockToggleBusy,
         originalVideoTrack,
         isDevMode,
         
@@ -1204,6 +1335,7 @@ export const useMeetingStore = defineStore('meeting', () => {
         endBreakout,
         joinBreakoutRoom,
         moveParticipant,
+        updateBreakoutTimer,
         requestHostHelp,
         notifyBreakoutActivity,
 
@@ -1242,6 +1374,9 @@ export const useMeetingStore = defineStore('meeting', () => {
         sfuIceState: stream.sfuIceState,
         sfuPc: stream.sfuPc,
         networkScore: stream.networkScore,
+        networkBitrate: stream.networkBitrate,
+        networkPacketLoss: stream.networkPacketLoss,
+        networkRtt: stream.networkRtt,
         
         // Layout Manager
         pinnedParticipantId: layout.pinnedParticipantId,

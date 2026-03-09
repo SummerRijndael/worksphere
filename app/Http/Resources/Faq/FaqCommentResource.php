@@ -19,7 +19,9 @@ class FaqCommentResource extends JsonResource
             'name' => strip_tags($this->user ? $this->user->name : ($this->name ?? 'Guest')),
             'content' => strip_tags($this->content),
             'created_at' => $this->created_at,
-            'user_avatar' => $this->user ? $this->user->avatar_url : null,
+            'user_avatar' => $this->user ? $this->user->getAvatarData()->getUrl() : null,
+            'user_color' => $this->user ? $this->user->getAvatarData()->color : null,
+            'user_initials' => $this->user ? $this->user->initials : null,
         ];
     }
 }
