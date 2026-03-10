@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "strict": true,
+    "types": ["node"],
+    "outDir": "./tmp/legacy-sfu-tests",
+    "rootDir": ".",
+    "noEmit": false,
+    "skipLibCheck": true
+  },
+  "include": [
+    "resources/js/stores/managers/legacySfuPublicationState.ts",
+    "tests/legacy-sfu-publication-state.test.ts"
+  ]
+}

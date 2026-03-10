@@ -57,6 +57,7 @@ export function createUnifiedMediaManager(
         networkRtt: computed(() => (activeManager.value as any).networkRtt?.value ?? 0),
         remoteSfuSessions: legacyManager.remoteSfuSessions,
         remoteSfuTracks: legacyManager.remoteSfuTracks,
+        remotePublications: legacyManager.remotePublications,
         
         // Exposed for legacy signaling logic
         sfuPc: () => activeManager.value.sfuPc(),
@@ -94,6 +95,48 @@ export function createUnifiedMediaManager(
         // Legacy Signaling Logic Proxies (become NOPs in SDK mode)
         rebroadcastToJoiner: (pid: string) => {
             return activeManager.value.rebroadcastToJoiner(pid);
+        },
+
+        requestMediaInfo: (
+            pid: string,
+            options?: {
+                minIntervalMs?: number;
+                force?: boolean;
+                reason?: string;
+            }
+        ) => {
+            if (useSDK.value) return Promise.resolve();
+            return legacyManager.requestMediaInfo(pid, options);
+        },
+
+        applyRemoteMediaState: (
+            pid: string,
+            update: {
+                sessionId: string;
+                audioMid?: string | null;
+                videoMid?: string | null;
+                screenMid?: string | null;
+                mediaStateVersion?: number;
+            }
+        ) => {
+            if (useSDK.value) {
+                return {
+                    status: 'applied' as const,
+                    participantId: pid.toLowerCase(),
+                    sessionId: update.sessionId,
+                    audioMid: update.audioMid ?? null,
+                    videoMid: update.videoMid ?? null,
+                    screenMid: update.screenMid ?? null,
+                    shouldPull: false,
+                    sessionChanged: false,
+                    explicitClears: {
+                        audio: update.audioMid !== undefined && !update.audioMid,
+                        video: update.videoMid !== undefined && !update.videoMid,
+                        screen: update.screenMid !== undefined && !update.screenMid,
+                    },
+                };
+            }
+            return legacyManager.applyRemoteMediaState(pid, update);
         },
 
         pullParticipantTracks: (pid: string, sid?: string, a?: string, v?: string, s?: string) => {

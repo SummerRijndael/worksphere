@@ -386,6 +386,33 @@ const closeLobby = () => {
     } catch {}
 };
 
+const CAMERA_MAX_WIDTH = 1280;
+const CAMERA_MAX_HEIGHT = 720;
+const CAMERA_MAX_FPS = 30;
+
+function buildSelfCameraConstraints(deviceId?: string): MediaTrackConstraints {
+    return {
+        deviceId: deviceId || undefined,
+        width: { ideal: CAMERA_MAX_WIDTH, max: CAMERA_MAX_WIDTH },
+        height: { ideal: CAMERA_MAX_HEIGHT, max: CAMERA_MAX_HEIGHT },
+        frameRate: { ideal: CAMERA_MAX_FPS, max: CAMERA_MAX_FPS },
+    };
+}
+
+async function capTrackTo720p(track: MediaStreamTrack | null) {
+    if (!track || track.kind !== "video" || !track.applyConstraints) return;
+
+    try {
+        await track.applyConstraints({
+            width: { ideal: CAMERA_MAX_WIDTH, max: CAMERA_MAX_WIDTH },
+            height: { ideal: CAMERA_MAX_HEIGHT, max: CAMERA_MAX_HEIGHT },
+            frameRate: { ideal: CAMERA_MAX_FPS, max: CAMERA_MAX_FPS },
+        });
+    } catch (e) {
+        console.warn("[Lobby] Failed to enforce 720p cap on local video track", e);
+    }
+}
+
 const requestPermissionsAndStream = async () => {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -414,14 +441,12 @@ const toggleCamera = async () => {
     if (!isCameraOn.value) {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({
-                video: {
-                    deviceId: videoCallStore.selectedVideoDeviceId || undefined,
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 },
-                    frameRate: { ideal: 30 },
-                },
+                video: buildSelfCameraConstraints(
+                    videoCallStore.selectedVideoDeviceId || undefined,
+                ),
             });
             const videoTrack = stream.getVideoTracks()[0];
+            await capTrackTo720p(videoTrack || null);
             meetingStore.originalVideoTrack = videoTrack;
             let finalTrack = videoTrack;
             if (
@@ -585,13 +610,11 @@ watch(
                 });
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({
-                        video: {
-                            deviceId: newVideo || undefined,
-                            width: { ideal: 1280 },
-                            height: { ideal: 720 },
-                        },
+                        video: buildSelfCameraConstraints(newVideo || undefined),
                     });
-                    localStream.value.addTrack(stream.getVideoTracks()[0]);
+                    const track = stream.getVideoTracks()[0];
+                    await capTrackTo720p(track || null);
+                    localStream.value.addTrack(track);
                 } catch (e) {
                     console.error(e);
                 }

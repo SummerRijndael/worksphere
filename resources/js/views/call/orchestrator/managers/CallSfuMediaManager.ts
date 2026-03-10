@@ -35,11 +35,18 @@ export interface CallSfuMediaManagerOptions {
     flushPendingTracks: () => void;
     onHandle406Rescue: () => Promise<boolean>;
     setScreenMid: (mid: string | null) => void;
+    onParticipantPullExhausted?: (params: {
+        participantId: string;
+        sessionId?: string;
+        audioMid?: string;
+        videoMid?: string;
+    }) => void;
 }
 
 export class CallSfuMediaManager {
     private readonly participantPullInFlight = new Map<string, string>();
     private readonly screenPullInFlight = new Map<string, string>();
+    private readonly participantLastPullFingerprint = new Map<string, string>();
 
     constructor(private readonly options: CallSfuMediaManagerOptions) {}
 
@@ -651,6 +658,18 @@ export class CallSfuMediaManager {
             actualAudioMid || "",
             actualVideoMid || "",
         ].join("|");
+        const lastFingerprint = this.participantLastPullFingerprint.get(
+            participantPublicId,
+        );
+        if (lastFingerprint !== requestFingerprint) {
+            this.options.sfuSessionManager.clearParticipantPullAttempt(
+                participantPublicId,
+            );
+            this.participantLastPullFingerprint.set(
+                participantPublicId,
+                requestFingerprint,
+            );
+        }
 
         const inFlight = this.participantPullInFlight.get(participantPublicId);
         if (inFlight) {
@@ -702,6 +721,12 @@ export class CallSfuMediaManager {
             this.options.sfuSessionManager.clearParticipantPullAttempt(
                 participantPublicId,
             );
+            this.options.onParticipantPullExhausted?.({
+                participantId: participantPublicId,
+                sessionId: targetSessionId,
+                audioMid: actualAudioMid,
+                videoMid: actualVideoMid,
+            });
             return;
         }
 

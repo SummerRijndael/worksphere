@@ -16,6 +16,7 @@ export function createRealtimeKitManager(
     // Media State (Mirrors StreamManager interface)
     const localStream = ref<MediaStream | null>(null);
     const remoteStreams = ref<Map<string, MediaStream>>(new Map());
+    const localScreenStream = ref<MediaStream | null>(null);
     
     let cfMeeting: any = null;
     const isInitializing = ref(false);
@@ -506,6 +507,7 @@ export function createRealtimeKitManager(
             return null;
         }
         log('MEDIA', 'Publishing screen share via SDK');
+        localScreenStream.value = screenStream || null;
         
         try {
             if (screenStream) {
@@ -536,9 +538,19 @@ export function createRealtimeKitManager(
 
             return { mid: 'screen', stream };
         } catch (e) {
+            localScreenStream.value = null;
             log('ERROR', 'Failed to publish screenshare', e);
             throw e;
         }
+    }
+
+    function stopLocalScreenCapture(stream: MediaStream | null) {
+        if (!stream) return;
+
+        stream.getTracks().forEach((track) => {
+            track.onended = null;
+            try { track.stop(); } catch {}
+        });
     }
 
     async function unpublishScreenTrack() {
@@ -547,6 +559,8 @@ export function createRealtimeKitManager(
         
         await cfMeeting.self.disableScreenShare();
         lastScreenshareProfile = null;
+        stopLocalScreenCapture(localScreenStream.value);
+        localScreenStream.value = null;
 
         if (localParticipantRef.value) {
             const pid = localParticipantRef.value.public_id.toLowerCase();

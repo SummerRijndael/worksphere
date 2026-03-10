@@ -178,7 +178,7 @@ const networkStats = reactive({
     bitrate: 0,
     packetLoss: 0,
     rtt: 0,
-    score: 0, // 0=Good, 1=Fair, 2=Poor
+    score: -1, // -1=Unknown, 0=Good, 1=Fair, 2=Poor
 });
 const participantStats = reactive(
     new Map<
@@ -316,6 +316,7 @@ const sfuMediaManager = new CallSfuMediaManager({
             muted: hasLiveAudio ? false : currentState.muted,
             cameraOff: hasLiveVideo ? false : currentState.cameraOff,
         });
+        markCallConnected();
     },
     onRemoteScreenStream: (participantId, stream) => {
         store.addRemoteScreenStream(participantId, stream);
@@ -327,6 +328,9 @@ const sfuMediaManager = new CallSfuMediaManager({
     onHandle406Rescue: handleSFU406Rescue,
     setScreenMid: (mid) => {
         sfuScreenMid.value = mid;
+    },
+    onParticipantPullExhausted: ({ participantId }) => {
+        requestRemoteMediaInfo(participantId, true);
     },
 });
 
@@ -451,6 +455,37 @@ async function updateNetworkStats() {
             } catch (e) {}
         }
     }
+
+    const activeRemoteIds = participants.value
+        .filter((participant) => !participant.isSelf)
+        .map((participant) => participant.publicId.toLowerCase());
+    let aggregateBitrate = 0;
+    let aggregatePacketLoss = 0;
+    let aggregateRtt = 0;
+    let aggregateCount = 0;
+    let worstScore = -1;
+
+    for (const participantId of activeRemoteIds) {
+        const stats = participantStats.get(participantId);
+        if (!stats) continue;
+        aggregateBitrate += stats.bitrate;
+        aggregatePacketLoss += stats.packetLoss;
+        aggregateRtt += stats.rtt;
+        aggregateCount += 1;
+        worstScore = Math.max(worstScore, stats.score);
+    }
+
+    if (aggregateCount === 0) {
+        networkStats.bitrate = 0;
+        networkStats.packetLoss = 0;
+        networkStats.score = -1;
+        return;
+    }
+
+    networkStats.bitrate = aggregateBitrate / aggregateCount;
+    networkStats.packetLoss = aggregatePacketLoss / aggregateCount;
+    networkStats.rtt = aggregateRtt / aggregateCount;
+    networkStats.score = worstScore;
 }
 
 // Adaptive Bitrate: Limit local sender bandwidth if network is struggling
@@ -551,8 +586,8 @@ sfuSyncManager = new CallSfuSyncManager({
     getRemoteMainStream: (participantId) => store.remoteStreams.get(participantId),
     getRemoteScreenStream: (participantId) =>
         store.remoteScreenStreams.get(participantId),
-    requestRemoteMediaInfo: (participantId) =>
-        sfuSignalManager?.requestRemoteMediaInfo(participantId),
+    requestRemoteMediaInfo: (participantId, force) =>
+        sfuSignalManager?.requestRemoteMediaInfo(participantId, force),
     pullParticipantTracks: (participantId, remoteSessionId, audioMid, videoMid) =>
         pullParticipantTracks(
             participantId,
@@ -588,6 +623,11 @@ meshManager = new CallMeshManager({
     onMainStream: (participantId, stream) => {
         store.addRemoteStream(participantId, stream);
         startAudioAnalysis(participantId, stream);
+        remoteMediaState.set(participantId, {
+            muted: stream.getAudioTracks().length === 0,
+            cameraOff: stream.getVideoTracks().length === 0,
+        });
+        markCallConnected();
     },
     onScreenStream: (participantId, stream) => {
         store.addRemoteScreenStream(participantId, stream);
@@ -750,6 +790,7 @@ const vSinkId = {
 // UI Refs
 // Timers & Channels
 let durationTimer: ReturnType<typeof setInterval> | null = null;
+let connectedFallbackTimer: ReturnType<typeof setTimeout> | null = null;
 const callDuration = ref(0);
 let broadcastChannel: BroadcastChannel | null = null;
 let ringtoneAudio: HTMLAudioElement | null = null;
@@ -781,6 +822,35 @@ const stateLabel = computed(() => {
             return "";
     }
 });
+
+function markCallConnected() {
+    if (
+        callState.value === "connected" ||
+        callState.value === "ended" ||
+        callState.value === "error"
+    ) {
+        return;
+    }
+    callState.value = "connected";
+    postToParent({ type: "state", state: "connected" });
+    startDurationTimer();
+    stopRingtone();
+    if (connectedFallbackTimer) {
+        clearTimeout(connectedFallbackTimer);
+        connectedFallbackTimer = null;
+    }
+}
+
+function scheduleConnectedFallback() {
+    if (connectedFallbackTimer) {
+        clearTimeout(connectedFallbackTimer);
+    }
+    connectedFallbackTimer = setTimeout(() => {
+        if (participants.value.some((participant) => !participant.isSelf)) {
+            markCallConnected();
+        }
+    }, 4000);
+}
 
 // Settings Modal
 const showSettings = ref(false);
@@ -1139,6 +1209,7 @@ async function joinCall() {
         const stream = await acquireMedia();
         if (!stream) return;
 
+        callState.value = "connecting";
         hasJoined.value = true;
 
         if (!callData.value) return;
@@ -1243,10 +1314,8 @@ async function joinCall() {
                 "[Call] Outgoing call started: maintaining ringing state",
             );
         } else {
-            callState.value = "connected"; // We are "in" the call room
-            postToParent({ type: "state", state: "connected" });
-            startDurationTimer();
-            stopRingtone();
+            callState.value = "connecting";
+            scheduleConnectedFallback();
         }
 
         // 5. Replay pending signals
@@ -1356,6 +1425,26 @@ async function handleSignal(event: any) {
             muted: !!ms.muted,
             cameraOff: !!ms.cameraOff,
         });
+        if (
+            callMode.value === "sfu" &&
+            hasJoined.value &&
+            isTransportReady.value &&
+            (!ms.cameraOff || !ms.muted)
+        ) {
+            const remoteSessionId = remoteSfuSessions.get(senderId);
+            const remoteMids = remoteSfuTracks.get(senderId);
+            if (!remoteSessionId || (!remoteMids?.audioMid && !remoteMids?.videoMid)) {
+                requestRemoteMediaInfo(senderId, true);
+            }
+            if (remoteSessionId) {
+                pullParticipantTracks(
+                    senderId,
+                    remoteSessionId,
+                    remoteMids?.audioMid,
+                    remoteMids?.videoMid,
+                );
+            }
+        }
         return;
     }
 
@@ -1539,10 +1628,9 @@ function handleParticipantJoined(event: any) {
             console.log(
                 "[Call] First participant joined, transitioning to connected",
             );
-            callState.value = "connected";
-            stopRingtone();
-            startDurationTimer();
-            postToParent({ type: "state", state: "connected" });
+            markCallConnected();
+        } else if (callState.value === "connecting") {
+            scheduleConnectedFallback();
         }
     }
 
@@ -2119,6 +2207,7 @@ function flushPendingTracks() {
             } else {
                 store.addRemoteStream(participantId, stream);
                 startAudioAnalysis(participantId, stream);
+                markCallConnected();
             }
             console.log(
                 `[SFU] Flushed buffered track (mid: ${evt.mid}) → ${participantId}`,
@@ -2313,6 +2402,10 @@ function cleanup() {
     audioAnalysers.forEach((_, id) => stopAudioAnalysis(id));
     audioAnalysers.clear();
     if (durationTimer) clearInterval(durationTimer);
+    if (connectedFallbackTimer) {
+        clearTimeout(connectedFallbackTimer);
+        connectedFallbackTimer = null;
+    }
     callSignalingManager.teardown();
     broadcastChannel?.close();
 
@@ -2689,6 +2782,27 @@ onBeforeUnmount(() => cleanup());
                 </div>
             </div>
         </div>
+
+        <!-- HANDSHAKE STATE -->
+        <transition
+            v-else-if="callState === 'connecting'"
+            enter-active-class="transition ease-out duration-300"
+            enter-from-class="opacity-0"
+            enter-to-class="opacity-100"
+            leave-active-class="transition ease-in duration-200"
+            leave-from-class="opacity-100"
+            leave-to-class="opacity-0"
+        >
+            <div class="call-connecting-state">
+                <div class="call-connecting-content">
+                    <div class="call-loading-ring"></div>
+                    <h2 class="call-connecting-title">Entering Call...</h2>
+                    <p class="call-connecting-subtitle">
+                        Setting up secure connection and synchronizing media
+                    </p>
+                </div>
+            </div>
+        </transition>
 
         <!-- CONNECTED LAYOUT -->
         <template v-else>
@@ -3669,6 +3783,55 @@ onBeforeUnmount(() => cleanup());
     text-align: center;
 }
 
+.call-connecting-state {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    z-index: 12;
+    padding: 40px 24px;
+    text-align: center;
+    background: radial-gradient(
+        circle at 50% 35%,
+        rgba(59, 130, 246, 0.16),
+        rgba(11, 17, 34, 0.72) 55%,
+        rgba(6, 10, 20, 0.92) 100%
+    );
+}
+
+.call-connecting-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    max-width: 380px;
+}
+
+.call-loading-ring {
+    width: 56px;
+    height: 56px;
+    border: 4px solid rgba(255, 255, 255, 0.18);
+    border-top-color: #3b82f6;
+    border-radius: 50%;
+    animation: call-spin 0.9s linear infinite;
+}
+
+.call-connecting-title {
+    margin: 0;
+    color: #fff;
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+.call-connecting-subtitle {
+    margin: 0;
+    color: rgba(255, 255, 255, 0.72);
+    font-size: 14px;
+    line-height: 1.45;
+}
+
 .state-icon {
     width: 100px;
     height: 100px;
@@ -3695,6 +3858,12 @@ onBeforeUnmount(() => cleanup());
     font-weight: 600;
     color: white;
     margin-bottom: 32px;
+}
+
+@keyframes call-spin {
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 /* Lobby Minimalist Redesign */

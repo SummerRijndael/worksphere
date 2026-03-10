@@ -10,6 +10,14 @@ import type { createStreamManager } from './StreamManager';
 
 const log = createLogger('SIGNAL');
 
+function getClientInstanceId(): string {
+    const w = window as any;
+    if (!w.__wsClientInstanceId) {
+        w.__wsClientInstanceId = `wsi-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    }
+    return w.__wsClientInstanceId;
+}
+
 export function createSignalingManager(
     meetingRef: Ref<Meeting | null>,
     localParticipantRef: Ref<MeetingParticipant | null>,
@@ -18,6 +26,53 @@ export function createSignalingManager(
     onAdmittedCallback: () => void
 ) {
     let privateChannel: any = null;
+    const clientInstanceId = getClientInstanceId();
+    let signalSequence = 0;
+    let mediaStateVersion = 0;
+    const lastMediaInfoRequestAt = new Map<string, number>();
+
+    function requestMediaInfoDirect(participantId: string) {
+        if (!meetingRef.value || !localParticipantRef.value) return;
+        meetingService.sendSignal(meetingRef.value.public_id, {
+            sender_participant_public_id: localParticipantRef.value.public_id,
+            signal_type: 'request-media-info',
+            signal_data: {},
+            target_participant_public_id: participantId,
+        }).catch((e: any) => {
+            log('ERROR', `Failed direct media-info request for ${participantId}`, {
+                status: e?.response?.status,
+                response: e?.response?.data,
+                clientInstanceId,
+            });
+        });
+    }
+
+    function requestMediaInfoDebounced(participantId: string, minIntervalMs = 1200) {
+        const now = Date.now();
+        const last = lastMediaInfoRequestAt.get(participantId) || 0;
+        if (now - last < minIntervalMs) return;
+        lastMediaInfoRequestAt.set(participantId, now);
+        if (typeof (streamManager as any).requestMediaInfo === 'function') {
+            (streamManager as any).requestMediaInfo(participantId);
+            return;
+        }
+        log('SIGNAL', `streamManager.requestMediaInfo unavailable, using direct fallback for ${participantId}`);
+        requestMediaInfoDirect(participantId);
+    }
+
+    function hasFreshRemotePublication(
+        participantId: string,
+        kind: 'video' | 'screen',
+        expectedMid?: string | null
+    ) {
+        const publication = (streamManager as any).remotePublications?.get?.(participantId);
+        if (!publication) return false;
+        const currentMid = kind === 'screen' ? publication.screenMid : publication.videoMid;
+        if (!currentMid) return false;
+        if (expectedMid && currentMid !== expectedMid) return false;
+        if (!publication.lastUpdatedAt) return false;
+        return (Date.now() - publication.lastUpdatedAt) < 5000;
+    }
 
     function setupSignaling(meetingId: string) {
         if (privateChannel) return;
@@ -32,10 +87,18 @@ export function createSignalingManager(
             return;
         }
 
-        log('CHANNEL', `Joining presence signaling channel: meeting.${meetingId}`);
+        log('CHANNEL', `Joining presence signaling channel: meeting.${meetingId}`, {
+            clientInstanceId,
+            localParticipantId: localParticipantRef.value?.public_id || null,
+        });
         privateChannel = echoInstance.join(`meeting.${meetingId}`)
             .listen('.MeetingSignal', async (e: any) => {
-                log('RECV', `Received ${e.signal_type} from ${e.sender_participant_public_id}`, e.signal_data);
+                const senderDiag = e.signal_data?._diag || null;
+                log('RECV', `Received ${e.signal_type} from ${e.sender_participant_public_id}`, {
+                    signalData: e.signal_data,
+                    senderDiag,
+                    receiverClientInstanceId: clientInstanceId,
+                });
                 handleSignal(e.sender_participant_public_id, e.signal_type, e.signal_data);
             })
             .listenForWhisper('laser-move', (data: any) => {
@@ -118,6 +181,7 @@ export function createSignalingManager(
     async function handleSignal(senderId: string, type: string, data: any) {
         const normalizedSenderId = senderId.toLowerCase();
         const myId = localParticipantRef.value?.public_id?.toLowerCase();
+        const senderDiag = data?._diag || null;
         
         // Ignore own signals (by ID).
         // We also ignore signals from our *own* current SFU session to avoid loopbacks,
@@ -190,11 +254,33 @@ export function createSignalingManager(
             presenceManager.toggleScreenShareState(normalizedSenderId, sharing);
             
             if (sharing) {
-                // Proactively pull the new screen track
-                const sessionId = streamManager.remoteSfuSessions.get(normalizedSenderId);
-                if (sessionId) {
-                    log('SIGNAL', `Proactively pulling screen share for ${normalizedSenderId} with MID: ${mid}`);
-                    streamManager.pullParticipantTracks(normalizedSenderId, sessionId, undefined, undefined, mid || "true");
+                const cachedPublication = streamManager.remotePublications?.get?.(normalizedSenderId);
+                const hasLiveRemoteScreen = !!streamManager.remoteStreams.value
+                    .get(`${normalizedSenderId}:screen`)
+                    ?.getVideoTracks()
+                    .some((track: MediaStreamTrack) => track.readyState === 'live');
+
+                // Avoid immediate blind pulls on toggle; request fresh media info first
+                // so we only pull with authoritative mids/session from sfu-media-ready.
+                if (hasFreshRemotePublication(normalizedSenderId, 'screen', mid)) {
+                    if (!hasLiveRemoteScreen && cachedPublication?.sessionId && cachedPublication.screenMid) {
+                        log('SIGNAL', `Screen share toggled ON by ${normalizedSenderId}; publication is fresh but no live remote screen is attached, forcing repair pull`, {
+                            sessionId: cachedPublication.sessionId,
+                            screenMid: cachedPublication.screenMid,
+                        });
+                        streamManager.pullParticipantTracks(
+                            normalizedSenderId,
+                            cachedPublication.sessionId,
+                            undefined,
+                            undefined,
+                            cachedPublication.screenMid ?? undefined
+                        );
+                    } else {
+                        log('SIGNAL', `Screen share toggled ON by ${normalizedSenderId}, but remote screen state is already fresh`, { mid });
+                    }
+                } else {
+                    log('SIGNAL', `Screen share toggled ON by ${normalizedSenderId}; requesting fresh media info`, { mid });
+                    requestMediaInfoDebounced(normalizedSenderId);
                 }
             } else {
                 // Explicitly clear remote screen tile/UI immediately.
@@ -206,20 +292,36 @@ export function createSignalingManager(
         if (type === 'camera-toggle') {
             const enabled = !!data.enabled;
             if (!enabled) {
+                presenceManager.setCameraState(normalizedSenderId, false);
                 // Force-remove stale remote camera track so tile falls back to avatar immediately.
                 streamManager.removeParticipantTrack?.(normalizedSenderId, 'video');
             } else {
-                // Ask for latest media metadata/tracks when camera turns back on.
-                const sessionId = streamManager.remoteSfuSessions.get(normalizedSenderId);
-                const mids = streamManager.remoteSfuTracks.get(normalizedSenderId) || {};
-                if (sessionId) {
+                presenceManager.setCameraState(normalizedSenderId, true);
+
+                const cachedPublication = streamManager.remotePublications?.get?.(normalizedSenderId);
+                const hasLiveRemoteVideo = !!streamManager.remoteStreams.value
+                    .get(normalizedSenderId)
+                    ?.getVideoTracks()
+                    .some((track: MediaStreamTrack) => track.readyState === 'live');
+
+                // Camera ON events can arrive before mids are stable. Request fresh metadata first,
+                // unless we already have a fresh published camera state for this participant.
+                if (!hasFreshRemotePublication(normalizedSenderId, 'video')) {
+                    requestMediaInfoDebounced(normalizedSenderId);
+                } else if (!hasLiveRemoteVideo && cachedPublication?.sessionId && cachedPublication.videoMid) {
+                    log('SIGNAL', `Camera toggled ON by ${normalizedSenderId}; publication is fresh but no live remote track is attached, forcing repair pull`, {
+                        sessionId: cachedPublication.sessionId,
+                        videoMid: cachedPublication.videoMid,
+                    });
                     streamManager.pullParticipantTracks(
                         normalizedSenderId,
-                        sessionId,
-                        mids.audioMid,
-                        mids.videoMid,
-                        mids.screenMid
+                        cachedPublication.sessionId,
+                        undefined,
+                        cachedPublication.videoMid ?? undefined,
+                        undefined
                     );
+                } else {
+                    log('SIGNAL', `Camera toggled ON by ${normalizedSenderId}, but remote video state is already fresh`);
                 }
             }
             return;
@@ -480,6 +582,16 @@ export function createSignalingManager(
         // SFU Media Signaling (ported from CallApp.vue L1414-1441)
         if (type === 'signal' && data.type === 'sfu-media-ready') {
             const { sessionId, audioMid, videoMid, screenMid } = data;
+            const payloadVersion = Number(data.media_state_version ?? senderDiag?.sequence ?? 0);
+
+            if (!sessionId) {
+                log('SIGNAL', `Ignoring media-ready from ${normalizedSenderId}: missing sessionId`, {
+                    payload: { audioMid, videoMid, screenMid },
+                    senderDiag,
+                    receiverClientInstanceId: clientInstanceId,
+                });
+                return;
+            }
             
             // SECURITY/OPTIMIZATION: Only pull media if we are in the same room context
             const localParticipant = localParticipantRef.value;
@@ -506,52 +618,88 @@ export function createSignalingManager(
             const effectiveSenderRoom = (senderRoomId !== null) ? senderRoomId : (knownParticipant?.current_room_id || null);
 
             if (effectiveSenderRoom !== myCurrentRoom) {
-                log('SIGNAL', `Ignoring media-ready from ${normalizedSenderId}: participant is in a different room (${effectiveSenderRoom} vs ${myCurrentRoom}).`);
+                log('SIGNAL', `Ignoring media-ready from ${normalizedSenderId}: participant is in a different room (${effectiveSenderRoom} vs ${myCurrentRoom}).`, {
+                    senderDiag,
+                    receiverClientInstanceId: clientInstanceId,
+                });
                 return;
             }
 
-            const oldSessionId = streamManager.remoteSfuSessions.get(normalizedSenderId);
-            streamManager.remoteSfuSessions.set(normalizedSenderId, sessionId);
-            
-            // Merge MIDs for reconnection resilience
-            // CRITICAL: If the sessionId changed, existing MIDs are for a dead session. Clear them.
-            let existingTracks = streamManager.remoteSfuTracks.get(normalizedSenderId) || {};
-            if (oldSessionId && oldSessionId !== sessionId) {
-                log('SIGNAL', `Session ID changed for ${normalizedSenderId} (${oldSessionId} -> ${sessionId}). Clearing stale MIDs.`);
-                existingTracks = {};
-            }
+            const mediaState = streamManager.applyRemoteMediaState(normalizedSenderId, {
+                sessionId,
+                audioMid,
+                videoMid,
+                screenMid,
+                mediaStateVersion: payloadVersion,
+            });
 
-            const updatedTracks = {
-                ...existingTracks,
-                ...(audioMid !== undefined ? { audioMid } : {}),
-                ...(videoMid !== undefined ? { videoMid } : {}),
-                ...(screenMid !== undefined ? { screenMid } : {}),
-            };
-            streamManager.remoteSfuTracks.set(normalizedSenderId, updatedTracks);
+            if (mediaState.status === 'stale') {
+                log('SIGNAL', `Ignoring stale media-ready from ${normalizedSenderId}`, {
+                    sessionId,
+                    payloadVersion,
+                    senderDiag,
+                    receiverClientInstanceId: clientInstanceId,
+                });
+                return;
+            }
 
             // IMPORTANT: null means explicit OFF from sender, clear stale tiles/tracks now.
-            if (videoMid !== undefined && !updatedTracks.videoMid) {
+            if (mediaState.explicitClears.video) {
+                presenceManager.setCameraState(normalizedSenderId, false);
                 streamManager.removeParticipantTrack?.(normalizedSenderId, 'video');
+            } else if (mediaState.videoMid) {
+                presenceManager.setCameraState(normalizedSenderId, true);
             }
-            if (audioMid !== undefined && !updatedTracks.audioMid) {
+            if (mediaState.explicitClears.audio) {
                 streamManager.removeParticipantTrack?.(normalizedSenderId, 'audio');
             }
-            if (screenMid !== undefined && !updatedTracks.screenMid) {
+            if (mediaState.explicitClears.screen) {
                 presenceManager.toggleScreenShareState(normalizedSenderId, false);
                 streamManager.removeParticipantStreams(`${normalizedSenderId}:screen`);
             }
             
             // Late joiner sync for screenshares
-            if (screenMid || updatedTracks.screenMid) {
+            if (mediaState.screenMid) {
                  presenceManager.toggleScreenShareState(normalizedSenderId, true);
             }
             
-            // ONLY pull if we actually have something to pull
-            if (updatedTracks.audioMid || updatedTracks.videoMid || updatedTracks.screenMid) {
-                // Pass the updated known MIDs down to the pull function, so it doesn't rely solely on the signal payload
-                streamManager.pullParticipantTracks(normalizedSenderId, sessionId, updatedTracks.audioMid, updatedTracks.videoMid, updatedTracks.screenMid);
+            if (mediaState.shouldPull) {
+                const requestedAudioMid = mediaState.changedKinds.audio ? (mediaState.audioMid ?? undefined) : undefined;
+                const requestedVideoMid = mediaState.changedKinds.video ? (mediaState.videoMid ?? undefined) : undefined;
+                const requestedScreenMid = mediaState.changedKinds.screen ? (mediaState.screenMid ?? undefined) : undefined;
+
+                streamManager.pullParticipantTracks(
+                    normalizedSenderId,
+                    mediaState.sessionId || undefined,
+                    requestedAudioMid,
+                    requestedVideoMid,
+                    requestedScreenMid
+                );
+            } else if (!mediaState.audioMid && !mediaState.videoMid && !mediaState.screenMid) {
+                log('SIGNAL', `Ignoring media-ready from ${normalizedSenderId}: no track MIDs provided yet.`, {
+                    sessionId: mediaState.sessionId,
+                    payload: { audioMid, videoMid, screenMid },
+                    cachedTracks: {
+                        audioMid: mediaState.audioMid,
+                        videoMid: mediaState.videoMid,
+                        screenMid: mediaState.screenMid,
+                    },
+                    senderRoom: effectiveSenderRoom,
+                    myRoom: myCurrentRoom,
+                    senderDiag,
+                    receiverClientInstanceId: clientInstanceId,
+                });
             } else {
-                log('SIGNAL', `Ignoring media-ready from ${normalizedSenderId}: no track MIDs provided yet.`);
+                log('SIGNAL', `Remote media state unchanged for ${normalizedSenderId}; skipping duplicate pull`, {
+                    sessionId: mediaState.sessionId,
+                    mids: {
+                        audioMid: mediaState.audioMid,
+                        videoMid: mediaState.videoMid,
+                        screenMid: mediaState.screenMid,
+                    },
+                    senderDiag,
+                    receiverClientInstanceId: clientInstanceId,
+                });
             }
         }
     }
@@ -559,20 +707,34 @@ export function createSignalingManager(
     // --- Broadcast senders ---
     async function sendSignal(type: string, data: any) {
         if (!meetingRef.value || !localParticipantRef.value) return;
+        const seq = ++signalSequence;
+        const enrichedData = (data && typeof data === 'object')
+            ? {
+                ...data,
+                _diag: {
+                    ...(data._diag || {}),
+                    client_instance_id: clientInstanceId,
+                    sender_participant_public_id: localParticipantRef.value.public_id,
+                    sender_sfu_session_id: streamManager.sfuSessionId.value || null,
+                    sequence: seq,
+                    sent_at_ms: Date.now(),
+                },
+            }
+            : data;
         
         // High-frequency events use whispers to avoid rate limits
         if (type === 'laser-move') {
             presenceManager.whisper('laser-move', {
-                ...data,
+                ...enrichedData,
                 participant_id: localParticipantRef.value.public_id,
-                target_participant_id: data.target_participant_id
+                target_participant_id: data?.target_participant_id
             });
             return;
         }
 
         if (type === 'annotation-update') {
             presenceManager.whisper('annotation-update', {
-                ...data,
+                ...enrichedData,
                 participant_id: localParticipantRef.value.public_id
             });
             return;
@@ -582,11 +744,22 @@ export function createSignalingManager(
             await meetingService.sendSignal(meetingRef.value.public_id, {
                 sender_participant_public_id: localParticipantRef.value.public_id,
                 signal_type: type,
-                signal_data: data
+                signal_data: enrichedData
             });
-            log('SEND', `Sent ${type} signal`, data);
-        } catch (e) {
-            log('ERROR', `Failed to send signal ${type}`, e);
+            log('SEND', `Sent ${type} signal`, {
+                signalData: enrichedData,
+                clientInstanceId,
+                sequence: seq,
+            });
+        } catch (e: any) {
+            log('ERROR', `Failed to send signal ${type}`, {
+                status: e?.response?.status,
+                response: e?.response?.data,
+                sender: localParticipantRef.value.public_id,
+                payload: enrichedData,
+                clientInstanceId,
+                sequence: seq,
+            });
         }
     }
 
@@ -599,9 +772,11 @@ export function createSignalingManager(
     }
 
     function broadcastSfuMediaReady(audioMid?: string, videoMid?: string, screenMid?: string, roomId?: string | null) {
+        mediaStateVersion += 1;
         sendSignal('signal', {
             type: 'sfu-media-ready',
             sessionId: streamManager.sfuSessionId.value,
+            media_state_version: mediaStateVersion,
             // Use null (not undefined) so receivers can clear stale track state.
             audioMid: audioMid ?? null,
             videoMid: videoMid ?? null,
