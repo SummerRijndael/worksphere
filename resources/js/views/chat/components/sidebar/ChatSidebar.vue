@@ -4,6 +4,7 @@ import { useRouter } from "vue-router";
 import type { Chat, ChatInvite, DiscoverablePerson } from "@/types/models/chat";
 import StatusSelector from "@/components/ui/StatusSelector.vue";
 import { Avatar, Icon } from "@/components/ui";
+import { useAvatar } from "@/composables/useAvatar";
 import { usePresence, getStatusLabel } from "@/composables/usePresence.ts";
 
 interface User {
@@ -30,6 +31,7 @@ interface Props {
 }
 
 const props = defineProps<Props>();
+const avatar = useAvatar();
 const emit = defineEmits<{
     "update:activeTab": [value: "chats" | "people" | "invites"];
     "update:searchQuery": [value: string];
@@ -80,6 +82,10 @@ const getOtherParticipant = (chat: Chat) => {
     return chat.participants.find(
         (p) => p.public_id !== props.currentUser!.public_id
     );
+};
+
+const getChatAvatarData = (chat: Chat) => {
+    return avatar.resolveChatAvatar(chat, props.currentUser?.public_id || null);
 };
 
 // Presence Integration
@@ -278,8 +284,9 @@ const getChatPresenceStatus = (chat: Chat) => {
                             >
                                 <div class="relative shrink-0">
                                     <Avatar
-                                        :src="getOtherParticipant(chat)?.avatar"
-                                        :fallback="getOtherParticipant(chat)?.name?.charAt(0) || '?'"
+                                        :src="getChatAvatarData(chat).url"
+                                        :fallback="getChatAvatarData(chat).initials"
+                                        :color="getChatAvatarData(chat).color"
                                         size="md"
                                         :status="getChatPresenceStatus(chat)"
                                         variant="ring"
@@ -354,7 +361,9 @@ const getChatPresenceStatus = (chat: Chat) => {
                             >
                                 <div class="relative shrink-0">
                                     <Avatar
-                                        :fallback="chat.name?.charAt(0) || 'G'"
+                                        :src="getChatAvatarData(chat).url"
+                                        :fallback="getChatAvatarData(chat).initials"
+                                        :color="getChatAvatarData(chat).color"
                                         size="md"
                                         :status="getChatPresenceStatus(chat)"
                                         variant="ring"

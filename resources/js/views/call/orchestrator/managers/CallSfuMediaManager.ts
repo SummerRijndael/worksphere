@@ -35,11 +35,18 @@ export interface CallSfuMediaManagerOptions {
     flushPendingTracks: () => void;
     onHandle406Rescue: () => Promise<boolean>;
     setScreenMid: (mid: string | null) => void;
+    onParticipantPullExhausted?: (params: {
+        participantId: string;
+        sessionId?: string;
+        audioMid?: string;
+        videoMid?: string;
+    }) => void;
 }
 
 export class CallSfuMediaManager {
     private readonly participantPullInFlight = new Map<string, string>();
     private readonly screenPullInFlight = new Map<string, string>();
+    private readonly participantLastPullFingerprint = new Map<string, string>();
 
     constructor(private readonly options: CallSfuMediaManagerOptions) {}
 
@@ -458,7 +465,9 @@ export class CallSfuMediaManager {
     async replaceLocalTrack(
         kind: "audio" | "video",
         newTrack: MediaStreamTrack | null,
-    ): Promise<void> {
+    ): Promise<boolean> {
+        let replaceSucceeded = false;
+
         await this.runInQueue(async () => {
             const queuePc = this.options.getPeerConnection();
             const queueSessionId = this.options.getSessionId();
@@ -513,6 +522,12 @@ export class CallSfuMediaManager {
                 // Cloudflare needs track registration for newly-published camera track.
                 if (kind === "video" && newTrack) {
                     await queuePc.setLocalDescription(await queuePc.createOffer());
+                    if (!transceiver.mid) {
+                        throw new Error(
+                            "[SFU] Local video transceiver has no MID after offer.",
+                        );
+                    }
+
                     const registerRes = await videoCallService.sfuSessionTracks(
                         callData.chatId,
                         queueSessionId,
@@ -526,6 +541,21 @@ export class CallSfuMediaManager {
                         this.options.mungeSdp(queuePc.localDescription!.sdp!),
                     );
 
+                    const registeredVideo = Array.isArray(registerRes.tracks)
+                        ? registerRes.tracks.find(
+                              (track: any) =>
+                                  track.trackName === "video" &&
+                                  !!track.mid &&
+                                  !track.errorCode,
+                          )
+                        : null;
+
+                    if (!registeredVideo) {
+                        throw new Error(
+                            "[SFU] Local video track registration returned no valid video track.",
+                        );
+                    }
+
                     if (registerRes.sessionDescription) {
                         await queuePc.setRemoteDescription(
                             new RTCSessionDescription(
@@ -534,6 +564,8 @@ export class CallSfuMediaManager {
                         );
                     }
                 }
+
+                replaceSucceeded = true;
             } catch (error: any) {
                 console.warn(
                     `[SFU] Failed replacing local ${kind} track`,
@@ -550,10 +582,12 @@ export class CallSfuMediaManager {
                 }
             }
 
-            if (kind === "video") {
+            if (kind === "video" && replaceSucceeded) {
                 this.broadcastLocalMediaReady(queuePc, callData, queueSessionId);
             }
         });
+
+        return replaceSucceeded;
     }
 
     async attemptIceRestart(): Promise<void> {
@@ -608,9 +642,8 @@ export class CallSfuMediaManager {
             this.options.getRemoteSfuSessions().get(participantPublicId);
         const persistedTracks =
             this.options.getRemoteSfuTracks().get(participantPublicId);
-
-        const actualAudioMid = remoteAudioMid || persistedTracks?.audioMid;
-        const actualVideoMid = remoteVideoMid || persistedTracks?.videoMid;
+        const actualAudioMid = (remoteAudioMid ?? persistedTracks?.audioMid)?.toString();
+        const actualVideoMid = (remoteVideoMid ?? persistedTracks?.videoMid)?.toString();
 
         if (!targetSessionId) {
             console.warn(
@@ -624,6 +657,18 @@ export class CallSfuMediaManager {
             actualAudioMid || "",
             actualVideoMid || "",
         ].join("|");
+        const lastFingerprint = this.participantLastPullFingerprint.get(
+            participantPublicId,
+        );
+        if (lastFingerprint !== requestFingerprint) {
+            this.options.sfuSessionManager.clearParticipantPullAttempt(
+                participantPublicId,
+            );
+            this.participantLastPullFingerprint.set(
+                participantPublicId,
+                requestFingerprint,
+            );
+        }
 
         const inFlight = this.participantPullInFlight.get(participantPublicId);
         if (inFlight) {
@@ -675,19 +720,28 @@ export class CallSfuMediaManager {
             this.options.sfuSessionManager.clearParticipantPullAttempt(
                 participantPublicId,
             );
+            this.options.onParticipantPullExhausted?.({
+                participantId: participantPublicId,
+                sessionId: targetSessionId,
+                audioMid: actualAudioMid,
+                videoMid: actualVideoMid,
+            });
             return;
         }
 
         const trackReqs: any[] = [];
-        const hasAnyKnownMid = Boolean(actualAudioMid || actualVideoMid);
-        if (actualAudioMid) {
+        const hasExplicitAudioMid = actualAudioMid !== undefined && actualAudioMid !== null && actualAudioMid !== "";
+        const hasExplicitVideoMid = actualVideoMid !== undefined && actualVideoMid !== null && actualVideoMid !== "";
+        const hasAnyKnownMid = hasExplicitAudioMid || hasExplicitVideoMid;
+        
+        if (hasExplicitAudioMid) {
             trackReqs.push({
                 location: "remote",
                 sessionId: targetSessionId,
                 trackName: "audio",
             });
         }
-        if (actualVideoMid) {
+        if (hasExplicitVideoMid) {
             trackReqs.push({
                 location: "remote",
                 sessionId: targetSessionId,
@@ -730,11 +784,12 @@ export class CallSfuMediaManager {
                     );
                 const queuedAlreadyHasRequestedMids =
                     !!queuedExistingParticipantMids &&
-                    (!actualAudioMid ||
+                    (actualAudioMid === undefined || actualAudioMid === null || actualAudioMid === "" ||
                         queuedExistingParticipantMids.audioMid === actualAudioMid) &&
-                    (!actualVideoMid ||
+                    (actualVideoMid === undefined || actualVideoMid === null || actualVideoMid === "" ||
                         queuedExistingParticipantMids.videoMid === actualVideoMid) &&
-                    !!(actualAudioMid || actualVideoMid);
+                    ((actualAudioMid !== undefined && actualAudioMid !== null && actualAudioMid !== "") || 
+                     (actualVideoMid !== undefined && actualVideoMid !== null && actualVideoMid !== ""));
                 if (queuedAlreadyHasRequestedMids) {
                     console.log(
                         `[SFU] Participant ${participantPublicId} already synchronized while queued, skipping`,

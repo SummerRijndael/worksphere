@@ -15,7 +15,7 @@ const props = withDefaults(defineProps<Props>(), {
     bitrate: 0,
     packetLoss: 0,
     rtt: 0,
-    score: 0,
+    score: -1,
     compact: false
 });
 
@@ -49,7 +49,7 @@ const healthInfo = computed(() => {
             :class="[compact ? 'bottom-full left-0' : 'top-full right-0']"
         >
             <div class="flex items-center gap-2 mb-3 pb-2 border-b border-zinc-800">
-                <div :class="['w-2 h-2 rounded-full', score === 0 ? 'bg-green-500' : (score === 1 ? 'bg-yellow-500' : 'bg-red-500')]"></div>
+                <div :class="['w-2 h-2 rounded-full', score === 0 ? 'bg-green-500' : (score === 1 ? 'bg-yellow-500' : (score === 2 ? 'bg-red-500' : 'bg-zinc-500'))]"></div>
                 <div class="text-[11px] font-bold text-white uppercase tracking-wider">
                     {{ healthInfo.label }}
                 </div>

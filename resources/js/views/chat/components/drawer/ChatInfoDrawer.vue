@@ -13,7 +13,7 @@ import {
     AccordionTrigger,
     AccordionContent,
 } from "reka-ui";
-import { Icon, Modal, ConfirmPasswordModal, Button } from "@/components/ui";
+import { Icon, Modal, ConfirmPasswordModal, Button, Avatar } from "@/components/ui";
 import { useAvatar } from "@/composables/useAvatar";
 import { useChatStore } from "@/stores/chat";
 import type { Chat, MediaItem, ChatParticipant } from "@/types/models/chat";
@@ -82,18 +82,6 @@ const chatTitle = computed(() => {
 const avatarData = computed(() => {
     if (!props.chat) return avatar.resolve(null);
     return avatar.resolveChatAvatar(props.chat, props.currentUserPublicId);
-});
-
-const avatarUrl = computed(() => avatarData.value.url);
-
-const avatarError = ref(false);
-const handleAvatarError = () => {
-    avatarError.value = true;
-};
-
-// Reset error when url changes
-watch(avatarUrl, () => {
-    avatarError.value = false;
 });
 
 const handleOpenChange = (open: boolean) => {
@@ -297,28 +285,14 @@ watch(mediaSentinel, (el) => {
                     <div
                         class="p-6 pb-4 text-center border-b border-[var(--border-default)]"
                     >
-                        <div
-                            class="w-24 h-24 mx-auto rounded-3xl relative overflow-hidden shadow-sm"
-                            :class="
-                                avatarUrl && !avatarError
-                                    ? ''
-                                    : 'bg-gradient-to-br from-[var(--interactive-primary)] to-[var(--interactive-primary-hover)]'
-                            "
-                        >
-                            <img
-                                v-if="avatarUrl && !avatarError"
-                                :src="avatarUrl"
-                                class="w-full h-full object-cover"
-                                alt="Chat Avatar"
-                                @error="handleAvatarError"
-                            />
-                            <span
-                                v-else
-                                class="flex items-center justify-center h-full text-white text-3xl font-bold"
-                            >
-                                {{ avatarData.initials }}
-                            </span>
-                        </div>
+                        <Avatar
+                            :src="avatarData.url || undefined"
+                            :fallback="avatarData.initials"
+                            :color="avatarData.color"
+                            size="3xl"
+                            variant="square"
+                            class="mx-auto rounded-3xl shadow-sm"
+                        />
                         <h3
                             class="mt-4 text-xl font-bold text-[var(--text-primary)]"
                         >
@@ -423,41 +397,26 @@ watch(mediaSentinel, (el) => {
                                             :key="member.public_id"
                                             class="group flex items-center gap-3 p-2 rounded-lg hover:bg-[var(--surface-tertiary)] transition-colors"
                                         >
-                                            <div
-                                                class="w-8 h-8 rounded-lg bg-cover bg-center shrink-0"
-                                                :class="
-                                                    avatar.getAvatarUrl(member)
-                                                        ? ''
-                                                        : 'bg-[var(--interactive-primary)]'
+                                            <Avatar
+                                                :src="
+                                                    avatar.getAvatarUrl(
+                                                        member,
+                                                    ) || undefined
                                                 "
-                                                :style="
-                                                    avatar.getAvatarUrl(member)
-                                                        ? {
-                                                              backgroundImage: `url(${avatar.getAvatarUrl(member)})`,
-                                                          }
-                                                        : {
-                                                              backgroundColor:
-                                                                  avatar.getColorFromId(
-                                                                      member.public_id,
-                                                                  ),
-                                                          }
+                                                :fallback="
+                                                    avatar.getInitials(
+                                                        member.name,
+                                                    )
                                                 "
-                                            >
-                                                <span
-                                                    v-if="
-                                                        !avatar.getAvatarUrl(
-                                                            member,
-                                                        )
-                                                    "
-                                                    class="flex items-center justify-center h-full text-white text-xs font-semibold"
-                                                >
-                                                    {{
-                                                        avatar.getInitials(
-                                                            member.name,
-                                                        )
-                                                    }}
-                                                </span>
-                                            </div>
+                                                :color="
+                                                    avatar.getColorFromId(
+                                                        member.public_id,
+                                                    )
+                                                "
+                                                size="sm"
+                                                variant="square"
+                                                class="shrink-0 rounded-lg"
+                                            />
                                             <div class="flex-1 min-w-0">
                                                 <div
                                                     class="font-medium text-sm text-[var(--text-primary)] truncate flex items-center gap-1"

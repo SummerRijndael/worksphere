@@ -3,6 +3,7 @@ import { computed, ref, watch } from "vue";
 import { useMiniChatStore, type MiniChatWindow } from "@/stores/minichat";
 import { useAuthStore } from "@/stores/auth";
 import { useChatStore } from "@/stores/chat";
+import { useAvatar } from "@/composables/useAvatar";
 import { Avatar, Icon } from "@/components/ui";
 
 const props = defineProps<{
@@ -12,6 +13,7 @@ const props = defineProps<{
 const miniChatStore = useMiniChatStore();
 const authStore = useAuthStore();
 const chatStore = useChatStore();
+const avatar = useAvatar();
 
 const isWiggling = ref(false);
 const isBadgePopping = ref(false);
@@ -30,29 +32,9 @@ const chatTitle = computed(() => {
     return "Group";
 });
 
-const chatAvatar = computed(() => {
-    const chat = props.window.chat;
-    if (chat.avatar_url) return chat.avatar_url;
-    if (chat.type === "dm" && chat.participants.length) {
-        const other = chat.participants.find(
-            (p) => p.public_id !== currentUserPublicId.value,
-        );
-        return other?.avatar_url || other?.avatar || null;
-    }
-    return null;
-});
-
-const chatColor = computed(() => {
-    const chat = props.window.chat;
-    if (chat.color) return chat.color;
-    if (chat.type === "dm" && chat.participants.length) {
-        const other = chat.participants.find(
-            (p) => p.public_id !== currentUserPublicId.value,
-        );
-        return other?.color || null;
-    }
-    return null;
-});
+const chatAvatarData = computed(() =>
+    avatar.resolveChatAvatar(props.window.chat, currentUserPublicId.value),
+);
 
 const unreadCount = computed(() => {
     const chat = chatStore.chats.find(
@@ -94,9 +76,9 @@ function handleClose() {
         @click="handleRestore"
     >
         <Avatar
-            :src="chatAvatar"
-            :fallback="chatTitle?.charAt(0)"
-            :color="chatColor"
+            :src="chatAvatarData.url"
+            :fallback="chatAvatarData.initials"
+            :color="chatAvatarData.color"
             size="lg"
             class="minichat-head-avatar"
         />

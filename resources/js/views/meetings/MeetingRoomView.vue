@@ -293,6 +293,10 @@
                             :is-screen-share="spotlightTile.isScreen"
                             :local-camera-on="isCameraOn"
                             :local-mic-on="isMicOn"
+                            :is-loading="isTileLoading(spotlightTile, 'stage')"
+                            :loading-label="
+                                getTileLoadingLabel(spotlightTile, 'stage')
+                            "
                             :local-stream-override="
                                 spotlightTile.isScreen ? screenStream : null
                             "
@@ -317,6 +321,8 @@
                                     :is-screen-share="tile.isScreen"
                                     :local-camera-on="isCameraOn"
                                     :local-mic-on="isMicOn"
+                                    :is-loading="isTileLoading(tile)"
+                                    :loading-label="getTileLoadingLabel(tile)"
                                     :local-stream-override="
                                         tile.isScreen ? screenStream : null
                                     "
@@ -346,6 +352,8 @@
                                 :is-screen-share="tile.isScreen"
                                 :local-camera-on="isCameraOn"
                                 :local-mic-on="isMicOn"
+                                :is-loading="isTileLoading(tile)"
+                                :loading-label="getTileLoadingLabel(tile)"
                                 :local-stream-override="
                                     tile.isScreen ? screenStream : null
                                 "
@@ -387,6 +395,8 @@
                                 :is-local="true"
                                 :local-camera-on="isCameraOn"
                                 :local-mic-on="isMicOn"
+                                :is-loading="isCameraToggleBusy"
+                                loading-label="Updating camera..."
                             />
                         </div>
                         <div v-else class="solo-content glass-panel">
@@ -447,6 +457,8 @@
                             :local-camera-on="isCameraOn"
                             :local-mic-on="isMicOn"
                             :is-local="true"
+                            :is-loading="isCameraToggleBusy"
+                            loading-label="Updating camera..."
                         />
                     </div>
                 </Transition>
@@ -987,10 +999,17 @@
                     :disabled="isCameraToggleBusy"
                     :title="cameraToggleTitle"
                 >
-                    <Icon
-                        :name="isCameraOn ? 'video' : 'video-off'"
-                        size="20"
-                    />
+                    <span class="ctrl-btn-inner">
+                        <span
+                            v-if="isCameraToggleBusy"
+                            class="ctrl-btn-spinner"
+                        ></span>
+                        <Icon
+                            v-else
+                            :name="isCameraOn ? 'video' : 'video-off'"
+                            size="20"
+                        />
+                    </span>
                 </button>
                 <button
                     class="ctrl-btn ctrl-btn--hand"
@@ -1037,10 +1056,13 @@
                     "
                     :title="screenShareToggleTitle"
                 >
-                    <Icon
-                        :name="isScreenSharing ? 'monitor' : 'monitor'"
-                        size="20"
-                    />
+                    <span class="ctrl-btn-inner">
+                        <span
+                            v-if="isScreenShareToggleBusy"
+                            class="ctrl-btn-spinner"
+                        ></span>
+                        <Icon v-else name="monitor" size="20" />
+                    </span>
                 </button>
                 <!-- Annotation (Presenter only) -->
                 <button
@@ -2181,8 +2203,18 @@ const FILMSTRIP_PAGE_SIZE = 6;
 
 const gridPage = ref(0);
 const filmstripPage = ref(0);
+const STAGE_TRANSITION_SPINNER_MS = 900;
+const isStageTransitioning = ref(false);
+let stageTransitionSpinnerTimer: ReturnType<typeof window.setTimeout> | null =
+    null;
 
-const localCameraTile = computed(() => {
+type RenderedTile = {
+    id: string;
+    participant: any;
+    isScreen: boolean;
+};
+
+const localCameraTile = computed<RenderedTile | null>(() => {
     if (!meetingStore.localParticipant) return null;
     return {
         id: meetingStore.localParticipant.public_id,
@@ -2191,9 +2223,89 @@ const localCameraTile = computed(() => {
     };
 });
 
+function getTileSourceType(tile: { isScreen: boolean } | null | undefined) {
+    if (!tile) return null;
+    return tile.isScreen ? "screen" : "video";
+}
+
+function hasLiveVideoTrack(stream: MediaStream | null | undefined) {
+    if (!stream) return false;
+    return stream
+        .getVideoTracks()
+        .some((track) => track.readyState === "live" && track.enabled && !track.muted);
+}
+
+function getTileMediaStream(tile: RenderedTile | null | undefined) {
+    if (!tile) return null;
+
+    const participantId = tile.participant?.public_id;
+    if (!participantId) return null;
+
+    if (participantId === meetingStore.localParticipant?.public_id) {
+        return tile.isScreen ? screenStream.value : meetingStore.localStream;
+    }
+
+    return meetingStore.remoteStreams.get(
+        tile.isScreen ? `${participantId}:screen` : participantId,
+    );
+}
+
+function scheduleStageTransitionSpinner() {
+    isStageTransitioning.value = true;
+    if (stageTransitionSpinnerTimer) {
+        window.clearTimeout(stageTransitionSpinnerTimer);
+    }
+    stageTransitionSpinnerTimer = window.setTimeout(() => {
+        isStageTransitioning.value = false;
+        stageTransitionSpinnerTimer = null;
+    }, STAGE_TRANSITION_SPINNER_MS);
+}
+
+function getTileLoadingLabel(
+    tile: RenderedTile | null | undefined,
+    surface: "card" | "stage" = "card",
+) {
+    if (surface === "stage") {
+        return tile?.isScreen ? "Loading presentation..." : "Updating stage...";
+    }
+
+    return tile?.isScreen ? "Updating share..." : "Updating video...";
+}
+
+function isTileLoading(
+    tile: RenderedTile | null | undefined,
+    surface: "card" | "stage" = "card",
+) {
+    if (!tile) return surface === "stage" ? isStageTransitioning.value : false;
+
+    const isLocalTile =
+        tile.participant?.public_id === meetingStore.localParticipant?.public_id;
+
+    if (surface === "stage" && isStageTransitioning.value) {
+        return true;
+    }
+
+    if (tile.isScreen) {
+        if (isLocalTile && isScreenShareToggleBusy.value) {
+            return true;
+        }
+
+        return (
+            meetingStore.screenShares.has(tile.participant.public_id) &&
+            !hasLiveVideoTrack(getTileMediaStream(tile))
+        );
+    }
+
+    if (isLocalTile && isCameraToggleBusy.value) {
+        return true;
+    }
+
+    return false;
+}
+
 // Map distinct tiles so a single participant can have both Camera and Screen shown at once
 const renderedTiles = computed(() => {
-    const tiles: { id: string; participant: any; isScreen: boolean }[] = [];
+    const tiles: RenderedTile[] = [];
 
     // 1. Add all standard camera tiles EXCEPT local participant
     meetingStore.allParticipants.forEach((p) => {
@@ -2219,28 +2331,37 @@ const renderedTiles = computed(() => {
     return tiles;
 });
 
-const spotlightTile = computed(() => {
+const spotlightSelection = computed(() => {
     // 1. Pinned participant
     if (meetingStore.pinnedParticipantId) {
         const pinScreen = renderedTiles.value.find(
             (t) => t.id === `${meetingStore.pinnedParticipantId}:screen`,
         );
-        if (pinScreen) return pinScreen;
-        return renderedTiles.value.find(
+        if (pinScreen) {
+            return { tile: pinScreen, reason: "pinned-screen" as const };
+        }
+        const pinnedCamera = renderedTiles.value.find(
             (t) => t.id === meetingStore.pinnedParticipantId,
         );
+        if (pinnedCamera) {
+            return { tile: pinnedCamera, reason: "pinned-camera" as const };
+        }
     }
 
     // 2. Priority: Any active screenshare
     const screenSharer = renderedTiles.value.find((t) => t.isScreen);
-    if (screenSharer) return screenSharer;
+    if (screenSharer) {
+        return { tile: screenSharer, reason: "active-screen-share" as const };
+    }
 
     // 3. Fallback: Active speaker (camera tile)
     if (meetingStore.activeSpeakerId) {
         const speaker = renderedTiles.value.find(
             (t) => t.id === meetingStore.activeSpeakerId && !t.isScreen,
         );
-        if (speaker) return speaker;
+        if (speaker) {
+            return { tile: speaker, reason: "active-speaker" as const };
+        }
     }
 
     // 4. Ultimate Fallback: If user explicitly requested spotlight/sidebar but scene is silent
@@ -2250,13 +2371,19 @@ const spotlightTile = computed(() => {
     ) {
         // Try getting the first remote participant (renderedTiles already excludes local user)
         const firstRemote = renderedTiles.value[0];
-        if (firstRemote) return firstRemote;
+        if (firstRemote) {
+            return { tile: firstRemote, reason: "layout-first-remote" as const };
+        }
         // If entirely alone, just spotlight yourself
-        if (localCameraTile.value) return localCameraTile.value;
+        if (localCameraTile.value) {
+            return { tile: localCameraTile.value, reason: "layout-self-fallback" as const };
+        }
     }
 
-    return null;
+    return { tile: null, reason: null as const };
 });
+
+const spotlightTile = computed(() => spotlightSelection.value.tile);
 
 const isSpotlightMode = computed(() => {
     if (meetingStore.preferredLayout === "tiled") return false;
@@ -2302,6 +2429,68 @@ const paginatedTiles = computed(() => {
         return unspotlightedTiles.value.slice(start, start + GRID_PAGE_SIZE);
     }
 });
+
+const lastStageStateKey = ref<string | null>(null);
+const lastStageTileId = ref<string | null>(null);
+const lastStageSource = ref<string | null>(null);
+const lastStageReason = ref<string | null>(null);
+const lastStageMode = ref<string | null>(null);
+
+watch(
+    [
+        isSpotlightMode,
+        spotlightSelection,
+        paginatedTiles,
+        () => meetingStore.preferredLayout,
+        () => meetingStore.pinnedParticipantId,
+        () => meetingStore.activeSpeakerId,
+    ],
+    () => {
+        const currentTile = spotlightSelection.value.tile;
+        const currentSource = getTileSourceType(currentTile);
+        const currentReason = spotlightSelection.value.reason;
+        const currentMode = isSpotlightMode.value ? "spotlight" : "grid";
+        const currentStateKey = [
+            currentMode,
+            currentTile?.id || "none",
+            currentSource || "none",
+            currentReason || "none",
+            meetingStore.preferredLayout,
+        ].join("|");
+
+        if (lastStageStateKey.value !== currentStateKey) {
+            if (lastStageStateKey.value !== null) {
+                scheduleStageTransitionSpinner();
+            }
+            console.log("[MeetingStage][State] changed", {
+                currentMode,
+                previousMode: lastStageMode.value,
+                currentTileId: currentTile?.id || null,
+                previousTileId: lastStageTileId.value,
+                currentParticipantId: currentTile?.participant?.public_id?.toLowerCase() || null,
+                previousParticipantId: lastStageTileId.value
+                    ? String(lastStageTileId.value).replace(/:screen$/, "")
+                    : null,
+                currentSource,
+                previousSource: lastStageSource.value,
+                currentReason,
+                previousReason: lastStageReason.value,
+                preferredLayout: meetingStore.preferredLayout,
+                pinnedParticipantId: meetingStore.pinnedParticipantId || null,
+                activeSpeakerId: meetingStore.activeSpeakerId || null,
+                paginatedTileIds: paginatedTiles.value.map((tile) => tile.id),
+                currentStateKey,
+                previousStateKey: lastStageStateKey.value,
+            });
+            lastStageStateKey.value = currentStateKey;
+            lastStageTileId.value = currentTile?.id || null;
+            lastStageSource.value = currentSource;
+            lastStageReason.value = currentReason;
+            lastStageMode.value = currentMode;
+        }
+    },
+    { immediate: true, deep: true },
+);
 
 // Google Meet-style grid layout class based on tile count
 const gridLayoutClass = computed(() => {
@@ -2423,6 +2612,7 @@ onMounted(async () => {
         if (stream) {
             const videoTrack = stream.getVideoTracks()[0];
             const audioTrack = stream.getAudioTracks()[0];
+            await capTrackTo720p(videoTrack || null);
 
             // If the track in the stream is NOT a canvas track but we have an effect set,
             // it means we just came from the lobby and might need to re-bind.
@@ -2448,10 +2638,15 @@ onMounted(async () => {
             isMicOn.value = false;
         }
 
-        meetingService.sendSignal(meetingId, {
+        void meetingService.sendSignal(meetingId, {
             signal_type: "participant-joined",
             signal_data: {},
             sender_participant_public_id: participantId,
+        }).catch((error) => {
+            console.warn("[MeetingRoom] participant-joined signal failed", {
+                status: error?.response?.status,
+                response: error?.response?.data,
+            });
         });
 
         window.addEventListener("keydown", handleGlobalKeydown);
@@ -2509,6 +2704,9 @@ onUnmounted(() => {
 const isScreenSharing = ref(false);
 const screenStream = ref<MediaStream | null>(null);
 let videoEffectApplyToken = 0;
+const CAMERA_MAX_WIDTH = 1280;
+const CAMERA_MAX_HEIGHT = 720;
+const CAMERA_MAX_FPS = 30;
 const MIC_TOGGLE_DEBOUNCE_MS = 250;
 const CAMERA_TOGGLE_DEBOUNCE_MS = 350;
 const SCREEN_SHARE_TOGGLE_DEBOUNCE_MS = 500;
@@ -2518,6 +2716,29 @@ const isScreenShareToggleBusy = ref(false);
 let lastMicToggleAt = 0;
 let lastCameraToggleAt = 0;
 let lastScreenShareToggleAt = 0;
+
+function buildSelfCameraConstraints(deviceId?: string): MediaTrackConstraints {
+    return {
+        deviceId: deviceId || undefined,
+        width: { ideal: CAMERA_MAX_WIDTH, max: CAMERA_MAX_WIDTH },
+        height: { ideal: CAMERA_MAX_HEIGHT, max: CAMERA_MAX_HEIGHT },
+        frameRate: { ideal: CAMERA_MAX_FPS, max: CAMERA_MAX_FPS },
+    };
+}
+
+async function capTrackTo720p(track: MediaStreamTrack | null) {
+    if (!track || track.kind !== "video" || !track.applyConstraints) return;
+
+    try {
+        await track.applyConstraints({
+            width: { ideal: CAMERA_MAX_WIDTH, max: CAMERA_MAX_WIDTH },
+            height: { ideal: CAMERA_MAX_HEIGHT, max: CAMERA_MAX_HEIGHT },
+            frameRate: { ideal: CAMERA_MAX_FPS, max: CAMERA_MAX_FPS },
+        });
+    } catch (e) {
+        console.warn("[MeetingRoom] Failed to enforce 720p cap on local video track", e);
+    }
+}
 
 async function toggleMicDebounced() {
     const now = Date.now();
@@ -2612,7 +2833,7 @@ async function recoverCameraAfterScreenShareToggle() {
 async function toggleScreenShare() {
     if (isScreenSharing.value) {
         isScreenSharing.value = false;
-        screenStream.value = null; // Track stops internally by SDK or onended
+        screenStream.value = null;
         await meetingStore.unpublishScreenTrack();
         meetingStore.clearSpotlight();
         await recoverCameraAfterScreenShareToggle();
@@ -2714,14 +2935,12 @@ const toggleCamera = async () => {
     if (!isCameraOn.value) {
         try {
             const newStream = await navigator.mediaDevices.getUserMedia({
-                video: {
-                    deviceId: videoCallStore.selectedVideoDeviceId || undefined,
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 },
-                    frameRate: { ideal: 30 },
-                },
+                video: buildSelfCameraConstraints(
+                    videoCallStore.selectedVideoDeviceId || undefined,
+                ),
             });
             const videoTrack = newStream.getVideoTracks()[0];
+            await capTrackTo720p(videoTrack || null);
             meetingStore.originalVideoTrack = videoTrack;
 
             let finalTrack = videoTrack;
@@ -2964,13 +3183,10 @@ watch(
 
             try {
                 const newS = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        deviceId: newVideo || undefined,
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 },
-                    },
+                    video: buildSelfCameraConstraints(newVideo || undefined),
                 });
                 const videoTrack = newS.getVideoTracks()[0];
+                await capTrackTo720p(videoTrack || null);
                 meetingStore.originalVideoTrack = videoTrack;
 
                 let finalTrack = videoTrack;
@@ -3157,12 +3373,15 @@ const networkStats = reactive({
 });
 
 let lastBytes = 0;
+let lastPacketsLost = 0;
+let lastPacketsReceived = 0;
 let lastStatsTime = Date.now();
 let statsInterval: number | null = null;
 const poorConnectionDetected = ref(false);
 let poorConnectionTimer = 0;
 let rttStaleCount = 0;
-const POOR_CONNECTION_THRESHOLD = 5; // 5 seconds (roughly 2 intervals)
+let smoothedRtt = 0;
+const POOR_CONNECTION_THRESHOLD = 3; // 3 intervals (9 seconds)
 
 async function updateNetworkStats() {
     const pc = meetingStore.sfuPc();
@@ -3193,6 +3412,15 @@ async function updateNetworkStats() {
             if (report.type === "transport") {
                 activeCandidatePairId = report.selectedCandidatePairId;
             }
+            // Bitrate: Outbound + Inbound
+            if (report.type === "outbound-rtp") {
+                currentBytes += report.bytesSent || 0;
+            }
+            if (report.type === "inbound-rtp") {
+                currentBytes += report.bytesReceived || 0;
+                totalPacketsLost += report.packetsLost || 0;
+                totalPacketsReceived += report.packetsReceived || 0;
+            }
         });
 
         let rttUpdated = false;
@@ -3203,37 +3431,20 @@ async function updateNetworkStats() {
                 (report.id === activeCandidatePairId ||
                     (report.state === "succeeded" && report.nominated))
             ) {
-                // Primary: currentRoundTripTime (Chrome reliable, Firefox sometimes stale)
                 let newRtt = 0;
-                if (
-                    report.currentRoundTripTime &&
-                    report.currentRoundTripTime > 0
-                ) {
-                    newRtt = report.currentRoundTripTime * 1000;
-                }
-                // Fallback: totalRoundTripTime / responsesReceived (more reliable in Firefox)
-                else if (
-                    report.totalRoundTripTime &&
-                    report.responsesReceived > 0
-                ) {
-                    newRtt =
-                        (report.totalRoundTripTime / report.responsesReceived) *
-                        1000;
+                const rawRtt = report.currentRoundTripTime || 0;
+                
+                if (rawRtt > 0) {
+                    newRtt = rawRtt > 1.0 ? rawRtt : rawRtt * 1000;
+                } else if (report.totalRoundTripTime && report.responsesReceived > 0) {
+                    const avgRtt = report.totalRoundTripTime / report.responsesReceived;
+                    newRtt = avgRtt > 1.0 ? avgRtt : avgRtt * 1000;
                 }
 
                 if (newRtt > 0 && newRtt < 10000) {
                     networkStats.rtt = newRtt;
                     rttUpdated = true;
                 }
-            }
-            // Outbound bitrate (bytesSent) or Inbound (bytesReceived)
-            if (report.type === "outbound-rtp") {
-                currentBytes += report.bytesSent || 0;
-            }
-            // Inbound packet loss
-            if (report.type === "inbound-rtp") {
-                totalPacketsLost += report.packetsLost || 0;
-                totalPacketsReceived += report.packetsReceived || 0;
             }
         });
 
@@ -3245,6 +3456,12 @@ async function updateNetworkStats() {
         }
         // After 5 stale readings (~15s), consider RTT unreliable and zero it out
         const effectiveRtt = rttStaleCount >= 5 ? 0 : networkStats.rtt;
+        
+        // RTT Smoothing
+        if (effectiveRtt > 0) {
+            if (smoothedRtt === 0) smoothedRtt = effectiveRtt;
+            else smoothedRtt = (smoothedRtt * 0.7) + (effectiveRtt * 0.3);
+        }
 
         if (lastBytes > 0 && delta > 0) {
             networkStats.bitrate =
@@ -3252,21 +3469,47 @@ async function updateNetworkStats() {
         }
         lastBytes = currentBytes;
 
-        const totalPackets = totalPacketsLost + totalPacketsReceived;
-        const lossPercent =
-            totalPackets > 0 ? (totalPacketsLost / totalPackets) * 100 : 0;
+        // INTERVAL-BASED LOSS CALCULATION
+        let deltaLost = totalPacketsLost - lastPacketsLost;
+        let deltaReceived = totalPacketsReceived - lastPacketsReceived;
+        
+        // Guard against stats reset (e.g. new PC or SFU reconnect)
+        if (deltaLost < 0 || deltaReceived < 0) {
+            deltaLost = Math.max(0, totalPacketsLost);
+            deltaReceived = Math.max(0, totalPacketsReceived);
+        }
+        
+        const deltaTotal = deltaLost + deltaReceived;
+        const lossPercent = deltaTotal > 0 ? (deltaLost / deltaTotal) * 100 : 0;
+        
+        lastPacketsLost = totalPacketsLost;
+        lastPacketsReceived = totalPacketsReceived;
         networkStats.packetLoss = lossPercent;
 
-        // Scoring (0=Good, 1=Fair, 2=Poor)
+        // ── Scoring (0=Good, 1=Fair, 2=Poor) ──
+        // RTT is the PRIMARY signal — it is the ground truth for connection quality.
+        // WebRTC's packetsLost counter is unreliable: it reports phantom loss from
+        // placeholder transceivers, SFU renegotiation sequence gaps, and idle/muted
+        // tracks. A 7ms RTT with "15% loss" means the loss is fake.
+        //
+        // Rule: If RTT < 100ms, the connection is definitely Good regardless of
+        // what the loss counter reports. Loss only matters when RTT confirms congestion.
         let oldScore = networkStats.score;
 
-        if (lossPercent > 10 || effectiveRtt > 400) {
+        if (smoothedRtt > 0 && smoothedRtt < 100) {
+            // RTT is excellent — connection is definitively good
+            networkStats.score = 0;
+            poorConnectionTimer = 0;
+            poorConnectionDetected.value = false;
+        } else if (smoothedRtt >= 500 || (lossPercent > 10 && smoothedRtt >= 200)) {
+            // RTT confirms real congestion
             networkStats.score = 2;
             poorConnectionTimer++;
             if (poorConnectionTimer >= POOR_CONNECTION_THRESHOLD) {
                 poorConnectionDetected.value = true;
             }
-        } else if (lossPercent > 3 || effectiveRtt > 200) {
+        } else if (smoothedRtt >= 200 || (lossPercent > 5 && smoothedRtt >= 100)) {
+            // Moderate RTT with some loss — Fair
             networkStats.score = 1;
             poorConnectionTimer = 0;
             poorConnectionDetected.value = false;
@@ -3276,9 +3519,9 @@ async function updateNetworkStats() {
             poorConnectionDetected.value = false;
         }
 
-        if (oldScore !== networkStats.score || networkStats.score === 2) {
+        if (networkStats.score !== oldScore || networkStats.score >= 1) {
             console.log(
-                `[NetworkStats] Score: ${networkStats.score} | RTT: ${networkStats.rtt}ms${rttStaleCount >= 5 ? " (stale, ignored)" : ""} | Loss: ${lossPercent.toFixed(2)}% | Bitrate: ${(networkStats.bitrate || 0).toFixed(0)}kbps | Timer: ${poorConnectionTimer}/${POOR_CONNECTION_THRESHOLD}`,
+                `[NetworkStats] Score: ${networkStats.score} | RTT: ${smoothedRtt.toFixed(0)}ms${rttStaleCount >= 5 ? " (stale)" : ""} | Loss: ${lossPercent.toFixed(2)}% (${deltaLost}/${deltaTotal} pkts) | Bitrate: ${(networkStats.bitrate || 0).toFixed(0)}kbps | Timer: ${poorConnectionTimer}/${POOR_CONNECTION_THRESHOLD}`,
             );
         }
     } catch (e) {
@@ -3292,6 +3535,9 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
     if (statsInterval) window.clearInterval(statsInterval);
+    if (stageTransitionSpinnerTimer) {
+        window.clearTimeout(stageTransitionSpinnerTimer);
+    }
 });
 </script>
 
@@ -3576,6 +3822,23 @@ onBeforeUnmount(() => {
     cursor: pointer;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
+}
+
+.ctrl-btn-inner {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+}
+
+.ctrl-btn-spinner {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px solid rgba(100, 116, 139, 0.3);
+    border-top-color: currentColor;
+    animation: ctrl-btn-spin 0.8s linear infinite;
 }
 
 .ctrl-btn:hover {
@@ -5630,6 +5893,12 @@ onBeforeUnmount(() => {
     border-top-color: var(--indigo-500);
     border-radius: 50%;
     animation: spin 1s linear infinite;
+}
+
+@keyframes ctrl-btn-spin {
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .initializing-title {

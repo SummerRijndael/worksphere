@@ -1,5 +1,11 @@
 <template>
-    <div class="tile-root" :class="{ 'tile-speaking': isSpeaking }">
+    <div
+        class="tile-root"
+        :class="{
+            'tile-speaking': isSpeaking,
+            'tile-root--loading': showLoadingOverlay,
+        }"
+    >
         <!-- Core Video Content Box -->
         <div v-if="actualHasVideo" class="tile-video-container">
             <div class="tile-video-content" :style="videoContentStyle">
@@ -69,6 +75,13 @@
             </div>
         </div>
 
+        <div v-if="showLoadingOverlay" class="tile-loading-overlay">
+            <div class="tile-loading-chip">
+                <span class="tile-loading-spinner"></span>
+                <span class="tile-loading-text">{{ resolvedLoadingLabel }}</span>
+            </div>
+        </div>
+
         <!-- Participant Name Label (Bottom-Left) -->
         <div class="tile-name-bar">
             <Icon
@@ -131,6 +144,8 @@ const props = defineProps<{
     localMicOn?: boolean;
     localStreamOverride?: MediaStream | null;
     isLocal?: boolean;
+    isLoading?: boolean;
+    loadingLabel?: string;
 }>();
 
 const meetingStore = useMeetingStore();
@@ -157,6 +172,24 @@ const activeStream = computed(() => {
 });
 
 const actualHasVideo = ref(false);
+const lastTileVisualMode = ref<"avatar" | "video" | null>(null);
+const lastVideoBindingKey = ref<string | null>(null);
+const lastAudioBindingKey = ref<string | null>(null);
+const lastResolvedSource = ref<string | null>(null);
+const lastResolvedSourceKey = ref<string | null>(null);
+const isSourceTransitioning = ref(false);
+const SOURCE_TRANSITION_SPINNER_MS = 900;
+const SCREEN_FRAME_STALL_MS = 1800;
+let sourceTransitionTimer: ReturnType<typeof window.setTimeout> | null = null;
+let videoFrameWatchTimer: ReturnType<typeof window.setTimeout> | null = null;
+let videoFrameCallbackId: number | null = null;
+let videoFrameWatchElement: HTMLVideoElement | null = null;
+const lastFrameRepairBindingKey = ref<string | null>(null);
+
+const remoteCameraEnabled = computed<boolean | null>(() => {
+    if (isLocal.value || props.isScreenShare) return null;
+    return props.participant.camera_enabled ?? null;
+});
 
 const hasLiveVideo = (s: MediaStream | null | undefined) => {
     if (!s) return false;
@@ -172,6 +205,154 @@ const hasLiveAudio = (s: MediaStream | null | undefined) => {
         .some((t) => t.readyState === "live" && t.enabled && !t.muted);
 };
 
+function getTrackDebugSummary(stream: MediaStream | null | undefined) {
+    if (!stream) {
+        return {
+            streamId: null,
+            videoTracks: [],
+            audioTracks: [],
+        };
+    }
+
+    return {
+        streamId: stream.id,
+        videoTracks: stream.getVideoTracks().map((track) => ({
+            id: track.id,
+            readyState: track.readyState,
+            enabled: track.enabled,
+            muted: track.muted,
+        })),
+        audioTracks: stream.getAudioTracks().map((track) => ({
+            id: track.id,
+            readyState: track.readyState,
+            enabled: track.enabled,
+            muted: track.muted,
+        })),
+    };
+}
+
+function buildMediaBindingKey(
+    stream: MediaStream | null | undefined,
+    kind: "audio" | "video",
+) {
+    if (!stream) return null;
+    const tracks =
+        kind === "video" ? stream.getVideoTracks() : stream.getAudioTracks();
+    if (!tracks.length) return null;
+    return `${stream.id}:${kind}:${tracks
+        .map((track) => `${track.id}:${track.readyState}:${track.enabled}:${track.muted}`)
+        .join(",")}`;
+}
+
+function getSurfaceType() {
+    return props.isSpotlight ? "stage" : "card";
+}
+
+function getResolvedSource(stream: MediaStream | null | undefined) {
+    if (props.isScreenShare && actualHasVideo.value && hasLiveVideo(stream)) {
+        return "screen";
+    }
+    if (actualHasVideo.value && hasLiveVideo(stream)) {
+        return "video";
+    }
+    return "avatar";
+}
+
+function getResolvedSourceState(stream: MediaStream | null | undefined) {
+    const source = getResolvedSource(stream);
+    const videoKey = buildMediaBindingKey(stream, "video") || "no-video";
+    const audioKey = buildMediaBindingKey(stream, "audio") || "no-audio";
+    return {
+        source,
+        key: [
+            getSurfaceType(),
+            source,
+            streamIdLookup.value || "unknown-stream-slot",
+            videoKey,
+            audioKey,
+        ].join("|"),
+        streamIdLookup: streamIdLookup.value,
+        stream: getTrackDebugSummary(stream),
+    };
+}
+
+function logTileVisualState(reason: string, mode: "avatar" | "video") {
+    const participantId = props.participant.public_id?.toLowerCase() || "unknown";
+    console.log(
+        `[ParticipantTile][UI] ${mode === "video" ? "hide avatar show video" : "hide video show avatar"}`,
+        {
+            reason,
+            participantId,
+            participantName:
+                props.participant.user?.name ||
+                props.participant.metadata?.guest_name ||
+                "Participant",
+            isLocal: isLocal.value,
+            isScreenShare: !!props.isScreenShare,
+            localCameraOn: props.localCameraOn ?? null,
+            remoteCameraEnabled: remoteCameraEnabled.value,
+            actualHasVideo: actualHasVideo.value,
+            stream: getTrackDebugSummary(activeStream.value),
+        },
+    );
+}
+
+function logMediaBindingChange(
+    mediaKind: "audio" | "video",
+    action: "bind" | "clear",
+    stream: MediaStream | null | undefined,
+) {
+    const participantId = props.participant.public_id?.toLowerCase() || "unknown";
+    console.log(`[ParticipantTile][Media] ${mediaKind} ${action}`, {
+        participantId,
+        isLocal: isLocal.value,
+        isScreenShare: !!props.isScreenShare,
+        actualHasVideo: actualHasVideo.value,
+        stream: getTrackDebugSummary(stream),
+    });
+}
+
+function logResolvedSourceChange(
+    reason: string,
+    state: ReturnType<typeof getResolvedSourceState>,
+    previousSource: string | null,
+    previousKey: string | null,
+) {
+    const participantId = props.participant.public_id?.toLowerCase() || "unknown";
+    console.log("[ParticipantTile][Source] state changed", {
+        reason,
+        participantId,
+        participantName:
+            props.participant.user?.name ||
+            props.participant.metadata?.guest_name ||
+            "Participant",
+        surface: getSurfaceType(),
+        currentSource: state.source,
+        previousSource,
+        currentKey: state.key,
+        previousKey,
+        isLocal: isLocal.value,
+        isSpotlight: !!props.isSpotlight,
+        isScreenShare: !!props.isScreenShare,
+        localCameraOn: props.localCameraOn ?? null,
+        remoteCameraEnabled: remoteCameraEnabled.value,
+        actualHasVideo: actualHasVideo.value,
+        streamIdLookup: state.streamIdLookup,
+        stream: state.stream,
+    });
+}
+
+function scheduleSourceTransitionSpinner() {
+    isSourceTransitioning.value = true;
+    if (sourceTransitionTimer) {
+        window.clearTimeout(sourceTransitionTimer);
+    }
+    sourceTransitionTimer = window.setTimeout(() => {
+        isSourceTransitioning.value = false;
+        sourceTransitionTimer = null;
+    }, SOURCE_TRANSITION_SPINNER_MS);
+}
+
 const checkVideoStatus = () => {
     if (isLocal.value) {
         // Use real track state so UI recovers when a track is externally stopped.
@@ -180,8 +361,6 @@ const checkVideoStatus = () => {
         } else {
             actualHasVideo.value = !!props.localCameraOn && hasLiveVideo(activeStream.value);
         }
-        // Keep local preview resilient during track swaps/layout remounts.
-        updateLocalStream();
         return;
     }
 
@@ -191,8 +370,13 @@ const checkVideoStatus = () => {
         return;
     }
 
-    // For remote tracks, include `enabled` so tiles fall back to avatar when
-    // publishers disable camera without immediately ending the track object.
+    // Honor the latest explicit remote camera OFF state even if a stale live
+    // track object is still hanging around locally.
+    if (remoteCameraEnabled.value === false) {
+        actualHasVideo.value = false;
+        return;
+    }
+
     actualHasVideo.value = hasLiveVideo(s);
 };
 
@@ -206,14 +390,68 @@ onUnmounted(() => {
     if (videoStatusInterval) {
         clearInterval(videoStatusInterval);
     }
+    if (sourceTransitionTimer) {
+        window.clearTimeout(sourceTransitionTimer);
+    }
+    clearVideoFrameWatch();
 });
 
 watch(
-    [activeStream, () => props.localCameraOn, () => props.isScreenShare],
+    [
+        activeStream,
+        () => props.localCameraOn,
+        () => props.isScreenShare,
+        () => props.participant.camera_enabled,
+    ],
     () => {
         checkVideoStatus();
     },
     { immediate: true },
+);
+
+watch(
+    actualHasVideo,
+    (hasVideo) => {
+        const nextMode = hasVideo ? "video" : "avatar";
+        if (lastTileVisualMode.value !== nextMode) {
+            logTileVisualState("actualHasVideo changed", nextMode);
+            lastTileVisualMode.value = nextMode;
+        }
+    },
+    { immediate: true },
+);
+
+watch(
+    [activeStream, actualHasVideo, () => props.isSpotlight, () => props.isScreenShare],
+    () => {
+        const state = getResolvedSourceState(activeStream.value);
+        if (lastResolvedSourceKey.value !== state.key) {
+            if (lastResolvedSourceKey.value !== null) {
+                scheduleSourceTransitionSpinner();
+            }
+            logResolvedSourceChange(
+                "resolved source changed",
+                state,
+                lastResolvedSource.value,
+                lastResolvedSourceKey.value,
+            );
+            lastResolvedSource.value = state.source;
+            lastResolvedSourceKey.value = state.key;
+        }
+    },
+    { immediate: true },
+);
+
+const resolvedLoadingLabel = computed(() => {
+    if (props.loadingLabel) return props.loadingLabel;
+    if (props.isSpotlight) {
+        return props.isScreenShare ? "Loading presentation..." : "Updating stage...";
+    }
+    return props.isScreenShare ? "Updating share..." : "Updating video...";
+});
+
+const showLoadingOverlay = computed(
+    () => !!props.isLoading || isSourceTransitioning.value,
 );
 
 const isSpeaking = computed(() => {
@@ -231,14 +469,6 @@ const qualityScore = computed(() => {
 });
 
 // -- Aspect Ratio & Content Scaling Logic --
-const streamAspectRatio = ref(16 / 9);
-
-function updateAspectRatio(el: HTMLVideoElement | null) {
-    if (el && el.videoWidth && el.videoHeight) {
-        streamAspectRatio.value = el.videoWidth / el.videoHeight;
-    }
-}
-
 const videoContentStyle = computed(() => {
     // If not in spotlight/screenshare, we want to cover the tile (fill)
     if (!props.isSpotlight && !props.isScreenShare) {
@@ -249,21 +479,13 @@ const videoContentStyle = computed(() => {
         };
     }
 
-    // In spotlight/screenshare, we want to contain (show all pixels)
-    // We use aspect-ratio to ensure the container matches the video EXACTLY.
-    // By using width/height: auto and max-width/max-height: 100%,
-    // the browser will scale the box to fit perfectly while maintaining the ratio.
+    // In spotlight/screenshare, prefer a simple full-size contain layout.
+    // The previous auto-sized aspect-ratio box could collapse during rapid
+    // srcObject swaps, which left the stage black even after the stream bound.
     return {
-        aspectRatio: `${streamAspectRatio.value}`,
-        width: "auto",
-        height: "auto",
-        maxWidth: "100%",
-        maxHeight: "100%",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 1,
-        flexGrow: 0,
+        width: "100%",
+        height: "100%",
+        objectFit: "contain" as any,
     };
 });
 
@@ -299,12 +521,6 @@ const bindLocalVideo = (el: any) => {
         localVideo.value.srcObject = null;
     }
     localVideo.value = el as HTMLVideoElement | null;
-    if (el) {
-        el.addEventListener("resize", () =>
-            updateAspectRatio(el as HTMLVideoElement),
-        );
-        updateAspectRatio(el as HTMLVideoElement);
-    }
 };
 
 function updateLocalStream() {
@@ -318,13 +534,26 @@ function updateLocalStream() {
     const shouldBindVideo = !!stream && hasLiveVideo(stream) && actualHasVideo.value;
 
     if (shouldBindVideo) {
-        if (videoEl.srcObject !== stream) {
+        const streamChanged = videoEl.srcObject !== stream;
+        if (streamChanged) {
             videoEl.srcObject = stream as MediaStream;
         }
-        videoEl.play().catch((e) =>
-            console.warn("[LocalVideo] Auto-play prevented", e),
-        );
+        const nextBindingKey = buildMediaBindingKey(stream, "video");
+        if (lastVideoBindingKey.value !== nextBindingKey) {
+            logMediaBindingChange("video", "bind", stream);
+            lastVideoBindingKey.value = nextBindingKey;
+        }
+        if (shouldKickPlayback(videoEl, streamChanged)) {
+            ensureVideoPlayback(
+                videoEl,
+                `LocalVideo:${props.participant.public_id}:${props.isScreenShare ? "screen" : "camera"}`,
+            );
+        }
     } else {
+        if (lastVideoBindingKey.value !== null) {
+            logMediaBindingChange("video", "clear", stream);
+            lastVideoBindingKey.value = null;
+        }
         videoEl.srcObject = null;
     }
 }
@@ -349,12 +578,6 @@ const bindRemoteVideo = (el: any) => {
         remoteVideo.value.srcObject = null;
     }
     remoteVideo.value = el as HTMLVideoElement | null;
-    if (el) {
-        el.addEventListener("resize", () =>
-            updateAspectRatio(el as HTMLVideoElement),
-        );
-        updateAspectRatio(el as HTMLVideoElement);
-    }
     updateRemoteStream();
 };
 
@@ -363,6 +586,146 @@ const bindRemoteAudio = (el: any) => {
     updateRemoteStream();
 };
 
+function ensureVideoPlayback(videoEl: HTMLVideoElement, label: string) {
+    const attemptPlay = (isRetry = false) => {
+        videoEl.play().catch((error: any) => {
+            if (!videoEl.srcObject) return;
+            if (!isRetry && error?.name === "AbortError") {
+                window.setTimeout(() => attemptPlay(true), 50);
+                return;
+            }
+            console.warn(`[${label}] Playback failed`, error);
+        });
+    };
+
+    attemptPlay(false);
+}
+
+function hardReattachVideoStream(
+    videoEl: HTMLVideoElement,
+    stream: MediaStream,
+) {
+    videoEl.srcObject = null;
+    videoEl.load();
+    videoEl.srcObject = stream;
+}
+
+function clearVideoFrameWatch() {
+    if (videoFrameWatchTimer) {
+        window.clearTimeout(videoFrameWatchTimer);
+        videoFrameWatchTimer = null;
+    }
+    if (
+        videoFrameCallbackId !== null &&
+        videoFrameWatchElement &&
+        "cancelVideoFrameCallback" in videoFrameWatchElement
+    ) {
+        try {
+            (videoFrameWatchElement as any).cancelVideoFrameCallback(
+                videoFrameCallbackId,
+            );
+        } catch {}
+    }
+    videoFrameCallbackId = null;
+    videoFrameWatchElement = null;
+}
+
+function shouldKickPlayback(
+    videoEl: HTMLVideoElement,
+    streamChanged: boolean,
+) {
+    return (
+        streamChanged ||
+        videoEl.paused ||
+        videoEl.readyState < HTMLMediaElement.HAVE_CURRENT_DATA
+    );
+}
+
+function requestRemoteScreenFrameRepair(bindingKey: string) {
+    const participantId = props.participant.public_id?.toLowerCase();
+    if (!participantId || isLocal.value || !props.isScreenShare) return;
+    if (lastFrameRepairBindingKey.value === bindingKey) return;
+    lastFrameRepairBindingKey.value = bindingKey;
+    const streamApi = meetingStore.stream as any;
+    const cachedPublication = streamApi?.remotePublications?.get?.(participantId);
+
+    console.warn("[ParticipantTile][Media] remote screen frame stalled; requesting repair", {
+        participantId,
+        bindingKey,
+        readyState: remoteVideo.value?.readyState ?? null,
+        currentTime: remoteVideo.value?.currentTime ?? null,
+        videoWidth: remoteVideo.value?.videoWidth ?? null,
+        videoHeight: remoteVideo.value?.videoHeight ?? null,
+        sessionId: cachedPublication?.sessionId ?? null,
+        screenMid: cachedPublication?.screenMid ?? null,
+    });
+
+    try {
+        if (cachedPublication?.sessionId && cachedPublication?.screenMid) {
+            streamApi?.pullParticipantTracks?.(
+                participantId,
+                cachedPublication.sessionId,
+                undefined,
+                undefined,
+                cachedPublication.screenMid ?? undefined,
+            );
+            return;
+        }
+
+        streamApi?.requestMediaInfo?.(participantId, {
+            force: true,
+            reason: "ui:screen-frame-stall",
+        });
+    } catch (error) {
+        console.warn(
+            `[ParticipantTile][Media] Failed to request remote screen repair for ${participantId}`,
+            error,
+        );
+    }
+}
+
+function armVideoFrameWatch(
+    videoEl: HTMLVideoElement,
+    label: string,
+    bindingKey: string | null,
+) {
+    clearVideoFrameWatch();
+    if (!bindingKey || !videoEl.srcObject) return;
+
+    let settled = false;
+    videoFrameWatchElement = videoEl;
+
+    const settle = () => {
+        if (settled) return;
+        settled = true;
+        clearVideoFrameWatch();
+    };
+
+    if ("requestVideoFrameCallback" in videoEl) {
+        videoFrameCallbackId = (videoEl as any).requestVideoFrameCallback(() => {
+            settle();
+        });
+    } else {
+        const onLoadedData = () => {
+            settle();
+        };
+        videoEl.addEventListener("loadeddata", onLoadedData, { once: true });
+    }
+
+    videoFrameWatchTimer = window.setTimeout(() => {
+        if (settled || !videoEl.srcObject) return;
+        settle();
+        console.warn(`[${label}] No video frame rendered after bind`, {
+            bindingKey,
+            readyState: videoEl.readyState,
+            currentTime: videoEl.currentTime,
+            videoWidth: videoEl.videoWidth,
+            videoHeight: videoEl.videoHeight,
+        });
+        requestRemoteScreenFrameRepair(bindingKey);
+    }, SCREEN_FRAME_STALL_MS);
+}
+
 function updateRemoteStream() {
     const stream = activeStream.value;
     const hasVideo = hasLiveVideo(stream) && actualHasVideo.value;
@@ -370,11 +733,46 @@ function updateRemoteStream() {
 
     if (remoteVideo.value) {
         if (hasVideo && stream) {
-            if (remoteVideo.value.srcObject !== stream) {
+            const nextBindingKey = buildMediaBindingKey(stream, "video");
+            const bindingChanged =
+                lastVideoBindingKey.value !== null &&
+                nextBindingKey !== null &&
+                lastVideoBindingKey.value !== nextBindingKey;
+            const streamChanged = remoteVideo.value.srcObject !== stream;
+            if (streamChanged) {
                 remoteVideo.value.srcObject = stream;
+            } else if (bindingChanged) {
+                // Chromium can stall on restarted remote screen tracks when the
+                // MediaStream object stays the same but the underlying video
+                // track changes. Force a full element reattach in that case.
+                hardReattachVideoStream(remoteVideo.value, stream);
             }
-            remoteVideo.value.play().catch(() => {});
+            if (lastVideoBindingKey.value !== nextBindingKey) {
+                logMediaBindingChange("video", "bind", stream);
+                lastVideoBindingKey.value = nextBindingKey;
+            }
+            if (shouldKickPlayback(remoteVideo.value, streamChanged || bindingChanged)) {
+                ensureVideoPlayback(
+                    remoteVideo.value,
+                    `RemoteVideo:${props.participant.public_id}:${props.isScreenShare ? "screen" : "camera"}`,
+                );
+            }
+            if (props.isScreenShare) {
+                armVideoFrameWatch(
+                    remoteVideo.value,
+                    `RemoteVideo:${props.participant.public_id}:screen`,
+                    nextBindingKey,
+                );
+            } else {
+                clearVideoFrameWatch();
+            }
         } else {
+            if (lastVideoBindingKey.value !== null) {
+                logMediaBindingChange("video", "clear", stream);
+                lastVideoBindingKey.value = null;
+            }
+            clearVideoFrameWatch();
+            lastFrameRepairBindingKey.value = null;
             remoteVideo.value.srcObject = null;
         }
     }
@@ -384,6 +782,11 @@ function updateRemoteStream() {
             if (remoteAudio.value.srcObject !== stream) {
                 remoteAudio.value.srcObject = stream;
             }
+            const nextBindingKey = buildMediaBindingKey(stream, "audio");
+            if (lastAudioBindingKey.value !== nextBindingKey) {
+                logMediaBindingChange("audio", "bind", stream);
+                lastAudioBindingKey.value = nextBindingKey;
+            }
             remoteAudio.value.play().catch((e: any) => {
                 console.warn(
                     `[AudioPlayback] Playback failed for ${props.participant.public_id}:`,
@@ -391,6 +794,10 @@ function updateRemoteStream() {
                 );
             });
         } else {
+            if (lastAudioBindingKey.value !== null) {
+                logMediaBindingChange("audio", "clear", stream);
+                lastAudioBindingKey.value = null;
+            }
             remoteAudio.value.srcObject = null;
         }
     }
@@ -470,6 +877,15 @@ watch(
     box-shadow: 0 0 0 3px #8ab4f8;
 }
 
+.tile-root--loading::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.12);
+    z-index: 2;
+    pointer-events: none;
+}
+
 .tile-video-container {
     position: absolute;
     inset: 0;
@@ -506,6 +922,45 @@ watch(
     z-index: 1;
 }
 
+.tile-loading-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 6;
+    pointer-events: none;
+}
+
+.tile-loading-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.76);
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 10px 30px rgba(2, 6, 23, 0.28);
+}
+
+.tile-loading-spinner {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid rgba(226, 232, 240, 0.28);
+    border-top-color: #8ab4f8;
+    animation: tile-spin 0.8s linear infinite;
+}
+
+.tile-loading-text {
+    color: #e2e8f0;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
 .tile-avatar-content {
     display: flex;
     flex-direction: column;
@@ -529,9 +984,8 @@ watch(
 .tile-avatar-comp {
     width: 80px;
     height: 80px;
-    border: 2px solid rgba(255, 255, 255, 0.1);
-    background: #3c4043;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    border: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .tile-avatar {
@@ -641,6 +1095,12 @@ watch(
     }
     50% {
         opacity: 0.5;
+    }
+}
+
+@keyframes tile-spin {
+    to {
+        transform: rotate(360deg);
     }
 }
 </style>

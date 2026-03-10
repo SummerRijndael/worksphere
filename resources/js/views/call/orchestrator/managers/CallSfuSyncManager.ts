@@ -25,7 +25,7 @@ export interface CallSfuSyncManagerOptions {
     getParticipantMids: (participantId: string) => ParticipantMids | undefined;
     getRemoteMainStream: (participantId: string) => MediaStream | undefined;
     getRemoteScreenStream: (participantId: string) => MediaStream | undefined;
-    requestRemoteMediaInfo: (participantId: string) => void;
+    requestRemoteMediaInfo: (participantId: string, force?: boolean) => void;
     pullParticipantTracks: (
         participantId: string,
         remoteSessionId?: string,
@@ -152,6 +152,7 @@ export class CallSfuSyncManager {
             const participantId = participant.publicId.toLowerCase();
             const sessionId = this.options.getRemoteSessionId(participantId);
             const mids = this.options.getParticipantMids(participantId);
+            const remoteState = this.options.getRemoteMediaState(participantId);
 
             if (!sessionId) {
                 this.options.requestRemoteMediaInfo(participantId);
@@ -159,13 +160,24 @@ export class CallSfuSyncManager {
             }
 
             const mainStream = this.options.getRemoteMainStream(participantId);
-            if (this.isRemoteStreamBroken(mainStream)) {
+            const hasLiveAudio = this.hasLiveTrack(mainStream, "audio");
+            const hasLiveVideo = this.hasLiveTrack(mainStream, "video");
+            const expectsAudio = !remoteState?.muted || !!mids?.audioMid;
+            const expectsVideo = !remoteState?.cameraOff || !!mids?.videoMid;
+            const streamBroken = this.isRemoteStreamBroken(mainStream);
+            const expectedMediaMissing =
+                (expectsAudio && !hasLiveAudio) || (expectsVideo && !hasLiveVideo);
+
+            if (streamBroken || expectedMediaMissing) {
                 void this.options.pullParticipantTracks(
                     participantId,
                     sessionId,
                     mids?.audioMid,
                     mids?.videoMid,
                 );
+                if (expectsVideo && !mids?.videoMid) {
+                    this.options.requestRemoteMediaInfo(participantId, true);
+                }
             }
 
             if (mids?.screenMid) {
@@ -189,6 +201,16 @@ export class CallSfuSyncManager {
             .filter((track) => track.kind === "audio" || track.kind === "video");
         if (mediaTracks.length === 0) return true;
         return mediaTracks.every((track) => track.readyState === "ended");
+    }
+
+    private hasLiveTrack(
+        stream: MediaStream | undefined,
+        kind: "audio" | "video",
+    ): boolean {
+        if (!stream) return false;
+        return stream
+            .getTracks()
+            .some((track) => track.kind === kind && track.readyState === "live");
     }
 
     private pruneRemoteTrackFromStream(

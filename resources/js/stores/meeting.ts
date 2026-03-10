@@ -173,7 +173,10 @@ export const useMeetingStore = defineStore('meeting', () => {
     // 2. Initialize Sub-Managers
     const layout = createLayoutManager(meeting, localParticipant);
     
-    const presence = createPresenceManager(meeting, localParticipant, currentRoomId);
+    const presence = createPresenceManager(meeting, localParticipant, currentRoomId, (pid) => {
+        stream.removeParticipantStreams(pid);
+        stream.removeParticipantStreams(`${pid}:screen`);
+    });
     
     const stream = createUnifiedMediaManager(
         meeting, 

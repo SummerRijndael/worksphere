@@ -11,7 +11,8 @@ const log = createLogger('PRESENCE');
 export function createPresenceManager(
     meetingRef: Ref<Meeting | null>,
     localParticipantRef: Ref<MeetingParticipant | null>,
-    currentRoomIdRef: Ref<string | null>
+    currentRoomIdRef: Ref<string | null>,
+    onMemberLeaving?: (publicId: string) => void
 ) {
     const participants = ref<any[]>([]);
     const activeParticipantIds = ref<Set<string>>(new Set());
@@ -25,6 +26,19 @@ export function createPresenceManager(
     const simulatedRole = ref<'host' | 'participant' | null>(null);
 
     const authStore = useAuthStore();
+
+    function mergeUserIdentity(existingUser: any, incomingUser: any) {
+        if (!incomingUser) return existingUser;
+        if (!existingUser) return incomingUser;
+
+        // Preserve stable identity fields if presence payload only includes display attrs.
+        return {
+            ...existingUser,
+            ...incomingUser,
+            id: incomingUser.id ?? existingUser.id,
+            public_id: incomingUser.public_id ?? existingUser.public_id,
+        };
+    }
 
     function setupEcho(meetingId: string) {
         if (echoChannel.value) return;
@@ -54,7 +68,12 @@ export function createPresenceManager(
                         public_id: user.public_id,
                         role: user.role,
                         status: user.status || 'admitted',
-                        user: user.avatar ? { name: user.name, avatar_url: user.avatar } : undefined,
+                        user: user.avatar ? {
+                            name: user.name,
+                            avatar_url: user.avatar,
+                            id: user.user_id ?? undefined,
+                            public_id: user.user_public_id ?? undefined,
+                        } : undefined,
                         metadata: { guest_name: user.name },
                         current_room_id:
                             user.current_room_id !== undefined && user.current_room_id !== null
@@ -81,7 +100,12 @@ export function createPresenceManager(
                         public_id: pid,
                         role: user.role,
                         status: user.status || 'admitted',
-                        user: user.avatar ? { name: user.name, avatar_url: user.avatar } : null,
+                        user: user.avatar ? {
+                            name: user.name,
+                            avatar_url: user.avatar,
+                            id: user.user_id ?? undefined,
+                            public_id: user.user_public_id ?? undefined,
+                        } : null,
                         metadata: { guest_name: user.name },
                         current_room_id: (user.current_room_id !== undefined && user.current_room_id !== null) ? String(user.current_room_id) : ((user.assigned_room_id !== undefined && user.assigned_room_id !== null) ? String(user.assigned_room_id) : null)
                     }];
@@ -90,6 +114,9 @@ export function createPresenceManager(
             .leaving(async (user: any) => {
                 const pid = user.public_id.toLowerCase();
                 log('CHANNEL', `Member leaving: ${pid}`, user);
+                
+                // Trigger media cleanup
+                onMemberLeaving?.(pid);
                 
                 // Only toast if they were in our current room
                 const myRoom = currentRoomIdRef.value ? String(currentRoomIdRef.value) : null;
@@ -160,9 +187,13 @@ export function createPresenceManager(
             public_id: pid,
             role: data.role || existing?.role || 'participant',
             status: data.status || existing?.status || 'admitted',
-            user: data.user || existing?.user,
+            user: mergeUserIdentity(existing?.user, data.user),
             metadata: { ...(existing?.metadata || {}), ...(data.metadata || {}) },
-            current_room_id: data.current_room_id !== undefined ? (data.current_room_id === null ? null : String(data.current_room_id)) : (existing?.current_room_id || null)
+            current_room_id: data.current_room_id !== undefined ? (data.current_room_id === null ? null : String(data.current_room_id)) : (existing?.current_room_id || null),
+            camera_enabled:
+                data.camera_enabled !== undefined
+                    ? data.camera_enabled
+                    : (existing?.camera_enabled ?? null),
         };
 
         if (existingIdx !== -1) {
@@ -195,6 +226,13 @@ export function createPresenceManager(
             newSet.delete(publicId);
             screenShares.value = newSet;
         }
+    }
+
+    function setCameraState(publicId: string, isEnabled: boolean | null) {
+        upsertParticipant({
+            public_id: publicId,
+            camera_enabled: isEnabled,
+        });
     }
 
     function setTalking(publicId: string, isTalking: boolean) {
@@ -317,6 +355,7 @@ export function createPresenceManager(
         upsertParticipant,
         toggleHandState,
         toggleScreenShareState,
+        setCameraState,
         setTalking,
         admitParticipant,
         rejectParticipant,

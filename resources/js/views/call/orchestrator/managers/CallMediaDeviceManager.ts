@@ -4,6 +4,7 @@ type VideoEffect = "none" | "blur" | "image";
 export interface AcquireLocalMediaOptions {
     callType: CallType;
     defaultCameraOff: boolean;
+    defaultMicOff: boolean;
     videoEffect: VideoEffect;
     selectedVideoDeviceId?: string | null;
     backgroundImage?: string | null;
@@ -122,6 +123,11 @@ export async function acquireLocalMedia(
                             .getVideoTracks()
                             .forEach((track) => (track.enabled = false));
                     }
+                    if (options.defaultMicOff) {
+                        stream
+                            .getAudioTracks()
+                            .forEach((track) => (track.enabled = false));
+                    }
 
                     console.log("[Call] Local media acquired:", {
                         audio: stream.getAudioTracks().length > 0 ? "YES" : "NO",
@@ -153,6 +159,12 @@ export async function acquireLocalMedia(
             video: false,
         });
 
+        if (options.defaultMicOff) {
+            stream
+                .getAudioTracks()
+                .forEach((track) => (track.enabled = false));
+        }
+
         console.log("[Call] Local media acquired:", {
             audio: stream.getAudioTracks().length > 0 ? "YES" : "NO",
             video: "NO (Audio-only mode)",
@@ -164,12 +176,21 @@ export async function acquireLocalMedia(
             videoFallback: true,
         };
     } catch (error) {
-        console.error("[Call] Media acquisition failed:", error);
+        console.error("[Call] Media acquisition failed (mic likely in use/denied):", error);
+        
+        // gracefully fallback to an empty stream so the call doesn't crash completely.
+        // This allows the user to still join and hear others.
+        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const dest = audioCtx.createMediaStreamDestination();
+        const silentStream = dest.stream;
+        // set disabled so other peers don't even try to playback
+        silentStream.getAudioTracks().forEach(t => t.enabled = false);
+
         return {
-            stream: null,
+            stream: silentStream,
             originalVideoTrack: null,
             videoFallback: true,
-            errorMessage: "Microphone access denied.",
+            errorMessage: "Microphone access denied or unreadable. You joined without a microphone.",
         };
     }
 }

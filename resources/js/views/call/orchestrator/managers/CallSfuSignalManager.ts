@@ -69,7 +69,10 @@ export class CallSfuSignalManager {
         const { audioMid, videoMid } = this.getLocalSfuMids();
         const maxRetries = this.options.maxMidRetries ?? 3;
         const retryDelayMs = this.options.midRetryDelayMs ?? 2000;
-        if (!audioMid && !videoMid && retryCount < maxRetries) {
+        const hasAudioMid = audioMid !== undefined && audioMid !== null && audioMid !== "";
+        const hasVideoMid = videoMid !== undefined && videoMid !== null && videoMid !== "";
+
+        if (!hasAudioMid && !hasVideoMid && retryCount < maxRetries) {
             console.log(
                 `[SFU] No local MIDs ready for ${joinerPublicId} yet (attempt ${retryCount + 1}/${maxRetries}), retrying...`,
             );

@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
 
@@ -32,6 +33,7 @@ class MeetingController extends Controller
         'force-stop-screen-share',
         'hand-toggle',
         'laser-mode-changed',
+        'participant-joined',
         'participant-kicked',
         'reaction',
         'request-media-info',
@@ -223,12 +225,33 @@ class MeetingController extends Controller
 
     public function signal(Request $request, Meeting $meeting): JsonResponse
     {
-        $request->validate([
+        $signalDataInput = $request->input('signal_data');
+        $signalDiag = is_array($signalDataInput) ? ($signalDataInput['_diag'] ?? null) : null;
+
+        $validator = Validator::make($request->all(), [
             'signal_type' => 'required|string|in:'.implode(',', self::ALLOWED_SIGNAL_TYPES),
             'signal_data' => 'present|array',
             'target_participant_public_id' => 'nullable|string',
             'sender_participant_public_id' => 'required|string',
         ]);
+        if ($validator->fails()) {
+            Log::channel('videocall')->warning('[SIGNAL] Validation failed', [
+                'meeting' => $meeting->public_id,
+                'user_id' => Auth::id(),
+                'sender' => $request->input('sender_participant_public_id'),
+                'target' => $request->input('target_participant_public_id'),
+                'signal_type' => $request->input('signal_type'),
+                'signal_data_type' => gettype($request->input('signal_data')),
+                'errors' => $validator->errors()->toArray(),
+                'diag' => $signalDiag,
+                'ua' => (string) $request->userAgent(),
+            ]);
+
+            return response()->json([
+                'message' => 'Invalid signal payload.',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
 
         $participantSessionId = $request->header('X-Participant-ID') ?: (session('meeting_participant_id') ?: session('participant_id'));
         $senderPublicId = strtolower($request->sender_participant_public_id);
@@ -243,6 +266,14 @@ class MeetingController extends Controller
             $senderQuery->where('user_id', $user->id);
         } else {
             if (! $participantSessionId || strtolower($participantSessionId) !== $senderPublicId) {
+                Log::channel('videocall')->warning('[SIGNAL] Session mismatch', [
+                    'meeting' => $meeting->public_id,
+                    'sender' => $senderPublicId,
+                    'participant_session_id' => $participantSessionId,
+                    'signal_type' => $request->input('signal_type'),
+                    'diag' => $signalDiag,
+                    'ua' => (string) $request->userAgent(),
+                ]);
                 return response()->json(['message' => 'Mismatched signal session'], 403);
             }
         }
@@ -250,11 +281,22 @@ class MeetingController extends Controller
         $sender = $senderQuery->first();
 
         if (! $sender) {
+            Log::channel('videocall')->warning('[SIGNAL] Unauthorized sender', [
+                'meeting' => $meeting->public_id,
+                'sender' => $senderPublicId,
+                'signal_type' => $request->input('signal_type'),
+                'user_id' => Auth::id(),
+                'diag' => $signalDiag,
+                'ua' => (string) $request->userAgent(),
+            ]);
             return response()->json(['message' => 'Unauthorized or invalid sender session'], 403);
         }
 
         $signalType = (string) $request->signal_type;
         $signalData = $request->signal_data ?? [];
+        $signalDiag = is_array($signalData) && is_array($signalData['_diag'] ?? null)
+            ? $signalData['_diag']
+            : null;
 
         if (in_array($signalType, self::MEDIA_TOGGLE_SIGNAL_TYPES, true)) {
             $rateKey = sprintf(
@@ -267,6 +309,13 @@ class MeetingController extends Controller
             $maxAttempts = 60;
             $decaySeconds = 10;
             if (RateLimiter::tooManyAttempts($rateKey, $maxAttempts)) {
+                Log::channel('videocall')->warning('[SIGNAL] Media toggle rate limited', [
+                    'meeting' => $meeting->public_id,
+                    'sender' => $sender->public_id,
+                    'signal_type' => $signalType,
+                    'retry_after_seconds' => RateLimiter::availableIn($rateKey),
+                    'diag' => $signalDiag,
+                ]);
                 return response()->json([
                     'message' => 'Too many media updates sent too quickly. Please slow down.',
                     'retry_after_seconds' => RateLimiter::availableIn($rateKey),
@@ -282,6 +331,13 @@ class MeetingController extends Controller
                 $isModerator = in_array($sender->role, ['host', 'co-host'], true);
 
                 if ($restrictToModerators && ! $isModerator) {
+                    Log::channel('videocall')->warning('[SIGNAL] Screen share denied by role policy', [
+                        'meeting' => $meeting->public_id,
+                        'sender' => $sender->public_id,
+                        'sender_role' => $sender->role,
+                        'signal_type' => $signalType,
+                        'diag' => $signalDiag,
+                    ]);
                     return response()->json(['message' => 'Only host or co-host can share screen in this meeting.'], 403);
                 }
             }
@@ -290,11 +346,25 @@ class MeetingController extends Controller
         if ($signalType === 'force-stop-screen-share') {
             $isModerator = in_array($sender->role, ['host', 'co-host'], true);
             if (! $isModerator) {
+                Log::channel('videocall')->warning('[SIGNAL] Force stop denied by role policy', [
+                    'meeting' => $meeting->public_id,
+                    'sender' => $sender->public_id,
+                    'sender_role' => $sender->role,
+                    'signal_type' => $signalType,
+                    'diag' => $signalDiag,
+                ]);
                 return response()->json(['message' => 'Only host or co-host can control screen sharing.'], 403);
             }
 
             $targetId = strtolower((string) ($signalData['targetId'] ?? ''));
             if ($targetId === '') {
+                Log::channel('videocall')->warning('[SIGNAL] Force stop missing target', [
+                    'meeting' => $meeting->public_id,
+                    'sender' => $sender->public_id,
+                    'signal_type' => $signalType,
+                    'signal_data' => $signalData,
+                    'diag' => $signalDiag,
+                ]);
                 return response()->json(['message' => 'Missing target participant.'], 422);
             }
 
@@ -304,8 +374,38 @@ class MeetingController extends Controller
                 ->exists();
 
             if (! $targetExists) {
+                Log::channel('videocall')->warning('[SIGNAL] Force stop target missing', [
+                    'meeting' => $meeting->public_id,
+                    'sender' => $sender->public_id,
+                    'target' => $targetId,
+                    'signal_type' => $signalType,
+                    'diag' => $signalDiag,
+                ]);
                 return response()->json(['message' => 'Target participant not found in meeting.'], 404);
             }
+        }
+
+        if ($signalType === 'signal' && (($signalData['type'] ?? null) === 'sfu-media-ready')) {
+            Log::channel('videocall')->debug('[SIGNAL][SFU] media-ready', [
+                'meeting' => $meeting->public_id,
+                'sender' => $sender->public_id,
+                'target' => $request->target_participant_public_id,
+                'session_id' => $signalData['sessionId'] ?? null,
+                'audio_mid' => $signalData['audioMid'] ?? null,
+                'video_mid' => $signalData['videoMid'] ?? null,
+                'screen_mid' => $signalData['screenMid'] ?? null,
+                'room_id' => $signalData['current_room_id'] ?? null,
+                'diag' => $signalDiag,
+            ]);
+        }
+
+        if ($signalType === 'request-media-info') {
+            Log::channel('videocall')->debug('[SIGNAL][SFU] request-media-info', [
+                'meeting' => $meeting->public_id,
+                'sender' => $sender->public_id,
+                'target' => $request->target_participant_public_id,
+                'diag' => $signalDiag,
+            ]);
         }
 
         Log::channel('videocall')->debug('[SIGNAL] Broadcasting signal', [
@@ -314,6 +414,8 @@ class MeetingController extends Controller
             'sender' => $sender->public_id,
             'target' => $request->target_participant_public_id,
             'data_type' => $request->signal_data['type'] ?? 'none',
+            'diag' => $signalDiag,
+            'ua' => (string) $request->userAgent(),
         ]);
 
         broadcast(new MeetingSignal(
@@ -448,6 +550,7 @@ class MeetingController extends Controller
             'meeting' => $meeting->public_id,
             'sessionId' => $sessionId,
             'tracks' => $request->input('tracks'),
+            'has_session_description' => $request->filled('sessionDescription.sdp'),
         ]);
 
         try {
@@ -456,6 +559,23 @@ class MeetingController extends Controller
                 ->post("https://rtc.live.cloudflare.com/v1/apps/{$appId}/sessions/{$sessionId}/tracks/new", $request->only(['sessionDescription', 'tracks']));
 
             $responseData = $response->json();
+            $trackSummary = collect($responseData['tracks'] ?? [])->map(function ($track) {
+                return [
+                    'trackName' => $track['trackName'] ?? null,
+                    'mid' => $track['mid'] ?? null,
+                    'errorCode' => $track['errorCode'] ?? null,
+                    'requiresImmediateRenegotiation' => $track['requiresImmediateRenegotiation'] ?? null,
+                ];
+            })->values()->all();
+
+            Log::channel('videocall')->debug('[SFU] tracks/new response', [
+                'meeting' => $meeting->public_id,
+                'sessionId' => $sessionId,
+                'status' => $response->status(),
+                'track_summary' => $trackSummary,
+                'has_session_description' => is_array($responseData) && ! empty($responseData['sessionDescription']),
+            ]);
+
             if (! $response->successful()) {
                 Log::channel('videocall')->error('[SFU] Meeting Cloudflare tracks/new error', [
                     'status' => $response->status(),
