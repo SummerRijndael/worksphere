@@ -78,7 +78,7 @@ const innerClasses = computed(() =>
         props.variant === "square" ? "rounded-lg" : "rounded-full",
         "text-[var(--text-secondary)] font-medium",
         props.ring &&
-            "ring-2 ring-[var(--surface-elevated)] ring-offset-2 ring-offset-[var(--surface-primary)]"
+            "ring-2 ring-[var(--surface-tertiary)]"
     )
 );
 

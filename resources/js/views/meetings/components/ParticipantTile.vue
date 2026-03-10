@@ -984,9 +984,8 @@ watch(
 .tile-avatar-comp {
     width: 80px;
     height: 80px;
-    border: 2px solid rgba(255, 255, 255, 0.1);
-    background: #3c4043;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    border: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .tile-avatar {

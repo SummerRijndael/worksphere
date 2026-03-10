@@ -3373,12 +3373,15 @@ const networkStats = reactive({
 });
 
 let lastBytes = 0;
+let lastPacketsLost = 0;
+let lastPacketsReceived = 0;
 let lastStatsTime = Date.now();
 let statsInterval: number | null = null;
 const poorConnectionDetected = ref(false);
 let poorConnectionTimer = 0;
 let rttStaleCount = 0;
-const POOR_CONNECTION_THRESHOLD = 5; // 5 seconds (roughly 2 intervals)
+let smoothedRtt = 0;
+const POOR_CONNECTION_THRESHOLD = 3; // 3 intervals (9 seconds)
 
 async function updateNetworkStats() {
     const pc = meetingStore.sfuPc();
@@ -3409,6 +3412,15 @@ async function updateNetworkStats() {
             if (report.type === "transport") {
                 activeCandidatePairId = report.selectedCandidatePairId;
             }
+            // Bitrate: Outbound + Inbound
+            if (report.type === "outbound-rtp") {
+                currentBytes += report.bytesSent || 0;
+            }
+            if (report.type === "inbound-rtp") {
+                currentBytes += report.bytesReceived || 0;
+                totalPacketsLost += report.packetsLost || 0;
+                totalPacketsReceived += report.packetsReceived || 0;
+            }
         });
 
         let rttUpdated = false;
@@ -3419,37 +3431,20 @@ async function updateNetworkStats() {
                 (report.id === activeCandidatePairId ||
                     (report.state === "succeeded" && report.nominated))
             ) {
-                // Primary: currentRoundTripTime (Chrome reliable, Firefox sometimes stale)
                 let newRtt = 0;
-                if (
-                    report.currentRoundTripTime &&
-                    report.currentRoundTripTime > 0
-                ) {
-                    newRtt = report.currentRoundTripTime * 1000;
-                }
-                // Fallback: totalRoundTripTime / responsesReceived (more reliable in Firefox)
-                else if (
-                    report.totalRoundTripTime &&
-                    report.responsesReceived > 0
-                ) {
-                    newRtt =
-                        (report.totalRoundTripTime / report.responsesReceived) *
-                        1000;
+                const rawRtt = report.currentRoundTripTime || 0;
+                
+                if (rawRtt > 0) {
+                    newRtt = rawRtt > 1.0 ? rawRtt : rawRtt * 1000;
+                } else if (report.totalRoundTripTime && report.responsesReceived > 0) {
+                    const avgRtt = report.totalRoundTripTime / report.responsesReceived;
+                    newRtt = avgRtt > 1.0 ? avgRtt : avgRtt * 1000;
                 }
 
                 if (newRtt > 0 && newRtt < 10000) {
                     networkStats.rtt = newRtt;
                     rttUpdated = true;
                 }
-            }
-            // Outbound bitrate (bytesSent) or Inbound (bytesReceived)
-            if (report.type === "outbound-rtp") {
-                currentBytes += report.bytesSent || 0;
-            }
-            // Inbound packet loss
-            if (report.type === "inbound-rtp") {
-                totalPacketsLost += report.packetsLost || 0;
-                totalPacketsReceived += report.packetsReceived || 0;
             }
         });
 
@@ -3461,6 +3456,12 @@ async function updateNetworkStats() {
         }
         // After 5 stale readings (~15s), consider RTT unreliable and zero it out
         const effectiveRtt = rttStaleCount >= 5 ? 0 : networkStats.rtt;
+        
+        // RTT Smoothing
+        if (effectiveRtt > 0) {
+            if (smoothedRtt === 0) smoothedRtt = effectiveRtt;
+            else smoothedRtt = (smoothedRtt * 0.7) + (effectiveRtt * 0.3);
+        }
 
         if (lastBytes > 0 && delta > 0) {
             networkStats.bitrate =
@@ -3468,21 +3469,47 @@ async function updateNetworkStats() {
         }
         lastBytes = currentBytes;
 
-        const totalPackets = totalPacketsLost + totalPacketsReceived;
-        const lossPercent =
-            totalPackets > 0 ? (totalPacketsLost / totalPackets) * 100 : 0;
+        // INTERVAL-BASED LOSS CALCULATION
+        let deltaLost = totalPacketsLost - lastPacketsLost;
+        let deltaReceived = totalPacketsReceived - lastPacketsReceived;
+        
+        // Guard against stats reset (e.g. new PC or SFU reconnect)
+        if (deltaLost < 0 || deltaReceived < 0) {
+            deltaLost = Math.max(0, totalPacketsLost);
+            deltaReceived = Math.max(0, totalPacketsReceived);
+        }
+        
+        const deltaTotal = deltaLost + deltaReceived;
+        const lossPercent = deltaTotal > 0 ? (deltaLost / deltaTotal) * 100 : 0;
+        
+        lastPacketsLost = totalPacketsLost;
+        lastPacketsReceived = totalPacketsReceived;
         networkStats.packetLoss = lossPercent;
 
-        // Scoring (0=Good, 1=Fair, 2=Poor)
+        // ── Scoring (0=Good, 1=Fair, 2=Poor) ──
+        // RTT is the PRIMARY signal — it is the ground truth for connection quality.
+        // WebRTC's packetsLost counter is unreliable: it reports phantom loss from
+        // placeholder transceivers, SFU renegotiation sequence gaps, and idle/muted
+        // tracks. A 7ms RTT with "15% loss" means the loss is fake.
+        //
+        // Rule: If RTT < 100ms, the connection is definitely Good regardless of
+        // what the loss counter reports. Loss only matters when RTT confirms congestion.
         let oldScore = networkStats.score;
 
-        if (lossPercent > 10 || effectiveRtt > 400) {
+        if (smoothedRtt > 0 && smoothedRtt < 100) {
+            // RTT is excellent — connection is definitively good
+            networkStats.score = 0;
+            poorConnectionTimer = 0;
+            poorConnectionDetected.value = false;
+        } else if (smoothedRtt >= 500 || (lossPercent > 10 && smoothedRtt >= 200)) {
+            // RTT confirms real congestion
             networkStats.score = 2;
             poorConnectionTimer++;
             if (poorConnectionTimer >= POOR_CONNECTION_THRESHOLD) {
                 poorConnectionDetected.value = true;
             }
-        } else if (lossPercent > 3 || effectiveRtt > 200) {
+        } else if (smoothedRtt >= 200 || (lossPercent > 5 && smoothedRtt >= 100)) {
+            // Moderate RTT with some loss — Fair
             networkStats.score = 1;
             poorConnectionTimer = 0;
             poorConnectionDetected.value = false;
@@ -3492,9 +3519,9 @@ async function updateNetworkStats() {
             poorConnectionDetected.value = false;
         }
 
-        if (oldScore !== networkStats.score || networkStats.score === 2) {
+        if (networkStats.score !== oldScore || networkStats.score >= 1) {
             console.log(
-                `[NetworkStats] Score: ${networkStats.score} | RTT: ${networkStats.rtt}ms${rttStaleCount >= 5 ? " (stale, ignored)" : ""} | Loss: ${lossPercent.toFixed(2)}% | Bitrate: ${(networkStats.bitrate || 0).toFixed(0)}kbps | Timer: ${poorConnectionTimer}/${POOR_CONNECTION_THRESHOLD}`,
+                `[NetworkStats] Score: ${networkStats.score} | RTT: ${smoothedRtt.toFixed(0)}ms${rttStaleCount >= 5 ? " (stale)" : ""} | Loss: ${lossPercent.toFixed(2)}% (${deltaLost}/${deltaTotal} pkts) | Bitrate: ${(networkStats.bitrate || 0).toFixed(0)}kbps | Timer: ${poorConnectionTimer}/${POOR_CONNECTION_THRESHOLD}`,
             );
         }
     } catch (e) {

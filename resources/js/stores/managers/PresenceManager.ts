@@ -11,7 +11,8 @@ const log = createLogger('PRESENCE');
 export function createPresenceManager(
     meetingRef: Ref<Meeting | null>,
     localParticipantRef: Ref<MeetingParticipant | null>,
-    currentRoomIdRef: Ref<string | null>
+    currentRoomIdRef: Ref<string | null>,
+    onMemberLeaving?: (publicId: string) => void
 ) {
     const participants = ref<any[]>([]);
     const activeParticipantIds = ref<Set<string>>(new Set());
@@ -113,6 +114,9 @@ export function createPresenceManager(
             .leaving(async (user: any) => {
                 const pid = user.public_id.toLowerCase();
                 log('CHANNEL', `Member leaving: ${pid}`, user);
+                
+                // Trigger media cleanup
+                onMemberLeaving?.(pid);
                 
                 // Only toast if they were in our current room
                 const myRoom = currentRoomIdRef.value ? String(currentRoomIdRef.value) : null;

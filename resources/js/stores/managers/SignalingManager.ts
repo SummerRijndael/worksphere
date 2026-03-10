@@ -30,6 +30,18 @@ export function createSignalingManager(
     let signalSequence = 0;
     let mediaStateVersion = 0;
     const lastMediaInfoRequestAt = new Map<string, number>();
+    const participantSignalQueues = new Map<string, Promise<any>>();
+
+    function enqueueParticipantSignal(participantId: string, task: () => Promise<any>) {
+        const currentQueue = participantSignalQueues.get(participantId) || Promise.resolve();
+        const nextQueue = currentQueue
+            .then(() => task())
+            .catch((err) => {
+                log('ERROR', `Queue task failed for ${participantId}`, err);
+            });
+        participantSignalQueues.set(participantId, nextQueue);
+        return nextQueue;
+    }
 
     function requestMediaInfoDirect(participantId: string) {
         if (!meetingRef.value || !localParticipantRef.value) return;
@@ -99,17 +111,17 @@ export function createSignalingManager(
                     senderDiag,
                     receiverClientInstanceId: clientInstanceId,
                 });
-                handleSignal(e.sender_participant_public_id, e.signal_type, e.signal_data);
+                enqueueParticipantSignal(e.sender_participant_public_id, () => handleSignal(e.sender_participant_public_id, e.signal_type, e.signal_data));
             })
             .listenForWhisper('laser-move', (data: any) => {
                 // Whisper events don't have the same envelope as broadcast events
                 if (data.participant_id) {
-                    handleSignal(data.participant_id, 'laser-move', data);
+                    enqueueParticipantSignal(data.participant_id, () => handleSignal(data.participant_id, 'laser-move', data));
                 }
             })
             .listenForWhisper('annotation-update', (data: any) => {
                 if (data.participant_id) {
-                    handleSignal(data.participant_id, 'annotation-update', data);
+                    enqueueParticipantSignal(data.participant_id, () => handleSignal(data.participant_id, 'annotation-update', data));
                 }
             })
             .listen('.MeetingParticipantJoined', (e: any) => {
@@ -184,13 +196,20 @@ export function createSignalingManager(
         const senderDiag = data?._diag || null;
         
         // Ignore own signals (by ID).
+        const diagSender = String(data?._diag?.sender_participant_public_id || '').toLowerCase();
+        const isSelfById = !!(myId && (normalizedSenderId === myId || diagSender === myId));
+
         // We also ignore signals from our *own* current SFU session to avoid loopbacks,
         // but only if it's not the generic 'realtime-kit' ID used by all Cloudflare SDK participants.
-        const isOwnSession = data?.sessionId &&
+        const isOwnSession = !!(data?.sessionId &&
                             data.sessionId === streamManager.sfuSessionId.value &&
-                            streamManager.sfuSessionId.value !== 'realtime-kit';
+                            streamManager.sfuSessionId.value !== 'realtime-kit');
 
-        if (!localParticipantRef.value || normalizedSenderId === myId || isOwnSession) {
+        if (!localParticipantRef.value || isSelfById || isOwnSession) {
+            // Only log if it's actually us, to avoid noise from early signals before we have localParticipantRef
+            if (localParticipantRef.value && (isSelfById || isOwnSession)) {
+                log('DEBUG', `Ignoring loopback signal type=${type}`, { normalizedSenderId, diagSender, myId, isOwnSession });
+            }
             return;
         }
         

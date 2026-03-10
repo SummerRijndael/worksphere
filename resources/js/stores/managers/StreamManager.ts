@@ -90,6 +90,13 @@ export function createStreamManager(
     // Queue for signals that arrive before SFU session is established
     const pendingPullSignals: { participantPublicId: string, remoteSessionId?: string, audioMid?: string, videoMid?: string, screenMid?: string }[] = [];
     
+    // Proactive Track Binding (SDK: createConsumerObjectAndWaitForTrack)
+    const trackResolvers = new Map<string | RTCRtpTransceiver, { 
+        resolve: (payload: { track: MediaStreamTrack, transceiver: RTCRtpTransceiver }) => void, 
+        reject: (err: any) => void,
+        timeout: any
+    }>();
+    
     // Desync Guard (Self-Healing)
     let healthCheckInterval: number | null = null;
 
@@ -106,7 +113,14 @@ export function createStreamManager(
     // SFU Queue
     let sfuQueue: Promise<void> = Promise.resolve();
     function runInSFUQueue<T>(fn: () => Promise<T>): Promise<T> {
-        const result = sfuQueue.then(fn);
+        const result = sfuQueue.then(async () => {
+            try {
+                return await fn();
+            } catch (err) {
+                log('ERROR', 'SFU Queue task failed', err);
+                throw err;
+            }
+        });
         sfuQueue = result.then(() => {}, () => {});
         return result as Promise<T>;
     }
@@ -922,15 +936,38 @@ export function createStreamManager(
             log("TRACK", `ontrack Event: kind=${track.kind}, mid=${mid}`);
 
             let participantId = midToParticipantMap.get(mid);
-            if (!participantId) {
-                const assoc = sfuTransceiverMap.get(event.transceiver);
-                if (assoc) {
-                    participantId = assoc.participantId;
-                    if (assoc.trackName === 'screen') participantId += ':screen';
-                    log("TRACK", `Resolved ${mid} via transceiver association to ${participantId}`);
-                }
-            } else {
+            const assoc = sfuTransceiverMap.get(event.transceiver);
+
+            // Guard: Never process tracks from our own publication transceivers.
+            if (assoc?.participantId === 'self') {
+                log('DEBUG', `Ignoring ontrack for local transceiver mid=${mid}`);
+                return;
+            }
+
+            if (!participantId && assoc) {
+                participantId = assoc.participantId;
+                if (assoc.trackName === 'screen') participantId += ':screen';
+                log("TRACK", `Resolved ${mid} via transceiver association to ${participantId}`);
+            } else if (participantId) {
                 log("TRACK", `Resolved ${mid} via MID map to ${participantId}`);
+                
+                // Potential Theft Detection: If signaling says it's for Person A but 
+                // the transceiver was previously associated with Person B, log it.
+                if (assoc && assoc.participantId !== participantId.replace(':screen', '')) {
+                    log('WARNING', `Transceiver theft detected! Signaling=${participantId}, StaleAssoc=${assoc.participantId}:${assoc.trackName}. Preferring signaling.`);
+                }
+            }
+
+            // 3. Resolve internal track promises (Asynchronous Binding Pattern)
+            const key = `${mid}:${track.kind}`;
+            const resolver = trackResolvers.get(key) || trackResolvers.get(event.transceiver);
+            
+            if (resolver) {
+                log('SFU', `Resolving pending track for ${mid ? key : 'transceiver-bound'}`);
+                clearTimeout(resolver.timeout);
+                trackResolvers.delete(key);
+                trackResolvers.delete(event.transceiver);
+                resolver.resolve({ track, transceiver: event.transceiver });
             }
 
             if (participantId) {
@@ -1164,6 +1201,14 @@ export function createStreamManager(
         }
 
         const normalizedId = participantPublicId.toLowerCase();
+        
+        // Guard: Never pull our own tracks through the SFU. This prevents redundant transceivers
+        // and signaling loops that can lead to transceiver state confusion.
+        if (localParticipantRef.value && normalizedId === localParticipantRef.value.public_id.toLowerCase()) {
+            log('DEBUG', `Ignoring pull request for local participant ${normalizedId}`);
+            return;
+        }
+
         const remotePublication = remotePublications.get(normalizedId) || createEmptyRemotePublication();
         const knownTracks = remoteSfuTracks.get(normalizedId);
         const targetSessionId = remoteSessionId || remotePublication.sessionId || remoteSfuSessions.get(normalizedId);
@@ -1341,21 +1386,32 @@ export function createStreamManager(
 
             try {
                 // Ensure transceivers exist before mapping MIDs
+                // FIND TRANSCEIVERS: Include inactive ones for reuse to prevent transceiver pile-up (leakage)
                 let audioTransceiver = sfuPc.getTransceivers().find(t =>
-                    t.direction === "recvonly" &&
-                    sfuTransceiverMap.get(t)?.participantId === participantPublicId.toLowerCase() &&
+                    sfuTransceiverMap.get(t)?.participantId === normalizedId &&
                     sfuTransceiverMap.get(t)?.trackName === "audio"
                 );
                 let videoTransceiver = sfuPc.getTransceivers().find(t =>
-                    t.direction === "recvonly" &&
-                    sfuTransceiverMap.get(t)?.participantId === participantPublicId.toLowerCase() &&
+                    sfuTransceiverMap.get(t)?.participantId === normalizedId &&
                     sfuTransceiverMap.get(t)?.trackName === "video"
                 );
                 let screenTransceiver = sfuPc.getTransceivers().find(t =>
-                    t.direction === "recvonly" &&
-                    sfuTransceiverMap.get(t)?.participantId === participantPublicId.toLowerCase() &&
+                    sfuTransceiverMap.get(t)?.participantId === normalizedId &&
                     sfuTransceiverMap.get(t)?.trackName === "screen"
                 );
+
+                if (audioTransceiver && audioTransceiver.direction === 'inactive') {
+                    log('SFU', `Reusing inactive audio transceiver for ${normalizedId}`);
+                    audioTransceiver.direction = 'recvonly';
+                }
+                if (videoTransceiver && videoTransceiver.direction === 'inactive') {
+                    log('SFU', `Reusing inactive video transceiver for ${normalizedId}`);
+                    videoTransceiver.direction = 'recvonly';
+                }
+                if (screenTransceiver && screenTransceiver.direction === 'inactive') {
+                    log('SFU', `Reusing inactive screen transceiver for ${normalizedId}`);
+                    screenTransceiver.direction = 'recvonly';
+                }
 
                 if (!audioTransceiver && trackReqs.some(r => r.trackName === 'audio')) {
                     audioTransceiver = sfuPc.addTransceiver("audio", { direction: "recvonly" });
@@ -1378,12 +1434,47 @@ export function createStreamManager(
                               req.trackName === 'video' ? videoTransceiver : 
                               req.trackName === 'screen' ? screenTransceiver : null;
                     
-                    // CRITICAL: Cloudflare needs the local MID to know which transceiver to associate the track with!
                     if (t?.mid) {
                         return { ...req, mid: t.mid };
                     }
                     return req;
                 });
+
+                // Set up track resolvers (SDK: createConsumerObjectAndWaitForTrack pattern)
+                const pendingTrackPromises = trackReqsWithMid
+                    .map(req => {
+                        const mid = req.mid;
+                        const t = req.trackName === 'audio' ? audioTransceiver : 
+                                  req.trackName === 'video' ? videoTransceiver : 
+                                  req.trackName === 'screen' ? screenTransceiver : null;
+                        
+                        if (!t) return null;
+
+                        const kind = req.trackName === 'audio' ? 'audio' : 'video';
+                        const midKey = mid ? `${mid}:${kind}` : null;
+                        
+                        return new Promise<{ track: MediaStreamTrack, transceiver: RTCRtpTransceiver }>((res, rej) => {
+                            // PROACTIVE CHECK: Check if the transceiver already has a live track attached (missed event race)
+                            if (t.receiver.track && isLiveTrack(t.receiver.track)) {
+                                log('DEBUG', `Proactive Resolver Hit: Track for ${normalizedId}:${req.trackName} already live in PC`);
+                                res({ track: t.receiver.track, transceiver: t });
+                                return;
+                            }
+
+                            const timeout = setTimeout(() => {
+                                if ((midKey && trackResolvers.has(midKey)) || trackResolvers.has(t)) {
+                                    log('WARNING', `Timed out waiting for track event ${midKey || 'transceiver-bound'} for ${normalizedId}`);
+                                    if (midKey) trackResolvers.delete(midKey);
+                                    trackResolvers.delete(t);
+                                    rej(new Error(`Timeout waiting for ${midKey || 'transceiver-bound'}`));
+                                }
+                            }, 10000);
+                            
+                            if (midKey) trackResolvers.set(midKey, { resolve: res, reject: rej, timeout });
+                            trackResolvers.set(t, { resolve: res, reject: rej, timeout });
+                        });
+                    })
+                    .filter(p => p !== null);
 
                 const connected = await waitForSfuConnected();
                 if (!connected) {
@@ -1392,6 +1483,23 @@ export function createStreamManager(
                     setTimeout(() => {
                         pullParticipantTracks(participantPublicId, targetSessionId, audioMid, videoMid, screenMid, pullGeneration);
                     }, delay);
+                    return;
+                }
+
+                // PROACTIVE SATISFACTION: If the PeerConnection already has all requested tracks live,
+                // we can skip the SFU API call entirely. This prevents "success-but-error" retry loops.
+                const satisfiedCount = trackReqsWithMid.filter(req => {
+                    if (!req.mid) return false;
+                    const tc = sfuPc!.getTransceivers().find(t => t.mid === req.mid);
+                    // Check if transceiver is live and matches KIND (security/correctness guard)
+                    const track = tc?.receiver.track;
+                    const expectedKind = req.trackName === 'audio' ? 'audio' : 'video';
+                    return track && track.kind === expectedKind && isLiveTrack(track);
+                }).length;
+
+                if (satisfiedCount >= trackReqs.length && trackReqs.length > 0) {
+                    log('SFU', `Pull targets fully satisfied locally (Proactive) for ${participantPublicId}, skipping API call.`);
+                    clearParticipantPullState(normalizedId, pullGeneration);
                     return;
                 }
 
@@ -1467,6 +1575,23 @@ export function createStreamManager(
                         validTracks.forEach((track: any) => {
                             if (track.mid) {
                                 const mapKey = track.trackName === 'screen' ? `${normalizedId}:screen` : normalizedId;
+                                
+                                // MID MAPPING PURGE: Clear any existing MIDs for this logical target.
+                                for (const [oldMid, oldTarget] of midToParticipantMap.entries()) {
+                                    if (oldTarget === mapKey && oldMid !== track.mid) {
+                                        log('SFU', `Purging stale MID ${oldMid} for ${mapKey} (replaced by ${track.mid})`);
+                                        
+                                        // HARDEN PURGE: Also clear the transceiver association to prevent ontrack mis-matching
+                                        const oldTc = sfuPc!.getTransceivers().find(tr => tr.mid === oldMid);
+                                        if (oldTc) {
+                                            sfuTransceiverMap.delete(oldTc);
+                                            log('SFU', `Cleared stale transceiver map association for MID ${oldMid}`);
+                                        }
+
+                                        midToParticipantMap.delete(oldMid);
+                                    }
+                                }
+
                                 midToParticipantMap.set(track.mid, mapKey);
                                 
                                 const t = sfuPc!.getTransceivers().find(tr => tr.mid === track.mid);
@@ -1488,20 +1613,6 @@ export function createStreamManager(
                         log('SFU', `setRemoteDescription warning for ${participantPublicId} (track already received, non-fatal):`, sdpErr);
                     }
 
-                    // Map MIDs to participant AFTER setRemoteDescription so tr.mid is available
-                    if (validTracks.length > 0) {
-                        validTracks.forEach((track: any) => {
-                            if (track.mid) {
-                                const mapKey = track.trackName === 'screen' ? `${normalizedId}:screen` : normalizedId;
-                                midToParticipantMap.set(track.mid, mapKey);
-                                
-                                const t = sfuPc!.getTransceivers().find(tr => tr.mid === track.mid);
-                                if (t) {
-                                    sfuTransceiverMap.set(t, { participantId: normalizedId, trackName: track.trackName });
-                                }
-                            }
-                        });
-                    }
 
                     flushPendingTracks();
 
@@ -1536,10 +1647,19 @@ export function createStreamManager(
                     await new Promise(r => setTimeout(r, 1000));
 
                     const satisfiedKinds = getSatisfiedPullTargetKinds(normalizedId);
+                    
+                    // TERMINAL ERROR DETECTION: If the SFU explicitly says a track is missing/forbidden,
+                    // we should NOT retry it. This prevents infinite loops on stale metadata.
+                    const terminalErrorKinds = {
+                        audio: explicitTrackErrors.some(t => t.trackName === 'audio' && (t.errorCode >= 400 || t.errorCode === 'NOT_FOUND')),
+                        video: explicitTrackErrors.some(t => t.trackName === 'video' && (t.errorCode >= 400 || t.errorCode === 'NOT_FOUND')),
+                        screen: explicitTrackErrors.some(t => t.trackName === 'screen' && (t.errorCode >= 400 || t.errorCode === 'NOT_FOUND')),
+                    };
+
                     const retryKinds = {
-                        audio: requestedKinds.audio && !satisfiedKinds.audio,
-                        video: requestedKinds.video && !satisfiedKinds.video,
-                        screen: requestedKinds.screen && !satisfiedKinds.screen,
+                        audio: requestedKinds.audio && !satisfiedKinds.audio && !terminalErrorKinds.audio,
+                        video: requestedKinds.video && !satisfiedKinds.video && !terminalErrorKinds.video,
+                        screen: requestedKinds.screen && !satisfiedKinds.screen && !terminalErrorKinds.screen,
                     };
                     const satisfiedTargets = hasSatisfiedPullTargets(normalizedId, requestedKinds);
                     const hasRemainingRetries = retryKinds.audio || retryKinds.video || retryKinds.screen;
@@ -1666,7 +1786,7 @@ export function createStreamManager(
                         const offer = await sfuPc.createOffer();
                         await sfuPc.setLocalDescription(offer);
 
-                        const registerTrackObjects = getActiveLocalTrackObjects(kind === 'video' && willHaveLiveTrack ? ['video'] : undefined);
+                        const registerTrackObjects = getActiveLocalTrackObjects();
 
                         try {
                             const res = await meetingService.sfuSessionTracks(
@@ -1750,19 +1870,61 @@ export function createStreamManager(
                         sfuTransceiverMap.get(transceiver)?.participantId === 'self'
                     );
                     let screenTc = selfScreenTransceivers.find((transceiver) =>
-                        !transceiver.mid && !transceiver.sender.track
+                        sfuTransceiverMap.get(transceiver)?.trackName === 'screen'
                     ) || null;
 
-                    if (!screenTc) {
-                        const staleScreenTransceivers = selfScreenTransceivers.filter((transceiver) =>
-                            !!transceiver.mid && !isLiveTrack(transceiver.sender.track)
-                        );
-                        if (staleScreenTransceivers.length > 0) {
-                            log('MEDIA', `Retiring ${staleScreenTransceivers.length} stale screen transceiver(s) before re-publish`);
-                            staleScreenTransceivers.forEach((transceiver) => {
-                                sfuTransceiverMap.delete(transceiver);
-                            });
+                    if (screenTc) {
+                        const isReusing = !!screenTc.mid;
+                        if (isReusing) {
+                            log('MEDIA', `Reusing existing screen transceiver (MID: ${screenTc.mid}, Attempt ${attempt})`);
+                        } else {
+                            log('MEDIA', `Reusing inactive screen placeholder transceiver (Attempt ${attempt})`);
                         }
+
+                        await screenTc.sender.replaceTrack(videoTrack);
+
+                        // If it wasn't sendonly, we must upgrade it
+                        let needsRenegotiation = false;
+                        if (screenTc.direction !== 'sendonly') {
+                            screenTc.direction = 'sendonly';
+                            needsRenegotiation = true;
+                        }
+
+                        // Re-attaching or upgrading a screen track after a prior unpublish 
+                        // needs an explicit backend sync, otherwise peers keep the old 
+                        // screen MID metadata but the SFU has no live screen publication.
+                        const offer = await sfuPc!.createOffer();
+                        await sfuPc!.setLocalDescription(offer);
+
+                        const trackObjects = getActiveLocalTrackObjects(['screen']);
+
+                        const res = await meetingService.sfuSessionTracks(
+                            meetingRef.value!.public_id,
+                            sfuSessionId.value!,
+                            trackObjects,
+                            mungeSdp(sfuPc!.localDescription!.sdp)
+                        );
+                        const registeredScreen = getRegisteredScreenTrack(res);
+                        if (!registeredScreen) {
+                            log('SFU', 'Screen re-publish returned no valid screen track from backend', {
+                                returnedTracks: Array.isArray(res?.tracks)
+                                    ? res.tracks.map((track: any) => ({
+                                        trackName: track.trackName || null,
+                                        mid: track.mid || null,
+                                        errorCode: track.errorCode || null,
+                                    }))
+                                    : [],
+                            });
+                            throw new Error('[SFU] Screen track registration returned no valid screen track.');
+                        }
+                        await sfuPc!.setRemoteDescription(toSdpAnswer(res.sessionDescription));
+                        syncLocalPublicationsFromTransceivers(['screen']);
+                        if (localPublications.screen.state !== 'published' && videoTrack) {
+                            confirmLocalPublication('screen', screenTc.mid || registeredScreen.mid || null, videoTrack);
+                        }
+
+                        broadcastMediaMids();
+                        return { mid: screenTc.mid || '', stream: screenStream };
                     }
 
                     if (!screenTc) {
@@ -1770,9 +1932,8 @@ export function createStreamManager(
                         screenTc = sfuPc!.addTransceiver(videoTrack, {
                             direction: 'sendonly',
                             streams: [screenStream],
-                            sendEncodings: [
-                                { rid: "h", active: true, maxBitrate: 2500000, scaleResolutionDownBy: 1 }
-                            ]
+                            // SIMPLIFIED SCREEN ENCODINGS: Omit RIDs/simulcast for screen share.
+                            // Some receivers expect a single high-quality stream and stall on simulcast layers.
                         });
                         sfuTransceiverMap.set(screenTc, { participantId: 'self', trackName: 'screen' });
                         
@@ -1806,45 +1967,6 @@ export function createStreamManager(
                         if (localPublications.screen.state !== 'published' && videoTrack) {
                             confirmLocalPublication('screen', screenTc.mid || registeredScreen.mid || null, videoTrack);
                         }
-                        broadcastMediaMids();
-                        return { mid: screenTc.mid || '', stream: screenStream };
-                    } else {
-                        log('MEDIA', `Reusing inactive screen placeholder transceiver (Attempt ${attempt})`);
-                        await screenTc.sender.replaceTrack(videoTrack);
-
-                        // Re-attaching a screen track after a prior unpublish needs an
-                        // explicit backend sync, otherwise peers keep the old screen MID
-                        // metadata but the SFU has no live screen publication to serve.
-                        const offer = await sfuPc!.createOffer();
-                        await sfuPc!.setLocalDescription(offer);
-
-                        const trackObjects = getActiveLocalTrackObjects(['screen']);
-
-                        const res = await meetingService.sfuSessionTracks(
-                            meetingRef.value!.public_id,
-                            sfuSessionId.value!,
-                            trackObjects,
-                            mungeSdp(sfuPc!.localDescription!.sdp)
-                        );
-                        const registeredScreen = getRegisteredScreenTrack(res);
-                        if (!registeredScreen) {
-                            log('SFU', 'Screen re-publish returned no valid screen track from backend', {
-                                returnedTracks: Array.isArray(res?.tracks)
-                                    ? res.tracks.map((track: any) => ({
-                                        trackName: track.trackName || null,
-                                        mid: track.mid || null,
-                                        errorCode: track.errorCode || null,
-                                    }))
-                                    : [],
-                            });
-                            throw new Error('[SFU] Screen track registration returned no valid screen track.');
-                        }
-                        await sfuPc!.setRemoteDescription(toSdpAnswer(res.sessionDescription));
-                        syncLocalPublicationsFromTransceivers(['screen']);
-                        if (localPublications.screen.state !== 'published' && videoTrack) {
-                            confirmLocalPublication('screen', screenTc.mid || registeredScreen.mid || null, videoTrack);
-                        }
-
                         broadcastMediaMids();
                         return { mid: screenTc.mid || '', stream: screenStream };
                     }
@@ -1907,8 +2029,35 @@ export function createStreamManager(
             if (screenTc) {
                 log('MEDIA', 'Unpublishing screen track natively');
                 await screenTc.sender.replaceTrack(null);
-                // We avoid re-negotiating to INACTIVE to prevent 406 errors
+                
+                // SYNC BACKEND FIRST: Inform the SFU we are dropping the track.
+                // We do this BEFORE setting direction to 'inactive' to avoid 406 Not Acceptable status
+                // where the SFU refuses to negotiate a transceiver that we already killed locally.
+                const trackObjects = getActiveLocalTrackObjects();
+                try {
+                    await meetingService.sfuSessionTracks(
+                        meetingRef.value!.public_id,
+                        sfuSessionId.value!,
+                        trackObjects,
+                        undefined
+                    );
+                } catch (e) {
+                    log('WARN', 'Failed to sync backend on screen unpublish', e);
+                    // Even if sync fails, we proceed with local cleanup to keep UI responsive
+                }
+
+                // CLEANUP LAST: Explicitly set direction to inactive.
+                if (screenTc.direction !== 'inactive' && screenTc.direction !== 'stopped') {
+                    try {
+                        screenTc.direction = 'inactive';
+                        log('MEDIA', 'Set screen transceiver to inactive');
+                    } catch (e) {
+                        log('WARN', 'Failed to set screen transceiver inactive', e);
+                    }
+                }
+                
                 clearLocalPublication('screen');
+                
                 broadcastMediaMids();
             } else {
                 clearLocalPublication('screen');
@@ -1991,11 +2140,41 @@ export function createStreamManager(
     }
 
     function removeParticipantStreams(publicId: string) {
+        const isScreenOnly = publicId.endsWith(':screen');
+        const baseId = isScreenOnly ? publicId.slice(0, -7) : publicId;
+
         const newMap = new Map(remoteStreams.value);
-        newMap.delete(publicId);
-        newMap.delete(`${publicId}:screen`);
+        if (isScreenOnly) {
+            newMap.delete(publicId);
+        } else {
+            newMap.delete(baseId);
+            newMap.delete(`${baseId}:screen`);
+            stopAudioAnalysis(baseId);
+        }
         remoteStreams.value = newMap;
-        stopAudioAnalysis(publicId);
+
+        // Receiver cleanup: set transceivers to inactive and CLEAR the map associations
+        // This prevents ontrack from mis-identifying reused transceivers before new MIDs arrive.
+        if (sfuPc) {
+            sfuPc.getTransceivers().forEach(t => {
+                const assoc = sfuTransceiverMap.get(t);
+                if (assoc && assoc.participantId === baseId) {
+                    // If removing ONLY screenshare, don't touch audio/video transceivers
+                    if (isScreenOnly && assoc.trackName !== 'screen') return;
+
+                    if (t.direction !== 'inactive' && t.direction !== 'stopped') {
+                        log('SFU', `Inactivating ${assoc.trackName} transceiver for ${baseId} on removal`);
+                        try {
+                            t.direction = 'inactive';
+                        } catch (e) {
+                            log('WARN', `Failed to set inactivating direction for ${baseId}:${assoc.trackName}`, e);
+                        }
+                    }
+                    sfuTransceiverMap.delete(t);
+                    log('SFU', `Cleared stale association for ${baseId}:${assoc.trackName}`);
+                }
+            });
+        }
     }
 
     function removeParticipantMainStream(publicId: string) {
@@ -2029,6 +2208,25 @@ export function createStreamManager(
             newMap.set(pid, stream);
         }
         remoteStreams.value = newMap;
+
+        // SFU cleanup: also inactivate the specific transceiver if possible
+        if (sfuPc) {
+            const trackName = kind === 'video' ? 'video' : 'audio';
+            sfuPc.getTransceivers().forEach(t => {
+                const assoc = sfuTransceiverMap.get(t);
+                if (assoc && assoc.participantId === pid && assoc.trackName === trackName) {
+                    if (t.direction !== 'inactive' && t.direction !== 'stopped') {
+                        log('SFU', `Inactivating ${trackName} transceiver for ${pid} on track removal`);
+                        try {
+                            t.direction = 'inactive';
+                        } catch (e) {
+                            log('WARN', `Failed to set inactivating direction for ${pid}:${trackName}`, e);
+                        }
+                    }
+                    sfuTransceiverMap.delete(t);
+                }
+            });
+        }
     }
 
     function cleanup() {

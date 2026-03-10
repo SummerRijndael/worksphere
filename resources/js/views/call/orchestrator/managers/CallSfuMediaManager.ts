@@ -642,9 +642,8 @@ export class CallSfuMediaManager {
             this.options.getRemoteSfuSessions().get(participantPublicId);
         const persistedTracks =
             this.options.getRemoteSfuTracks().get(participantPublicId);
-
-        const actualAudioMid = remoteAudioMid || persistedTracks?.audioMid;
-        const actualVideoMid = remoteVideoMid || persistedTracks?.videoMid;
+        const actualAudioMid = (remoteAudioMid ?? persistedTracks?.audioMid)?.toString();
+        const actualVideoMid = (remoteVideoMid ?? persistedTracks?.videoMid)?.toString();
 
         if (!targetSessionId) {
             console.warn(
@@ -731,15 +730,18 @@ export class CallSfuMediaManager {
         }
 
         const trackReqs: any[] = [];
-        const hasAnyKnownMid = Boolean(actualAudioMid || actualVideoMid);
-        if (actualAudioMid) {
+        const hasExplicitAudioMid = actualAudioMid !== undefined && actualAudioMid !== null && actualAudioMid !== "";
+        const hasExplicitVideoMid = actualVideoMid !== undefined && actualVideoMid !== null && actualVideoMid !== "";
+        const hasAnyKnownMid = hasExplicitAudioMid || hasExplicitVideoMid;
+        
+        if (hasExplicitAudioMid) {
             trackReqs.push({
                 location: "remote",
                 sessionId: targetSessionId,
                 trackName: "audio",
             });
         }
-        if (actualVideoMid) {
+        if (hasExplicitVideoMid) {
             trackReqs.push({
                 location: "remote",
                 sessionId: targetSessionId,
@@ -782,11 +784,12 @@ export class CallSfuMediaManager {
                     );
                 const queuedAlreadyHasRequestedMids =
                     !!queuedExistingParticipantMids &&
-                    (!actualAudioMid ||
+                    (actualAudioMid === undefined || actualAudioMid === null || actualAudioMid === "" ||
                         queuedExistingParticipantMids.audioMid === actualAudioMid) &&
-                    (!actualVideoMid ||
+                    (actualVideoMid === undefined || actualVideoMid === null || actualVideoMid === "" ||
                         queuedExistingParticipantMids.videoMid === actualVideoMid) &&
-                    !!(actualAudioMid || actualVideoMid);
+                    ((actualAudioMid !== undefined && actualAudioMid !== null && actualAudioMid !== "") || 
+                     (actualVideoMid !== undefined && actualVideoMid !== null && actualVideoMid !== ""));
                 if (queuedAlreadyHasRequestedMids) {
                     console.log(
                         `[SFU] Participant ${participantPublicId} already synchronized while queued, skipping`,

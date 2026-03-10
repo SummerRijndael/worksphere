@@ -13,6 +13,7 @@ import {
     onBeforeUnmount,
     watch,
     reactive,
+    triggerRef,
 } from "vue";
 import Peer from "simple-peer";
 import { videoCallService } from "@/services/videocall.service";
@@ -160,7 +161,7 @@ const toggleSidebar = (tab?: "people" | "chat") => {
 
 // Media
 const localStream = ref<MediaStream | null>(null);
-const isMuted = ref(false);
+const isMuted = ref(true); // Default to Mic Off as requested
 const isCameraOff = ref(true); // Default to Video Off as requested
 const videoFallback = ref(false);
 const isAudioOnly = computed(() => callData.value?.callType === "audio");
@@ -187,10 +188,15 @@ const participantStats = reactive(
     >(),
 );
 // Signaling-based remote media state (cross-browser reliable)
-const remoteMediaState = reactive(
-    new Map<string, { muted: boolean; cameraOff: boolean }>(),
-);
+const remoteMediaState = reactive(new Map<string, { muted: boolean; cameraOff: boolean }>());
 const sfuScreenMid = ref<string | null>(null);
+const lastInboundPacketsLost = reactive(new Map<string, number>());
+const lastInboundPacketsReceived = reactive(new Map<string, number>());
+const lastInboundBytes = reactive(new Map<string, number>());
+let smoothedRtt = 0;
+let rttStaleCount = 0;
+const POOR_CONNECTION_THRESHOLD = 3;
+const poorConnectionTimer = reactive(new Map<string, number>());
 
 // Hybrid Mode
 const callMode = ref<"mesh" | "sfu">("mesh");
@@ -347,15 +353,34 @@ async function updateNetworkStats() {
     if (mainPc) {
         try {
             const stats = await mainPc.getStats();
+            let rttUpdated = false;
             stats.forEach((report) => {
                 if (
                     report.type === "candidate-pair" &&
                     report.state === "succeeded"
                 ) {
-                    networkStats.rtt =
-                        (report.currentRoundTripTime || 0) * 1000;
+                    const rawRtt = report.currentRoundTripTime || 0;
+                    if (rawRtt > 0) {
+                        // HEURISTIC: Firefox bug (Bug 1981042) reports RTT in ms instead of s.
+                        networkStats.rtt = rawRtt > 1.0 ? rawRtt : rawRtt * 1000;
+                        rttUpdated = true;
+                    }
                 }
             });
+
+            // Stale RTT guard: if RTT hasn't been updated for 5+ polls (~15s), zero it out
+            if (!rttUpdated && networkStats.rtt > 0) {
+                rttStaleCount++;
+            } else {
+                rttStaleCount = 0;
+            }
+            const effectiveRtt = rttStaleCount >= 5 ? 0 : networkStats.rtt;
+
+            // RTT Smoothing
+            if (effectiveRtt > 0) {
+                if (smoothedRtt === 0) smoothedRtt = effectiveRtt;
+                else smoothedRtt = (smoothedRtt * 0.7) + (effectiveRtt * 0.3);
+            }
         } catch (e) {}
     }
 
@@ -363,21 +388,13 @@ async function updateNetworkStats() {
     if (callMode.value === "sfu" && sfuPc) {
         try {
             const stats = await sfuPc.getStats();
+            const currentParticipantPackets = new Map<string, { lost: number, received: number, bytes: number }>();
+            
             stats.forEach((report) => {
-                if (
-                    report.type === "inbound-rtp" &&
-                    (report.kind === "audio" || report.kind === "video")
-                ) {
-                    // Find participant by MID
+                if (report.type === "inbound-rtp") {
                     let pId: string | null = null;
-                    for (const [
-                        id,
-                        mids,
-                    ] of participantTransceivers.entries()) {
-                        if (
-                            mids.audioMid === report.mid ||
-                            mids.videoMid === report.mid
-                        ) {
+                    for (const [id, mids] of participantTransceivers.entries()) {
+                        if (mids.audioMid === report.mid || mids.videoMid === report.mid) {
                             pId = id;
                             break;
                         }
@@ -385,31 +402,53 @@ async function updateNetworkStats() {
 
                     if (pId) {
                         const pIdLower = pId.toLowerCase();
-                        const current = participantStats.get(pIdLower) || {
-                            bitrate: 0,
-                            packetLoss: 0,
-                            rtt: 0,
-                            score: 0,
-                        };
-
-                        const lost = report.packetsLost || 0;
-                        const received = report.packetsReceived || 0;
-                        const lossPercent =
-                            (lost / (lost + received || 1)) * 100;
-
-                        current.packetLoss = lossPercent;
-                        current.bitrate = (report.bytesReceived * 8) / 5000; // Rough kbps assuming 5s interval
-                        current.rtt = networkStats.rtt; // Shared RTT for SFU PC
-
-                        // Score
-                        if (lossPercent > 10) current.score = 2;
-                        else if (lossPercent > 3) current.score = 1;
-                        else current.score = 0;
-
-                        participantStats.set(pIdLower, current);
+                        const pData = currentParticipantPackets.get(pIdLower) || { lost: 0, received: 0, bytes: 0 };
+                        pData.lost += report.packetsLost || 0;
+                        pData.received += report.packetsReceived || 0;
+                        pData.bytes += report.bytesReceived || 0;
+                        currentParticipantPackets.set(pIdLower, pData);
                     }
                 }
             });
+
+            // Process aggregated participant data
+            for (const [pIdLower, pData] of currentParticipantPackets.entries()) {
+                const current = participantStats.get(pIdLower) || { bitrate: 0, packetLoss: 0, rtt: 0, score: 0 };
+                
+                let deltaLost = pData.lost - (lastInboundPacketsLost.get(pIdLower) || 0);
+                let deltaReceived = pData.received - (lastInboundPacketsReceived.get(pIdLower) || 0);
+                let deltaBytes = pData.bytes - (lastInboundBytes.get(pIdLower) || 0);
+
+                if (deltaLost < 0 || deltaReceived < 0 || deltaBytes < 0) {
+                    deltaLost = pData.lost;
+                    deltaReceived = pData.received;
+                    deltaBytes = pData.bytes;
+                }
+
+                const deltaTotal = deltaLost + deltaReceived;
+                const lossPercent = deltaTotal > 0 ? (deltaLost / deltaTotal) * 100 : 0;
+                
+                lastInboundPacketsLost.set(pIdLower, pData.lost);
+                lastInboundPacketsReceived.set(pIdLower, pData.received);
+                lastInboundBytes.set(pIdLower, pData.bytes);
+
+                current.packetLoss = lossPercent;
+                current.bitrate = (deltaBytes * 8) / 5000; // kbps assuming 5s interval
+                current.rtt = smoothedRtt;
+
+                // RTT-primary scoring: if RTT < 100ms, connection is good
+                if (smoothedRtt > 0 && smoothedRtt < 100) {
+                    current.score = 0;
+                } else if (smoothedRtt >= 500 || (lossPercent > 10 && smoothedRtt >= 200)) {
+                    current.score = 2;
+                } else if (smoothedRtt >= 200 || (lossPercent > 5 && smoothedRtt >= 100)) {
+                    current.score = 1;
+                } else {
+                    current.score = 0;
+                }
+
+                participantStats.set(pIdLower, current);
+            }
         } catch (e) {}
     } else {
         // MESH Mode
@@ -427,22 +466,38 @@ async function updateNetworkStats() {
                     ) {
                         const lost = report.packetsLost || 0;
                         const received = report.packetsReceived || 0;
-                        current.packetLoss =
-                            (lost / (lost + received || 1)) * 100;
+                        
+                        // INTERVAL-BASED LOSS (Mesh)
+                        const lastLost = lastInboundPacketsLost.get(pIdLower) || 0;
+                        const lastReceived = lastInboundPacketsReceived.get(pIdLower) || 0;
+                        const deltaLost = lost - lastLost;
+                        const deltaReceived = received - lastReceived;
+                        const deltaTotal = deltaLost + deltaReceived;
+                        
+                        current.packetLoss = deltaTotal > 0 ? (deltaLost / deltaTotal) * 100 : 0;
+                        
+                        lastInboundPacketsLost.set(pIdLower, lost);
+                        lastInboundPacketsReceived.set(pIdLower, received);
                     }
                     if (
                         report.type === "candidate-pair" &&
                         report.state === "succeeded"
                     ) {
-                        current.rtt = (report.currentRoundTripTime || 0) * 1000;
+                        const rawRtt = report.currentRoundTripTime || 0;
+                        current.rtt = rawRtt > 1.0 ? rawRtt : rawRtt * 1000;
                     }
                 });
 
-                if (current.packetLoss > 10 || current.rtt > 400)
+                // RTT-primary scoring for Mesh
+                if (current.rtt > 0 && current.rtt < 100) {
+                    current.score = 0;
+                } else if (current.rtt >= 500 || (current.packetLoss > 10 && current.rtt >= 200)) {
                     current.score = 2;
-                else if (current.packetLoss > 3 || current.rtt > 200)
+                } else if (current.rtt >= 200 || (current.packetLoss > 5 && current.rtt >= 100)) {
                     current.score = 1;
-                else current.score = 0;
+                } else {
+                    current.score = 0;
+                }
 
                 if (current.score === 2) {
                     // Poor connection: reduce sender bitrate to help
@@ -1139,6 +1194,7 @@ async function acquireMedia(): Promise<MediaStream | null> {
     const result = await acquireLocalMedia({
         callType: callData.value.callType,
         defaultCameraOff: isCameraOff.value,
+        defaultMicOff: isMuted.value,
         videoEffect: store.videoEffect,
         selectedVideoDeviceId: store.selectedVideoDeviceId,
         backgroundImage: store.backgroundImage,
@@ -1481,8 +1537,8 @@ async function handleSignal(event: any) {
         signal.type === "sfu-session-ready" ||
         signal.type === "sfu-media-ready"
     ) {
-        const signalAudioMid = signal.audioMid ?? signal.audio;
-        const signalVideoMid = signal.videoMid ?? signal.video;
+        const signalAudioMid = (signal.audioMid ?? signal.audio)?.toString();
+        const signalVideoMid = (signal.videoMid ?? signal.video)?.toString();
 
         trace("SIGNAL", `Received ${signal.type} from ${senderId}`, {
             sessionId: signal.sessionId,
@@ -1528,7 +1584,10 @@ async function handleSignal(event: any) {
         remoteSfuSessions.set(senderId, signal.sessionId);
 
         // Persist MIDs for pull Participant tracks if provided
-        if (signalAudioMid || signalVideoMid) {
+        if (
+            (signalAudioMid !== undefined && signalAudioMid !== "") ||
+            (signalVideoMid !== undefined && signalVideoMid !== "")
+        ) {
             remoteSfuTracks.set(senderId, {
                 audioMid: signalAudioMid,
                 videoMid: signalVideoMid,
@@ -1892,11 +1951,13 @@ async function toggleCamera() {
             });
 
             localStream.value.addTrack(acquired.track);
+            triggerRef(localStream); // Force Vue reactivity for localHasVideo
             originalVideoTrack.value = acquired.originalTrack;
 
             const published = await publishLocalCameraTrack(acquired.track);
             if (!published) {
                 localStream.value.removeTrack(acquired.track);
+                triggerRef(localStream);
                 try {
                     acquired.track.stop();
                 } catch {}
@@ -1928,6 +1989,7 @@ async function toggleCamera() {
                     track.stop();
                 } catch {}
             });
+            if (localStream.value) triggerRef(localStream);
 
             if (originalVideoTrack.value) {
                 try {
