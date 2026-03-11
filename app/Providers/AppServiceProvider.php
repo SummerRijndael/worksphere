@@ -2,10 +2,12 @@
 
 namespace App\Providers;
 
+use App\Support\MeetingParticipantSession;
 use Illuminate\Cache\Events\CacheHit;
 use Illuminate\Cache\Events\CacheMissed;
 use Illuminate\Cache\Events\KeyWritten;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
@@ -95,6 +97,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        EncryptCookies::except(MeetingParticipantSession::cookieName());
+
         $this->configureRateLimiting();
         $this->registerCacheObservabilityListeners();
 

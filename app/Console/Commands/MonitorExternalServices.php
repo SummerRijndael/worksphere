@@ -59,7 +59,12 @@ class MonitorExternalServices extends Command
                     $latency = $service['latency'] ?? 'N/A';
 
                     // 1. Log to System Log
-                    Log::error("External Service Failure: [$name] Status: $status. Message: $message. Latency: $latency ms");
+                    // Keep Twilio auth failures concise and non-noisy.
+                    if ($key === 'twilio' && $status === 'Invalid Credentials') {
+                        Log::warning("External Service Warning: [$name] Invalid credentials.");
+                    } else {
+                        Log::error("External Service Failure: [$name] Status: $status. Message: $message. Latency: $latency ms");
+                    }
                     $this->error("[$name] $status - $message");
 
                     // 2. Log to Audit Trail

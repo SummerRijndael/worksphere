@@ -361,7 +361,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
         Route::apiResource('clients.contacts', \App\Http\Controllers\Api\ClientContactController::class)->shallow();
 
         // Meetings Management
-        Route::prefix('meetings')->group(function () {
+        Route::prefix('meetings')->middleware('impersonation.block')->group(function () {
             Route::get('/', [\App\Http\Controllers\Api\MeetingController::class, 'index']);
             Route::post('/', [\App\Http\Controllers\Api\MeetingController::class, 'store']);
             Route::get('/{meeting}', [\App\Http\Controllers\Api\MeetingController::class, 'show']);
@@ -1006,7 +1006,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
     Route::apiResource('blocked-urls', \App\Http\Controllers\Api\BlockedUrlController::class);
 
     // Meetings (authenticated-only: list, create, update, delete)
-    Route::middleware('throttle:meetings')->prefix('meetings')->group(function () {
+    Route::middleware(['throttle:meetings', 'impersonation.block'])->prefix('meetings')->group(function () {
         Route::get('/', [\App\Http\Controllers\Api\MeetingController::class, 'index']);
         Route::post('/', [\App\Http\Controllers\Api\MeetingController::class, 'store'])
             ->middleware('throttle:meeting-creation');
@@ -1030,7 +1030,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
 // These routes use optional Sanctum auth: if a bearer token is present, the user
 // is resolved; if not, Auth::user() returns null and the controller treats them
 // as a guest. This enables external/guest join flows without requiring login.
-Route::middleware(['throttle:meetings'])->prefix('meetings')->group(function () {
+Route::middleware(['throttle:meetings', 'impersonation.block'])->prefix('meetings')->group(function () {
     Route::get('/{meeting}', [\App\Http\Controllers\Api\MeetingController::class, 'show']);
     Route::post('/broadcasting/auth', [\App\Http\Controllers\Api\MeetingController::class, 'broadcastingAuth']);
     Route::get('/{meeting}/turn-credentials', [\App\Http\Controllers\Api\MeetingController::class, 'turnCredentials']);

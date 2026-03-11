@@ -86,6 +86,22 @@ export function createSignalingManager(
         return (Date.now() - publication.lastUpdatedAt) < 5000;
     }
 
+    function clearRemotePublicationKind(participantId: string, kind: 'video' | 'screen') {
+        if (typeof (streamManager as any).applyRemoteMediaState !== 'function') return;
+        const publication = (streamManager as any).remotePublications?.get?.(participantId);
+        const sessionId = publication?.sessionId;
+        if (!sessionId) return;
+
+        try {
+            (streamManager as any).applyRemoteMediaState(participantId, {
+                sessionId,
+                ...(kind === 'video' ? { videoMid: null } : { screenMid: null }),
+            });
+        } catch (error) {
+            log('ERROR', `Failed to clear remote ${kind} publication for ${participantId}`, error);
+        }
+    }
+
     function setupSignaling(meetingId: string) {
         if (privateChannel) return;
         
@@ -304,6 +320,8 @@ export function createSignalingManager(
             } else {
                 // Explicitly clear remote screen tile/UI immediately.
                 streamManager.removeParticipantStreams(`${normalizedSenderId}:screen`);
+                // Do not rely on stale publication metadata; clear the published screen MID now.
+                clearRemotePublicationKind(normalizedSenderId, 'screen');
             }
             return;
         }
@@ -314,6 +332,8 @@ export function createSignalingManager(
                 presenceManager.setCameraState(normalizedSenderId, false);
                 // Force-remove stale remote camera track so tile falls back to avatar immediately.
                 streamManager.removeParticipantTrack?.(normalizedSenderId, 'video');
+                // Also clear cached publication state so stale video MIDs cannot be treated as fresh.
+                clearRemotePublicationKind(normalizedSenderId, 'video');
             } else {
                 presenceManager.setCameraState(normalizedSenderId, true);
 

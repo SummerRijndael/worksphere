@@ -32,10 +32,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
 import { useMeetingStore } from '@/stores/meeting';
 
-const props = defineProps({
+defineProps({
     showPicker: {
         type: Boolean,
         default: false

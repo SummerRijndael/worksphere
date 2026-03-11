@@ -161,7 +161,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref } from "vue";
 import { useMeetingStore } from "@/stores/meeting";
 import { Icon } from "@/components/ui";
 
@@ -183,32 +183,6 @@ function sfuColor(state: string) {
 // State for dummies so we can selectively remove them
 const dummyParticipants = ref<string[]>([]);
 const hasSimulatedScreen = ref(false);
-
-const firstNames = [
-    "Alex",
-    "Jordan",
-    "Taylor",
-    "Morgan",
-    "Casey",
-    "Riley",
-    "Jamie",
-    "Quinn",
-];
-const lastColors = [
-    "Red",
-    "Blue",
-    "Green",
-    "Silver",
-    "Gold",
-    "Bronze",
-    "Steel",
-];
-
-const generateName = () => {
-    const fn = firstNames[Math.floor(Math.random() * firstNames.length)];
-    const lc = lastColors[Math.floor(Math.random() * lastColors.length)];
-    return `${fn} ${lc}`;
-};
 
 const addDummyParticipant = () => {
     meetingStore.addMockParticipant();

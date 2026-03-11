@@ -662,13 +662,29 @@ function requestRemoteScreenFrameRepair(bindingKey: string) {
 
     try {
         if (cachedPublication?.sessionId && cachedPublication?.screenMid) {
-            streamApi?.pullParticipantTracks?.(
-                participantId,
-                cachedPublication.sessionId,
-                undefined,
-                undefined,
-                cachedPublication.screenMid ?? undefined,
-            );
+            // Hard reset stale screen binding before force-pull so SFU can attach
+            // into a fresh receiver path instead of a potentially wedged transceiver.
+            streamApi?.removeParticipantStreams?.(`${participantId}:screen`);
+            Promise.resolve(
+                streamApi?.pullParticipantTracks?.(
+                    participantId,
+                    cachedPublication.sessionId,
+                    undefined,
+                    undefined,
+                    cachedPublication.screenMid ?? undefined,
+                    undefined,
+                    {
+                        forceApiPull: true,
+                        reason: "ui:screen-frame-stall",
+                        pullKinds: { screen: true },
+                    },
+                ),
+            ).catch((error: any) => {
+                console.warn(
+                    `[ParticipantTile][Media] Screen repair pull failed for ${participantId}`,
+                    error,
+                );
+            });
             return;
         }
 
@@ -676,6 +692,46 @@ function requestRemoteScreenFrameRepair(bindingKey: string) {
             force: true,
             reason: "ui:screen-frame-stall",
         });
+
+        // Follow-up pull: if publication metadata was stale/missing at first read,
+        // retry shortly with forceApiPull once request-media-info has had a chance to land.
+        window.setTimeout(() => {
+            try {
+                const latestPublication = streamApi?.remotePublications?.get?.(
+                    participantId,
+                );
+                if (!latestPublication?.sessionId || !latestPublication?.screenMid) {
+                    return;
+                }
+
+                streamApi?.removeParticipantStreams?.(`${participantId}:screen`);
+                Promise.resolve(
+                    streamApi?.pullParticipantTracks?.(
+                        participantId,
+                        latestPublication.sessionId,
+                        undefined,
+                        undefined,
+                        latestPublication.screenMid ?? undefined,
+                        undefined,
+                        {
+                            forceApiPull: true,
+                            reason: "ui:screen-frame-stall:follow-up",
+                            pullKinds: { screen: true },
+                        },
+                    ),
+                ).catch((error: any) => {
+                    console.warn(
+                        `[ParticipantTile][Media] Follow-up repair pull failed for ${participantId}`,
+                        error,
+                    );
+                });
+            } catch (error) {
+                console.warn(
+                    `[ParticipantTile][Media] Follow-up screen repair failed for ${participantId}`,
+                    error,
+                );
+            }
+        }, 250);
     } catch (error) {
         console.warn(
             `[ParticipantTile][Media] Failed to request remote screen repair for ${participantId}`,
@@ -715,6 +771,13 @@ function armVideoFrameWatch(
     videoFrameWatchTimer = window.setTimeout(() => {
         if (settled || !videoEl.srcObject) return;
         settle();
+        const currentStream = videoEl.srcObject as MediaStream | null;
+        if (currentStream) {
+            // Decoder nudge: Chromium occasionally stalls on a bound remote screen
+            // after upstream renegotiation while keeping the same stream object.
+            hardReattachVideoStream(videoEl, currentStream);
+            ensureVideoPlayback(videoEl, label);
+        }
         console.warn(`[${label}] No video frame rendered after bind`, {
             bindingKey,
             readyState: videoEl.readyState,
@@ -734,6 +797,7 @@ function updateRemoteStream() {
     if (remoteVideo.value) {
         if (hasVideo && stream) {
             const nextBindingKey = buildMediaBindingKey(stream, "video");
+            const bindingKeyChanged = lastVideoBindingKey.value !== nextBindingKey;
             const bindingChanged =
                 lastVideoBindingKey.value !== null &&
                 nextBindingKey !== null &&
@@ -747,7 +811,7 @@ function updateRemoteStream() {
                 // track changes. Force a full element reattach in that case.
                 hardReattachVideoStream(remoteVideo.value, stream);
             }
-            if (lastVideoBindingKey.value !== nextBindingKey) {
+            if (bindingKeyChanged) {
                 logMediaBindingChange("video", "bind", stream);
                 lastVideoBindingKey.value = nextBindingKey;
             }
@@ -758,11 +822,16 @@ function updateRemoteStream() {
                 );
             }
             if (props.isScreenShare) {
-                armVideoFrameWatch(
-                    remoteVideo.value,
-                    `RemoteVideo:${props.participant.public_id}:screen`,
-                    nextBindingKey,
-                );
+                // Rearm stall detection only when the bound stream/track identity changed.
+                // Re-arming on every reactive rerender can cause repeated load/play churn
+                // and hide the real recovery path behind AbortError noise.
+                if (streamChanged || bindingChanged || bindingKeyChanged) {
+                    armVideoFrameWatch(
+                        remoteVideo.value,
+                        `RemoteVideo:${props.participant.public_id}:screen`,
+                        nextBindingKey,
+                    );
+                }
             } else {
                 clearVideoFrameWatch();
             }

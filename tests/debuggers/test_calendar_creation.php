@@ -35,8 +35,10 @@ try {
     $event = \App\Models\Event::where('title', 'External Meeting Event')->first();
     $meeting = \App\Models\Meeting::find($event->meeting_id);
 
-    if ($meeting && $meeting->password && strlen($meeting->password) === 10) {
-        echo "✅ PASSED: Password auto-generated for external meeting\n";
+    $revealedPasscode = $meeting?->revealPassword();
+
+    if ($meeting && $meeting->password && $revealedPasscode && strlen($revealedPasscode) === 10) {
+        echo "✅ PASSED: Passcode auto-generated and encrypted for external meeting\n";
     } else {
         echo '❌ FAILED: Password NOT auto-generated. Meeting array: '.json_encode($meeting->toArray())."\n";
     }

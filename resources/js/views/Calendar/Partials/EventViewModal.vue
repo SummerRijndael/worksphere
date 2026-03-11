@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { useDate } from "@/composables/useDate";
 
 const {
@@ -19,15 +19,10 @@ import {
     Video,
     Copy,
     Check,
-    ChevronDown,
-    ChevronUp,
-    CheckCircle,
 } from "lucide-vue-next";
 import { toast } from "vue-sonner";
 import Modal from "@/components/ui/Modal.vue";
 import Button from "@/components/ui/Button.vue";
-import Badge from "@/components/ui/Badge.vue"; // Assuming Badge component exists, or we replace
-import { ref } from "vue";
 
 const props = defineProps({
     open: Boolean,
@@ -111,10 +106,18 @@ const meetingPublicId = computed(() => {
     );
 });
 
-const meetingPassword = computed(() => {
+const meetingHasPassword = computed(() => {
+    return !!(
+        props.event?.meeting?.has_password ||
+        props.event?.extendedProps?.meeting?.has_password
+    );
+});
+
+const meetingPasscode = computed(() => {
     return (
         props.event?.meeting?.password ||
-        props.event?.extendedProps?.meeting?.password
+        props.event?.extendedProps?.meeting?.password ||
+        null
     );
 });
 
@@ -126,7 +129,7 @@ const joinMeeting = () => {
 };
 
 const copiedId = ref(false);
-const copiedPassword = ref(false);
+const copiedPasscode = ref(false);
 const copiedLink = ref(false);
 
 const copyToClipboard = async (text, type) => {
@@ -135,9 +138,9 @@ const copyToClipboard = async (text, type) => {
         if (type === "id") {
             copiedId.value = true;
             setTimeout(() => (copiedId.value = false), 2000);
-        } else if (type === "password") {
-            copiedPassword.value = true;
-            setTimeout(() => (copiedPassword.value = false), 2000);
+        } else if (type === "passcode") {
+            copiedPasscode.value = true;
+            setTimeout(() => (copiedPasscode.value = false), 2000);
         } else if (type === "link") {
             copiedLink.value = true;
             setTimeout(() => (copiedLink.value = false), 2000);
@@ -285,7 +288,7 @@ const isAttendeeJoined = (attendee) => {
                             </button>
                         </div>
                     </div>
-                    <div v-if="meetingPassword" class="space-y-1.5">
+                    <div v-if="meetingHasPassword" class="space-y-1.5">
                         <p
                             class="text-[10px] uppercase font-bold tracking-widest text-gray-400 dark:text-gray-500 ml-1"
                         >
@@ -294,21 +297,18 @@ const isAttendeeJoined = (attendee) => {
                         <div
                             class="group flex items-center justify-between bg-white/60 dark:bg-gray-900/40 border border-gray-100 dark:border-gray-800 p-2.5 rounded-xl hover:border-blue-200 dark:hover:border-blue-500/30 transition-all"
                         >
-                            <span
-                                class="text-xs font-mono text-gray-700 dark:text-gray-200 truncate"
-                            >
-                                {{ meetingPassword }}
+                            <span v-if="meetingPasscode" class="text-xs font-mono text-gray-700 dark:text-gray-200 truncate">
+                                {{ meetingPasscode }}
+                            </span>
+                            <span v-else class="text-xs text-gray-700 dark:text-gray-200">
+                                This meeting is passcode protected. Ask the host for the current passcode.
                             </span>
                             <button
-                                @click="
-                                    copyToClipboard(meetingPassword, 'password')
-                                "
+                                v-if="meetingPasscode"
+                                @click="copyToClipboard(meetingPasscode, 'passcode')"
                                 class="p-1.5 hover:bg-blue-50 dark:hover:bg-blue-500/20 rounded-lg transition-colors text-blue-600 dark:text-blue-400 shrink-0"
                             >
-                                <Check
-                                    v-if="copiedPassword"
-                                    class="w-3.5 h-3.5"
-                                />
+                                <Check v-if="copiedPasscode" class="w-3.5 h-3.5" />
                                 <Copy v-else class="w-3.5 h-3.5" />
                             </button>
                         </div>

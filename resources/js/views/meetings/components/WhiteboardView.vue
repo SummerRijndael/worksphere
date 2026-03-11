@@ -545,9 +545,6 @@ import {
     ChevronsUp,
     ChevronsDown,
     Trash2,
-    Image as ImageIcon,
-    Lock,
-    Unlock,
 } from "lucide-vue-next";
 import { useMeetingStore } from "@/stores/meeting"; // Assuming this store exists for meeting context
 
@@ -927,7 +924,7 @@ const handleElementClick = (e: any) => {
 };
 
 // Drawing Interaction
-const getPointerPosition = (e: any) => {
+const getPointerPosition = () => {
     const stageInstance = stage.value.getStage();
     return stageInstance.getPointerPosition();
 };
@@ -942,7 +939,7 @@ const handleMouseDown = (e: any) => {
     if (currentTool.value === "select" || currentTool.value === "fill") return;
     if (isEditingText.value) return;
 
-    const pos = getPointerPosition(e);
+    const pos = getPointerPosition();
 
     if (currentTool.value === "text") {
         isEditingText.value = true;
@@ -1029,7 +1026,7 @@ const handleMouseDown = (e: any) => {
 let lastCursorUpdate = 0;
 const CURSOR_THROTTLE = 100; // ms
 
-const handleMouseMove = (e: any) => {
+const handleMouseMove = () => {
     if (!whiteboardStore.canDraw) return;
     // Send cursor position updates
     const now = Date.now();
@@ -1049,7 +1046,7 @@ const handleMouseMove = (e: any) => {
     }
 
     if (!isDrawing.value || !currentDrawingElement.value) return;
-    const pos = getPointerPosition(e);
+    const pos = getPointerPosition();
     const last = currentDrawingElement.value;
 
     if (last.type === "line") {
@@ -1235,7 +1232,6 @@ const handleTransformEnd = (e: any) => {
 const exportBoard = (mode: "flat" | "bg" | "grid" = "bg") => {
     showExportOptions.value = false;
     const stageInstance = stage.value.getStage();
-    const layerInstance = layer.value.getNode();
 
     // Temporarily disable transformer for export
     const oldSelected = whiteboardStore.selectedId;
@@ -1289,7 +1285,7 @@ const exportBoard = (mode: "flat" | "bg" | "grid" = "bg") => {
     tempBG.moveToBottom();
 
     setTimeout(() => {
-        const dataURL = stageInstance.toDataURL({
+        stageInstance.toDataURL({
             pixelRatio: 2,
             callback: (data: string) => {
                 const link = document.createElement("a");

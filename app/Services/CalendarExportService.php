@@ -41,7 +41,10 @@ class CalendarExportService
             $meetingInfo .= 'Join URL: '.config('app.url').'/meetings/'.$event->meeting->public_id."/join\n";
             $meetingInfo .= 'Meeting ID: '.$event->meeting->public_id."\n";
             if ($event->meeting->password) {
-                $meetingInfo .= 'Password: '.$event->meeting->password."\n";
+                $passcode = $event->meeting->revealPassword();
+                $meetingInfo .= $passcode
+                    ? 'Passcode: '.$passcode."\n"
+                    : "Passcode: Required (ask host for current passcode)\n";
             }
             $meetingInfo .= "---------------------------\n";
             $description = $description.$meetingInfo;
@@ -116,7 +119,10 @@ class CalendarExportService
                 $meetingInfo .= 'Join URL: '.config('app.url').'/meetings/'.$event->meeting->public_id."/join\n";
                 $meetingInfo .= 'Meeting ID: '.$event->meeting->public_id."\n";
                 if ($event->meeting->password) {
-                    $meetingInfo .= 'Password: '.$event->meeting->password."\n";
+                    $passcode = $event->meeting->revealPassword();
+                    $meetingInfo .= $passcode
+                        ? 'Passcode: '.$passcode."\n"
+                        : "Passcode: Required (ask host for current passcode)\n";
                 }
                 $meetingInfo .= "---------------------------\n";
                 $description = $description.$meetingInfo;

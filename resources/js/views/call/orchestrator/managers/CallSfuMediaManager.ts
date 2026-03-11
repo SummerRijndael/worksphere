@@ -44,7 +44,7 @@ export interface CallSfuMediaManagerOptions {
 }
 
 export class CallSfuMediaManager {
-    private readonly participantPullInFlight = new Map<string, string>();
+    private readonly participantPullGeneration = new Map<string, number>();
     private readonly screenPullInFlight = new Map<string, string>();
     private readonly participantLastPullFingerprint = new Map<string, string>();
 
@@ -631,6 +631,7 @@ export class CallSfuMediaManager {
         remoteSessionId?: string,
         remoteAudioMid?: string,
         remoteVideoMid?: string,
+        pullGeneration?: number,
     ): Promise<void> {
         const sfuPc = this.options.getPeerConnection();
         const sfuSessionId = this.options.getSessionId();
@@ -670,28 +671,27 @@ export class CallSfuMediaManager {
             );
         }
 
-        const inFlight = this.participantPullInFlight.get(participantPublicId);
-        if (inFlight) {
-            if (inFlight === requestFingerprint) {
-                console.log(
-                    `[SFU] Pull already in-flight for ${participantPublicId}, skipping duplicate request`,
-                );
+        if (pullGeneration === undefined) {
+            const inFlightAttempts = this.options.sfuSessionManager.nextParticipantPullAttempt(participantPublicId) - 1;
+            const requestedPublicationChanged = lastFingerprint !== requestFingerprint;
+            
+            // Allow duplicate requests if they are actually retries (in-flight attempts > 0)
+            if (inFlightAttempts > 0 && !requestedPublicationChanged) {
+                console.log(`[SFU] Pull already in-flight for ${participantPublicId}, skipping duplicate request`);
                 return;
             }
-
-            setTimeout(
-                () =>
-                    this.pullParticipantTracks(
-                        participantPublicId,
-                        remoteSessionId,
-                        remoteAudioMid,
-                        remoteVideoMid,
-                    ),
-                350,
-            );
-            return;
+            
+            const nextGeneration = (this.participantPullGeneration.get(participantPublicId) || 0) + 1;
+            this.participantPullGeneration.set(participantPublicId, nextGeneration);
+            pullGeneration = nextGeneration;
+        } else {
+            const activeGeneration = this.participantPullGeneration.get(participantPublicId);
+            if (activeGeneration && pullGeneration !== activeGeneration) {
+                console.log(`[SFU] Skipping stale pull for ${participantPublicId} (gen ${pullGeneration}, active ${activeGeneration})`);
+                return;
+            }
         }
-
+        
         const existingParticipantMids =
             this.options.participantTransceivers.get(participantPublicId);
         const alreadyHasRequestedMids =
@@ -770,7 +770,6 @@ export class CallSfuMediaManager {
             return;
         }
 
-        this.participantPullInFlight.set(participantPublicId, requestFingerprint);
         try {
             await this.runInQueue(async () => {
                 const queuePc = this.options.getPeerConnection();
@@ -907,6 +906,7 @@ export class CallSfuMediaManager {
                                     remoteSessionId,
                                     remoteAudioMid,
                                     remoteVideoMid,
+                                    pullGeneration,
                                 ),
                             delay,
                         );
@@ -993,25 +993,21 @@ export class CallSfuMediaManager {
                     }
 
                     const delay = retryDelays[currentAttempts - 1] || 1000;
-                    setTimeout(
-                        () =>
-                            this.pullParticipantTracks(
-                                participantPublicId,
-                                remoteSessionId,
-                                remoteAudioMid,
-                                remoteVideoMid,
-                            ),
-                        delay,
-                    );
+                        setTimeout(
+                            () =>
+                                this.pullParticipantTracks(
+                                    participantPublicId,
+                                    remoteSessionId,
+                                    remoteAudioMid,
+                                    remoteVideoMid,
+                                    pullGeneration,
+                                ),
+                            delay,
+                        );
                 }
             });
-        } finally {
-            if (
-                this.participantPullInFlight.get(participantPublicId) ===
-                requestFingerprint
-            ) {
-                this.participantPullInFlight.delete(participantPublicId);
-            }
+        } catch (e) {
+            console.error(`[SFU] Final catch in pullParticipantTracks for ${participantPublicId}`, e);
         }
     }
 

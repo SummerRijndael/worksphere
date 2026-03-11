@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, computed, watch, nextTick } from "vue";
+import { ref, onMounted, onBeforeUnmount, computed, watch } from "vue";
 import { Icon, SelectFilter } from "@/components/ui";
 import { ProgressRoot, ProgressIndicator } from "reka-ui";
 import { useVideoCallStore } from "@/stores/videocall";

@@ -3,11 +3,13 @@
 namespace App\Http\Resources;
 
 use App\Models\MeetingParticipant;
+use App\Support\MeetingParticipantSession;
 use App\Services\Chat\PresenceService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class MeetingResource extends JsonResource
 {
@@ -16,7 +18,18 @@ class MeetingResource extends JsonResource
     public function toArray(Request $request): array
     {
         $authUserId = Auth::id();
-        $sessionParticipantId = session('meeting_participant_id');
+        $queryParticipantId = $request->query('participant');
+        $queryParticipantId = is_string($queryParticipantId) && trim($queryParticipantId) !== ''
+            ? trim($queryParticipantId)
+            : null;
+
+        $sessionParticipantId = MeetingParticipantSession::resolveGuestParticipantId($request, $this->resource);
+
+        // During room bootstrap, prefer the explicit participant token from URL.
+        // This avoids stale cookie/session participant IDs hiding the newly joined participant.
+        if ($queryParticipantId && (! $sessionParticipantId || strcasecmp($sessionParticipantId, $queryParticipantId) !== 0)) {
+            $sessionParticipantId = $queryParticipantId;
+        }
         $participantsLoaded = $this->relationLoaded('participants');
         $participants = $participantsLoaded ? $this->participants : collect();
 
@@ -34,8 +47,8 @@ class MeetingResource extends JsonResource
             }
 
             if ($sessionParticipantId) {
-                $isAdmittedSession = $participants->contains(fn ($participant) => $participant->public_id === $sessionParticipantId && $participant->status === 'admitted');
-                $isWaitingSession = $participants->contains(fn ($participant) => $participant->public_id === $sessionParticipantId && $participant->status === 'waiting');
+                $isAdmittedSession = $participants->contains(fn ($participant) => strcasecmp((string) $participant->public_id, $sessionParticipantId) === 0 && $participant->status === 'admitted');
+                $isWaitingSession = $participants->contains(fn ($participant) => strcasecmp((string) $participant->public_id, $sessionParticipantId) === 0 && $participant->status === 'waiting');
             }
         } elseif ($authUserId || $sessionParticipantId) {
             $visibilityParticipants = MeetingParticipant::query()
@@ -47,7 +60,7 @@ class MeetingResource extends JsonResource
                     }
 
                     if ($sessionParticipantId) {
-                        $query->orWhere('public_id', $sessionParticipantId);
+                        $query->orWhereRaw('LOWER(public_id) = ?', [strtolower($sessionParticipantId)]);
                     }
                 })
                 ->get(['user_id', 'public_id', 'status']);
@@ -58,8 +71,8 @@ class MeetingResource extends JsonResource
             }
 
             if ($sessionParticipantId) {
-                $isAdmittedSession = $visibilityParticipants->contains(fn ($participant) => $participant->public_id === $sessionParticipantId && $participant->status === 'admitted');
-                $isWaitingSession = $visibilityParticipants->contains(fn ($participant) => $participant->public_id === $sessionParticipantId && $participant->status === 'waiting');
+                $isAdmittedSession = $visibilityParticipants->contains(fn ($participant) => strcasecmp((string) $participant->public_id, $sessionParticipantId) === 0 && $participant->status === 'admitted');
+                $isWaitingSession = $visibilityParticipants->contains(fn ($participant) => strcasecmp((string) $participant->public_id, $sessionParticipantId) === 0 && $participant->status === 'waiting');
             }
         }
 
@@ -77,9 +90,31 @@ class MeetingResource extends JsonResource
                         return true;
                     }
 
-                    return ! empty($sessionParticipantId) && $participant->public_id === $sessionParticipantId;
+                    return ! empty($sessionParticipantId) && strcasecmp((string) $participant->public_id, $sessionParticipantId) === 0;
                 })
                 ->values();
+        }
+
+        if (app()->environment('local')) {
+            Log::channel('videocall')->debug('[MEETING_RESOURCE] Visibility decision', [
+                'meeting' => $this->public_id,
+                'path' => $request->path(),
+                'auth_user_id' => $authUserId,
+                'query_participant_id' => $queryParticipantId,
+                'resolved_participant_id' => $sessionParticipantId,
+                'participants_loaded' => $participantsLoaded,
+                'is_host' => $isHost,
+                'is_admitted_user' => $isAdmittedUser,
+                'is_waiting_user' => $isWaitingUser,
+                'is_admitted_session' => $isAdmittedSession,
+                'is_waiting_session' => $isWaitingSession,
+                'can_view_participants' => $canViewParticipants,
+                'is_waiting_viewer' => $isWaitingViewer,
+                'participant_ids_source' => $participantsLoaded
+                    ? $this->participants->pluck('public_id')->values()->all()
+                    : [],
+                'participant_ids_returned' => $participants->pluck('public_id')->values()->all(),
+            ]);
         }
 
         return [
@@ -93,7 +128,7 @@ class MeetingResource extends JsonResource
             'is_locked' => Cache::has("meeting:lock:{$this->public_id}"),
             'settings' => $this->settings,
             'has_password' => ! empty($this->password),
-            'password' => $this->when(($this->user_id === Auth::id()), $this->password),
+            'password' => $this->when($isHost, $this->revealPassword()),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
             'host' => $this->host ? [

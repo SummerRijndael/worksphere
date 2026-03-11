@@ -328,7 +328,7 @@
                                                     class="my-1 border-t border-(--border-muted)"
                                                 ></div>
                                                 <DropdownMenuItem
-                                                    @select="pullBack(p, room)"
+                                                    @select="pullBack(p)"
                                                     class="flex w-full items-center px-3 py-2 text-xs rounded-lg transition-colors text-red-500 hover:bg-red-600 hover:text-white outline-none cursor-pointer"
                                                 >
                                                     <Icon
@@ -552,7 +552,7 @@ async function assignParticipant(participant: any, room: any) {
     }
 }
 
-async function pullBack(participant: any, room: any) {
+async function pullBack(participant: any) {
     const name = getDisplayName(participant);
     try {
         await meetingStore.moveParticipant(participant.public_id, null);

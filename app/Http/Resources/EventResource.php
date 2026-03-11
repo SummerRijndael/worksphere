@@ -28,7 +28,20 @@ class EventResource extends JsonResource
             'attendees' => $this->whenLoaded('attendees', fn () => $this->attendees->map(fn ($u) => $this->normalizeUser($u))),
             'external_attendees' => $this->external_attendees ?? [],
             'meeting_id' => $this->meeting_id,
-            'meeting' => $this->whenLoaded('meeting'),
+            'meeting' => $this->whenLoaded('meeting', function () use ($request) {
+                $authUserId = $request->user()?->id;
+
+                return [
+                    'id' => $this->meeting->id,
+                    'public_id' => $this->meeting->public_id,
+                    'title' => $this->meeting->title,
+                    'status' => $this->meeting->status,
+                    'has_password' => ! empty($this->meeting->password),
+                    'password' => $authUserId === $this->meeting->user_id
+                        ? $this->meeting->revealPassword()
+                        : null,
+                ];
+            }),
         ];
     }
 

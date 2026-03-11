@@ -21,7 +21,7 @@ import { useVideoCallStore } from "@/stores/videocall";
 import { toast } from "vue-sonner";
 import { useChatStore } from "@/stores/chat";
 import { useAuthStore } from "@/stores/auth";
-import { Icon } from "@/components/ui";
+import { Icon, Avatar } from "@/components/ui";
 import CallSettingsModal from "./components/CallSettingsModal.vue";
 import { useChat } from "@/composables/useChat";
 import CallChatList from "./components/CallChatList.vue";
@@ -189,6 +189,7 @@ const participantStats = reactive(
 );
 // Signaling-based remote media state (cross-browser reliable)
 const remoteMediaState = reactive(new Map<string, { muted: boolean; cameraOff: boolean }>());
+const remoteCameraLoadingState = reactive(new Map<string, boolean>());
 const sfuScreenMid = ref<string | null>(null);
 const lastInboundPacketsLost = reactive(new Map<string, number>());
 const lastInboundPacketsReceived = reactive(new Map<string, number>());
@@ -308,20 +309,33 @@ const sfuMediaManager = new CallSfuMediaManager({
     onRemoteMainStream: (participantId, stream) => {
         store.addRemoteStream(participantId, stream);
         startAudioAnalysis(participantId, stream);
-        const currentState = remoteMediaState.get(participantId) || {
+        const pid = participantId.toLowerCase();
+        const currentState = remoteMediaState.get(pid) || {
             muted: false,
             cameraOff: false,
         };
         const hasLiveAudio = stream
             .getAudioTracks()
-            .some((t) => t.readyState === "live");
+            .some((t) => t.readyState === "live" && !t.muted);
         const hasLiveVideo = stream
             .getVideoTracks()
-            .some((t) => t.readyState === "live");
-        remoteMediaState.set(participantId, {
+            .some((t) => t.readyState === "live" && !t.muted);
+        
+        const prevState = currentState.cameraOff;
+        const newState = hasLiveVideo ? false : currentState.cameraOff;
+
+        remoteMediaState.set(pid, {
             muted: hasLiveAudio ? false : currentState.muted,
-            cameraOff: hasLiveVideo ? false : currentState.cameraOff,
+            cameraOff: newState,
         });
+
+        if (prevState !== newState) {
+            remoteCameraLoadingState.set(pid, true);
+            setTimeout(() => {
+                remoteCameraLoadingState.set(pid, false);
+            }, 900);
+        }
+        
         markCallConnected();
     },
     onRemoteScreenStream: (participantId, stream) => {
@@ -533,7 +547,16 @@ async function updateNetworkStats() {
     if (aggregateCount === 0) {
         networkStats.bitrate = 0;
         networkStats.packetLoss = 0;
-        networkStats.score = -1;
+        
+        // Firefox / Alone-in-call Fallback: use RTT to SFU
+        if (smoothedRtt > 0) {
+            networkStats.rtt = smoothedRtt;
+            if (smoothedRtt < 100) networkStats.score = 0;
+            else if (smoothedRtt >= 200) networkStats.score = 2;
+            else networkStats.score = 1;
+        } else {
+            networkStats.score = -1;
+        }
         return;
     }
 
@@ -980,6 +1003,10 @@ function sendSignal(type: string, payload: any) {
 
 function rebroadcastSfuMediaToJoiner(joinerPublicId: string) {
     sfuSignalManager?.rebroadcastSfuMediaToJoiner(joinerPublicId);
+    sendSignal("media-state", {
+        muted: isMuted.value,
+        cameraOff: isCameraOff.value,
+    });
 }
 
 function requestRemoteMediaInfo(participantPublicId: string, force = false) {
@@ -1364,6 +1391,11 @@ async function joinCall() {
 
         // 4. Set state
         hasJoined.value = true;
+        sendSignal("media-state", {
+            muted: isMuted.value,
+            cameraOff: isCameraOff.value,
+        });
+
         if (callData.value.direction === "outgoing" && others.length === 0) {
             callState.value = "ringing";
             console.log(
@@ -1466,10 +1498,11 @@ async function handleSignal(event: any) {
         event.signal_data?.type === "hand-toggle"
     ) {
         const hSignal = event.signal_data;
+        const pid = senderId.toLowerCase();
         if (hSignal.raised) {
-            handRaised.add(senderId);
+            handRaised.add(pid);
         } else {
-            handRaised.delete(senderId);
+            handRaised.delete(pid);
         }
         return;
     }
@@ -1477,10 +1510,22 @@ async function handleSignal(event: any) {
     // Media State Signaling - Process early, cross-browser mute/camera state
     if (signalType === "media-state") {
         const ms = event.signal_data;
-        remoteMediaState.set(senderId, {
+        const pid = senderId.toLowerCase();
+        const prevState = remoteMediaState.get(pid)?.cameraOff;
+        const newState = !!ms.cameraOff;
+
+        remoteMediaState.set(pid, {
             muted: !!ms.muted,
-            cameraOff: !!ms.cameraOff,
+            cameraOff: newState,
         });
+
+        if (prevState !== undefined && prevState !== newState) {
+            remoteCameraLoadingState.set(pid, true);
+            setTimeout(() => {
+                remoteCameraLoadingState.set(pid, false);
+            }, 900);
+        }
+
         if (
             callMode.value === "sfu" &&
             hasJoined.value &&
@@ -1739,7 +1784,8 @@ function handleParticipantLeft(event: any) {
     participants.value = participants.value.filter(
         (p) => p.publicId.toLowerCase() !== publicId,
     );
-    handRaised.delete(publicId);
+    remoteCameraLoadingState.delete(publicId.toLowerCase());
+    handRaised.delete(publicId.toLowerCase());
     remoteMediaState.delete(publicId);
     remoteSfuSessions.delete(publicId);
     remoteSfuTracks.delete(publicId);
@@ -2012,14 +2058,17 @@ async function toggleCamera() {
 }
 
 function remoteHasVideo(participantId: string): boolean {
-    // Use signaling state first (cross-browser reliable)
-    const state = remoteMediaState.get(participantId.toLowerCase());
-    if (state) return !state.cameraOff;
-    // Fallback to track check if no signal received yet
     const stream = store.remoteStreams.get(participantId);
     if (!stream) return false;
     const tracks = stream.getVideoTracks();
-    return tracks.length > 0 && tracks[0].enabled;
+    if (tracks.length === 0) return false;
+
+    // Use signaling state first (cross-browser reliable)
+    const state = remoteMediaState.get(participantId.toLowerCase());
+    if (state) return !state.cameraOff;
+    
+    // Fallback to track check if no signal received yet
+    return tracks[0].enabled && !tracks[0].muted;
 }
 
 async function toggleScreenShare() {
@@ -2589,22 +2638,20 @@ async function initializeCall() {
         (data as any).chatType === "group" ||
         data.remoteUser?.publicId === "group";
 
-    if (!isGroup) {
-        console.log("[Call] Checking for Smart Join (DM)...");
-        const canAutoJoin =
-            (navigator as any).userActivation?.isActive ||
-            data.direction === "outgoing";
+    console.log("[Call] Checking for Smart Join...");
+    // If they already clicked "Accept" in the popup, user activation should be active
+    const canAutoJoin =
+        (navigator as any).userActivation?.isActive ||
+        data.direction === "outgoing" ||
+        data.direction === "incoming";
 
-        if (canAutoJoin) {
-            console.log("[Call] ⚡ Smart Join triggered: skipping lobby");
-            joinCall();
-        } else {
-            console.log(
-                "[Call] Smart Join skipped: User interaction required for audio",
-            );
-        }
+    if (canAutoJoin) {
+        console.log("[Call] ⚡ Smart Join triggered: skipping lobby");
+        joinCall();
     } else {
-        console.log("[Call] Group call detected: Showing lobby as per policy");
+        console.log(
+            "[Call] Smart Join skipped: User interaction required for audio, Showing lobby.",
+        );
     }
 
     // Initial Output Device Sync
@@ -3002,22 +3049,24 @@ onBeforeUnmount(() => cleanup());
                                 />
                                 <!-- Avatar Fallback -->
                                 <div v-else class="avatar-fallback">
-                                    <div
-                                        class="avatar-placeholder"
-                                        :style="{
-                                            background: getAvatarColor(p.name),
-                                        }"
-                                    >
-                                        <span class="initials-text">{{
-                                            getInitials(p.name)
-                                        }}</span>
-                                    </div>
+                                    <Avatar
+                                        :src="p.avatar"
+                                        :alt="p.name"
+                                        :size="80"
+                                        class="absolute z-0 w-20 h-20 text-3xl font-bold rounded-full overflow-hidden shrink-0 pointer-events-none ring-4 ring-black/10"
+                                    />
                                     <div
                                         class="audio-indicator"
                                         v-if="!p.isSelf"
                                     >
                                         <Icon name="Mic" size="14" />
                                     </div>
+                                </div>
+
+                                <!-- Loading Overlay -->
+                                <div v-if="p.isSelf ? isCameraTogglePending : remoteCameraLoadingState.get(p.publicId.toLowerCase())" class="absolute inset-0 z-20 flex flex-col items-center justify-center bg-zinc-900/80 backdrop-blur-md rounded-2xl transition-all duration-300">
+                                    <Icon name="loader" class="animate-spin text-white mb-2" size="24" />
+                                    <span class="text-white text-xs font-medium tracking-wide">Updating video...</span>
                                 </div>
 
                                 <div class="participant-info small">
@@ -3118,19 +3167,21 @@ onBeforeUnmount(() => cleanup());
                             />
                             <!-- Avatar Fallback -->
                             <div v-else class="avatar-fallback">
-                                <div
-                                    class="avatar-placeholder"
-                                    :style="{
-                                        background: getAvatarColor(p.name),
-                                    }"
-                                >
-                                    <span class="initials-text">{{
-                                        getInitials(p.name)
-                                    }}</span>
-                                </div>
+                                <Avatar
+                                    :src="p.avatar"
+                                    :alt="p.name"
+                                    :size="120"
+                                    class="absolute z-0 w-32 h-32 text-4xl font-bold rounded-full overflow-hidden shrink-0 pointer-events-none ring-4 ring-black/10 shadow-2xl"
+                                />
                                 <div class="audio-indicator">
                                     <Icon name="Mic" size="16" />
                                 </div>
+                            </div>
+
+                            <!-- Loading Overlay -->
+                            <div v-if="remoteCameraLoadingState.get(p.publicId.toLowerCase())" class="absolute inset-0 z-20 flex flex-col items-center justify-center bg-zinc-900/80 backdrop-blur-md rounded-2xl transition-all duration-300">
+                                <Icon name="loader" class="animate-spin text-white mb-2" size="28" />
+                                <span class="text-white text-sm font-medium tracking-wide">Updating video...</span>
                             </div>
 
                             <div class="participant-info">
@@ -3430,14 +3481,23 @@ onBeforeUnmount(() => cleanup());
 
                             <button
                                 v-if="!isAudioOnly"
-                                class="control-btn"
-                                :class="{ off: isCameraOff }"
+                                class="control-btn transition-colors relative"
+                                :class="{ off: isCameraOff, 'opacity-50 cursor-not-allowed': isCameraTogglePending }"
                                 @click="toggleCamera"
+                                :disabled="isCameraTogglePending"
                                 title="Toggle Camera"
                             >
                                 <Icon
+                                    v-if="isCameraTogglePending"
+                                    name="Loader"
+                                    size="24"
+                                    class="animate-spin relative z-1"
+                                />
+                                <Icon
+                                    v-else
                                     :name="isCameraOff ? 'VideoOff' : 'Video'"
                                     size="24"
+                                    class="relative z-1"
                                 />
                             </button>
                             <Tooltip
@@ -3563,14 +3623,12 @@ onBeforeUnmount(() => cleanup());
                                 :key="p.publicId"
                                 class="participant-item"
                             >
-                                <div
-                                    class="avatar"
-                                    :style="{
-                                        background: getAvatarColor(p.name),
-                                    }"
-                                >
-                                    {{ getInitials(p.name) }}
-                                </div>
+                                <Avatar
+                                    :src="p.avatar"
+                                    :alt="p.name"
+                                    :size="32"
+                                    class="shrink-0 mr-1"
+                                />
                                 <span>{{ p.isSelf ? "You" : p.name }}</span>
                                 <div
                                     class="status-icons"
@@ -4692,6 +4750,16 @@ onBeforeUnmount(() => cleanup());
     .grid-2-2 .grid-wrapper,
     .grid-3-3 .grid-wrapper {
         grid-template-columns: 1fr;
+    }
+
+    /* Mobile Sidebar Overrides */
+    .sidebar-open .main-stage {
+        margin-right: 0; /* Do not push main stage on mobile */
+    }
+
+    .call-sidebar {
+        width: 100%; /* Take full width on mobile */
+        border-left: none; /* Remove border when full width */
     }
 }
 

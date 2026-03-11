@@ -21,7 +21,7 @@
                 />
                 
                 <label class="poll-label mt-2">Options</label>
-                <div v-for="(opt, i) in newOptions" :key="i" class="poll-option-row">
+                <div v-for="(_, i) in newOptions" :key="i" class="poll-option-row">
                     <input
                         v-model="newOptions[i]"
                         class="poll-input"

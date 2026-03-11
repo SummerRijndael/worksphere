@@ -186,43 +186,47 @@
                                     {{ formatTime(meeting.start_time) }}
                                 </div>
                                 <div
-                                    v-if="meeting.password"
-                                    class="text-[10px] text-blue-500 font-mono mt-1 flex items-center gap-1 bg-blue-500/5 px-2 py-0.5 rounded-full w-fit group/pw"
+                                    v-if="meeting.has_password"
+                                    class="text-[10px] text-blue-500 mt-1 flex items-center gap-1 bg-blue-500/5 px-2 py-0.5 rounded-full w-fit"
                                 >
                                     <Icon name="lock" size="10" />
                                     <span
-                                        v-if="revealedPasswords.has(meeting.id)"
-                                        >{{ meeting.password }}</span
+                                        v-if="meeting.password || meeting.plain_password"
+                                        class="font-mono"
                                     >
-                                    <span v-else>••••••••</span>
-
+                                        {{
+                                            getMeetingPasswordDisplay(meeting)
+                                        }}
+                                    </span>
+                                    <span v-else>Passcode protected</span>
                                     <button
+                                        v-if="meeting.password || meeting.plain_password"
                                         @click.stop="
-                                            togglePasswordReveal(meeting.id)
+                                            toggleMeetingPasswordVisibility(
+                                                meeting,
+                                            )
                                         "
-                                        class="p-0.5 hover:bg-blue-500/20 rounded transition-colors ml-1"
+                                        class="p-0.5 hover:bg-blue-500/20 rounded transition-colors"
                                         :title="
-                                            revealedPasswords.has(meeting.id)
-                                                ? 'Hide Password'
-                                                : 'Show Password'
+                                            isMeetingPasswordVisible(meeting)
+                                                ? 'Hide Passcode'
+                                                : 'Show Passcode'
                                         "
                                     >
                                         <Icon
                                             :name="
-                                                revealedPasswords.has(
-                                                    meeting.id,
-                                                )
+                                                isMeetingPasswordVisible(meeting)
                                                     ? 'eye-off'
                                                     : 'eye'
                                             "
                                             size="10"
                                         />
                                     </button>
-
                                     <button
+                                        v-if="meeting.password || meeting.plain_password"
                                         @click.stop="copyPassword(meeting)"
                                         class="p-0.5 hover:bg-blue-500/20 rounded transition-colors"
-                                        title="Copy Password"
+                                        title="Copy Passcode"
                                     >
                                         <Icon name="copy" size="10" />
                                     </button>
@@ -408,10 +412,19 @@
                 >
                     <Icon name="check-circle" size="32" />
                 </div>
-                <h2 class="text-2xl font-bold mb-2">Meeting Created!</h2>
+                <h2 class="text-2xl font-bold mb-2">
+                    {{
+                        passwordRevealContext === "created"
+                            ? "Meeting Created!"
+                            : "Meeting Updated!"
+                    }}
+                </h2>
                 <p class="text-(--text-muted) mb-8">
-                    Your meeting is ready. Share the details below with your
-                    participants.
+                    {{
+                        passwordRevealContext === "created"
+                            ? "Your meeting is ready. Share the details below with your participants."
+                            : "A new passcode was set. Copy and share it now, this is shown only once."
+                    }}
                 </p>
 
                 <div class="w-full space-y-4 mb-8">
@@ -435,15 +448,15 @@
                         </div>
                     </div>
 
-                    <div v-if="createdMeeting.password" class="text-left">
+                    <div v-if="createdMeeting.plain_password" class="text-left">
                         <label
                             class="text-[10px] uppercase tracking-wider font-bold text-(--text-tertiary) mb-1 block"
-                            >Meeting Password</label
+                            >Meeting Passcode</label
                         >
                         <div class="flex gap-2">
                             <input
                                 readonly
-                                :value="createdMeeting.password"
+                                :value="createdMeeting.plain_password"
                                 class="flex-1 bg-(--surface-tertiary) border border-(--border-muted) rounded-lg px-3 py-2 text-sm font-mono outline-none"
                             />
                             <button
@@ -498,7 +511,6 @@ import ConfirmationModal from "@/components/ui/ConfirmationModal.vue";
 import { toast } from "vue-sonner";
 import dayjs from "dayjs";
 import { useAuthStore } from "@/stores/auth";
-import { formatTimeAgo } from "@/utils/date";
 import { isValidUlid, normalizeUlid } from "@/utils/meetingId";
 import { useMeeting } from "@/composables/useMeeting";
 import echo, { isEchoAvailable } from "@/echo";
@@ -511,16 +523,15 @@ const loading = ref(true);
 const showCreateModal = ref(false);
 const editingMeeting = ref<Meeting | null>(null);
 const createdMeeting = ref<Meeting | null>(null);
-const revealedPasswords = ref<Set<number>>(new Set());
+const passwordRevealContext = ref<"created" | "updated">("created");
 const resendingSet = ref<Set<number>>(new Set());
+const visibleMeetingPasswords = ref<Set<string>>(new Set());
 const joinId = ref("");
 
 // Auto-refresh state
 const autoRefreshEnabled = ref(false);
 const isRefreshing = ref(false);
-let pollInterval: ReturnType<typeof setInterval> | null = null;
 let lastFetchTime = 0;
-const POLL_INTERVAL_MS = 30000; // 30 seconds
 const RATE_LIMIT_MS = 5000; // 5s cooldown on manual refresh
 
 const handleJoinById = () => {
@@ -651,9 +662,34 @@ const copyLink = (meeting: Meeting) => {
 };
 
 const copyPassword = (meeting: Meeting) => {
-    if (!meeting.password) return;
-    navigator.clipboard.writeText(meeting.password);
-    toast.success("Password copied to clipboard");
+    const passcode = meeting.plain_password || meeting.password;
+    if (!passcode) return;
+    navigator.clipboard.writeText(passcode);
+    toast.success("Passcode copied to clipboard");
+};
+
+const meetingPasswordKey = (meeting: Meeting): string =>
+    String(meeting.public_id || "").toLowerCase();
+
+const isMeetingPasswordVisible = (meeting: Meeting): boolean =>
+    visibleMeetingPasswords.value.has(meetingPasswordKey(meeting));
+
+const toggleMeetingPasswordVisibility = (meeting: Meeting) => {
+    const key = meetingPasswordKey(meeting);
+    const next = new Set(visibleMeetingPasswords.value);
+    if (next.has(key)) {
+        next.delete(key);
+    } else {
+        next.add(key);
+    }
+    visibleMeetingPasswords.value = next;
+};
+
+const getMeetingPasswordDisplay = (meeting: Meeting): string => {
+    const passcode = String(meeting.plain_password || meeting.password || "");
+    if (!passcode) return "";
+    if (isMeetingPasswordVisible(meeting)) return passcode;
+    return "•".repeat(Math.max(passcode.length, 8));
 };
 
 const getMeetingUrl = (meeting: Meeting) => {
@@ -662,21 +698,18 @@ const getMeetingUrl = (meeting: Meeting) => {
 
 const onMeetingCreated = (meeting: Meeting) => {
     showCreateModal.value = false;
+    passwordRevealContext.value = "created";
     createdMeeting.value = meeting;
     fetchMeetings();
 };
 
-const onMeetingUpdated = () => {
+const onMeetingUpdated = (meeting?: Meeting) => {
     editingMeeting.value = null;
-    fetchMeetings();
-};
-
-const togglePasswordReveal = (meetingId: number) => {
-    if (revealedPasswords.value.has(meetingId)) {
-        revealedPasswords.value.delete(meetingId);
-    } else {
-        revealedPasswords.value.add(meetingId);
+    if (meeting?.plain_password) {
+        passwordRevealContext.value = "updated";
+        createdMeeting.value = meeting;
     }
+    fetchMeetings();
 };
 
 const isOwner = (meeting: any) => {

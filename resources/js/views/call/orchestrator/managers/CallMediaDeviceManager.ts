@@ -30,9 +30,9 @@ export interface AcquireCameraTrackResult {
 
 function videoConstraints(selectedVideoDeviceId?: string | null) {
     return {
-        deviceId: selectedVideoDeviceId || undefined,
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
+        deviceId: selectedVideoDeviceId ? { exact: selectedVideoDeviceId } : undefined,
+        width: { ideal: 1280, max: 1280 },
+        height: { ideal: 720, max: 720 },
         facingMode: "user",
     };
 }
@@ -176,15 +176,15 @@ export async function acquireLocalMedia(
             videoFallback: true,
         };
     } catch (error) {
-        console.error("[Call] Media acquisition failed (mic likely in use/denied):", error);
-        
-        // gracefully fallback to an empty stream so the call doesn't crash completely.
-        // This allows the user to still join and hear others.
-        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-        const dest = audioCtx.createMediaStreamDestination();
-        const silentStream = dest.stream;
-        // set disabled so other peers don't even try to playback
-        silentStream.getAudioTracks().forEach(t => t.enabled = false);
+        let silentStream = new MediaStream();
+        try {
+            const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const dest = audioCtx.createMediaStreamDestination();
+            silentStream = dest.stream;
+            silentStream.getAudioTracks().forEach(t => t.enabled = false);
+        } catch (e) {
+            console.warn("[Call] Could not create silent audio fallback via AudioContext:", e);
+        }
 
         return {
             stream: silentStream,

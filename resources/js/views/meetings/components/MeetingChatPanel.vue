@@ -90,7 +90,6 @@
 <script setup lang="ts">
 import { ref, nextTick, watch, onMounted, onUnmounted } from "vue";
 import { useMeetingStore } from "@/stores/meeting";
-import { useThemeStore } from "@/stores/theme";
 import { Icon, Avatar } from "@/components/ui";
 import data from "@emoji-mart/data";
 import { Picker } from "emoji-mart";
@@ -98,7 +97,6 @@ import { Picker } from "emoji-mart";
 defineEmits(["close"]);
 
 const meetingStore = useMeetingStore();
-const themeStore = useThemeStore();
 const newMessage = ref("");
 const isSending = ref(false);
 const messagesContainer = ref<HTMLElement | null>(null);
