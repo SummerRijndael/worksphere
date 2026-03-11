@@ -12,6 +12,7 @@ use App\Models\Event;
 use App\Models\Meeting;
 use App\Models\MeetingParticipant;
 use App\Models\User;
+use App\Support\MeetingParticipantSession;
 use App\Services\Chat\PresenceService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -171,7 +172,7 @@ class MeetingService implements MeetingServiceContract
 
         // 2. Password Check
         if ($meeting->password && ($meeting->user_id !== ($user ? $user->id : null))) {
-            if ($providedPassword !== $meeting->password) {
+            if (! $meeting->passwordMatches($providedPassword)) {
                 // Return structured error via exception or handled response
                 throw new \Exception('Invalid meeting password. REQUIRES_PASSWORD');
             }
@@ -364,19 +365,35 @@ class MeetingService implements MeetingServiceContract
         Log::channel('videocall')->info('[504_DEBUG] Step 6: Participant DB done', ['time' => microtime(true) - $start]);
 
         // 7. Broadcasts
-        broadcast(new MeetingParticipantJoined($meeting, $participant));
+        try {
+            broadcast(new MeetingParticipantJoined($meeting, $participant));
+        } catch (\Throwable $e) {
+            Log::warning('[MEETING_BROADCAST] Failed to broadcast participant-joined event', [
+                'meeting' => $meeting->public_id,
+                'participant' => $participant->public_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
         Log::channel('videocall')->info('[504_DEBUG] Step 7a: Broadcast Join done', ['time' => microtime(true) - $start]);
 
         if ($participant->status === 'waiting') {
-            broadcast(new MeetingSignal(
-                $meeting,
-                $participant->public_id,
-                'participant-waiting',
-                [
-                    'participant_id' => $participant->public_id,
-                    'display_name' => $participant->metadata['guest_name'] ?? ($participant->user?->name ?? 'Someone'),
-                ]
-            ));
+            try {
+                broadcast(new MeetingSignal(
+                    $meeting,
+                    $participant->public_id,
+                    'participant-waiting',
+                    [
+                        'participant_id' => $participant->public_id,
+                        'display_name' => $participant->metadata['guest_name'] ?? ($participant->user?->name ?? 'Someone'),
+                    ]
+                ));
+            } catch (\Throwable $e) {
+                Log::warning('[MEETING_BROADCAST] Failed to broadcast participant-waiting event', [
+                    'meeting' => $meeting->public_id,
+                    'participant' => $participant->public_id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
             Log::channel('videocall')->info('[504_DEBUG] Step 7b: Broadcast Waiting done', ['time' => microtime(true) - $start]);
         }
 
@@ -563,6 +580,18 @@ class MeetingService implements MeetingServiceContract
         }
 
         // 2. Participant check (Guest or other Member)
+        if ($user && ! $participantSessionId) {
+            $userParticipant = MeetingParticipant::where('meeting_id', $meeting->id)
+                ->where('user_id', $user->id)
+                ->first();
+
+            if (! $userParticipant) {
+                abort(403, 'Unauthorized. Participant session invalid for this meeting.');
+            }
+
+            $participantSessionId = $userParticipant->public_id;
+        }
+
         if (! $participantSessionId) {
             abort(403, 'Unauthorized. No participant session found.');
         }
@@ -574,11 +603,11 @@ class MeetingService implements MeetingServiceContract
             // For logged in users, ensure the participant record belongs to them
             $participantQuery->where('user_id', $user->id);
         } else {
-            // For guests, verify against the session to prevent hijacking via URL
-            $sessionPid = session('meeting_participant_id') ?: session('participant_id');
-            if (! $sessionPid || strtolower($sessionPid) !== strtolower($participantSessionId)) {
+            // For guests, verify against cookie/session to prevent hijacking via URL/header spoofing.
+            $effectiveGuestPid = MeetingParticipantSession::resolveGuestParticipantId(request(), $meeting);
+            if (! $effectiveGuestPid || strtolower($effectiveGuestPid) !== strtolower($participantSessionId)) {
                 Log::warning('[SECURITY] Guest attempted to authenticate with mismatched session ID', [
-                    'session_pid' => $sessionPid,
+                    'session_pid' => $effectiveGuestPid,
                     'provided_pid' => $participantSessionId,
                 ]);
                 abort(403, 'Mismatched meeting session. Please refresh or re-join.');

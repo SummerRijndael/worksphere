@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\MeetingParticipantSession;
 use App\Services\Chat\PresenceService;
 use App\Services\ConnectionManagerService;
 use Illuminate\Http\JsonResponse;
@@ -69,16 +70,54 @@ class PresenceController extends Controller
      */
     public function meetingHeartbeat(Request $request, string $meetingId): JsonResponse
     {
-        $participantPublicId = $request->input('participant_id') ?? Auth::user()?->public_id;
+        $meeting = \App\Models\Meeting::where('public_id', $meetingId)->first();
+        if (! $meeting) {
+            return response()->json(['error' => 'Meeting not found'], 404);
+        }
 
-        if (! $participantPublicId) {
-            return response()->json(['error' => 'Participant ID required'], 400);
+        $participantPublicId = null;
+        $authUser = Auth::user();
+
+        if ($authUser) {
+            $participant = $meeting->participants()
+                ->where('user_id', $authUser->id)
+                ->first();
+
+            if (! $participant) {
+                return response()->json(['error' => 'Participant session invalid'], 403);
+            }
+
+            $requestedPid = $request->input('participant_id');
+            if ($requestedPid && strtolower((string) $requestedPid) !== strtolower($participant->public_id)) {
+                return response()->json(['error' => 'Mismatched participant session'], 403);
+            }
+
+            $participantPublicId = $participant->public_id;
+        } else {
+            $participantSessionId = MeetingParticipantSession::resolveGuestParticipantId($request, $meeting);
+            if (! $participantSessionId) {
+                return response()->json(['error' => 'Mismatched participant session'], 403);
+            }
+
+            $requestedPid = $request->input('participant_id') ?: $request->header('X-Participant-ID');
+            if ($requestedPid && strtolower((string) $requestedPid) !== strtolower((string) $participantSessionId)) {
+                return response()->json(['error' => 'Mismatched participant session'], 403);
+            }
+
+            $participant = $meeting->participants()
+                ->whereRaw('LOWER(public_id) = ?', [strtolower((string) $participantSessionId)])
+                ->first();
+
+            if (! $participant) {
+                return response()->json(['error' => 'Participant session invalid'], 403);
+            }
+
+            $participantPublicId = $participant->public_id;
         }
 
         $this->presenceService->meetingHeartbeat($meetingId, $participantPublicId);
 
         // Update peak participant count
-        $meeting = \App\Models\Meeting::where('public_id', $meetingId)->first();
         if ($meeting && $meeting->status === 'active') {
             $activeCount = count($this->presenceService->getActiveMeetingParticipantIds($meetingId));
             if ($activeCount > $meeting->peak_participant_count) {

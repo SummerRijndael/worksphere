@@ -2077,13 +2077,27 @@ class MaintenanceService
                     $results['twilio']['latency'] = round((microtime(true) - $start) * 1000);
                 } elseif ($response->status() === 401 || $response->status() === 403) {
                     $results['twilio']['status'] = 'Invalid Credentials';
+                    $results['twilio']['message'] = 'Invalid credentials';
                 } else {
                     $results['twilio']['status'] = 'Error';
                     $results['twilio']['message'] = 'HTTP '.$response->status();
                 }
             } catch (Throwable $e) {
-                $results['twilio']['status'] = 'Unreachable';
-                $results['twilio']['message'] = $e->getMessage();
+                $message = strtolower($e->getMessage());
+                $isAuthError = str_contains($message, 'unauthorized')
+                    || str_contains($message, 'forbidden')
+                    || str_contains($message, 'invalid username')
+                    || str_contains($message, 'invalid password')
+                    || str_contains($message, 'invalid credentials')
+                    || str_contains($message, 'authentication');
+
+                if ($isAuthError) {
+                    $results['twilio']['status'] = 'Invalid Credentials';
+                    $results['twilio']['message'] = 'Invalid credentials';
+                } else {
+                    $results['twilio']['status'] = 'Unreachable';
+                    $results['twilio']['message'] = 'Unable to reach Twilio';
+                }
             }
         } else {
             $results['twilio']['status'] = 'Not Configured';

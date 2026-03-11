@@ -42,7 +42,12 @@ Join Meeting
 <x-mail::panel>
 **Meeting ID:** {{ $event->meeting->public_id }}  
 @if($event->meeting->password)
-**Passcode:** {{ $event->meeting->password }}
+@php($meetingPasscode = $event->meeting->revealPassword())
+@if($meetingPasscode)
+**Passcode:** {{ $meetingPasscode }}
+@else
+**Passcode:** Required (ask the host for the current passcode)
+@endif
 @endif
 </x-mail::panel>
 

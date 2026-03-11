@@ -1,6 +1,7 @@
 <?php
 
 use App\Helpers\ChannelAuthLogger;
+use App\Support\MeetingParticipantSession;
 use Illuminate\Support\Facades\Broadcast;
 
 Broadcast::channel('App.Models.User.{publicId}', ChannelAuthLogger::wrap('App.Models.User.{publicId}', function ($user, $publicId) {
@@ -146,7 +147,7 @@ Broadcast::channel('meeting.{meetingId}', ChannelAuthLogger::wrap('meeting.{meet
 
     // 2. Check participant record (works for both guests and registered users)
     // We check either the authenticated user's ID or the participant ID from the session/request
-    $participantId = request()->header('X-Participant-ID') ?: (session('meeting_participant_id') ?: session('participant_id'));
+    $participantId = MeetingParticipantSession::resolveGuestParticipantId(request(), $meeting);
 
     $participantQuery = \App\Models\MeetingParticipant::where('meeting_id', $meeting->id);
 

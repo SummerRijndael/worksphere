@@ -12,9 +12,12 @@ const props = defineProps({
         default: "gray"
     },
     size: {
-        type: String,
+        type: [String, Number],
         default: "md",
-        validator: (v) => ["xs", "sm", "md", "lg", "xl", "2xl", "3xl", "4xl", "5xl"].includes(v),
+        validator: (v) => {
+            if (typeof v === 'number') return true;
+            return ["xs", "sm", "md", "lg", "xl", "2xl", "3xl", "4xl", "5xl"].includes(v);
+        },
     },
     status: {
         type: String,
@@ -47,17 +50,34 @@ const initials = computed(() => {
     return "U";
 });
 
-const sizeClasses = computed(() => ({
-    "h-6 w-6 text-xs": props.size === "xs",
-    "h-8 w-8 text-sm": props.size === "sm",
-    "h-10 w-10 text-sm": props.size === "md",
-    "h-12 w-12 text-base": props.size === "lg",
-    "h-16 w-16 text-lg": props.size === "xl",
-    "h-20 w-20 text-xl": props.size === "2xl",
-    "h-24 w-24 text-2xl": props.size === "3xl",
-    "h-32 w-32 text-3xl": props.size === "4xl",
-    "h-40 w-40 text-4xl": props.size === "5xl",
-}));
+const isNumericSize = computed(() => typeof props.size === 'number' || !isNaN(Number(props.size)));
+
+const sizeClasses = computed(() => {
+    if (isNumericSize.value) return "";
+    return {
+        "h-6 w-6 text-xs": props.size === "xs",
+        "h-8 w-8 text-sm": props.size === "sm",
+        "h-10 w-10 text-sm": props.size === "md",
+        "h-12 w-12 text-base": props.size === "lg",
+        "h-16 w-16 text-lg": props.size === "xl",
+        "h-20 w-20 text-xl": props.size === "2xl",
+        "h-24 w-24 text-2xl": props.size === "3xl",
+        "h-32 w-32 text-3xl": props.size === "4xl",
+        "h-40 w-40 text-4xl": props.size === "5xl",
+    };
+});
+
+const customSizeStyle = computed(() => {
+    if (isNumericSize.value) {
+        const sizePx = `${props.size}px`;
+        return {
+            height: sizePx,
+            width: sizePx,
+            fontSize: `${Math.max(10, Number(props.size) * 0.4)}px`
+        };
+    }
+    return {};
+});
 
 const containerClasses = computed(() => 
     cn(
@@ -115,7 +135,7 @@ function handleLoad(e) {
 </script>
 
 <template>
-    <div :class="containerClasses">
+    <div :class="containerClasses" :style="customSizeStyle">
         <div :class="innerClasses" :style="{ backgroundColor: !src || hasError ? color : undefined }">
             <img
                 v-if="(thumbUrl || src) && !hasError"

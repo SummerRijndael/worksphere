@@ -18,9 +18,12 @@ class MeetingPolicy
 
     public function view(?User $user, Meeting $meeting): bool
     {
-        // Anyone can view the basic meeting details (needed for Lobby)
-        // More restricted actions like joining are handled by MeetingService
-        return true;
+        if ($user) {
+            return true;
+        }
+
+        // Guests can only fetch lobby details when guest access is enabled.
+        return (bool) ($meeting->settings['guest_access'] ?? false);
     }
 
     public function create(User $user): bool

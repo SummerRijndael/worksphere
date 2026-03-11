@@ -139,9 +139,25 @@ export function createUnifiedMediaManager(
             return legacyManager.applyRemoteMediaState(pid, update);
         },
 
-        pullParticipantTracks: (pid: string, sid?: string, a?: string, v?: string, s?: string) => {
+        pullParticipantTracks: (
+            pid: string,
+            sid?: string,
+            a?: string,
+            v?: string,
+            s?: string,
+            generation?: number,
+            options?: {
+                forceApiPull?: boolean;
+                reason?: string;
+                pullKinds?: {
+                    audio?: boolean;
+                    video?: boolean;
+                    screen?: boolean;
+                };
+            }
+        ) => {
             if (useSDK.value) return Promise.resolve();
-            return legacyManager.pullParticipantTracks(pid, sid, a, v, s);
+            return legacyManager.pullParticipantTracks(pid, sid, a, v, s, generation, options);
         },
 
         cleanup: () => {

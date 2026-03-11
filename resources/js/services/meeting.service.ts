@@ -21,6 +21,7 @@ export interface Meeting {
     };
     has_password?: boolean;
     password?: string;
+    plain_password?: string;
     host?: any;
     participants?: MeetingParticipant[];
     created_at: string;
@@ -47,12 +48,17 @@ class MeetingService extends BaseService {
 
     async createMeeting(data: Partial<Meeting>) {
         const response = await this.api.post<Meeting>("/api/meetings", data);
-        return response.data;
+        return (response.data as any)?.data || response.data;
     }
 
-    async getMeeting(id: string): Promise<{ meeting: Meeting; participants: MeetingParticipant[] }> {
-        const response = await this.api.get(`/api/meetings/${id}`);
-        return response.data;
+    async getMeeting(id: string, participantId?: string): Promise<any> {
+        const response = await this.api.get(`/api/meetings/${id}`, {
+            params: participantId ? { participant: participantId } : undefined,
+        });
+        // Support both resource payload styles:
+        // 1) direct object { public_id, participants, ... }
+        // 2) wrapped object { data: { public_id, participants, ... } }
+        return (response.data as any)?.data ?? response.data;
     }
 
     async endMeeting(meetingId: string): Promise<any> {
@@ -114,19 +120,10 @@ class MeetingService extends BaseService {
     }
 
     async joinMeeting(id: string, name?: string, password?: string, email?: string, is_companion?: boolean): Promise<{ meeting: Meeting; participant: MeetingParticipant }> {
-        const response = await this.post<{ meeting: Meeting; participant: MeetingParticipant }>(
+        return this.post<{ meeting: Meeting; participant: MeetingParticipant }>(
             `/api/meetings/${id}/join`,
             { name, password, email, is_companion }
         );
-
-        if (response?.participant?.public_id) {
-            localStorage.setItem(`worksphere_meeting_token_${id}`, response.participant.public_id);
-            if (password) {
-                localStorage.setItem(`worksphere_meeting_pwd_${id}`, password);
-            }
-        }
-        
-        return response;
     }
 
     async sendSignal(id: string, signalData: {
@@ -139,7 +136,8 @@ class MeetingService extends BaseService {
     }
 
     async updateMeeting(id: string, data: Partial<Meeting>) {
-        return this.patch<Meeting>(`/api/meetings/${id}`, data);
+        const response = await this.api.patch<Meeting>(`/api/meetings/${id}`, data);
+        return (response.data as any)?.data || response.data;
     }
 
     async deleteMeeting(id: string) {

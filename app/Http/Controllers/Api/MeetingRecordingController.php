@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Events\Meetings\MeetingSignal;
 use App\Models\Meeting;
 use App\Models\MeetingRecording;
+use App\Support\MeetingParticipantSession;
 use App\Services\CloudflareRealtimeKitService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -93,12 +94,17 @@ class MeetingRecordingController extends Controller
         $preset = $isHost ? 'group_call_host' : 'group_call_participant';
 
         // Identify the actual participant record for this session
-        $participantId = $request->header('X-Participant-ID') ?: (session('meeting_participant_id') ?: session('participant_id'));
+        $participantId = null;
+        if (! $user) {
+            $participantId = MeetingParticipantSession::resolveGuestParticipantId($request, $meeting);
+            abort_unless($participantId, 403, 'Invalid meeting participant session.');
+        }
+
         $participantRecord = \App\Models\MeetingParticipant::where('meeting_id', $meeting->id);
 
         if ($user) {
             $participantRecord->where('user_id', $user->id);
-        } elseif ($participantId) {
+        } else {
             $participantRecord->where('public_id', $participantId);
         }
         $participantRecord = $participantRecord->first();

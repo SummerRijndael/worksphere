@@ -9,6 +9,7 @@ use App\Http\Resources\MeetingResource;
 use App\Models\Meeting;
 use App\Models\MeetingMessage;
 use App\Models\MeetingParticipant;
+use App\Support\MeetingParticipantSession;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -20,6 +21,7 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
+use Symfony\Component\HttpFoundation\Cookie;
 
 class MeetingController extends Controller
 {
@@ -66,7 +68,7 @@ class MeetingController extends Controller
         return MeetingResource::collection($meetings);
     }
 
-    public function store(Request $request): MeetingResource|JsonResponse
+    public function store(Request $request): JsonResponse
     {
         $this->authorize('create', Meeting::class);
 
@@ -86,7 +88,11 @@ class MeetingController extends Controller
                 'max:100',
                 Password::min(8)->mixedCase()->numbers(),
                 function ($attribute, $value, $fail) use ($request) {
-                    if (($request->input('settings.guest_access') ?? false) && empty($value)) {
+                    if (
+                        ($request->input('settings.guest_access') ?? false) &&
+                        ! $request->boolean('auto_generate_password') &&
+                        empty($value)
+                    ) {
                         $fail('A password is required when guest access is enabled.');
                     }
                 },
@@ -109,12 +115,12 @@ class MeetingController extends Controller
             ->first();
 
         if ($existing) {
-            return new MeetingResource($existing);
+            return $this->meetingResponse($existing);
         }
 
         $password = $request->password;
         if ($request->auto_generate_password) {
-            // Generate a strong password: e.g., "A1b2C3d4!"
+            // Generate a strong password and return it once to the host.
             $password = Str::password(12, true, true, false, false);
         }
 
@@ -137,7 +143,7 @@ class MeetingController extends Controller
             ], 422);
         }
 
-        return new MeetingResource($meeting->load(['host', 'participants.user']));
+        return $this->meetingResponse($meeting, $password);
     }
 
     public function show(Meeting $meeting): MeetingResource
@@ -154,7 +160,10 @@ class MeetingController extends Controller
             'is_companion' => 'nullable|boolean',
         ]);
 
-        $participantSessionId = session('meeting_participant_id');
+        $participantSessionId = null;
+        if (! $request->user()) {
+            $participantSessionId = MeetingParticipantSession::resolveGuestParticipantId($request, $meeting);
+        }
 
         try {
             $result = $this->meetingService->joinMeeting(
@@ -167,16 +176,25 @@ class MeetingController extends Controller
                 $request->boolean('is_companion')
             );
 
-            if (! $request->user()) {
-                session(['meeting_participant_id' => $result['participant']->public_id]);
+            $participantPublicId = (string) ($result['participant']->public_id ?? '');
+            if ($participantPublicId !== '') {
+                if (! $request->user()) {
+                    session(['meeting_participant_id' => $participantPublicId]);
+                }
             }
 
-            return response()->json([
+            $response = response()->json([
                 'data' => [
                     'meeting' => new MeetingResource($result['meeting']),
                     'participant' => $result['participant'],
                 ],
             ]);
+
+            if ($participantPublicId !== '') {
+                $response->headers->setCookie($this->meetingParticipantCookie($request, $meeting, $participantPublicId));
+            }
+
+            return $response;
         } catch (\Exception $e) {
             if (str_contains($e->getMessage(), 'REQUIRES_PASSWORD')) {
                 return response()->json([
@@ -208,7 +226,10 @@ class MeetingController extends Controller
             return response()->json(['message' => 'Meeting not found'], 404);
         }
 
-        $participantSessionId = $request->header('X-Participant-ID') ?: (session('meeting_participant_id') ?: session('participant_id'));
+        $participantSessionId = null;
+        if (! $request->user()) {
+            $participantSessionId = MeetingParticipantSession::resolveGuestParticipantId($request, $meeting);
+        }
 
         try {
             return $this->meetingService->authenticateBroadcasting(
@@ -253,7 +274,22 @@ class MeetingController extends Controller
             ], 422);
         }
 
-        $participantSessionId = $request->header('X-Participant-ID') ?: (session('meeting_participant_id') ?: session('participant_id'));
+        $user = Auth::user();
+        $participantSessionId = null;
+        if (! $user) {
+            $participantSessionId = MeetingParticipantSession::resolveGuestParticipantId($request, $meeting);
+            if (! $participantSessionId) {
+                Log::channel('videocall')->warning('[SIGNAL] Missing or mismatched guest participant session', [
+                    'meeting' => $meeting->public_id,
+                    'sender' => strtolower((string) $request->sender_participant_public_id),
+                    'signal_type' => $request->input('signal_type'),
+                    'diag' => $signalDiag,
+                    'ua' => (string) $request->userAgent(),
+                ]);
+
+                return response()->json(['message' => 'Mismatched signal session'], 403);
+            }
+        }
         $senderPublicId = strtolower($request->sender_participant_public_id);
 
         $senderQuery = MeetingParticipant::where('meeting_id', $meeting->id)
@@ -261,11 +297,10 @@ class MeetingController extends Controller
             ->where('status', 'admitted');
 
         // Security: Ensure requester owns this participant ID
-        $user = Auth::user();
         if ($user) {
             $senderQuery->where('user_id', $user->id);
         } else {
-            if (! $participantSessionId || strtolower($participantSessionId) !== $senderPublicId) {
+            if (strtolower($participantSessionId) !== $senderPublicId) {
                 Log::channel('videocall')->warning('[SIGNAL] Session mismatch', [
                     'meeting' => $meeting->public_id,
                     'sender' => $senderPublicId,
@@ -429,7 +464,7 @@ class MeetingController extends Controller
         return response()->json(['status' => 'ok']);
     }
 
-    public function update(Request $request, Meeting $meeting): MeetingResource
+    public function update(Request $request, Meeting $meeting): JsonResponse
     {
         $this->authorize('update', $meeting);
 
@@ -453,16 +488,19 @@ class MeetingController extends Controller
         ]);
 
         $data = $request->only(['title', 'description', 'start_time', 'end_time', 'status', 'settings']);
+        $plainPassword = null;
 
         if ($request->has('auto_generate_password') && $request->auto_generate_password) {
-            $data['password'] = Str::random(10);
+            $plainPassword = Str::password(12, true, true, false, false);
+            $data['password'] = $plainPassword;
         } elseif ($request->has('password')) {
             $data['password'] = $request->password;
+            $plainPassword = $request->password;
         }
 
         $meeting = $this->meetingService->updateMeeting($meeting, $data);
 
-        return new MeetingResource($meeting->load(['host', 'participants.user']));
+        return $this->meetingResponse($meeting, $plainPassword);
     }
 
     public function updateSettings(Request $request, Meeting $meeting): JsonResponse
@@ -817,8 +855,15 @@ class MeetingController extends Controller
         return response()->json(['message' => 'Participant demoted.', 'participant' => $participant]);
     }
 
-    public function getMessages(Request $request, Meeting $meeting): AnonymousResourceCollection
+    public function getMessages(Request $request, Meeting $meeting): AnonymousResourceCollection|JsonResponse
     {
+        $isHost = $request->user() && $meeting->user_id === $request->user()->id;
+        $participant = $this->resolveParticipant($request, $meeting);
+
+        if (! $isHost && (! $participant || ! in_array($participant->status, ['admitted', 'waiting'], true))) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
         $messages = MeetingMessage::where('meeting_id', $meeting->id)->orderBy('created_at', 'asc')->get();
 
         return \App\Http\Resources\MeetingMessageResource::collection($messages);
@@ -826,12 +871,16 @@ class MeetingController extends Controller
 
     public function sendMessage(Request $request, Meeting $meeting): JsonResponse
     {
+        $participant = $this->resolveParticipant($request, $meeting);
+        if (! $participant || $participant->status !== 'admitted') {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
         $request->validate([
-            'participant_public_id' => 'required|string',
             'body' => 'required|string|max:2000',
         ]);
 
-        $key = 'meeting_chat_'.strtolower($request->participant_public_id);
+        $key = sprintf('meeting_chat_%s_%s', $meeting->id, strtolower($participant->public_id));
         $count = (int) Cache::get($key, 0);
 
         if ($count >= 20) {
@@ -841,7 +890,7 @@ class MeetingController extends Controller
 
         $message = MeetingMessage::create([
             'meeting_id' => $meeting->id,
-            'participant_public_id' => $request->participant_public_id,
+            'participant_public_id' => $participant->public_id,
             'body' => strip_tags($request->body),
         ]);
 
@@ -1279,24 +1328,54 @@ class MeetingController extends Controller
         return response()->json(['message' => 'Activity notification sent.']);
     }
 
+    private function meetingResponse(Meeting $meeting, ?string $plainPassword = null): JsonResponse
+    {
+        $payload = (new MeetingResource($meeting->load(['host', 'participants.user'])))->resolve();
+
+        if (is_string($plainPassword) && $plainPassword !== '') {
+            $payload['plain_password'] = $plainPassword;
+        }
+
+        return response()->json($payload);
+    }
+
     // ──── Helper ───────────────────────────────────────────────────────────────
 
     /**
      * Resolve the current request's MeetingParticipant by auth user or
-     * the X-Participant-ID header (for guest rejoin tokens).
+     * guest HttpOnly cookie/session identity.
      */
     private function resolveParticipant(Request $request, Meeting $meeting): ?\App\Models\MeetingParticipant
     {
         if ($user = $request->user()) {
             return $meeting->participants()->where('user_id', $user->id)->first();
         }
-        $pid = $request->header('X-Participant-ID');
-        if ($pid) {
-            return $meeting->participants()
-                ->whereRaw('LOWER(public_id) = ?', [strtolower($pid)])
-                ->first();
+
+        $effectivePid = MeetingParticipantSession::resolveGuestParticipantId($request, $meeting);
+        if (! $effectivePid) {
+            return null;
         }
 
-        return null;
+        return $meeting->participants()
+            ->whereRaw('LOWER(public_id) = ?', [strtolower($effectivePid)])
+            ->first();
+    }
+
+    private function meetingParticipantCookie(Request $request, Meeting $meeting, string $participantPublicId): Cookie
+    {
+        $minutes = max(60, (int) config('session.lifetime', 120));
+        $cookieValue = MeetingParticipantSession::buildCookieValue($request, $meeting, $participantPublicId);
+
+        return cookie(
+            MeetingParticipantSession::cookieName(),
+            $cookieValue,
+            $minutes,
+            '/',
+            null,
+            $request->isSecure(),
+            true,
+            false,
+            'lax'
+        );
     }
 }

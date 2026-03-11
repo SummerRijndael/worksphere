@@ -201,15 +201,41 @@
                                 v-if="meetingStore.meeting.has_password"
                                 class="detail-row"
                             >
-                                <div class="detail-label">Password</div>
-                                <div class="detail-value">
-                                    {{ meetingStore.meeting.password }}
+                                <div class="detail-label">Passcode</div>
+                                <div
+                                    v-if="meetingStore.meeting.password"
+                                    class="detail-value font-mono"
+                                >
+                                    {{ meetingPasscodeDisplay }}
+                                </div>
+                                <div v-else class="detail-value">
+                                    Protected. Ask the host for the passcode.
                                 </div>
                                 <button
+                                    v-if="meetingStore.meeting.password"
+                                    @click="showMeetingPasscode = !showMeetingPasscode"
+                                    class="copy-small-btn"
+                                    :title="
+                                        showMeetingPasscode
+                                            ? 'Hide passcode'
+                                            : 'Show passcode'
+                                    "
+                                >
+                                    <Icon
+                                        :name="
+                                            showMeetingPasscode
+                                                ? 'eye-off'
+                                                : 'eye'
+                                        "
+                                        size="14"
+                                    />
+                                </button>
+                                <button
+                                    v-if="meetingStore.meeting.password"
                                     @click="
                                         copyToClipboard(
                                             meetingStore.meeting.password,
-                                            'Password',
+                                            'Passcode',
                                         )
                                     "
                                     class="copy-small-btn"
@@ -809,10 +835,12 @@
                                 >
                                     <div class="flex items-center space-x-3">
                                         <Avatar
-                                            :user="p.user"
-                                            :fallback="
-                                                p.metadata?.guest_name || 'G'
+                                            :src="
+                                                p.user?.avatar_url ||
+                                                p.metadata?.avatar_url
                                             "
+                                            :fallback="getParticipantInitial(p)"
+                                            :color="p.user?.color"
                                             size="sm"
                                         />
                                         <div class="user-meta overflow-hidden">
@@ -1200,7 +1228,6 @@
                         >
                             <div
                                 v-if="showActivitiesMenu"
-                                ref="activitiesMenuRef"
                                 class="layout-menu toolbox-menu shadow-2xl z-1000"
                             >
                                 <div class="px-4 pt-4 pb-2 border-none">
@@ -1803,7 +1830,6 @@ import { meetingService } from "@/services/meeting.service";
 import { useMeetingStore } from "@/stores/meeting";
 import { useVideoCallStore } from "@/stores/videocall";
 import { useWhiteboardStore } from "@/stores/whiteboard";
-import { useThemeStore } from "@/stores/theme";
 import { useBackgroundBlur } from "@/composables/useBackgroundBlur";
 import { Icon, Avatar } from "@/components/ui";
 import { toast } from "vue-sonner";
@@ -1830,7 +1856,6 @@ import WhiteboardView from "./components/WhiteboardView.vue";
 import BreakoutManagerModal from "./components/BreakoutManagerModal.vue";
 import BreakoutOverlay from "./components/BreakoutOverlay.vue";
 import BreakoutDashboard from "./components/BreakoutDashboard.vue";
-import { usePresenceStore } from "@/stores/presence";
 import { useRecording as useRecordingComposable } from "@/composables/useRecording";
 import { isValidUlid, normalizeUlid } from "@/utils/meetingId";
 
@@ -1854,14 +1879,9 @@ const router = useRouter();
 const meetingStore = useMeetingStore();
 const videoCallStore = useVideoCallStore();
 const whiteboardStore = useWhiteboardStore();
-const themeStore = useThemeStore();
 
 const rawMeetingId = String(route.params.id ?? "");
 const meetingId = isValidUlid(rawMeetingId) ? normalizeUlid(rawMeetingId) : "";
-
-const participantStorageKey = meetingId
-    ? `worksphere_meeting_token_${meetingId}`
-    : "";
 
 const participantFromQuery = Array.isArray(route.query.participant)
     ? route.query.participant[0]
@@ -1871,60 +1891,31 @@ const normalizedParticipantFromQuery =
     typeof participantFromQuery === "string" && isValidUlid(participantFromQuery)
         ? normalizeUlid(participantFromQuery)
         : "";
-
-if (participantStorageKey && normalizedParticipantFromQuery) {
-    localStorage.setItem(participantStorageKey, normalizedParticipantFromQuery);
-}
-
-const participantId = normalizedParticipantFromQuery
-    || (participantStorageKey
-        && isValidUlid(localStorage.getItem(participantStorageKey))
-        ? normalizeUlid(localStorage.getItem(participantStorageKey) as string)
-        : "");
+const participantId = normalizedParticipantFromQuery;
 
 const isCameraOn = ref(false);
 const isMicOn = ref(false);
 const backgroundBlur = useBackgroundBlur();
 const showSettings = ref(false);
 const showActivitiesMenu = ref(false);
-const activitiesMenuRef = ref(null);
 const showParticipantsPanel = ref(false);
 const showChatPanel = ref(false);
 const showPollPanel = ref(false);
 const showReactionPicker = ref(false);
 const showMeetingDetails = ref(false);
+const showMeetingPasscode = ref(false);
 const showMoreMenu = ref(false);
 const layoutSelectorRef = ref<any>(null);
 const showDevTool = ref(false);
 const initializing = ref(true);
 const activeParticipantTab = ref<"members" | "waiting">("members");
 
-const mobileLayouts = [
-    {
-        id: "auto",
-        label: "Auto",
-        icon: "sparkles",
-        desc: "Best layout for you",
-    },
-    {
-        id: "tiled",
-        label: "Tiled",
-        icon: "layout-grid",
-        desc: "See everyone at once",
-    },
-    {
-        id: "spotlight",
-        label: "Spotlight",
-        icon: "maximize",
-        desc: "Focus on main speaker",
-    },
-    {
-        id: "sidebar",
-        label: "Sidebar",
-        icon: "layout",
-        desc: "Speaker with sidebar",
-    },
-];
+const meetingPasscodeDisplay = computed(() => {
+    const passcode = String(meetingStore.meeting?.password || "");
+    if (!passcode) return "";
+    if (showMeetingPasscode.value) return passcode;
+    return "•".repeat(Math.max(passcode.length, 8));
+});
 
 function openRequestsPanel() {
     showParticipantsPanel.value = true;
@@ -1956,33 +1947,11 @@ function togglePollPanel() {
     }
 }
 
-// Laser Pointer
-const laserPointerLabel = computed(() => {
-    const mode = meetingStore.laserPointerMode;
-    if (mode === "off") return "Enable Laser Pointer (everyone)";
-    if (mode === "global")
-        return "Laser Pointer ON (everyone) — click to turn off";
-    return "Laser Pointer targeted — click to turn off";
-});
-
-async function cycleLaserMode() {
-    if (!meetingStore.meeting) return;
-    const next = meetingStore.laserPointerMode === "off" ? "global" : "off";
-    meetingStore.laserPointerMode = next;
-    try {
-        await api.patch(
-            `/api/meetings/${meetingStore.meeting.public_id}/settings`,
-            {
-                settings: { laser_pointer_mode: next },
-            },
-        );
-        // Sync to all participants
-        meetingStore.sendSignal("laser-mode-changed", { mode: next });
-    } catch {
-        // Revert on failure
-        meetingStore.laserPointerMode = next === "global" ? "off" : "global";
+watch(showMeetingDetails, (open) => {
+    if (!open) {
+        showMeetingPasscode.value = false;
     }
-}
+});
 
 // Live clock
 const currentTime = ref("");
@@ -2039,7 +2008,6 @@ const isWaiting = computed(() => {
     return !hasActiveModerator;
 });
 
-const meetingTitle = computed(() => meetingStore.meeting?.title || "Meeting");
 const participantCount = computed(() => meetingStore.allParticipants.length);
 const micToggleTitle = computed(() =>
     isMicOn.value ? "Mute (Ctrl+D)" : "Unmute (Ctrl+D)",
@@ -2608,7 +2576,10 @@ onMounted(async () => {
         initializing.value = true;
         await meetingStore.initializeMeeting(meetingId, participantId);
 
+        const shouldInitializeMediaNow =
+            meetingStore.localParticipant?.status === "admitted";
         const stream = meetingStore.localStream;
+
         if (stream) {
             const videoTrack = stream.getVideoTracks()[0];
             const audioTrack = stream.getAudioTracks()[0];
@@ -2627,27 +2598,34 @@ onMounted(async () => {
             if (!meetingStore.originalVideoTrack && videoTrack) {
                 meetingStore.originalVideoTrack = videoTrack;
             }
-
-            // Lobby blur processor is torn down on route transition; rehydrate before publishing.
-            await rehydrateJoinVideoEffectIfNeeded();
-            await meetingStore.addLocalStream(meetingStore.localStream);
         } else {
-            // Cold start: Join without an initial stream (camera/mic off)
-            await meetingStore.addLocalStream(null);
             isCameraOn.value = false;
             isMicOn.value = false;
         }
 
-        void meetingService.sendSignal(meetingId, {
-            signal_type: "participant-joined",
-            signal_data: {},
-            sender_participant_public_id: participantId,
-        }).catch((error) => {
-            console.warn("[MeetingRoom] participant-joined signal failed", {
-                status: error?.response?.status,
-                response: error?.response?.data,
-            });
-        });
+        if (shouldInitializeMediaNow) {
+            if (stream) {
+                // Lobby blur processor is torn down on route transition; rehydrate before publishing.
+                await rehydrateJoinVideoEffectIfNeeded();
+                await meetingStore.addLocalStream(meetingStore.localStream);
+            } else {
+                // Cold start: Join without an initial stream (camera/mic off)
+                await meetingStore.addLocalStream(null);
+            }
+
+            void meetingService
+                .sendSignal(meetingId, {
+                    signal_type: "participant-joined",
+                    signal_data: {},
+                    sender_participant_public_id: participantId,
+                })
+                .catch((error) => {
+                    console.warn("[MeetingRoom] participant-joined signal failed", {
+                        status: error?.response?.status,
+                        response: error?.response?.data,
+                    });
+                });
+        }
 
         window.addEventListener("keydown", handleGlobalKeydown);
 

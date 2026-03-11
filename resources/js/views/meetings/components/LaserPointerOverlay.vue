@@ -21,7 +21,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, defineProps, defineEmits } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useMeetingStore } from '@/stores/meeting';
 
 const props = defineProps<{

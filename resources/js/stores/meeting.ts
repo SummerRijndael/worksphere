@@ -258,46 +258,111 @@ export const useMeetingStore = defineStore('meeting', () => {
     async function initializeMeeting(meetingId: string, participantPublicId: string) {
          try {
              log('SYS', `Initializing meeting ${meetingId} for participant ${participantPublicId}`);
-             const data = await meetingService.getMeeting(meetingId) as any;
+             const data = await meetingService.getMeeting(meetingId, participantPublicId) as any;
              
-             // Extract participants and normalize
-             const participants = data.participants || [];
-             participants.forEach((p: any) => {
-                 p.public_id = p.public_id.toLowerCase();
-             });
+            const normalizeParticipantId = (value: unknown) =>
+                String(value ?? "").trim().toLowerCase();
 
+             // Extract participants, canonicalize IDs, and dedupe by participant ID.
+             // Echo presence payload uses lowercased IDs; keeping bootstrap data in the same
+             // format prevents duplicate "same user" rows (UPPERCASE + lowercase variants).
+             const participants = Array.from(
+                 (Array.isArray(data.participants) ? data.participants : []).reduce(
+                     (acc: Map<string, any>, item: any) => {
+                         const pid = normalizeParticipantId(item?.public_id);
+                         if (!pid) return acc;
+
+                         const existing = acc.get(pid);
+                         if (!existing) {
+                             acc.set(pid, {
+                                 ...item,
+                                 public_id: pid,
+                             });
+                             return acc;
+                         }
+
+                         acc.set(pid, {
+                             ...existing,
+                             ...item,
+                             public_id: pid,
+                             user: item?.user ?? existing?.user ?? null,
+                             metadata: {
+                                 ...(existing?.metadata || {}),
+                                 ...(item?.metadata || {}),
+                             },
+                         });
+                         return acc;
+                     },
+                     new Map<string, any>(),
+                 ).values(),
+             );
+             log('SYS', 'Meeting bootstrap payload', {
+                 keys: Object.keys(data || {}),
+                 requested_participant: participantPublicId,
+                 requested_participant_normalized: String(participantPublicId || '').trim().toLowerCase(),
+                 participant_count: Array.isArray(participants) ? participants.length : 0,
+                 participant_ids: Array.isArray(participants)
+                     ? participants.map((p: any) => p?.public_id).filter(Boolean)
+                     : [],
+                 participant_ids_normalized: Array.isArray(participants)
+                     ? participants
+                           .map((p: any) => String(p?.public_id || '').trim().toLowerCase())
+                           .filter(Boolean)
+                     : [],
+             });
              // Find local participant in the fetched data
-             const normalizedParticipantId = participantPublicId.toLowerCase();
-             const found = participants.find((p: any) => p.public_id === normalizedParticipantId) || null;
+             const normalizedParticipantId = normalizeParticipantId(participantPublicId);
+             let found = participants.find(
+                 (p: any) => normalizeParticipantId(p?.public_id) === normalizedParticipantId
+             ) || null;
              
              // --- SECURITY GUARD: PRE-COMMIT VALIDATION ---
              const authStore = useAuthStore();
-             const currentPublicId = authStore.user?.public_id || 'Guest';
-             const recordUserPublicId = found?.user?.public_id || 'Guest';
+            const currentPublicId = authStore.user?.public_id || 'Guest';
+            const normalizedCurrentUserPublicId = normalizeParticipantId(authStore.user?.public_id);
+             if (!found && authStore.user?.public_id) {
+                 const authUserPid = String(authStore.user.public_id).toLowerCase();
+                 const byAuthUser = participants.find(
+                     (p: any) => String(p?.user?.public_id || '').toLowerCase() === authUserPid
+                 ) || null;
+                 if (byAuthUser) {
+                     log('SECURITY', 'Participant token mismatch; falling back to authenticated participant record.', {
+                         requested_participant: normalizedParticipantId,
+                         resolved_participant: byAuthUser.public_id,
+                     });
+                     found = byAuthUser;
+                 }
+             }
+            if (!found) {
+                log('SECURITY', 'PARTICIPANT NOT FOUND: Rejecting session.', {
+                    requested_participant: normalizedParticipantId,
+                    current_user_public_id: currentPublicId,
+                    participant_ids: participants.map((p: any) =>
+                        normalizeParticipantId(p?.public_id)
+                    ),
+                });
+                throw new Error("Invalid Participant");
+            }
 
-             if (found?.user_id) {
-                // Registered User Check: Must be logged in as THE user this participant record belongs to
-                if (recordUserPublicId !== currentPublicId) {
-                    log('SECURITY', 'IDENTITY MISMATCH: Rejecting token.');
+            const recordUserPublicId = normalizeParticipantId(found?.user?.public_id);
+            if (recordUserPublicId) {
+                // Registered participant records must match the active authenticated user.
+                if (!normalizedCurrentUserPublicId || recordUserPublicId !== normalizedCurrentUserPublicId) {
+                    log('SECURITY', 'IDENTITY MISMATCH: Rejecting token.', {
+                        requested_participant: normalizedParticipantId,
+                        participant_record_user: recordUserPublicId,
+                        current_user_public_id: normalizedCurrentUserPublicId || null,
+                    });
                     throw new Error("Identity Mismatch");
                 }
-             } else if (found) {
-                // Guest Check: Verify against localStorage token set during join/login
-                // This prevents hijacking a guest session by just pasting the URL
-                const storedToken = localStorage.getItem(`worksphere_meeting_token_${meetingId}`);
-                if (!storedToken || storedToken.toLowerCase() !== normalizedParticipantId) {
-                    log('SECURITY', 'GUEST SESSION MISMATCH: Rejecting URL-pasted token.');
-                    throw new Error("Guest Session Mismatch");
-                }
-             } else {
-                 // Participant ID not found in meeting at all
-                 log('SECURITY', 'PARTICIPANT NOT FOUND: Rejecting session.');
-                 throw new Error("Invalid Participant");
-             }
+            }
 
              // --- COMMIT PHASE: Checks passed, set global state ---
              log('SYS', `Committing state: Local PID=${found.public_id}, Name=${found.user?.name || found.metadata?.guest_name}`);
-             meeting.value = data;
+             meeting.value = {
+                ...data,
+                participants,
+             };
              isLocked.value = !!data.is_locked;
              laserPointerMode.value = data.settings?.laser_pointer_mode || 'off';
              localParticipant.value = found;

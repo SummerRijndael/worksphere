@@ -173,7 +173,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, onMounted } from "vue";
+import { reactive, ref } from "vue";
 import { meetingService, type Meeting } from "@/services/meeting.service";
 import { Icon } from "@/components/ui";
 import { toast } from "vue-sonner";

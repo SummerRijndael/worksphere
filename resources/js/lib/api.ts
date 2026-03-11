@@ -36,21 +36,6 @@ api.interceptors.request.use(
             config.headers['X-Socket-ID'] = socketId;
         }
 
-        // Inject Meeting Participant ID if present
-        try {
-            const pathParts = window.location.pathname.split('/');
-            const isMeeting = pathParts[1] === 'm' && pathParts.length >= 3;
-            if (isMeeting) {
-                const meetingId = pathParts[2];
-                const participantId = localStorage.getItem(`worksphere_meeting_token_${meetingId}`);
-                if (participantId) {
-                    config.headers['X-Participant-ID'] = participantId;
-                }
-            }
-        } catch (e) {
-            // silent fail
-        }
-
         // Inject Current Team ID
         try {
             // Check localStorage first to avoid async store import overhead for every request if possible,

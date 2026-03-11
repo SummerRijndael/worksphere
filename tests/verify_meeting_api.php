@@ -31,7 +31,7 @@ try {
 
     $response = $controller->store($request);
 
-    if ($response instanceof \App\Http\Resources\MeetingResource) {
+    if ($response instanceof \Illuminate\Http\JsonResponse) {
         echo "✅ API Request Successful\n";
     } else {
         echo '❌ API Request Failed. Response type: '.get_class($response)."\n";

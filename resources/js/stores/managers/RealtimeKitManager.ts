@@ -44,20 +44,39 @@ export function createRealtimeKitManager(
         return isScreen ? `${baseId}:screen` : baseId;
     };
 
+    const isRenderableRemoteTrack = (track: MediaStreamTrack | null | undefined) =>
+        !!track &&
+        track.readyState === 'live' &&
+        track.enabled &&
+        !track.muted;
+
     function syncRemoteParticipantMedia(participant: any) {
         const basePid = resolveParticipantId(participant);
         if (!basePid) return;
         const screenPid = resolveParticipantId(participant, true);
 
-        const videoTrack = participant?.videoEnabled ? (participant?.videoTrack || null) : null;
-        const audioTrack = participant?.audioEnabled ? (participant?.audioTrack || null) : null;
+        const rawVideoTrack = participant?.videoTrack || null;
+        const rawAudioTrack = participant?.audioTrack || null;
+        const videoTrack =
+            participant?.videoEnabled && isRenderableRemoteTrack(rawVideoTrack)
+                ? rawVideoTrack
+                : null;
+        const audioTrack =
+            participant?.audioEnabled && isRenderableRemoteTrack(rawAudioTrack)
+                ? rawAudioTrack
+                : null;
 
         handleRemoteTrack(basePid, videoTrack, 'video');
         handleRemoteTrack(basePid, audioTrack, 'audio');
 
-        if (participant?.screenShareEnabled && participant?.screenShareTracks) {
-            handleRemoteTrack(screenPid, participant.screenShareTracks.video || null, 'screen-video');
-            handleRemoteTrack(screenPid, participant.screenShareTracks.audio || null, 'screen-audio');
+        const rawScreenVideoTrack = participant?.screenShareTracks?.video || null;
+        const rawScreenAudioTrack = participant?.screenShareTracks?.audio || null;
+        const screenVideoTrack = isRenderableRemoteTrack(rawScreenVideoTrack) ? rawScreenVideoTrack : null;
+        const screenAudioTrack = isRenderableRemoteTrack(rawScreenAudioTrack) ? rawScreenAudioTrack : null;
+
+        if (participant?.screenShareEnabled && (screenVideoTrack || screenAudioTrack)) {
+            handleRemoteTrack(screenPid, screenVideoTrack, 'screen-video');
+            handleRemoteTrack(screenPid, screenAudioTrack, 'screen-audio');
             onScreenShareToggle(basePid, true);
         } else {
             removeParticipantStreams(screenPid);
@@ -315,24 +334,91 @@ export function createRealtimeKitManager(
     }
 
     function setupParticipantListeners(participant: any) {
+        const basePid = resolveParticipantId(participant);
+        const screenPid = resolveParticipantId(participant, true);
+
         // Handle initial tracks if already available
         syncRemoteParticipantMedia(participant);
 
         // Listen for Video updates (Webcam)
         participant.on('videoUpdate', (payload: any) => {
             log('TRACK', `Remote videoUpdate from ${participant.id}`, { enabled: payload.videoEnabled });
+            if (typeof payload?.videoEnabled === 'boolean') {
+                if (!payload.videoEnabled) {
+                    removeParticipantTrack(basePid, 'video');
+                    return;
+                }
+
+                const nextVideoTrack = payload?.videoTrack || participant?.videoTrack || null;
+                handleRemoteTrack(
+                    basePid,
+                    isRenderableRemoteTrack(nextVideoTrack) ? nextVideoTrack : null,
+                    'video'
+                );
+                return;
+            }
+
             syncRemoteParticipantMedia(participant);
         });
 
         // Listen for Audio updates (Mic)
         participant.on('audioUpdate', (payload: any) => {
             log('TRACK', `Remote audioUpdate from ${participant.id}`, { enabled: payload.audioEnabled });
+            if (typeof payload?.audioEnabled === 'boolean') {
+                if (!payload.audioEnabled) {
+                    removeParticipantTrack(basePid, 'audio');
+                    return;
+                }
+
+                const nextAudioTrack = payload?.audioTrack || participant?.audioTrack || null;
+                handleRemoteTrack(
+                    basePid,
+                    isRenderableRemoteTrack(nextAudioTrack) ? nextAudioTrack : null,
+                    'audio'
+                );
+                return;
+            }
+
             syncRemoteParticipantMedia(participant);
         });
 
         // Listen for Screenshare updates
         participant.on('screenShareUpdate', (payload: any) => {
             log('TRACK', `Remote screenShareUpdate from ${participant.id}`, { enabled: payload.screenShareEnabled });
+            if (typeof payload?.screenShareEnabled === 'boolean') {
+                if (!payload.screenShareEnabled) {
+                    removeParticipantStreams(screenPid);
+                    onScreenShareToggle(basePid, false);
+                    return;
+                }
+
+                const nextScreenVideoTrack = payload?.screenShareTracks?.video || participant?.screenShareTracks?.video || null;
+                const nextScreenAudioTrack = payload?.screenShareTracks?.audio || participant?.screenShareTracks?.audio || null;
+                const renderableScreenVideo = isRenderableRemoteTrack(nextScreenVideoTrack)
+                    ? nextScreenVideoTrack
+                    : null;
+                const renderableScreenAudio = isRenderableRemoteTrack(nextScreenAudioTrack)
+                    ? nextScreenAudioTrack
+                    : null;
+                if (!renderableScreenVideo && !renderableScreenAudio) {
+                    removeParticipantStreams(screenPid);
+                    onScreenShareToggle(basePid, false);
+                    return;
+                }
+                handleRemoteTrack(
+                    screenPid,
+                    renderableScreenVideo,
+                    'screen-video'
+                );
+                handleRemoteTrack(
+                    screenPid,
+                    renderableScreenAudio,
+                    'screen-audio'
+                );
+                onScreenShareToggle(basePid, true);
+                return;
+            }
+
             syncRemoteParticipantMedia(participant);
         });
 
@@ -359,8 +445,19 @@ export function createRealtimeKitManager(
                         if (t.kind === kind) {
                             log('TRACK', `Removing ${kind} track from ${pid}`);
                             existingStream.removeTrack(t);
+                            try { t.stop(); } catch {}
                         }
                     });
+
+                    const isScreenStream = pid.endsWith(':screen');
+                    const hasVideoTrack = existingStream.getVideoTracks().some((t) => t.readyState === 'live');
+                    if (isScreenStream && !hasVideoTrack) {
+                        const newMap = new Map(remoteStreams.value);
+                        newMap.delete(pid);
+                        remoteStreams.value = newMap;
+                        onScreenShareToggle(pid.replace(/:screen$/, ''), false);
+                        return;
+                    }
 
                     // If stream is empty, remove it entirely
                     if (existingStream.getTracks().length === 0) {
@@ -384,6 +481,7 @@ export function createRealtimeKitManager(
             trackKind === 'screen-audio' ? 'screen-audio' :
             track?.kind === 'audio' ? 'audio' : 'video';
         const trackedId = track.id;
+        let muteCleanupTimer: ReturnType<typeof window.setTimeout> | null = null;
         const removeIfStillPresent = () => {
             const current = remoteStreams.value.get(pid);
             const stillPresent = !!current?.getTracks().find((t) => t.id === trackedId);
@@ -392,18 +490,34 @@ export function createRealtimeKitManager(
             handleRemoteTrack(pid, null, endedTrackKind);
         };
         track.onended = () => {
+            if (muteCleanupTimer) {
+                window.clearTimeout(muteCleanupTimer);
+                muteCleanupTimer = null;
+            }
             removeIfStillPresent();
         };
         track.onmute = () => {
-            // Don't destroy on transient mute; browser/SFU renegotiation (e.g. screen-share toggles)
-            // can briefly mute tracks and then recover with the same track object.
-            const current = remoteStreams.value.get(pid);
-            const stillPresent = !!current?.getTracks().find((t) => t.id === trackedId);
-            if (stillPresent) {
-                remoteStreams.value = new Map(remoteStreams.value);
+            if (muteCleanupTimer) {
+                window.clearTimeout(muteCleanupTimer);
             }
+
+            // Allow brief renegotiation mutes, then prune if the track never recovers.
+            muteCleanupTimer = window.setTimeout(() => {
+                const current = remoteStreams.value.get(pid);
+                const liveTrack = current?.getTracks().find((t) => t.id === trackedId) || null;
+                if (!liveTrack) return;
+                if (liveTrack.readyState !== 'live' || liveTrack.muted || !liveTrack.enabled) {
+                    removeIfStillPresent();
+                    return;
+                }
+                remoteStreams.value = new Map(remoteStreams.value);
+            }, 1200);
         };
         track.onunmute = () => {
+            if (muteCleanupTimer) {
+                window.clearTimeout(muteCleanupTimer);
+                muteCleanupTimer = null;
+            }
             const current = remoteStreams.value.get(pid);
             const stillPresent = !!current?.getTracks().find((t) => t.id === trackedId);
             if (stillPresent) {
@@ -419,6 +533,7 @@ export function createRealtimeKitManager(
             if (sameKindTrack && sameKindTrack.id !== track.id) {
                 log('TRACK', `Replacing existing ${track.kind} track for ${pid}`);
                 existingStream.removeTrack(sameKindTrack);
+                try { sameKindTrack.stop(); } catch {}
                 existingStream.addTrack(track);
             } else if (!sameKindTrack) {
                 log('TRACK', `Adding ${track.kind} track to existing stream for ${pid}`);
@@ -577,6 +692,9 @@ export function createRealtimeKitManager(
         targets.forEach((target) => {
             const stream = newMap.get(target);
             if (!stream) return;
+            stream.getTracks().forEach((track) => {
+                try { track.stop(); } catch {}
+            });
             newMap.delete(target);
             mutated = true;
         });
@@ -595,6 +713,7 @@ export function createRealtimeKitManager(
             .filter((t) => t.kind === kind)
             .forEach((t) => {
                 stream.removeTrack(t);
+                try { t.stop(); } catch {}
             });
 
         const newMap = new Map(remoteStreams.value);
@@ -604,6 +723,10 @@ export function createRealtimeKitManager(
             newMap.set(id, stream);
         }
         remoteStreams.value = newMap;
+
+        if (id.endsWith(':screen') && kind === 'video' && !stream.getVideoTracks().length) {
+            onScreenShareToggle(id.replace(/:screen$/, ''), false);
+        }
     }
 
     function setLocalStream(stream: MediaStream | null) {

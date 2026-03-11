@@ -3,6 +3,9 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 class Meeting extends Model
 {
@@ -36,6 +39,10 @@ class Meeting extends Model
         'peak_participant_count' => 'integer',
     ];
 
+    protected $hidden = [
+        'password',
+    ];
+
     protected static function boot()
     {
         parent::boot();
@@ -45,6 +52,93 @@ class Meeting extends Model
                 $model->public_id = (string) \Illuminate\Support\Str::ulid();
             }
         });
+    }
+
+    public static function looksLikePasswordHash(?string $value): bool
+    {
+        if (! is_string($value) || $value === '') {
+            return false;
+        }
+
+        return Str::startsWith($value, ['$2y$', '$2b$', '$argon2i$', '$argon2id$']);
+    }
+
+    public static function looksLikeEncryptedPassword(?string $value): bool
+    {
+        if (! is_string($value) || $value === '') {
+            return false;
+        }
+
+        try {
+            Crypt::decryptString($value);
+
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    public function setPasswordAttribute($value): void
+    {
+        if (! is_string($value) || trim($value) === '') {
+            $this->attributes['password'] = null;
+
+            return;
+        }
+
+        if (static::looksLikePasswordHash($value) || static::looksLikeEncryptedPassword($value)) {
+            $this->attributes['password'] = $value;
+
+            return;
+        }
+
+        $this->attributes['password'] = Crypt::encryptString($value);
+    }
+
+    public function revealPassword(): ?string
+    {
+        $storedPassword = $this->attributes['password'] ?? null;
+
+        if (! is_string($storedPassword) || $storedPassword === '') {
+            return null;
+        }
+
+        if (static::looksLikeEncryptedPassword($storedPassword)) {
+            try {
+                return Crypt::decryptString($storedPassword);
+            } catch (\Throwable) {
+                return null;
+            }
+        }
+
+        if (static::looksLikePasswordHash($storedPassword)) {
+            return null;
+        }
+
+        return $storedPassword;
+    }
+
+    public function passwordMatches(?string $plainPassword): bool
+    {
+        $storedPassword = $this->attributes['password'] ?? null;
+
+        if (! is_string($storedPassword) || $storedPassword === '' || ! is_string($plainPassword) || $plainPassword === '') {
+            return false;
+        }
+
+        if (static::looksLikeEncryptedPassword($storedPassword)) {
+            try {
+                return hash_equals(Crypt::decryptString($storedPassword), $plainPassword);
+            } catch (\Throwable) {
+                return false;
+            }
+        }
+
+        if (static::looksLikePasswordHash($storedPassword)) {
+            return Hash::check($plainPassword, $storedPassword);
+        }
+
+        return hash_equals($storedPassword, $plainPassword);
     }
 
     public function getRouteKeyName()

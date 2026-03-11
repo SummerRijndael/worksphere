@@ -446,17 +446,17 @@ onBeforeUnmount(() => {
         @click.self="$emit('close')"
     >
         <div
-            class="bg-(--surface-primary) rounded-xl border border-(--border-subtle) ring-1 ring-black/5 dark:ring-white/5 shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col h-[540px]"
+            class="bg-(--surface-primary) sm:rounded-xl border-y sm:border border-(--border-subtle) ring-1 ring-black/5 dark:ring-white/5 shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col h-dvh sm:h-[540px]"
         >
-            <div class="flex-1 flex overflow-hidden">
+            <div class="flex-1 flex flex-col sm:flex-row overflow-hidden">
                 <!-- Sidebar (Precision DNA) -->
-                <div class="w-44 bg-(--surface-secondary)/30 border-r border-(--border-subtle) flex flex-col pt-4">
-                    <div class="px-3 pb-4 flex-1 overflow-y-auto custom-scrollbar">
-                        <div class="space-y-1">
+                <div class="w-full sm:w-44 bg-(--surface-secondary)/30 border-b sm:border-b-0 sm:border-r border-(--border-subtle) flex sm:flex-col sm:pt-4">
+                    <div class="px-3 py-3 sm:pb-4 flex-1 overflow-x-auto sm:overflow-y-auto custom-scrollbar">
+                        <div class="flex gap-2 sm:flex-col sm:space-y-1 w-max sm:w-auto">
                             <button
                                 v-for="tab in tabs"
                                 :key="tab.id"
-                                class="w-full flex items-center gap-2.5 px-3 py-2 text-sm font-medium rounded-lg transition-all group"
+                                class="shrink-0 sm:w-full flex items-center gap-2.5 px-4 sm:px-3 py-2 text-sm font-medium rounded-lg transition-all group"
                                 :class="[
                                     activeTab === tab.id
                                         ? 'bg-blue-600/10 text-blue-600 dark:text-blue-400'
@@ -474,7 +474,7 @@ onBeforeUnmount(() => {
                         </div>
                     </div>
 
-                    <div class="p-4 border-t border-(--border-subtle)">
+                    <div class="hidden sm:block p-4 border-t border-(--border-subtle)">
                         <div class="flex items-center gap-2 px-1">
                             <div class="h-1.5 w-1.5 rounded-full bg-success"></div>
                             <span class="text-[10px] font-bold uppercase tracking-tight text-(--text-muted)">Live Status</span>
@@ -484,7 +484,7 @@ onBeforeUnmount(() => {
 
                 <!-- Content Area -->
                 <div class="flex-1 overflow-y-auto custom-scrollbar bg-(--surface-primary)">
-                    <div class="p-8 space-y-8">
+                    <div class="p-5 sm:p-8 space-y-6 sm:space-y-8">
                         <!-- Header (Integrated) -->
                         <div class="space-y-1">
                             <h2 class="text-xl font-bold text-(--text-primary)">Call Settings</h2>

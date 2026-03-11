@@ -289,7 +289,6 @@ import { useAuthStore } from "@/stores/auth";
 import { useMeetingStore } from "@/stores/meeting";
 import { useVideoCallStore } from "@/stores/videocall";
 import { useBackgroundBlur } from "@/composables/useBackgroundBlur";
-import { useThemeStore } from "@/stores/theme";
 import DeviceSettingsModal from "./components/DeviceSettingsModal.vue";
 import { Icon, Avatar } from "@/components/ui";
 import { toast } from "vue-sonner";
@@ -299,7 +298,6 @@ import { isValidUlid, normalizeUlid } from "@/utils/meetingId";
 const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
-const themeStore = useThemeStore();
 const meetingStore = useMeetingStore();
 const videoCallStore = useVideoCallStore();
 
@@ -349,12 +347,7 @@ onMounted(async () => {
 
     try {
         meeting.value = await meetingService.getMeeting(meetingId);
-        const savedPwd = localStorage.getItem(
-            `worksphere_meeting_pwd_${meetingId}`,
-        );
-        if (savedPwd) {
-            password.value = savedPwd;
-        }
+        localStorage.removeItem(`worksphere_meeting_pwd_${meetingId}`);
     } catch (e) {
         console.error("Failed to load meeting:", e);
         toast.error("Failed to load meeting details");

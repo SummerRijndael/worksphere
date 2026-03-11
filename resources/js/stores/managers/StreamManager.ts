@@ -27,6 +27,16 @@ type LocalPublicationEntry = {
     lastError: string | null;
 };
 
+type PullParticipantTracksOptions = {
+    forceApiPull?: boolean;
+    reason?: string;
+    pullKinds?: {
+        audio?: boolean;
+        video?: boolean;
+        screen?: boolean;
+    };
+};
+
 function getClientInstanceId(): string {
     const w = window as any;
     if (!w.__wsClientInstanceId) {
@@ -166,6 +176,18 @@ export function createStreamManager(
         if (typeof error?.message === 'string' && error.message) return error.message;
         if (typeof error === 'string' && error) return error;
         return 'unknown_error';
+    }
+
+    function getHttpStatus(error: any): number | null {
+        const status = error?.response?.status;
+        return Number.isFinite(status) ? Number(status) : null;
+    }
+
+    function shouldRescueSfuSession(error: any): boolean {
+        const status = getHttpStatus(error);
+        if (status === null) return false;
+        // 406 = negotiation mismatch, 410/404 = session gone, 5xx = backend failed to process session state.
+        return status === 406 || status === 410 || status === 404 || status >= 500;
     }
 
     function markLocalPublicationPending(kind: LocalPublicationKind, track: MediaStreamTrack | null) {
@@ -874,8 +896,25 @@ export function createStreamManager(
         return runInSFUQueue(async () => {
             if (!meetingRef.value || !localParticipantRef.value) return;
             
-            // Optimization: If session already exists and is healthy, don't restart it
-            if (sfuPc && sfuSessionId.value && (sfuConnectionState.value === 'connected' || sfuConnectionState.value === 'connecting')) {
+            // Optimization: If session already exists and is healthy, don't restart it.
+            // Guard against stale state after cleanup() where refs may still look "connected"
+            // while the actual RTCPeerConnection/session is already torn down.
+            const hasActivePc =
+                !!sfuPc &&
+                sfuPc.connectionState !== 'closed' &&
+                sfuPc.signalingState !== 'closed';
+            const hasHealthySession =
+                hasActivePc &&
+                !!sfuSessionId.value &&
+                (
+                    sfuPc!.connectionState === 'connected' ||
+                    sfuPc!.connectionState === 'connecting' ||
+                    sfuPc!.iceConnectionState === 'connected' ||
+                    sfuPc!.iceConnectionState === 'completed' ||
+                    sfuPc!.iceConnectionState === 'checking'
+                );
+
+            if (hasHealthySession) {
                 log('SFU', 'SFU already healthy, skipping redundant initSFU');
                 if (stream) {
                     // Just update tracks if provided
@@ -1191,7 +1230,8 @@ export function createStreamManager(
         audioMid?: string,
         videoMid?: string,
         screenMid?: string,
-        pullGeneration?: number
+        pullGeneration?: number,
+        options?: PullParticipantTracksOptions
     ) {
         // Queue if session not ready yet (signal arrived before initSFU completed)
         if (!sfuPc || !sfuSessionId.value) {
@@ -1201,6 +1241,7 @@ export function createStreamManager(
         }
 
         const normalizedId = participantPublicId.toLowerCase();
+        const forceApiPull = !!options?.forceApiPull;
         
         // Guard: Never pull our own tracks through the SFU. This prevents redundant transceivers
         // and signaling loops that can lead to transceiver state confusion.
@@ -1215,6 +1256,10 @@ export function createStreamManager(
         const actualAudioMid = audioMid ?? remotePublication.audioMid ?? knownTracks?.audioMid;
         const actualVideoMid = videoMid ?? remotePublication.videoMid ?? knownTracks?.videoMid;
         const actualScreenMid = screenMid ?? remotePublication.screenMid ?? knownTracks?.screenMid;
+        const forcedKinds = options?.pullKinds || null;
+        const allowAudioKind = !forcedKinds || !!forcedKinds.audio;
+        const allowVideoKind = !forcedKinds || !!forcedKinds.video;
+        const allowScreenKind = !forcedKinds || !!forcedKinds.screen;
         const requestFingerprint = buildRemotePublicationFingerprint(
             targetSessionId,
             actualAudioMid,
@@ -1307,9 +1352,9 @@ export function createStreamManager(
         const timeSinceFirstSeen = Date.now() - (participantFirstSeen.get(normalizedId) || Date.now());
         const isVisible = visibleParticipantIds.value.has(normalizedId);
         const inGracePeriod = timeSinceFirstSeen < GRACE_PERIOD_MS;
-        const hasExplicitVideoMid = actualVideoMid !== undefined && actualVideoMid !== null && actualVideoMid !== '';
-        const hasExplicitScreenMid = actualScreenMid !== undefined && actualScreenMid !== null && actualScreenMid !== '';
-        const hasExplicitAudioMid = actualAudioMid !== undefined && actualAudioMid !== null && actualAudioMid !== '';
+        const hasExplicitVideoMid = allowVideoKind && actualVideoMid !== undefined && actualVideoMid !== null && actualVideoMid !== '';
+        const hasExplicitScreenMid = allowScreenKind && actualScreenMid !== undefined && actualScreenMid !== null && actualScreenMid !== '';
+        const hasExplicitAudioMid = allowAudioKind && actualAudioMid !== undefined && actualAudioMid !== null && actualAudioMid !== '';
         const shouldPullVideo = isVisible || inGracePeriod || hasExplicitVideoMid;
         const shouldPullScreen = isVisible || inGracePeriod || hasExplicitScreenMid;
 
@@ -1441,47 +1486,56 @@ export function createStreamManager(
                 });
 
                 // Set up track resolvers (SDK: createConsumerObjectAndWaitForTrack pattern)
-                const pendingTrackPromises = trackReqsWithMid
-                    .map(req => {
-                        const mid = req.mid;
-                        const t = req.trackName === 'audio' ? audioTransceiver : 
-                                  req.trackName === 'video' ? videoTransceiver : 
-                                  req.trackName === 'screen' ? screenTransceiver : null;
-                        
-                        if (!t) return null;
+                trackReqsWithMid.forEach((req) => {
+                    const mid = req.mid;
+                    const t = req.trackName === 'audio' ? audioTransceiver :
+                              req.trackName === 'video' ? videoTransceiver :
+                              req.trackName === 'screen' ? screenTransceiver : null;
 
-                        const kind = req.trackName === 'audio' ? 'audio' : 'video';
-                        const midKey = mid ? `${mid}:${kind}` : null;
-                        
-                        return new Promise<{ track: MediaStreamTrack, transceiver: RTCRtpTransceiver }>((res, rej) => {
-                            // PROACTIVE CHECK: Check if the transceiver already has a live track attached (missed event race)
-                            if (t.receiver.track && isLiveTrack(t.receiver.track)) {
-                                log('DEBUG', `Proactive Resolver Hit: Track for ${normalizedId}:${req.trackName} already live in PC`);
-                                res({ track: t.receiver.track, transceiver: t });
-                                return;
-                            }
+                    if (!t) return;
 
-                            const timeout = setTimeout(() => {
-                                if ((midKey && trackResolvers.has(midKey)) || trackResolvers.has(t)) {
-                                    log('WARNING', `Timed out waiting for track event ${midKey || 'transceiver-bound'} for ${normalizedId}`);
-                                    if (midKey) trackResolvers.delete(midKey);
-                                    trackResolvers.delete(t);
-                                    rej(new Error(`Timeout waiting for ${midKey || 'transceiver-bound'}`));
-                                }
-                            }, 10000);
-                            
-                            if (midKey) trackResolvers.set(midKey, { resolve: res, reject: rej, timeout });
-                            trackResolvers.set(t, { resolve: res, reject: rej, timeout });
-                        });
-                    })
-                    .filter(p => p !== null);
+                    const kind = req.trackName === 'audio' ? 'audio' : 'video';
+                    const midKey = mid ? `${mid}:${kind}` : null;
+
+                    // PROACTIVE CHECK: Track already live; no resolver needed.
+                    if (
+                        !forceApiPull &&
+                        t.receiver.track &&
+                        isLiveTrack(t.receiver.track) &&
+                        !t.receiver.track.muted
+                    ) {
+                        log('DEBUG', `Proactive Resolver Hit: Track for ${normalizedId}:${req.trackName} already live in PC`);
+                        return;
+                    }
+
+                    const timeout = setTimeout(() => {
+                        if ((midKey && trackResolvers.has(midKey)) || trackResolvers.has(t)) {
+                            log('WARNING', `Timed out waiting for track event ${midKey || 'transceiver-bound'} for ${normalizedId}`);
+                            if (midKey) trackResolvers.delete(midKey);
+                            trackResolvers.delete(t);
+                        }
+                    }, 10000);
+
+                    const noopResolve = (_value: { track: MediaStreamTrack, transceiver: RTCRtpTransceiver }) => {};
+                    const noopReject = (_error: any) => {};
+                    if (midKey) trackResolvers.set(midKey, { resolve: noopResolve, reject: noopReject, timeout });
+                    trackResolvers.set(t, { resolve: noopResolve, reject: noopReject, timeout });
+                });
 
                 const connected = await waitForSfuConnected();
                 if (!connected) {
                     const delay = retryDelays[currentAttempts - 1] || 5000;
                     log('SFU', `PeerConnection not connected yet for pull ${participantPublicId} (gen ${pullGeneration}), retrying in ${delay}ms...`);
                     setTimeout(() => {
-                        pullParticipantTracks(participantPublicId, targetSessionId, audioMid, videoMid, screenMid, pullGeneration);
+                        pullParticipantTracks(
+                            participantPublicId,
+                            targetSessionId,
+                            audioMid,
+                            videoMid,
+                            screenMid,
+                            pullGeneration,
+                            options
+                        );
                     }, delay);
                     return;
                 }
@@ -1494,13 +1548,26 @@ export function createStreamManager(
                     // Check if transceiver is live and matches KIND (security/correctness guard)
                     const track = tc?.receiver.track;
                     const expectedKind = req.trackName === 'audio' ? 'audio' : 'video';
-                    return track && track.kind === expectedKind && isLiveTrack(track);
+                    return (
+                        !!track &&
+                        track.kind === expectedKind &&
+                        isLiveTrack(track) &&
+                        !track.muted
+                    );
                 }).length;
 
                 if (satisfiedCount >= trackReqs.length && trackReqs.length > 0) {
-                    log('SFU', `Pull targets fully satisfied locally (Proactive) for ${participantPublicId}, skipping API call.`);
-                    clearParticipantPullState(normalizedId, pullGeneration);
-                    return;
+                    if (forceApiPull) {
+                        log(
+                            'SFU',
+                            `Bypassing proactive-satisfied shortcut for ${participantPublicId}; forcing API pull`,
+                            { reason: options?.reason || 'unspecified' }
+                        );
+                    } else {
+                        log('SFU', `Pull targets fully satisfied locally (Proactive) for ${participantPublicId}, skipping API call.`);
+                        clearParticipantPullState(normalizedId, pullGeneration);
+                        return;
+                    }
                 }
 
                 log('SFU', `Attempt ${currentAttempts} (gen ${pullGeneration}): Pulling tracks for ${participantPublicId} [Audio: ${audioTransceiver?.mid || 'None'}, Video: ${videoTransceiver?.mid || 'None'}, Screen: ${screenTransceiver?.mid || 'None'}] using local session ${sfuSessionId.value}, remote session ${targetSessionId}...`);
@@ -1561,7 +1628,8 @@ export function createStreamManager(
                             retryKinds.audio ? (actualAudioMid ?? undefined) : undefined,
                             retryKinds.video ? (actualVideoMid ?? undefined) : undefined,
                             retryKinds.screen ? (actualScreenMid ?? undefined) : undefined,
-                            pullGeneration
+                            pullGeneration,
+                            options
                         );
                     }, delay);
                 };
@@ -1722,8 +1790,10 @@ export function createStreamManager(
                     );
                 }
             } catch (error: any) {
-                if (error?.response?.status === 406) {
-                    log('ERROR', '406 Not Acceptable during pull. Triggering Rescue.');
+                if (shouldRescueSfuSession(error)) {
+                    log('ERROR', 'Terminal SFU pull error. Triggering session rescue.', {
+                        status: getHttpStatus(error),
+                    });
                     await handleSFU406Rescue();
                     return;
                 }
@@ -1731,7 +1801,15 @@ export function createStreamManager(
                 const delay = retryDelays[currentAttempts - 1] || 5000;
                 log('ERROR', `Failed to pull tracks (attempt ${currentAttempts}, gen ${pullGeneration}), retrying in ${delay}ms...`, error);
                 setTimeout(() => {
-                    pullParticipantTracks(participantPublicId, targetSessionId, audioMid, videoMid, screenMid, pullGeneration);
+                    pullParticipantTracks(
+                        participantPublicId,
+                        targetSessionId,
+                        audioMid,
+                        videoMid,
+                        screenMid,
+                        pullGeneration,
+                        options
+                    );
                 }, delay);
             }
         });
@@ -1813,8 +1891,10 @@ export function createStreamManager(
                             await sfuPc.setRemoteDescription(toSdpAnswer(res.sessionDescription));
                             syncLocalPublicationsFromTransceivers([kind]);
                         } catch (error: any) {
-                            if (error?.response?.status === 406) {
-                                log('ERROR', '406 Not Acceptable caught during replaceTrack renegotiation. Triggering Rescue state.');
+                            if (shouldRescueSfuSession(error)) {
+                                log('ERROR', 'Terminal replaceTrack renegotiation error. Triggering Rescue state.', {
+                                    status: getHttpStatus(error),
+                                });
                                 failLocalPublication(kind, error);
                                 await handleSFU406Rescue();
                                 return; // Don't broadcast after rescue
@@ -1984,8 +2064,10 @@ export function createStreamManager(
                         return executePublish();
                     }
 
-                    if (error?.response?.status === 406) {
-                        log('ERROR', '406 Not Acceptable during publish screen track. Rescuing.');
+                    if (shouldRescueSfuSession(error)) {
+                        log('ERROR', 'Terminal publish-screen error. Rescuing SFU session.', {
+                            status: getHttpStatus(error),
+                        });
                         failLocalPublication('screen', error);
                         await handleSFU406Rescue();
                     } else {
@@ -2234,7 +2316,22 @@ export function createStreamManager(
             window.clearInterval(healthCheckInterval);
             healthCheckInterval = null;
         }
-        if (sfuPc) sfuPc.close();
+        if (qualityMonitorInterval) {
+            window.clearInterval(qualityMonitorInterval);
+            qualityMonitorInterval = null;
+        }
+        if (sfuPc) {
+            sfuPc.onicecandidate = null;
+            sfuPc.ontrack = null;
+            sfuPc.oniceconnectionstatechange = null;
+            sfuPc.onconnectionstatechange = null;
+            sfuPc.close();
+            sfuPc = null;
+        }
+        sfuSessionId.value = null;
+        sfuIceState.value = 'new';
+        sfuConnectionState.value = 'new';
+        isInitializingSFU.value = false;
         remoteStreams.value.clear();
         participantSlots.value = [];
         remoteSfuSessions.clear();
@@ -2246,6 +2343,9 @@ export function createStreamManager(
         participantPullGeneration.clear();
         pendingTrackEvents.length = 0;
         pendingPullSignals.length = 0;
+        remoteParticipantMids.clear();
+        prevReceiverStats.clear();
+        trackPreferredLayers.clear();
         audioAnalysers.forEach(x => {
             window.clearInterval(x.interval);
             x.context.close().catch(()=>{});
