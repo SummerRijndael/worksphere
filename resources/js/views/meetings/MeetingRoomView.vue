@@ -250,7 +250,7 @@
                             <label>Joining Info</label>
                             <div class="link-box">
                                 <p class="text-xs text-secondary mb-2 truncate">
-                                    {{ meetingStore.meetingLink }}
+                                    {{ meetingShareUrl || "Link unavailable" }}
                                 </p>
                                 <button
                                     @click="copyMeetingLink"
@@ -1812,6 +1812,7 @@
         />
 
         <DevSimulationTool v-if="isDevMode" v-model:show="showDevTool" />
+        <MediaViewer />
     </div>
 </template>
 
@@ -1856,6 +1857,7 @@ import WhiteboardView from "./components/WhiteboardView.vue";
 import BreakoutManagerModal from "./components/BreakoutManagerModal.vue";
 import BreakoutOverlay from "./components/BreakoutOverlay.vue";
 import BreakoutDashboard from "./components/BreakoutDashboard.vue";
+import MediaViewer from "@/components/tools/MediaViewer.vue";
 import { useRecording as useRecordingComposable } from "@/composables/useRecording";
 import { isValidUlid, normalizeUlid } from "@/utils/meetingId";
 
@@ -1882,6 +1884,18 @@ const whiteboardStore = useWhiteboardStore();
 
 const rawMeetingId = String(route.params.id ?? "");
 const meetingId = isValidUlid(rawMeetingId) ? normalizeUlid(rawMeetingId) : "";
+
+const resolvedMeetingPublicId = computed(() => {
+    const storeId = String(meetingStore.meeting?.public_id || "").trim();
+    if (isValidUlid(storeId)) return normalizeUlid(storeId);
+    if (isValidUlid(meetingId)) return normalizeUlid(meetingId);
+    return "";
+});
+
+const meetingShareUrl = computed(() => {
+    if (!resolvedMeetingPublicId.value) return "";
+    return `${window.location.origin}/m/${resolvedMeetingPublicId.value}`;
+});
 
 const participantFromQuery = Array.isArray(route.query.participant)
     ? route.query.participant[0]
@@ -2130,9 +2144,12 @@ function getParticipantInitial(p: any) {
 
 function getParticipantName(p: any) {
     if (!p) return "You";
-    const name = p.user?.name || p.metadata?.guest_name || "Guest";
-    const isGuest = !p.user?.public_id && !p.user?.id;
-    if (isGuest && !/\(guest\)$/i.test(name)) {
+    const name = String(p.user?.name || p.metadata?.guest_name || "Guest").trim();
+    const hasLinkedUser = Boolean(p.user_id || p.user?.id || p.user?.public_id);
+    const isGuest = !hasLinkedUser;
+    if (isGuest) {
+        if (/\(guest\)$/i.test(name)) return name;
+        if (/^guest$/i.test(name)) return "Guest";
         return `${name} (Guest)`;
     }
     return name;
@@ -3333,13 +3350,23 @@ function formatDate(dateString: string) {
     }
 }
 
-async function copyToClipboard(text: string, label: string) {
-    navigator.clipboard.writeText(text);
-    toast.success(`${label} copied to clipboard`);
+async function copyToClipboard(text: string | null | undefined, label: string) {
+    const normalizedText = String(text ?? "").trim();
+    if (!normalizedText || normalizedText.toLowerCase() === "undefined") {
+        toast.error(`${label} is unavailable`);
+        return;
+    }
+
+    try {
+        await navigator.clipboard.writeText(normalizedText);
+        toast.success(`${label} copied to clipboard`);
+    } catch (error) {
+        toast.error(`Failed to copy ${label.toLowerCase()}`);
+    }
 }
 
 function copyMeetingLink() {
-    copyToClipboard(meetingStore.meetingLink, "Meeting link");
+    copyToClipboard(meetingShareUrl.value, "Meeting link");
 }
 
 // ── Network Stats Tracking ──────────────────────────────────────────────────
@@ -5768,8 +5795,19 @@ onBeforeUnmount(() => {
         top: 0;
         bottom: 0;
         border-radius: 0;
-        z-index: 1001; /* Above more menu */
+        z-index: 1001;
         background: var(--surface-primary);
+    }
+
+    .more-menu-wrapper {
+        position: relative;
+        z-index: 1200;
+    }
+
+    .modern-more-menu {
+        z-index: 1201 !important;
+        right: 0 !important;
+        width: min(280px, calc(100vw - 20px)) !important;
     }
 
     .gmeet-root,
@@ -5844,6 +5882,11 @@ onBeforeUnmount(() => {
     /* Hide less critical items on very small screens to avoid overlap */
     .bar-section--right .MeetingLayoutSelector {
         display: none;
+    }
+
+    .modern-more-menu {
+        right: 8px !important;
+        width: min(260px, calc(100vw - 16px)) !important;
     }
 }
 .initializing-overlay {

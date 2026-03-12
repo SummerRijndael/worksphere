@@ -1,13 +1,19 @@
 <script setup lang="ts">
-import { onMounted, computed, ref } from "vue";
+import { onMounted, computed, ref, watch } from "vue";
 import { useLinkPreview } from "@/composables/useLinkPreview";
 import { Icon } from "@/components/ui";
 
 interface Props {
     url: string;
+    hideUnsafe?: boolean;
 }
 
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+    hideUnsafe: false,
+});
+const emit = defineEmits<{
+    unsafe: [url: string];
+}>();
 const { loading, preview, fetchPreview } = useLinkPreview();
 const showWarning = ref(false);
 
@@ -63,10 +69,23 @@ const proceed = () => {
     window.open(props.url, '_blank');
     showWarning.value = false;
 };
+
+const shouldHideUnsafe = computed(
+    () => props.hideUnsafe && preview.value?.error === 'unsafe_content_blocked',
+);
+
+watch(
+    () => preview.value?.error,
+    (error) => {
+        if (error === "unsafe_content_blocked") {
+            emit("unsafe", props.url);
+        }
+    },
+);
 </script>
 
 <template>
-    <div class="inline-block w-full max-w-[280px]">
+    <div v-if="!shouldHideUnsafe" class="inline-block w-full max-w-[280px]">
         <!-- Loading State -->
         <div v-if="loading" class="animate-pulse flex space-x-4 p-3 bg-gray-50 dark:bg-zinc-900 rounded-lg border dark:border-zinc-800">
             <div class="flex-1 space-y-2 py-1">

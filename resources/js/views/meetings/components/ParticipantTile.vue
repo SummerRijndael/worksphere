@@ -496,9 +496,21 @@ const displayName = computed(() => {
           props.participant.metadata?.guest_name ||
           "Participant";
 
-    const isGuest = !props.participant.user?.public_id && !props.participant.user?.id;
+    const hasLinkedUser = Boolean(
+        props.participant.user_id ||
+            props.participant.user?.id ||
+            props.participant.user?.public_id,
+    );
+    const isGuest = !hasLinkedUser;
     if (!isLocal.value && isGuest) {
-        name = `${name} (Guest)`;
+        const normalizedName = String(name).trim();
+        if (/\(guest\)$/i.test(normalizedName)) {
+            name = normalizedName;
+        } else if (/^guest$/i.test(normalizedName)) {
+            name = "Guest";
+        } else {
+            name = `${normalizedName} (Guest)`;
+        }
     }
 
     if (props.isScreenShare) name += " (presenting)";

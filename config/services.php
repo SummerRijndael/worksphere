@@ -137,6 +137,8 @@ return [
         'api_token' => env('CLOUDFLARE_REALTIME_API_TOKEN'),
         'app_id' => env('CLOUDFLARE_REALTIME_APP_ID'),
         'recording_enabled' => env('MEETING_RECORDING_ENABLED', false),
+        'store_locally' => env('MEETING_RECORDING_STORE_LOCAL', true),
+        'recording_storage_disk' => env('MEETING_RECORDING_STORAGE_DISK', 'private'),
         'watermark_url' => env('RECORDING_WATERMARK_URL', env('APP_URL').'/static/images/brands/logo.svg'),
         'watermark_position' => env('RECORDING_WATERMARK_POSITION', 'right bottom'),
         'watermark_height' => (int) env('RECORDING_WATERMARK_HEIGHT', 40),

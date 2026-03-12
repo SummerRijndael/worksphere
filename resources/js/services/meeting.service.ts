@@ -101,16 +101,136 @@ class MeetingService extends BaseService {
         return this.post(`/api/meetings/${meetingId}/participants/${participantId}/demote`, {});
     }
 
-    async getMessages(meetingId: string): Promise<any[]> {
-        const response = await this.api.get(`/api/meetings/${meetingId}/messages`);
+    async getMessages(
+        meetingId: string,
+        options?: {
+            thread_root_id?: string | number;
+            limit?: number;
+            before?: string | number;
+        },
+    ): Promise<any[]> {
+        const response = await this.api.get(`/api/meetings/${meetingId}/messages`, {
+            params: {
+                thread_root_id: options?.thread_root_id,
+                limit: options?.limit,
+                before: options?.before,
+            },
+        });
         return response.data.data || response.data;
     }
 
-    async sendMessage(meetingId: string, participantId: string, body: string): Promise<any> {
+    async sendMessage(
+        meetingId: string,
+        participantId: string,
+        body: string,
+        options?: {
+            temp_id?: string;
+            reply_to?: string | number;
+            metadata?: Record<string, any>;
+        },
+    ): Promise<any> {
         const response = await this.api.post(`/api/meetings/${meetingId}/messages`, {
             participant_public_id: participantId,
-            body
+            body,
+            temp_id: options?.temp_id,
+            reply_to: options?.reply_to,
+            metadata: options?.metadata,
         });
+        return response.data.data || response.data;
+    }
+
+    async uploadMessage(
+        meetingId: string,
+        participantId: string,
+        files: File[],
+        options?: {
+            body?: string;
+            temp_id?: string;
+            reply_to?: string | number;
+            metadata?: Record<string, any>;
+        },
+    ): Promise<any> {
+        const formData = new FormData();
+        formData.append("participant_public_id", participantId);
+
+        if (options?.body) {
+            formData.append("body", options.body);
+        }
+        if (options?.temp_id) {
+            formData.append("temp_id", options.temp_id);
+        }
+        if (options?.reply_to !== undefined && options?.reply_to !== null) {
+            formData.append("reply_to", String(options.reply_to));
+        }
+
+        if (options?.metadata) {
+            Object.entries(options.metadata).forEach(([key, value]) => {
+                if (value === undefined || value === null) return;
+                if (typeof value === "object") {
+                    formData.append(`metadata[${key}]`, JSON.stringify(value));
+                } else {
+                    formData.append(`metadata[${key}]`, String(value));
+                }
+            });
+        }
+
+        files.forEach((file) => {
+            formData.append("files[]", file);
+        });
+
+        const response = await this.api.post(
+            `/api/meetings/${meetingId}/messages`,
+            formData,
+            {
+                headers: {
+                    "Content-Type": "multipart/form-data",
+                },
+            },
+        );
+
+        return response.data.data || response.data;
+    }
+
+    async pinMessage(meetingId: string, messageId: string | number): Promise<any> {
+        const response = await this.api.post(`/api/meetings/${meetingId}/messages/${messageId}/pin`);
+        return response.data.data || response.data;
+    }
+
+    async unpinMessage(meetingId: string, messageId: string | number): Promise<any> {
+        const response = await this.api.delete(`/api/meetings/${meetingId}/messages/${messageId}/pin`);
+        return response.data.data || response.data;
+    }
+
+    async clearPinnedMessages(meetingId: string): Promise<any[]> {
+        const response = await this.api.delete(`/api/meetings/${meetingId}/messages/pins`);
+        return response.data.data || response.data || [];
+    }
+
+    async editMessage(
+        meetingId: string,
+        messageId: string | number,
+        body: string,
+    ): Promise<any> {
+        const response = await this.api.patch(`/api/meetings/${meetingId}/messages/${messageId}`, {
+            body,
+        });
+        return response.data.data || response.data;
+    }
+
+    async deleteMessage(meetingId: string, messageId: string | number): Promise<any> {
+        const response = await this.api.delete(`/api/meetings/${meetingId}/messages/${messageId}`);
+        return response.data.data || response.data;
+    }
+
+    async toggleMessageReaction(
+        meetingId: string,
+        messageId: string | number,
+        reaction: "like" | "laugh" | "hundred" | "sad" | "love" | "angry" | "scared" | "care",
+    ): Promise<any> {
+        const response = await this.api.post(
+            `/api/meetings/${meetingId}/messages/${messageId}/reactions`,
+            { reaction },
+        );
         return response.data.data || response.data;
     }
 

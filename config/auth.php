@@ -14,6 +14,7 @@ return [
     'registration_enabled' => env('AUTH_REGISTRATION_ENABLED', true),
     'email_verification' => env('AUTH_EMAIL_VERIFICATION', true),
     'social_login_enabled' => env('AUTH_SOCIAL_LOGIN_ENABLED', true),
+    'social_login_popup_enabled' => env('AUTH_SOCIAL_LOGIN_POPUP_ENABLED', false),
 
     /*
     |--------------------------------------------------------------------------

@@ -503,13 +503,17 @@ const formattedTime = computed(() => {
 });
 
 function getDisplayName(p: any) {
-    const name =
+    const name = String(
         p.display_name ||
         p.user?.name ||
         p.metadata?.guest_name ||
-        "Participant";
-    const isGuest = !p.user?.public_id && !p.user?.id;
-    if (isGuest && !/\(guest\)$/i.test(name)) {
+        "Participant",
+    ).trim();
+    const hasLinkedUser = Boolean(p.user_id || p.user?.id || p.user?.public_id);
+    const isGuest = !hasLinkedUser;
+    if (isGuest) {
+        if (/\(guest\)$/i.test(name)) return name;
+        if (/^guest$/i.test(name)) return "Guest";
         return `${name} (Guest)`;
     }
     return name;

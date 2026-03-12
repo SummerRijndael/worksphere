@@ -5,10 +5,16 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Spatie\MediaLibrary\HasMedia;
+use Spatie\MediaLibrary\InteractsWithMedia;
+use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
-class MeetingRecording extends Model
+class MeetingRecording extends Model implements HasMedia
 {
     use HasUuids;
+    use InteractsWithMedia;
+
+    public const MEDIA_COLLECTION = 'recording_files';
 
     protected $fillable = [
         'meeting_id',
@@ -45,5 +51,29 @@ class MeetingRecording extends Model
     public function isActive(): bool
     {
         return in_array($this->status, ['pending', 'recording']);
+    }
+
+    public function registerMediaCollections(): void
+    {
+        $disk = config('services.cloudflare_realtime.recording_storage_disk', 'private');
+
+        $this->addMediaCollection(self::MEDIA_COLLECTION)
+            ->useDisk($disk)
+            ->singleFile();
+    }
+
+    public function getDisplayNameAttribute(): string
+    {
+        $startedAt = $this->created_at;
+        if (! $startedAt) {
+            return 'Meeting Recording';
+        }
+
+        return 'Recording - '.$startedAt->timezone(config('app.timezone'))->format('M j, Y g:i A');
+    }
+
+    public function getRecordingMediaAttribute(): ?Media
+    {
+        return $this->getFirstMedia(self::MEDIA_COLLECTION);
     }
 }

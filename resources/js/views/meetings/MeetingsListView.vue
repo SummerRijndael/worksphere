@@ -657,6 +657,10 @@ const joinMeeting = (meeting: Meeting) => {
 
 const copyLink = (meeting: Meeting) => {
     const url = getMeetingUrl(meeting);
+    if (!url) {
+        toast.error("Meeting link is unavailable");
+        return;
+    }
     navigator.clipboard.writeText(url);
     toast.success("Invitation link copied to clipboard");
 };
@@ -693,7 +697,9 @@ const getMeetingPasswordDisplay = (meeting: Meeting): string => {
 };
 
 const getMeetingUrl = (meeting: Meeting) => {
-    return `${window.location.origin}/m/${meeting.public_id}`;
+    const publicId = String(meeting.public_id || "").trim();
+    if (!publicId || publicId.toLowerCase() === "undefined") return "";
+    return `${window.location.origin}/m/${publicId}`;
 };
 
 const onMeetingCreated = (meeting: Meeting) => {
@@ -788,10 +794,18 @@ const getMeetingDisplayCount = (meeting: Meeting) => {
 };
 
 const getParticipantDisplayName = (participant: any) => {
-    const name =
-        participant?.user?.name || participant?.metadata?.guest_name || "Guest";
-    const isGuest = !participant?.user?.public_id && !participant?.user?.id;
-    if (isGuest && !/\(guest\)$/i.test(name)) {
+    const name = String(
+        participant?.user?.name || participant?.metadata?.guest_name || "Guest",
+    ).trim();
+    const hasLinkedUser = Boolean(
+        participant?.user_id ||
+            participant?.user?.id ||
+            participant?.user?.public_id,
+    );
+    const isGuest = !hasLinkedUser;
+    if (isGuest) {
+        if (/\(guest\)$/i.test(name)) return name;
+        if (/^guest$/i.test(name)) return "Guest";
         return `${name} (Guest)`;
     }
     return name;

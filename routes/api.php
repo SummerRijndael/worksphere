@@ -1060,6 +1060,12 @@ Route::middleware(['throttle:meetings', 'impersonation.block'])->prefix('meeting
     // Meeting Chat
     Route::get('/{meeting}/messages', [\App\Http\Controllers\Api\MeetingController::class, 'getMessages']);
     Route::post('/{meeting}/messages', [\App\Http\Controllers\Api\MeetingController::class, 'sendMessage']);
+    Route::delete('/{meeting}/messages/pins', [\App\Http\Controllers\Api\MeetingController::class, 'clearPinnedMessages']);
+    Route::patch('/{meeting}/messages/{messageId}', [\App\Http\Controllers\Api\MeetingController::class, 'updateMessage']);
+    Route::delete('/{meeting}/messages/{messageId}', [\App\Http\Controllers\Api\MeetingController::class, 'deleteMessage']);
+    Route::post('/{meeting}/messages/{messageId}/reactions', [\App\Http\Controllers\Api\MeetingController::class, 'toggleMessageReaction']);
+    Route::post('/{meeting}/messages/{messageId}/pin', [\App\Http\Controllers\Api\MeetingController::class, 'pinMessage']);
+    Route::delete('/{meeting}/messages/{messageId}/pin', [\App\Http\Controllers\Api\MeetingController::class, 'unpinMessage']);
 
     // Breakout Rooms
     Route::post('/{meeting}/breakout-sessions', [\App\Http\Controllers\Api\MeetingController::class, 'startBreakout']);

@@ -77,9 +77,12 @@ function getParticipantName(publicId: string) {
     if (publicId === meetingStore.localParticipant?.public_id) return 'You';
     const p = meetingStore.allParticipants.find(x => x.public_id === publicId);
     if (!p) return '';
-    const base = (p.user?.name || p.metadata?.guest_name || 'Guest').split(' ')[0]; // Just first name
-    const isGuest = !p.user?.public_id && !p.user?.id;
-    if (isGuest && !/\(guest\)$/i.test(base)) {
+    const base = String(p.user?.name || p.metadata?.guest_name || 'Guest').split(' ')[0].trim(); // Just first name
+    const hasLinkedUser = Boolean(p.user_id || p.user?.id || p.user?.public_id);
+    const isGuest = !hasLinkedUser;
+    if (isGuest) {
+        if (/\(guest\)$/i.test(base)) return base;
+        if (/^guest$/i.test(base)) return 'Guest';
         return `${base} (Guest)`;
     }
     return base;

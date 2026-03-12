@@ -1,6 +1,7 @@
 (function() {
     const container = document.getElementById('oauth-status');
     if (!container) return;
+    const TARGET_ORIGIN = window.location.origin;
 
     const status = container.dataset.status;
     const message = container.dataset.message;
@@ -10,12 +11,12 @@
 
     function notifyOpener(type, data) {
         try {
-            if (window.opener) {
+            if (window.opener && !window.opener.closed) {
                 window.opener.postMessage({
                     type: type,
                     email: emailAddress,
                     ...data
-                }, '*');
+                }, TARGET_ORIGIN);
             }
         } catch(e) { console.error('Failed to notify opener:', e); }
     }

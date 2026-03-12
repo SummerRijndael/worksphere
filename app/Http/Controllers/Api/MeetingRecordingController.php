@@ -3,15 +3,17 @@
 namespace App\Http\Controllers\Api;
 
 use App\Events\Meetings\MeetingSignal;
+use App\Jobs\IngestMeetingRecordingMedia;
 use App\Models\Meeting;
 use App\Models\MeetingRecording;
-use App\Support\MeetingParticipantSession;
 use App\Services\CloudflareRealtimeKitService;
+use App\Support\MeetingParticipantSession;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\URL;
 
 /**
  * Handles meeting recording lifecycle for PRO users.
@@ -293,17 +295,32 @@ class MeetingRecordingController extends Controller
         \Illuminate\Support\Facades\Gate::authorize('view', $meeting);
 
         $recordings = $meeting->recordings()
-            ->with('startedBy:id,public_id,name')
+            ->with(['startedBy:id,public_id,name', 'media'])
             ->latest()
             ->get()
-            ->map(fn ($r) => [
-                'id' => $r->id,
-                'status' => $r->status,
-                'download_url' => $r->download_url,
-                'duration_seconds' => $r->duration_seconds,
-                'started_by' => $r->startedBy?->name,
-                'created_at' => $r->created_at?->toISOString(),
-            ]);
+            ->map(function ($r) {
+                $media = $r->recording_media;
+                $downloadUrl = $media
+                    ? URL::temporarySignedRoute(
+                        'api.media.secure-download',
+                        now()->addMinutes(60),
+                        ['media' => $media->id]
+                    )
+                    : $r->download_url;
+
+                return [
+                    'id' => $r->id,
+                    'status' => $r->status,
+                    'download_url' => $downloadUrl,
+                    'cloudflare_download_url' => $r->download_url,
+                    'display_name' => $r->display_name,
+                    'duration_seconds' => $r->duration_seconds,
+                    'size_bytes' => $media?->size,
+                    'started_by' => $r->startedBy?->name,
+                    'started_at' => $r->created_at?->toISOString(),
+                    'created_at' => $r->created_at?->toISOString(),
+                ];
+            });
 
         return response()->json(['data' => $recordings]);
     }
@@ -351,6 +368,8 @@ class MeetingRecordingController extends Controller
                 'duration_seconds' => $duration,
                 'cf_metadata' => $request->all(),
             ]));
+
+            $this->dispatchIngestionIfReady($recording->fresh());
         }
 
         return response()->json(['ok' => true]);
@@ -391,6 +410,8 @@ class MeetingRecordingController extends Controller
                 ]));
             }
 
+            $this->dispatchIngestionIfReady($recording->fresh());
+
             return response()->json([
                 'id' => $recording->id,
                 'status' => $recording->status,
@@ -411,5 +432,26 @@ class MeetingRecordingController extends Controller
             'failed', 'ERRORED' => 'failed',
             default => 'processing',
         };
+    }
+
+    private function dispatchIngestionIfReady(?MeetingRecording $recording): void
+    {
+        if (! config('services.cloudflare_realtime.store_locally', true)) {
+            return;
+        }
+
+        if (! $recording) {
+            return;
+        }
+
+        if ($recording->status !== 'completed' || blank($recording->download_url)) {
+            return;
+        }
+
+        if ($recording->recording_media) {
+            return;
+        }
+
+        IngestMeetingRecordingMedia::dispatch($recording->id);
     }
 }

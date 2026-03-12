@@ -216,6 +216,14 @@ class MediaController extends Controller
             }
         }
 
+        // 10. Meeting Recordings
+        if ($media->model_type === 'App\Models\MeetingRecording') {
+            $recording = \App\Models\MeetingRecording::with('meeting')->find($media->model_id);
+            if ($recording && $recording->meeting && \Illuminate\Support\Facades\Gate::forUser($user)->allows('view', $recording->meeting)) {
+                return;
+            }
+        }
+
         abort(403, 'Unauthorized access to this file.');
     }
 }
