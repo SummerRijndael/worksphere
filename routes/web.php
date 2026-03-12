@@ -78,6 +78,16 @@ Route::middleware(['auth:sanctum'])->group(function () {
         ->where('conversion', 'thumb|web|optimized|webp');
 });
 
+Route::middleware(['signed'])->group(function () {
+    Route::get('/meeting-chat/media/{mediaId}/view', [\App\Http\Controllers\MeetingChatMediaController::class, 'view'])
+        ->name('meeting.chat.media.view');
+    Route::get('/meeting-chat/media/{mediaId}/download', [\App\Http\Controllers\MeetingChatMediaController::class, 'download'])
+        ->name('meeting.chat.media.download');
+    Route::get('/meeting-chat/media/{mediaId}/{conversion}', [\App\Http\Controllers\MeetingChatMediaController::class, 'conversion'])
+        ->name('meeting.chat.media.conversion')
+        ->where('conversion', 'thumb|web');
+});
+
 // Generic Secure Media Serving (Signed URLs bypass auth; middleware must be permissive)
 // Place this OUTSIDE auth:sanctum to ensure requests without cookies (e.g. from img tags) can reach the controller
 Route::get('/media/{media}/{conversion?}', [\App\Http\Controllers\Api\MediaController::class, 'show'])

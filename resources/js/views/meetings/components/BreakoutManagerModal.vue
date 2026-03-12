@@ -252,14 +252,18 @@ watch(roomCount, (val) => {
 function getDisplayName(p: any) {
     if (!p) return 'Participant';
     if (p.public_id === meetingStore.localParticipant?.public_id) return 'You';
-    const name =
+    const name = String(
         p.display_name ||
         p.user?.name ||
         (p.metadata && p.metadata.guest_name) ||
         p.name ||
-        'Participant';
-    const isGuest = !p.user?.public_id && !p.user?.id;
-    if (isGuest && !/\(guest\)$/i.test(name)) {
+        'Participant',
+    ).trim();
+    const hasLinkedUser = Boolean(p.user_id || p.user?.id || p.user?.public_id);
+    const isGuest = !hasLinkedUser;
+    if (isGuest) {
+        if (/\(guest\)$/i.test(name)) return name;
+        if (/^guest$/i.test(name)) return 'Guest';
         return `${name} (Guest)`;
     }
     return name;

@@ -14,6 +14,7 @@ use Illuminate\Auth\Events\Verified;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
@@ -451,14 +452,19 @@ class AuthController extends Controller
     /**
      * Redirect to social provider.
      */
-    public function socialRedirect(string $provider): JsonResponse
+    public function socialRedirect(Request $request, string $provider): JsonResponse
     {
         $this->validateProvider($provider);
 
-        $url = Socialite::driver($provider)
-            ->stateless()
-            ->redirect()
-            ->getTargetUrl();
+        $driver = Socialite::driver($provider)->stateless();
+
+        if ($request->boolean('popup') && config('auth.social_login_popup_enabled', false)) {
+            $popupToken = Str::random(40);
+            Cache::put("social_popup_{$popupToken}", true, now()->addMinutes(10));
+            $driver = $driver->with(['state' => "ws_popup_{$popupToken}"]);
+        }
+
+        $url = $driver->redirect()->getTargetUrl();
 
         return response()->json([
             'url' => $url,
@@ -476,17 +482,30 @@ class AuthController extends Controller
         $result = $this->handleSocialCallbackLogic($provider);
 
         $frontendUrl = config('app.frontend_url', config('app.url'));
+        $popupMode = $this->isPopupSocialCallback($request);
 
         if ($result['status'] === 'error') {
-            return redirect($frontendUrl.'/auth/login?error='.urlencode($result['message']));
+            $redirectUrl = $frontendUrl.'/auth/login?error='.urlencode($result['message']);
+
+            return $popupMode
+                ? $this->socialPopupResponse('error', $redirectUrl, $result['message'])
+                : redirect($redirectUrl);
         }
 
         if ($result['status'] === 'verification_required') {
-            return redirect($frontendUrl.'/auth/login?verification_required=1&message='.urlencode($result['message']));
+            $redirectUrl = $frontendUrl.'/auth/login?verification_required=1&message='.urlencode($result['message']);
+
+            return $popupMode
+                ? $this->socialPopupResponse('verification_required', $redirectUrl, $result['message'])
+                : redirect($redirectUrl);
         }
 
         if ($result['status'] === 'social_completion_required') {
-            return redirect($frontendUrl.'/auth/social-complete?token='.$result['token'].'&provider='.$provider);
+            $redirectUrl = $frontendUrl.'/auth/social-complete?token='.$result['token'].'&provider='.$provider;
+
+            return $popupMode
+                ? $this->socialPopupResponse('social_completion_required', $redirectUrl)
+                : redirect($redirectUrl);
         }
 
         $user = $result['user'];
@@ -495,7 +514,11 @@ class AuthController extends Controller
             $statusConfig = config('roles.statuses.'.$user->status, []);
             $reason = $user->status_reason ?? ($statusConfig['label'] ?? 'Account disabled');
 
-            return redirect($frontendUrl.'/auth/login?error='.urlencode($reason));
+            $redirectUrl = $frontendUrl.'/auth/login?error='.urlencode($reason);
+
+            return $popupMode
+                ? $this->socialPopupResponse('error', $redirectUrl, $reason)
+                : redirect($redirectUrl);
         }
 
         // Check if 2FA is enabled and confirmed (Logic copied from login method)
@@ -521,13 +544,21 @@ class AuthController extends Controller
             Auth::guard('web')->logout();
 
             // Redirect to login page with 2FA action
-            return redirect($frontendUrl.'/auth/login?action=2fa');
+            $redirectUrl = $frontendUrl.'/auth/login?action=2fa';
+
+            return $popupMode
+                ? $this->socialPopupResponse('requires_2fa', $redirectUrl)
+                : redirect($redirectUrl);
         }
 
         Auth::login($user);
         $user->recordLogin($request->ip());
 
-        return redirect($frontendUrl.'/dashboard');
+        $redirectUrl = $frontendUrl.'/dashboard';
+
+        return $popupMode
+            ? $this->socialPopupResponse('success', $redirectUrl)
+            : redirect($redirectUrl);
     }
 
     /**
@@ -537,17 +568,30 @@ class AuthController extends Controller
     {
         $result = $this->handleSocialCallbackLogic($provider);
         $frontendUrl = config('app.frontend_url', config('app.url'));
+        $popupMode = $this->isPopupSocialCallback($request);
 
         if ($result['status'] === 'error') {
-            return redirect($frontendUrl.'/auth/login?error='.urlencode($result['message']));
+            $redirectUrl = $frontendUrl.'/auth/login?error='.urlencode($result['message']);
+
+            return $popupMode
+                ? $this->socialPopupResponse('error', $redirectUrl, $result['message'])
+                : redirect($redirectUrl);
         }
 
         if ($result['status'] === 'verification_required') {
-            return redirect($frontendUrl.'/auth/login?verification_required=1&message='.urlencode($result['message']));
+            $redirectUrl = $frontendUrl.'/auth/login?verification_required=1&message='.urlencode($result['message']);
+
+            return $popupMode
+                ? $this->socialPopupResponse('verification_required', $redirectUrl, $result['message'])
+                : redirect($redirectUrl);
         }
 
         if ($result['status'] === 'social_completion_required') {
-            return redirect($frontendUrl.'/auth/social-complete?token='.$result['token'].'&provider='.$provider);
+            $redirectUrl = $frontendUrl.'/auth/social-complete?token='.$result['token'].'&provider='.$provider;
+
+            return $popupMode
+                ? $this->socialPopupResponse('social_completion_required', $redirectUrl)
+                : redirect($redirectUrl);
         }
 
         $user = $result['user'];
@@ -556,7 +600,11 @@ class AuthController extends Controller
             $statusConfig = config('roles.statuses.'.$user->status, []);
             $reason = $user->status_reason ?? ($statusConfig['label'] ?? 'Account disabled');
 
-            return redirect($frontendUrl.'/auth/login?error='.urlencode($reason));
+            $redirectUrl = $frontendUrl.'/auth/login?error='.urlencode($reason);
+
+            return $popupMode
+                ? $this->socialPopupResponse('error', $redirectUrl, $reason)
+                : redirect($redirectUrl);
         }
 
         // Check if 2FA is enabled and confirmed (Logic copied from login method)
@@ -582,13 +630,21 @@ class AuthController extends Controller
             Auth::guard('web')->logout();
 
             // Redirect to login page with 2FA action
-            return redirect($frontendUrl.'/auth/login?action=2fa');
+            $redirectUrl = $frontendUrl.'/auth/login?action=2fa';
+
+            return $popupMode
+                ? $this->socialPopupResponse('requires_2fa', $redirectUrl)
+                : redirect($redirectUrl);
         }
 
         Auth::login($user);
         $user->recordLogin($request->ip());
 
-        return redirect($frontendUrl.'/dashboard');
+        $redirectUrl = $frontendUrl.'/dashboard';
+
+        return $popupMode
+            ? $this->socialPopupResponse('success', $redirectUrl)
+            : redirect($redirectUrl);
     }
 
     /**
@@ -833,6 +889,34 @@ class AuthController extends Controller
         }
     }
 
+    protected function isPopupSocialCallback(Request $request): bool
+    {
+        if (! config('auth.social_login_popup_enabled', false)) {
+            return false;
+        }
+
+        $state = $request->query('state');
+        if (! is_string($state) || ! Str::startsWith($state, 'ws_popup_')) {
+            return false;
+        }
+
+        $popupToken = Str::after($state, 'ws_popup_');
+        if ($popupToken === '') {
+            return false;
+        }
+
+        return (bool) Cache::pull("social_popup_{$popupToken}");
+    }
+
+    protected function socialPopupResponse(string $status, string $redirectUrl, ?string $message = null)
+    {
+        return response()->view('auth.social-callback-popup', [
+            'status' => $status,
+            'redirectUrl' => $redirectUrl,
+            'message' => $message,
+        ]);
+    }
+
     /**
      * Validate social provider.
      */
@@ -859,6 +943,7 @@ class AuthController extends Controller
     {
         return response()->json([
             'social_login_enabled' => config('auth.social_login_enabled', true),
+            'social_login_popup_enabled' => config('auth.social_login_popup_enabled', false),
             'recaptcha_enabled' => config('recaptcha.enabled', false),
             'recaptcha_site_key' => config('recaptcha.site_key'),
             'contact' => [

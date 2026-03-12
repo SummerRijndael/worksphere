@@ -5,16 +5,21 @@ namespace App\Http\Controllers\Api;
 use App\Contracts\MeetingServiceContract;
 use App\Events\Meetings\MeetingSignal;
 use App\Http\Controllers\Controller;
+use App\Http\Resources\MeetingMessageResource;
 use App\Http\Resources\MeetingResource;
 use App\Models\Meeting;
 use App\Models\MeetingMessage;
 use App\Models\MeetingParticipant;
+use App\Services\Chat\ChatPipeline;
+use App\Services\MeetingChatMediaService;
 use App\Support\MeetingParticipantSession;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
@@ -50,7 +55,8 @@ class MeetingController extends Controller
     ];
 
     public function __construct(
-        protected MeetingServiceContract $meetingService
+        protected MeetingServiceContract $meetingService,
+        protected ChatPipeline $chatPipeline
     ) {}
 
     public function index(): AnonymousResourceCollection
@@ -864,9 +870,31 @@ class MeetingController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $messages = MeetingMessage::where('meeting_id', $meeting->id)->orderBy('created_at', 'asc')->get();
+        if (! config('chat_pipeline.meeting_chat_adapter_enabled', true)) {
+            return $this->legacyGetMessages($meeting, $request);
+        }
 
-        return \App\Http\Resources\MeetingMessageResource::collection($messages);
+        try {
+            $messages = $this->chatPipeline->fetchMessages(
+                (string) config('chat_pipeline.meeting_chat_adapter', 'meeting'),
+                [
+                    'meeting' => $meeting,
+                    'participant' => $participant,
+                    'thread_root_id' => $request->integer('thread_root_id') ?: null,
+                ],
+                max(1, min(500, $request->integer('limit', 200))),
+                $request->filled('before') ? (string) $request->input('before') : null
+            );
+
+            return response()->json(['data' => $messages]);
+        } catch (\Throwable $e) {
+            Log::channel('videocall')->error('[MEETING-CHAT] Adapter getMessages failed, falling back to legacy', [
+                'meeting' => $meeting->public_id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $this->legacyGetMessages($meeting, $request);
+        }
     }
 
     public function sendMessage(Request $request, Meeting $meeting): JsonResponse
@@ -876,9 +904,36 @@ class MeetingController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $request->validate([
-            'body' => 'required|string|max:2000',
+        $validated = $request->validate([
+            'body' => 'nullable|string|max:2000',
+            'temp_id' => 'nullable|string|max:255',
+            'metadata' => 'nullable|array',
+            'reply_to' => 'nullable',
+            'files' => 'nullable|array|max:10',
+            'files.*' => 'file|max:5120',
         ]);
+
+        /** @var array<UploadedFile> $files */
+        $files = $request->file('files', []);
+        if ($files instanceof UploadedFile) {
+            $files = [$files];
+        }
+
+        $validated['body'] = trim((string) ($validated['body'] ?? ''));
+
+        if ($validated['body'] === '' && empty($files)) {
+            return response()->json(['message' => 'Message cannot be empty.'], 422);
+        }
+
+        if (! empty($files)) {
+            try {
+                app(MeetingChatMediaService::class)->validateFiles($files);
+            } catch (\InvalidArgumentException $e) {
+                return response()->json(['message' => $e->getMessage()], 422);
+            }
+
+            $validated['files'] = $files;
+        }
 
         $key = sprintf('meeting_chat_%s_%s', $meeting->id, strtolower($participant->public_id));
         $count = (int) Cache::get($key, 0);
@@ -888,11 +943,483 @@ class MeetingController extends Controller
         }
         Cache::put($key, $count + 1, 60);
 
-        $message = MeetingMessage::create([
-            'meeting_id' => $meeting->id,
-            'participant_public_id' => $participant->public_id,
-            'body' => strip_tags($request->body),
+        $burstKey = sprintf('meeting_chat_burst_%s_%s', $meeting->id, strtolower($participant->public_id));
+        if (RateLimiter::tooManyAttempts($burstKey, 4)) {
+            return response()->json(['message' => 'Sending too fast. Please slow down.'], 429);
+        }
+        RateLimiter::hit($burstKey, 2);
+
+        if ($validated['body'] !== '') {
+            $normalizedBody = trim((string) preg_replace('/\s+/u', ' ', Str::lower((string) $validated['body'])));
+            if ($normalizedBody !== '') {
+                $duplicateKey = sprintf(
+                    'meeting_chat_duplicate_%s_%s_%s',
+                    $meeting->id,
+                    strtolower($participant->public_id),
+                    sha1($normalizedBody)
+                );
+                if (Cache::has($duplicateKey)) {
+                    return response()->json(['message' => 'Duplicate message detected. Please wait a moment.'], 429);
+                }
+                Cache::put($duplicateKey, true, 4);
+            }
+        }
+
+        if (! config('chat_pipeline.meeting_chat_adapter_enabled', true)) {
+            return $this->legacySendMessage($meeting, $participant, $validated);
+        }
+
+        try {
+            $message = $this->chatPipeline->sendMessage(
+                (string) config('chat_pipeline.meeting_chat_adapter', 'meeting'),
+                [
+                    'meeting' => $meeting,
+                    'participant' => $participant,
+                ],
+                $validated
+            );
+
+            return response()->json(['data' => $message], 201);
+        } catch (\Throwable $e) {
+            Log::channel('videocall')->error('[MEETING-CHAT] Adapter sendMessage failed, falling back to legacy', [
+                'meeting' => $meeting->public_id,
+                'participant' => $participant->public_id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $this->legacySendMessage($meeting, $participant, $validated);
+        }
+    }
+
+    public function pinMessage(Request $request, Meeting $meeting, string $messageId): JsonResponse
+    {
+        $participant = $this->resolveParticipant($request, $meeting);
+        if (! $participant || $participant->status !== 'admitted') {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        if (! $this->isChatModerator($participant)) {
+            return response()->json(['message' => 'Only host or co-host can pin messages.'], 403);
+        }
+
+        if (! config('chat_pipeline.meeting_chat_adapter_enabled', true)) {
+            return $this->legacyPinMessage($meeting, $participant, $messageId);
+        }
+
+        try {
+            $message = $this->chatPipeline->pinMessage(
+                (string) config('chat_pipeline.meeting_chat_adapter', 'meeting'),
+                [
+                    'meeting' => $meeting,
+                    'participant' => $participant,
+                ],
+                $messageId
+            );
+
+            broadcast(new MeetingSignal(
+                $meeting,
+                $participant->public_id,
+                'chat-message-pinned',
+                ['message' => $message]
+            ));
+
+            return response()->json(['data' => $message]);
+        } catch (\Throwable $e) {
+            Log::channel('videocall')->error('[MEETING-CHAT] Adapter pinMessage failed, falling back to legacy', [
+                'meeting' => $meeting->public_id,
+                'participant' => $participant->public_id,
+                'message_id' => $messageId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $this->legacyPinMessage($meeting, $participant, $messageId);
+        }
+    }
+
+    public function updateMessage(Request $request, Meeting $meeting, string $messageId): JsonResponse
+    {
+        $participant = $this->resolveParticipant($request, $meeting);
+        if (! $participant || $participant->status !== 'admitted') {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $message = $this->resolveMeetingMessage($meeting, $messageId);
+        if (! $message) {
+            return response()->json(['message' => 'Message not found.'], 404);
+        }
+
+        if (! $this->canEditChatMessage($participant, $message)) {
+            return response()->json(['message' => 'Only the original sender can edit this message.'], 403);
+        }
+
+        $validated = $request->validate([
+            'body' => 'required|string|max:2000',
         ]);
+        $validated['body'] = trim((string) $validated['body']);
+        if ($validated['body'] === '') {
+            return response()->json(['message' => 'Message body cannot be empty.'], 422);
+        }
+
+        if (! config('chat_pipeline.meeting_chat_adapter_enabled', true)) {
+            return $this->legacyUpdateMessage($meeting, $participant, $messageId, $validated);
+        }
+
+        try {
+            $updated = $this->chatPipeline->editMessage(
+                (string) config('chat_pipeline.meeting_chat_adapter', 'meeting'),
+                [
+                    'meeting' => $meeting,
+                    'participant' => $participant,
+                ],
+                $messageId,
+                $validated
+            );
+
+            broadcast(new MeetingSignal(
+                $meeting,
+                $participant->public_id,
+                'chat-message-edited',
+                ['message' => $updated]
+            ));
+
+            return response()->json(['data' => $updated]);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        } catch (\Throwable $e) {
+            Log::channel('videocall')->error('[MEETING-CHAT] Adapter updateMessage failed, falling back to legacy', [
+                'meeting' => $meeting->public_id,
+                'participant' => $participant->public_id,
+                'message_id' => $messageId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $this->legacyUpdateMessage($meeting, $participant, $messageId, $validated);
+        }
+    }
+
+    public function deleteMessage(Request $request, Meeting $meeting, string $messageId): JsonResponse
+    {
+        $participant = $this->resolveParticipant($request, $meeting);
+        if (! $participant || $participant->status !== 'admitted') {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $message = $this->resolveMeetingMessage($meeting, $messageId);
+        if (! $message) {
+            return response()->json(['message' => 'Message not found.'], 404);
+        }
+
+        if (! $this->canDeleteChatMessage($participant, $message)) {
+            return response()->json(['message' => 'Only the sender, host, or co-host can delete this message.'], 403);
+        }
+
+        if (! config('chat_pipeline.meeting_chat_adapter_enabled', true)) {
+            return $this->legacyDeleteMessage($meeting, $participant, $messageId);
+        }
+
+        try {
+            $deleted = $this->chatPipeline->deleteMessage(
+                (string) config('chat_pipeline.meeting_chat_adapter', 'meeting'),
+                [
+                    'meeting' => $meeting,
+                    'participant' => $participant,
+                ],
+                $messageId
+            );
+
+            broadcast(new MeetingSignal(
+                $meeting,
+                $participant->public_id,
+                'chat-message-deleted',
+                ['message' => $deleted]
+            ));
+
+            return response()->json(['data' => $deleted]);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        } catch (\Throwable $e) {
+            Log::channel('videocall')->error('[MEETING-CHAT] Adapter deleteMessage failed, falling back to legacy', [
+                'meeting' => $meeting->public_id,
+                'participant' => $participant->public_id,
+                'message_id' => $messageId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $this->legacyDeleteMessage($meeting, $participant, $messageId);
+        }
+    }
+
+    public function toggleMessageReaction(Request $request, Meeting $meeting, string $messageId): JsonResponse
+    {
+        $participant = $this->resolveParticipant($request, $meeting);
+        if (! $participant || $participant->status !== 'admitted') {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $message = $this->resolveMeetingMessage($meeting, $messageId);
+        if (! $message) {
+            return response()->json(['message' => 'Message not found.'], 404);
+        }
+
+        $validated = $request->validate([
+            'reaction' => 'required|string|in:like,laugh,100,hundred,sad,love,angry,scared,care',
+        ]);
+
+        $metadata = is_array($message->metadata) ? $message->metadata : [];
+        if (($metadata['is_deleted'] ?? false) === true) {
+            return response()->json(['message' => 'Cannot react to deleted messages.'], 422);
+        }
+
+        $reaction = (string) $validated['reaction'];
+        if ($reaction === '100') {
+            $reaction = 'hundred';
+        }
+        $reactions = is_array($metadata['reactions'] ?? null) ? $metadata['reactions'] : [];
+        $actorId = strtolower((string) $participant->public_id);
+        $currentBuckets = is_array($reactions[$reaction] ?? null) ? $reactions[$reaction] : [];
+        if ($reaction === 'hundred' && is_array($reactions['100'] ?? null)) {
+            $currentBuckets = array_merge($currentBuckets, $reactions['100']);
+        }
+        $currentForRequested = array_values(array_filter(
+            array_map(static fn ($id) => strtolower((string) $id), $currentBuckets)
+        ));
+        $alreadyReacted = in_array($actorId, $currentForRequested, true);
+
+        // One reaction per participant per message:
+        // remove actor from every reaction bucket first, then add only requested key (unless toggling off same key).
+        foreach ($reactions as $key => $ids) {
+            $normalized = array_values(array_filter(
+                array_map(static fn ($id) => strtolower((string) $id), is_array($ids) ? $ids : []),
+                static fn (string $id) => $id !== ''
+            ));
+            $normalized = array_values(array_filter(
+                $normalized,
+                static fn (string $id) => $id !== $actorId
+            ));
+
+            if (empty($normalized)) {
+                unset($reactions[$key]);
+                continue;
+            }
+            $reactions[$key] = array_values(array_unique($normalized));
+        }
+
+        if (! $alreadyReacted) {
+            $next = is_array($reactions[$reaction] ?? null) ? $reactions[$reaction] : [];
+            $next[] = $actorId;
+            $reactions[$reaction] = array_values(array_unique(array_filter(
+                array_map(static fn ($id) => strtolower((string) $id), $next),
+                static fn (string $id) => $id !== ''
+            )));
+        }
+
+        if (empty($reactions)) {
+            unset($metadata['reactions']);
+        } else {
+            $metadata['reactions'] = $reactions;
+        }
+
+        $message->forceFill([
+            'metadata' => $metadata,
+        ])->save();
+
+        $payload = $this->serializeMeetingMessage($message);
+
+        broadcast(new MeetingSignal(
+            $meeting,
+            $participant->public_id,
+            'chat-message-reaction',
+            [
+                'message' => $payload,
+                'reaction' => $reaction,
+                'active' => ! $alreadyReacted,
+            ]
+        ));
+
+        return response()->json(['data' => $payload]);
+    }
+
+    public function unpinMessage(Request $request, Meeting $meeting, string $messageId): JsonResponse
+    {
+        $participant = $this->resolveParticipant($request, $meeting);
+        if (! $participant || $participant->status !== 'admitted') {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        if (! $this->isChatModerator($participant)) {
+            return response()->json(['message' => 'Only host or co-host can unpin messages.'], 403);
+        }
+
+        if (! config('chat_pipeline.meeting_chat_adapter_enabled', true)) {
+            return $this->legacyUnpinMessage($meeting, $participant, $messageId);
+        }
+
+        try {
+            $message = $this->chatPipeline->unpinMessage(
+                (string) config('chat_pipeline.meeting_chat_adapter', 'meeting'),
+                [
+                    'meeting' => $meeting,
+                    'participant' => $participant,
+                ],
+                $messageId
+            );
+
+            broadcast(new MeetingSignal(
+                $meeting,
+                $participant->public_id,
+                'chat-message-unpinned',
+                ['message' => $message]
+            ));
+
+            return response()->json(['data' => $message]);
+        } catch (\Throwable $e) {
+            Log::channel('videocall')->error('[MEETING-CHAT] Adapter unpinMessage failed, falling back to legacy', [
+                'meeting' => $meeting->public_id,
+                'participant' => $participant->public_id,
+                'message_id' => $messageId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $this->legacyUnpinMessage($meeting, $participant, $messageId);
+        }
+    }
+
+    public function clearPinnedMessages(Request $request, Meeting $meeting): JsonResponse
+    {
+        $participant = $this->resolveParticipant($request, $meeting);
+        if (! $participant || $participant->status !== 'admitted') {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        if (! $this->isChatModerator($participant)) {
+            return response()->json(['message' => 'Only host or co-host can clear pinned messages.'], 403);
+        }
+
+        $pinnedMessages = MeetingMessage::where('meeting_id', $meeting->id)
+            ->where('is_pinned', true)
+            ->get();
+
+        if ($pinnedMessages->isEmpty()) {
+            return response()->json(['data' => []]);
+        }
+
+        DB::transaction(function () use ($pinnedMessages) {
+            foreach ($pinnedMessages as $message) {
+                $message->forceFill([
+                    'is_pinned' => false,
+                    'pinned_at' => null,
+                    'pinned_by_participant_public_id' => null,
+                ])->save();
+            }
+        });
+
+        $payloads = [];
+        foreach ($pinnedMessages as $message) {
+            $payload = $this->serializeMeetingMessage($message->refresh());
+            $payloads[] = $payload;
+
+            broadcast(new MeetingSignal(
+                $meeting,
+                $participant->public_id,
+                'chat-message-unpinned',
+                ['message' => $payload]
+            ));
+        }
+
+        return response()->json(['data' => $payloads]);
+    }
+
+    protected function legacyGetMessages(Meeting $meeting, ?Request $request = null): AnonymousResourceCollection
+    {
+        $query = MeetingMessage::where('meeting_id', $meeting->id)
+            ->with([
+                'participant:id,user_id,public_id,metadata',
+                'participant.user:id,name',
+                'media',
+                'replyTo:id,participant_public_id,body,created_at',
+                'threadRoot:id,participant_public_id,body,created_at',
+                'pinnedByParticipant:id,user_id,public_id,metadata',
+                'pinnedByParticipant.user:id,name',
+            ])
+            ->withCount('replies');
+
+        $limit = max(1, min(500, (int) ($request?->integer('limit', 200) ?? 200)));
+        $before = $request?->input('before');
+        $threadRootId = $request?->integer('thread_root_id') ?: null;
+
+        if ($threadRootId) {
+            $query->where(function ($q) use ($threadRootId) {
+                $q->where('id', $threadRootId)
+                    ->orWhere('thread_root_message_id', $threadRootId);
+            });
+        }
+
+        if (is_string($before) && ctype_digit($before)) {
+            $query->where('id', '<', (int) $before);
+        }
+
+        if (! $before && ! $threadRootId) {
+            $messages = $query
+                ->orderBy('created_at', 'desc')
+                ->limit($limit)
+                ->get()
+                ->sortBy(fn (MeetingMessage $message) => [
+                    $message->created_at?->getTimestamp() ?? 0,
+                    (int) $message->id,
+                ])
+                ->values();
+        } else {
+            $messages = $query
+                ->orderBy('created_at', 'asc')
+                ->limit($limit)
+                ->get();
+        }
+
+        return MeetingMessageResource::collection($messages);
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     */
+    protected function legacySendMessage(Meeting $meeting, MeetingParticipant $participant, array $validated): JsonResponse
+    {
+        /** @var array<UploadedFile> $files */
+        $files = isset($validated['files']) && is_array($validated['files']) ? $validated['files'] : [];
+
+        $replyToId = null;
+        $replyToRaw = $validated['reply_to'] ?? null;
+        if (is_numeric($replyToRaw)) {
+            $replyToId = MeetingMessage::where('meeting_id', $meeting->id)->whereKey((int) $replyToRaw)->value('id');
+        } elseif (is_string($replyToRaw) && $replyToRaw !== '' && strlen($replyToRaw) === 26) {
+            $replyToId = MeetingMessage::where('meeting_id', $meeting->id)->where('public_id', $replyToRaw)->value('id');
+        }
+
+        $threadRootId = null;
+        if ($replyToId) {
+            $replyTarget = MeetingMessage::where('meeting_id', $meeting->id)
+                ->find($replyToId, ['id', 'thread_root_message_id']);
+            $threadRootId = $replyTarget?->thread_root_message_id ?: $replyTarget?->id;
+        }
+
+        $message = DB::transaction(function () use ($meeting, $participant, $validated, $replyToId, $threadRootId, $files) {
+            $created = MeetingMessage::create([
+                'meeting_id' => $meeting->id,
+                'participant_public_id' => $participant->public_id,
+                'body' => strip_tags((string) ($validated['body'] ?? '')),
+                'temp_id' => isset($validated['temp_id']) ? (string) $validated['temp_id'] : null,
+                'metadata' => isset($validated['metadata']) && is_array($validated['metadata']) ? $validated['metadata'] : null,
+                'reply_to_message_id' => $replyToId,
+                'thread_root_message_id' => $threadRootId,
+            ]);
+
+            if (! empty($files)) {
+                app(MeetingChatMediaService::class)->attachFilesToMessage($created, $files);
+            }
+
+            return $created;
+        });
+
+        $message->load('media');
 
         broadcast(new MeetingSignal(
             $meeting,
@@ -900,13 +1427,166 @@ class MeetingController extends Controller
             'chat-message',
             [
                 'id' => $message->id,
+                'public_id' => $message->public_id,
                 'participant_public_id' => $message->participant_public_id,
+                'participant_name' => $participant->display_name,
                 'body' => $message->body,
+                'temp_id' => $message->temp_id,
+                'metadata' => $message->metadata,
+                'attachments' => $message->toAttachmentPayload(),
+                'reply_to_id' => $message->reply_to_message_id,
+                'thread_root_id' => $message->thread_root_message_id,
+                'is_pinned' => (bool) $message->is_pinned,
+                'pinned_at' => $message->pinned_at?->toIso8601String(),
+                'pinned_by_participant_public_id' => $message->pinned_by_participant_public_id,
                 'created_at' => $message->created_at?->toIso8601String(),
             ]
         ));
 
-        return response()->json(new \App\Http\Resources\MeetingMessageResource($message), 201);
+        return response()->json([
+            'data' => (new MeetingMessageResource(
+                $message->load([
+                    'participant:id,user_id,public_id,metadata',
+                    'participant.user:id,name',
+                    'media',
+                    'replyTo:id,participant_public_id,body,created_at',
+                    'threadRoot:id,participant_public_id,body,created_at',
+                    'pinnedByParticipant:id,user_id,public_id,metadata',
+                    'pinnedByParticipant.user:id,name',
+                ])->loadCount('replies')
+            ))->toArray(request()),
+        ], 201);
+    }
+
+    protected function legacyPinMessage(Meeting $meeting, MeetingParticipant $actor, string $messageId): JsonResponse
+    {
+        $message = $this->resolveMeetingMessage($meeting, $messageId);
+        if (! $message) {
+            return response()->json(['message' => 'Message not found.'], 404);
+        }
+
+        $message->forceFill([
+            'is_pinned' => true,
+            'pinned_at' => now(),
+            'pinned_by_participant_public_id' => $actor->public_id,
+        ])->save();
+
+        $payload = $this->serializeMeetingMessage($message);
+
+        broadcast(new MeetingSignal(
+            $meeting,
+            $actor->public_id,
+            'chat-message-pinned',
+            ['message' => $payload]
+        ));
+
+        return response()->json(['data' => $payload]);
+    }
+
+    protected function legacyUnpinMessage(Meeting $meeting, MeetingParticipant $actor, string $messageId): JsonResponse
+    {
+        $message = $this->resolveMeetingMessage($meeting, $messageId);
+        if (! $message) {
+            return response()->json(['message' => 'Message not found.'], 404);
+        }
+
+        $message->forceFill([
+            'is_pinned' => false,
+            'pinned_at' => null,
+            'pinned_by_participant_public_id' => null,
+        ])->save();
+
+        $payload = $this->serializeMeetingMessage($message);
+
+        broadcast(new MeetingSignal(
+            $meeting,
+            $actor->public_id,
+            'chat-message-unpinned',
+            ['message' => $payload]
+        ));
+
+        return response()->json(['data' => $payload]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     */
+    protected function legacyUpdateMessage(Meeting $meeting, MeetingParticipant $actor, string $messageId, array $validated): JsonResponse
+    {
+        $message = $this->resolveMeetingMessage($meeting, $messageId);
+        if (! $message) {
+            return response()->json(['message' => 'Message not found.'], 404);
+        }
+
+        if (! $this->canEditChatMessage($actor, $message)) {
+            return response()->json(['message' => 'Only the original sender can edit this message.'], 403);
+        }
+
+        $metadata = is_array($message->metadata) ? $message->metadata : [];
+        if (($metadata['is_deleted'] ?? false) === true) {
+            return response()->json(['message' => 'Deleted messages cannot be edited.'], 422);
+        }
+
+        $metadata['is_edited'] = true;
+        $metadata['edited_at'] = now()->toIso8601String();
+        $metadata['edited_by_participant_public_id'] = $actor->public_id;
+
+        $message->forceFill([
+            'body' => trim(strip_tags((string) ($validated['body'] ?? ''))),
+            'metadata' => $metadata,
+        ])->save();
+
+        $payload = $this->serializeMeetingMessage($message);
+
+        broadcast(new MeetingSignal(
+            $meeting,
+            $actor->public_id,
+            'chat-message-edited',
+            ['message' => $payload]
+        ));
+
+        return response()->json(['data' => $payload]);
+    }
+
+    protected function legacyDeleteMessage(Meeting $meeting, MeetingParticipant $actor, string $messageId): JsonResponse
+    {
+        $message = $this->resolveMeetingMessage($meeting, $messageId);
+        if (! $message) {
+            return response()->json(['message' => 'Message not found.'], 404);
+        }
+
+        if (! $this->canDeleteChatMessage($actor, $message)) {
+            return response()->json(['message' => 'Only the sender, host, or co-host can delete this message.'], 403);
+        }
+
+        $metadata = is_array($message->metadata) ? $message->metadata : [];
+        if (($metadata['is_deleted'] ?? false) !== true) {
+            $metadata['is_deleted'] = true;
+            $metadata['deleted_at'] = now()->toIso8601String();
+            $metadata['deleted_by_participant_public_id'] = $actor->public_id;
+            unset($metadata['is_edited'], $metadata['edited_at'], $metadata['edited_by_participant_public_id']);
+
+            $message->forceFill([
+                'body' => '',
+                'metadata' => $metadata,
+                'is_pinned' => false,
+                'pinned_at' => null,
+                'pinned_by_participant_public_id' => null,
+            ])->save();
+
+            $message->clearMediaCollection(MeetingMessage::MEDIA_COLLECTION);
+        }
+
+        $payload = $this->serializeMeetingMessage($message);
+
+        broadcast(new MeetingSignal(
+            $meeting,
+            $actor->public_id,
+            'chat-message-deleted',
+            ['message' => $payload]
+        ));
+
+        return response()->json(['data' => $payload]);
     }
 
     public function lock(Request $request, Meeting $meeting): JsonResponse
@@ -1326,6 +2006,56 @@ class MeetingController extends Controller
         );
 
         return response()->json(['message' => 'Activity notification sent.']);
+    }
+
+    protected function isChatModerator(MeetingParticipant $participant): bool
+    {
+        return in_array($participant->role, ['host', 'co-host'], true);
+    }
+
+    protected function canEditChatMessage(MeetingParticipant $actor, MeetingMessage $message): bool
+    {
+        return strtolower((string) $actor->public_id) === strtolower((string) $message->participant_public_id);
+    }
+
+    protected function canDeleteChatMessage(MeetingParticipant $actor, MeetingMessage $message): bool
+    {
+        return $this->canEditChatMessage($actor, $message) || $this->isChatModerator($actor);
+    }
+
+    protected function resolveMeetingMessage(Meeting $meeting, string $messageId): ?MeetingMessage
+    {
+        $query = MeetingMessage::where('meeting_id', $meeting->id);
+
+        if (ctype_digit($messageId)) {
+            return (clone $query)->whereKey((int) $messageId)->first();
+        }
+
+        if (strlen($messageId) === 26) {
+            return (clone $query)->whereRaw('LOWER(public_id) = ?', [strtolower($messageId)])->first();
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function serializeMeetingMessage(MeetingMessage $message): array
+    {
+        $resource = new MeetingMessageResource(
+            $message->load([
+                'participant:id,user_id,public_id,metadata',
+                'participant.user:id,name',
+                'media',
+                'replyTo:id,participant_public_id,body,created_at',
+                'threadRoot:id,participant_public_id,body,created_at',
+                'pinnedByParticipant:id,user_id,public_id,metadata',
+                'pinnedByParticipant.user:id,name',
+            ])->loadCount('replies')
+        );
+
+        return $resource->resolve();
     }
 
     private function meetingResponse(Meeting $meeting, ?string $plainPassword = null): JsonResponse

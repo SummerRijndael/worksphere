@@ -870,23 +870,173 @@ export const useMeetingStore = defineStore('meeting', () => {
         }
     }
 
-    async function sendMessage(body: string) {
+    async function sendMessage(body: string, options?: {
+        tempId?: string;
+        replyTo?: string | number;
+        metadata?: Record<string, any>;
+        files?: File[];
+    }) {
         if (!meeting.value || !localParticipant.value) return;
         try {
-            // Note: Optimistic UI updates could be added here, 
-            // but we rely on the broadcast to ensure everyone including us gets it.
-            await meetingService.sendMessage(meeting.value.public_id, localParticipant.value.public_id, body);
+            const files = options?.files ?? [];
+            const hasFiles = files.length > 0;
+            const sentMessage = hasFiles
+                ? await meetingService.uploadMessage(
+                    meeting.value.public_id,
+                    localParticipant.value.public_id,
+                    files,
+                    {
+                        body,
+                        temp_id: options?.tempId,
+                        reply_to: options?.replyTo,
+                        metadata: options?.metadata,
+                    },
+                )
+                : await meetingService.sendMessage(
+                    meeting.value.public_id,
+                    localParticipant.value.public_id,
+                    body,
+                    {
+                        temp_id: options?.tempId,
+                        reply_to: options?.replyTo,
+                        metadata: options?.metadata,
+                    },
+                );
+
+            // Reconcile optimistic local message immediately even if async broadcast is delayed.
+            if (sentMessage) {
+                receiveChatMessage(sentMessage);
+            }
         } catch (e) {
             log('ERROR', 'Failed to send message', e);
             throw e;
         }
     }
 
-    function receiveChatMessage(msg: any) {
-        // Prevent strictly duplicate IDs, though usually broadcast logic only sends once
-        if (!chatMessages.value.find(m => m.id === msg.id)) {
-            chatMessages.value.push(msg);
+    async function pinChatMessage(messageId: string | number) {
+        if (!meeting.value || !presence.isModerator.value) return;
+        try {
+            const updatedMessage = await meetingService.pinMessage(meeting.value.public_id, messageId);
+            if (updatedMessage) {
+                receiveChatMessage(updatedMessage);
+            }
+        } catch (e) {
+            log('ERROR', 'Failed to pin message', e);
+            throw e;
         }
+    }
+
+    async function unpinChatMessage(messageId: string | number) {
+        if (!meeting.value || !presence.isModerator.value) return;
+        try {
+            const updatedMessage = await meetingService.unpinMessage(meeting.value.public_id, messageId);
+            if (updatedMessage) {
+                receiveChatMessage(updatedMessage);
+            }
+        } catch (e) {
+            log('ERROR', 'Failed to unpin message', e);
+            throw e;
+        }
+    }
+
+    async function clearPinnedChatMessages() {
+        if (!meeting.value || !presence.isModerator.value) return;
+        try {
+            const updatedMessages = await meetingService.clearPinnedMessages(meeting.value.public_id);
+            if (Array.isArray(updatedMessages)) {
+                updatedMessages.forEach((message) => {
+                    if (message) receiveChatMessage(message);
+                });
+            }
+        } catch (e) {
+            log('ERROR', 'Failed to clear pinned messages', e);
+            throw e;
+        }
+    }
+
+    async function editChatMessage(messageId: string | number, body: string) {
+        if (!meeting.value || !localParticipant.value) return;
+        try {
+            const updatedMessage = await meetingService.editMessage(
+                meeting.value.public_id,
+                messageId,
+                body,
+            );
+            if (updatedMessage) {
+                receiveChatMessage(updatedMessage);
+            }
+        } catch (e) {
+            log('ERROR', 'Failed to edit message', e);
+            throw e;
+        }
+    }
+
+    async function deleteChatMessage(messageId: string | number) {
+        if (!meeting.value || !localParticipant.value) return;
+        try {
+            const updatedMessage = await meetingService.deleteMessage(
+                meeting.value.public_id,
+                messageId,
+            );
+            if (updatedMessage) {
+                receiveChatMessage(updatedMessage);
+            }
+        } catch (e) {
+            log('ERROR', 'Failed to delete message', e);
+            throw e;
+        }
+    }
+
+    async function toggleChatMessageReaction(
+        messageId: string | number,
+        reaction: "like" | "laugh" | "hundred" | "sad" | "love" | "angry" | "scared" | "care",
+    ) {
+        if (!meeting.value || !localParticipant.value) return;
+        try {
+            const updatedMessage = await meetingService.toggleMessageReaction(
+                meeting.value.public_id,
+                messageId,
+                reaction,
+            );
+            if (updatedMessage) {
+                receiveChatMessage(updatedMessage);
+            }
+        } catch (e) {
+            log("ERROR", "Failed to toggle meeting chat reaction", e);
+            throw e;
+        }
+    }
+
+    function receiveChatMessage(msg: any) {
+        const localPublicId = localParticipant.value?.public_id?.toLowerCase();
+        const senderPublicId = String(msg.participant_public_id || '').toLowerCase();
+        const incomingId = String(msg.id ?? '');
+        const incomingTempId = msg.temp_id ? String(msg.temp_id) : null;
+
+        // Reconcile optimistic local message if server/broadcast echoes temp_id.
+        if (incomingTempId && localPublicId && senderPublicId === localPublicId) {
+            const optimisticIndex = chatMessages.value.findIndex((m) => String(m.id) === incomingTempId);
+            if (optimisticIndex !== -1) {
+                chatMessages.value.splice(optimisticIndex, 1, msg);
+                return;
+            }
+        }
+
+        const existingIndex = chatMessages.value.findIndex((m) => {
+            const existingId = String(m.id ?? '');
+            const existingTempId = m.temp_id ? String(m.temp_id) : null;
+            return existingId === incomingId || (incomingTempId && existingTempId === incomingTempId);
+        });
+
+        if (existingIndex !== -1) {
+            chatMessages.value.splice(existingIndex, 1, {
+                ...chatMessages.value[existingIndex],
+                ...msg,
+            });
+            return;
+        }
+
+        chatMessages.value.push(msg);
     }
 
     async function initMediaEngine() {
@@ -1482,6 +1632,12 @@ export const useMeetingStore = defineStore('meeting', () => {
         chatMessages,
         fetchMessages,
         sendMessage,
+        pinChatMessage,
+        unpinChatMessage,
+        clearPinnedChatMessages,
+        editChatMessage,
+        deleteChatMessage,
+        toggleChatMessageReaction,
         receiveChatMessage,
 
         // Reactions

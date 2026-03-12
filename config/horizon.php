@@ -98,6 +98,7 @@ return [
 
     'waits' => [
         'redis:default' => 60,
+        'redis:meetings' => 60,
     ],
 
     /*
@@ -199,7 +200,7 @@ return [
     'defaults' => [
         'supervisor-default' => [
             'connection' => 'redis',
-            'queue' => ['default', 'notifications', 'maintenance'],
+            'queue' => ['default', 'meetings', 'notifications', 'maintenance'],
             'balance' => 'auto',
             'autoScalingStrategy' => 'time',
             'maxProcesses' => 1,
@@ -295,7 +296,7 @@ return [
         'production' => [
             'supervisor-default' => [
                 'connection' => 'redis',
-                'queue' => ['default', 'notifications', 'maintenance'],
+                'queue' => ['default', 'meetings', 'notifications', 'maintenance'],
                 'balance' => 'auto',
                 'minProcesses' => 1,
                 'maxProcesses' => 3, // Reduced from 10
@@ -368,7 +369,7 @@ return [
         'local' => [
             'supervisor-default' => [
                 'connection' => 'redis',
-                'queue' => ['default', 'chats', 'notifications', 'maintenance', 'heavy'],
+                'queue' => ['default', 'meetings', 'chats', 'notifications', 'maintenance', 'heavy'],
                 'balance' => 'simple',
                 'minProcesses' => 1,
                 'maxProcesses' => 3,

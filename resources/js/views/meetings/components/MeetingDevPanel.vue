@@ -83,9 +83,14 @@ onUnmounted(() => {
 });
 
 const getDisplayName = (p: any) => {
-    const name = p?.user?.name || p?.metadata?.guest_name || p?.public_id || "Participant";
-    const isGuest = !p?.user?.public_id && !p?.user?.id;
-    if (isGuest && !/\(guest\)$/i.test(name)) {
+    const name = String(
+        p?.user?.name || p?.metadata?.guest_name || p?.public_id || "Participant",
+    ).trim();
+    const hasLinkedUser = Boolean(p?.user_id || p?.user?.id || p?.user?.public_id);
+    const isGuest = !hasLinkedUser;
+    if (isGuest) {
+        if (/\(guest\)$/i.test(name)) return name;
+        if (/^guest$/i.test(name)) return "Guest";
         return `${name} (Guest)`;
     }
     return name;

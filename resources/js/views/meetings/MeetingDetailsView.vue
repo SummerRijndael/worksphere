@@ -285,7 +285,12 @@ const fetchRecordings = async () => {
 
 const copyLink = () => {
     if (!meeting.value) return;
-    const url = `${window.location.origin}/m/${meeting.value.public_id}`;
+    const publicId = String(meeting.value.public_id || meetingId || "").trim();
+    if (!publicId || publicId.toLowerCase() === "undefined") {
+        toast.error("Meeting link is unavailable");
+        return;
+    }
+    const url = `${window.location.origin}/m/${publicId}`;
     navigator.clipboard.writeText(url);
     toast.success("Meeting link copied to clipboard");
 };

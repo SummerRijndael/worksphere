@@ -27,8 +27,14 @@ export function initMediaViewer() {
 
         // Swipe vars
         touchStartX: 0,
+        touchStartY: 0,
         touchEndX: 0,
+        touchEndY: 0,
+        touchStartAt: 0,
         minSwipeDistance: 50,
+        tapMaxDistance: 10,
+        tapMaxDurationMs: 260,
+        chromeVisible: true,
 
         open(media, index = 0) {
             this.media = media.map((item) =>
@@ -49,6 +55,7 @@ export function initMediaViewer() {
             this.index = index;
             this.renderThumbs();
             this.update(true);
+            this.toggleChrome(true);
 
             this.viewer.classList.remove("hidden");
             requestAnimationFrame(() => this.viewer.classList.add("visible"));
@@ -70,6 +77,7 @@ export function initMediaViewer() {
                 this.imgEl.src = "";
                 this.videoEl.src = "";
                 this.videoEl.load(); // Reset video element
+                this.toggleChrome(true);
             }, 300);
             document.body.style.overflow = "auto";
         },
@@ -220,19 +228,72 @@ export function initMediaViewer() {
         },
 
         handleTouchStart(e) {
-            this.touchStartX = e.changedTouches[0].screenX;
+            if (!e.changedTouches?.length) return;
+            const touch = e.changedTouches[0];
+            this.touchStartX = touch.screenX;
+            this.touchStartY = touch.screenY;
+            this.touchStartAt = Date.now();
         },
 
         handleTouchEnd(e) {
-            this.touchEndX = e.changedTouches[0].screenX;
-            if (
-                Math.abs(this.touchStartX - this.touchEndX) >
-                this.minSwipeDistance
-            ) {
-                this.touchStartX - this.touchEndX > 0
-                    ? this.next()
-                    : this.prev();
+            if (!e.changedTouches?.length) return;
+            const touch = e.changedTouches[0];
+            this.touchEndX = touch.screenX;
+            this.touchEndY = touch.screenY;
+
+            const deltaX = this.touchEndX - this.touchStartX;
+            const deltaY = this.touchEndY - this.touchStartY;
+            const absDeltaX = Math.abs(deltaX);
+            const absDeltaY = Math.abs(deltaY);
+
+            if (absDeltaX > this.minSwipeDistance && absDeltaX > absDeltaY * 1.2) {
+                deltaX < 0 ? this.next() : this.prev();
+                return;
             }
+
+            const tapDuration = Date.now() - this.touchStartAt;
+            const isTap =
+                absDeltaX <= this.tapMaxDistance &&
+                absDeltaY <= this.tapMaxDistance &&
+                tapDuration <= this.tapMaxDurationMs;
+            if (!isTap) return;
+
+            const target = e.target;
+            if (
+                target?.closest?.(".mv-icon-btn, .mv-nav-btn, .mv-thumb, .mv-info-panel")
+            ) {
+                return;
+            }
+
+            // Preserve native controls interaction for videos.
+            if (target?.tagName === "VIDEO") {
+                return;
+            }
+
+            if (this.media.length > 1 && this.stageEl) {
+                const stageRect = this.stageEl.getBoundingClientRect();
+                const xRatio = (touch.clientX - stageRect.left) / stageRect.width;
+                if (xRatio <= 0.28) {
+                    this.prev();
+                    return;
+                }
+                if (xRatio >= 0.72) {
+                    this.next();
+                    return;
+                }
+            }
+
+            // Center-tap toggles viewer chrome for cleaner mobile viewing.
+            this.toggleChrome();
+        },
+
+        toggleChrome(forceVisible) {
+            if (typeof forceVisible === "boolean") {
+                this.chromeVisible = forceVisible;
+            } else {
+                this.chromeVisible = !this.chromeVisible;
+            }
+            this.viewer.classList.toggle("mv-chrome-hidden", !this.chromeVisible);
         },
 
         toggleInfo() {

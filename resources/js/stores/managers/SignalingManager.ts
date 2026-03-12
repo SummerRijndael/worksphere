@@ -442,6 +442,24 @@ export function createSignalingManager(
             return;
         }
 
+        if (type === 'chat-message-pinned' || type === 'chat-message-unpinned') {
+            log('SIGNAL', `Received ${type}`, data);
+            const payload = data?.message ?? data;
+            const { useMeetingStore } = await import('@/stores/meeting');
+            const meetingStore = useMeetingStore();
+            meetingStore.receiveChatMessage(payload);
+            return;
+        }
+
+        if (type === 'chat-message-edited' || type === 'chat-message-deleted' || type === 'chat-message-reaction') {
+            log('SIGNAL', `Received ${type}`, data);
+            const payload = data?.message ?? data;
+            const { useMeetingStore } = await import('@/stores/meeting');
+            const meetingStore = useMeetingStore();
+            meetingStore.receiveChatMessage(payload);
+            return;
+        }
+
         if (type === 'meeting-locked') {
             log('SIGNAL', `Meeting lock state changed: ${data.is_locked}`);
             const { useMeetingStore } = await import('@/stores/meeting');

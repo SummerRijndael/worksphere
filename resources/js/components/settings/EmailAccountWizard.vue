@@ -44,6 +44,7 @@ const healthResults = ref<any>(null);
 const accountId = ref<string | null>(null);
 const remoteFolders = ref<any[]>([]);
 const selectedFolders = ref<string[]>([]);
+let oauthPopupWindow: Window | null = null;
 
 const form = ref({
     provider: "",
@@ -385,6 +386,7 @@ const connectOAuth = async () => {
         );
 
         if (popup) {
+            oauthPopupWindow = popup;
             window.addEventListener("message", handleOAuthMessage);
 
             // Poll for popup closure as fallback
@@ -435,8 +437,12 @@ const checkRecentAccount = async () => {
 };
 
 const handleOAuthMessage = (event: MessageEvent) => {
+    if (event.origin !== window.location.origin) return;
+    if (oauthPopupWindow && event.source !== oauthPopupWindow) return;
+
     if (event.data?.type === "oauth_success") {
         window.removeEventListener("message", handleOAuthMessage);
+        oauthPopupWindow = null;
         accountId.value = event.data.account_id;
         if (event.data.email) {
             form.value.email = event.data.email;
@@ -451,6 +457,7 @@ const handleOAuthMessage = (event: MessageEvent) => {
         step.value = 5; // Go to Health Check step next
     } else if (event.data?.type === "oauth_error") {
         window.removeEventListener("message", handleOAuthMessage);
+        oauthPopupWindow = null;
         toast.error(event.data.error || "Connection failed");
         isLoading.value = false;
     }
@@ -564,6 +571,7 @@ const saveFolders = async () => {
 
 onUnmounted(() => {
     window.removeEventListener("message", handleOAuthMessage);
+    oauthPopupWindow = null;
 });
 </script>
 

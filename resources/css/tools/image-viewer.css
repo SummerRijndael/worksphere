@@ -95,6 +95,7 @@
     z-index: 10;
     padding: 10px;
     /* Add breathing room around image */
+    touch-action: pan-y;
 }
 
 .mv-stage-actions {
@@ -152,6 +153,31 @@
 
 .mv-nav-btn:hover {
     background: rgba(255, 255, 255, 0.25);
+}
+
+.mv-toolbar,
+.mv-nav-btn,
+.mv-bottom-sheet {
+    transition:
+        opacity 0.2s var(--mv-easing),
+        transform 0.2s var(--mv-easing),
+        background 0.2s,
+        border-color 0.2s;
+}
+
+.mv.mv-chrome-hidden .mv-toolbar,
+.mv.mv-chrome-hidden .mv-bottom-sheet,
+.mv.mv-chrome-hidden .mv-nav-btn {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.mv.mv-chrome-hidden .mv-toolbar {
+    transform: translateY(-8px);
+}
+
+.mv.mv-chrome-hidden .mv-bottom-sheet {
+    transform: translateY(12px);
 }
 
 .mv-prev {
