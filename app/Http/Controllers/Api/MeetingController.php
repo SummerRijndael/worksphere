@@ -944,7 +944,7 @@ class MeetingController extends Controller
         Cache::put($key, $count + 1, 60);
 
         $burstKey = sprintf('meeting_chat_burst_%s_%s', $meeting->id, strtolower($participant->public_id));
-        if (RateLimiter::tooManyAttempts($burstKey, 4)) {
+        if (RateLimiter::tooManyAttempts($burstKey, 8)) {
             return response()->json(['message' => 'Sending too fast. Please slow down.'], 429);
         }
         RateLimiter::hit($burstKey, 2);
