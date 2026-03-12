@@ -80,6 +80,7 @@ class SecurityHeaders
         $styleSrc = "'self' 'unsafe-inline' https://fonts.bunny.net https://fonts.googleapis.com";
         $imgSrc = "'self' data: https: blob: cid:";
         $fontSrc = "'self' https://fonts.bunny.net https://fonts.gstatic.com data: blob:";
+        $mediaSrc = "'self' blob: data: https:";
 
         // Vite Dev Server Handling
         if (app()->isLocal()) {
@@ -124,6 +125,7 @@ class SecurityHeaders
             "style-src {$styleSrc}",
             "font-src {$fontSrc}",
             "img-src {$imgSrc}",
+            "media-src {$mediaSrc}",
             "connect-src {$connectSrc} https://www.google.com https://www.google-analytics.com https://www.googletagmanager.com https://cdn.jsdelivr.net https://storage.googleapis.com https://static.cloudflareinsights.com https://cloudflareinsights.com".
             ' https://*.dyte.io https://*.dyte.in https://*.flagsmith.com wss://*.dyte.io wss://*.dyte.in',
             "worker-src 'self' blob:",

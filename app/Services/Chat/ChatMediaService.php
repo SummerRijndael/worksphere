@@ -40,6 +40,8 @@ class ChatMediaService
 
     public const ALLOWED_DOCUMENT_TYPES = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt'];
 
+    public const ALLOWED_AUDIO_TYPES = ['webm', 'ogg', 'mp3', 'wav', 'm4a', 'aac', 'flac'];
+
     /**
      * Validate files before upload.
      *
@@ -185,12 +187,21 @@ class ChatMediaService
             $extension = $file->getClientOriginalExtension();
             $fileName = "{$uuid}.{$extension}";
 
-            // Store original filename in custom properties for display/download
+            $originalFilename = (string) $file->getClientOriginalName();
+            $clientMimeType = strtolower((string) ($file->getClientMimeType() ?? ''));
+            $serverMimeType = strtolower((string) ($file->getMimeType() ?? ''));
+            $detectedMime = $serverMimeType !== '' ? $serverMimeType : $clientMimeType;
+            $isVoiceClip = $this->isVoiceClipUpload($originalFilename, $clientMimeType, $serverMimeType);
+            $mediaKind = $this->inferMediaKind($detectedMime, $isVoiceClip);
+
+            // Store original filename and media classification for rendering.
             $media = $message->addMedia($file)
                 ->usingFileName($fileName)
                 ->withCustomProperties([
-                    'original_filename' => $file->getClientOriginalName(),
+                    'original_filename' => $originalFilename,
                     'uploaded_by' => $message->user_id,
+                    'media_kind' => $mediaKind,
+                    'is_voice_clip' => $isVoiceClip,
                 ])
                 ->toMediaCollection('chat_attachments');
 
@@ -198,6 +209,54 @@ class ChatMediaService
         }
 
         return $mediaIds;
+    }
+
+    protected function isVoiceClipUpload(string $filename, string $clientMimeType, string $serverMimeType): bool
+    {
+        $normalizedName = strtolower(trim($filename));
+        if (
+            str_starts_with($normalizedName, 'voice-')
+            || str_starts_with($normalizedName, 'recording-')
+            || str_starts_with($normalizedName, 'audio-')
+        ) {
+            return true;
+        }
+
+        $normalizedClientMime = strtolower(trim($clientMimeType));
+        $normalizedServerMime = strtolower(trim($serverMimeType));
+
+        return str_starts_with($normalizedClientMime, 'audio/')
+            && (
+                str_starts_with($normalizedServerMime, 'audio/')
+                || str_starts_with($normalizedServerMime, 'video/webm')
+                || str_starts_with($normalizedServerMime, 'video/ogg')
+            );
+    }
+
+    protected function inferMediaKind(string $mimeType, bool $isVoiceClip = false): string
+    {
+        if ($isVoiceClip) {
+            return 'audio';
+        }
+
+        $normalized = strtolower(trim($mimeType));
+        if ($normalized === '') {
+            return 'file';
+        }
+
+        if (str_starts_with($normalized, 'image/')) {
+            return 'image';
+        }
+
+        if (str_starts_with($normalized, 'audio/')) {
+            return 'audio';
+        }
+
+        if (str_starts_with($normalized, 'video/')) {
+            return 'video';
+        }
+
+        return 'file';
     }
 
     /**
@@ -212,6 +271,21 @@ class ChatMediaService
             'image/png',
             'image/webp',
             'image/gif',
+            // Audio
+            'audio/webm',
+            'audio/ogg',
+            'audio/mpeg',
+            'audio/mp3',
+            'audio/wav',
+            'audio/x-wav',
+            'audio/mp4',
+            'audio/x-m4a',
+            'audio/aac',
+            'audio/flac',
+            // Some browsers produce audio-only recordings with video/* container MIME
+            'video/webm',
+            'video/ogg',
+            'video/mp4',
             // Documents
             'application/pdf',
             'application/msword',
@@ -313,14 +387,26 @@ class ChatMediaService
      */
     public function getThumbUrl(Media $media, int $expiryMinutes = 60): ?string
     {
-        if (! str_starts_with($media->mime_type, 'image/')) {
+        $mimeType = strtolower((string) $media->mime_type);
+        $conversion = null;
+
+        if (str_starts_with($mimeType, 'image/')) {
+            $conversion = 'thumb';
+        } elseif (
+            str_starts_with($mimeType, 'video/')
+            && ! (bool) $media->getCustomProperty('is_voice_clip', false)
+        ) {
+            $conversion = 'video_thumb';
+        }
+
+        if (! $conversion) {
             return null;
         }
 
-        if ($media->hasGeneratedConversion('thumb')) {
-            return $media->getTemporaryUrl(now()->addMinutes($expiryMinutes), 'thumb');
+        if ($media->hasGeneratedConversion($conversion)) {
+            return $media->getTemporaryUrl(now()->addMinutes($expiryMinutes), $conversion);
         }
 
-        return $media->getTemporaryUrl(now()->addMinutes($expiryMinutes));
+        return null;
     }
 }

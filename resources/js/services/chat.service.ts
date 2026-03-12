@@ -229,6 +229,56 @@ class ChatService extends BaseService {
   }
 
   /**
+   * Toggle message reaction (one reaction per user per message).
+   */
+  async toggleMessageReaction(
+    chatId: string,
+    messageId: string,
+    reaction: string,
+  ): Promise<Message> {
+    try {
+      const response = await this.api.post<SendMessageResponse>(
+        `${this.basePath}/${chatId}/messages/${messageId}/reactions`,
+        { reaction },
+      );
+      const validated = sendMessageResponseSchema.parse(response.data);
+      return validated.data;
+    } catch (error) {
+      this.handleError(error);
+    }
+  }
+
+  /**
+   * Pin a message in chat.
+   */
+  async pinMessage(chatId: string, messageId: string): Promise<Message> {
+    try {
+      const response = await this.api.post<SendMessageResponse>(
+        `${this.basePath}/${chatId}/messages/${messageId}/pin`,
+      );
+      const validated = sendMessageResponseSchema.parse(response.data);
+      return validated.data;
+    } catch (error) {
+      this.handleError(error);
+    }
+  }
+
+  /**
+   * Unpin a message in chat.
+   */
+  async unpinMessage(chatId: string, messageId: string): Promise<Message> {
+    try {
+      const response = await this.api.delete<SendMessageResponse>(
+        `${this.basePath}/${chatId}/messages/${messageId}/pin`,
+      );
+      const validated = sendMessageResponseSchema.parse(response.data);
+      return validated.data;
+    } catch (error) {
+      this.handleError(error);
+    }
+  }
+
+  /**
    * Mark a chat as read.
    */
   /**

@@ -15,5 +15,20 @@ return [
         'text/csv',
         'image/svg+xml',
         'image/x-icon',
+        // Audio clips
+        'audio/webm',
+        'audio/ogg',
+        'audio/mpeg',
+        'audio/mp3',
+        'audio/wav',
+        'audio/x-wav',
+        'audio/mp4',
+        'audio/x-m4a',
+        'audio/aac',
+        'audio/flac',
+        // Browser audio recordings may come in video/* container MIME
+        'video/webm',
+        'video/ogg',
+        'video/mp4',
     ],
 ];

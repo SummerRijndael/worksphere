@@ -232,6 +232,43 @@ export const useChatStore = defineStore('chat', () => {
     // TODO: Handle file retry if needed (requires storing file blob or re-selecting)
   }
 
+  function upsertMessage(chatId: string, message: Message) {
+    const messages = messagesByChat.value.get(chatId) ?? [];
+    const targetId = String(message.id);
+    const index = messages.findIndex((m) => String(m.id) === targetId);
+
+    if (index === -1) {
+      addMessage(chatId, message);
+      return;
+    }
+
+    const existing = messages[index];
+    messages[index] = {
+      ...existing,
+      ...message,
+      tempId: existing.tempId ?? message.tempId,
+    };
+    messagesByChat.value.set(chatId, [...messages]);
+  }
+
+  async function toggleMessageReaction(chatId: string, messageId: string, reaction: string) {
+    const updated = await chatService.toggleMessageReaction(chatId, messageId, reaction);
+    upsertMessage(chatId, updated);
+    return updated;
+  }
+
+  async function pinMessage(chatId: string, messageId: string) {
+    const updated = await chatService.pinMessage(chatId, messageId);
+    upsertMessage(chatId, updated);
+    return updated;
+  }
+
+  async function unpinMessage(chatId: string, messageId: string) {
+    const updated = await chatService.unpinMessage(chatId, messageId);
+    upsertMessage(chatId, updated);
+    return updated;
+  }
+
   function addMessage(chatId: string, message: Message) {
     console.log('[ChatStore] addMessage called', {
       chatId,
@@ -624,10 +661,14 @@ export const useChatStore = defineStore('chat', () => {
     sendMessage,
     uploadMessage,
     addMessage,
+    upsertMessage,
     setMessagesForChat,
     updateMessageSeen,
     markAsRead,
     findMessageById,
+    toggleMessageReaction,
+    pinMessage,
+    unpinMessage,
 
     // Actions - Typing
     setUserTyping,

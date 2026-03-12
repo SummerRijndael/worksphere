@@ -60,6 +60,7 @@ const {
     selectChat,
     sendMessage,
     sendGif,
+    sendRecordedAudio,
     loadMoreMessages,
     scrollToBottom,
     handleInputChange,
@@ -184,6 +185,33 @@ const handleRetryMessage = async (message: any) => {
     // but we should ideally remove the specific failed ID.
     // For now, sendMessage adds a new one. We can leave the failed one or filter it out.
     // Let's filter it out strictly speaking, but for MVP re-sending is key.
+};
+
+const handleReactMessage = async (message: any, reaction: string) => {
+    if (!activeChat.value || !message?.id) return;
+    try {
+        await store.toggleMessageReaction(
+            activeChat.value.public_id,
+            String(message.id),
+            reaction,
+        );
+    } catch (error: any) {
+        toast.error("Reaction failed", error?.message || "Unable to react to this message.");
+    }
+};
+
+const handleTogglePinMessage = async (message: any) => {
+    if (!activeChat.value || !message?.id) return;
+    const isPinned = Boolean(message.is_pinned || message.metadata?.is_pinned);
+    try {
+        if (isPinned) {
+            await store.unpinMessage(activeChat.value.public_id, String(message.id));
+        } else {
+            await store.pinMessage(activeChat.value.public_id, String(message.id));
+        }
+    } catch (error: any) {
+        toast.error("Pin update failed", error?.message || "Unable to update pin state.");
+    }
 };
 
 // Video call setup
@@ -318,12 +346,6 @@ const handleDeclineInvite = (id: any) => declineInvite(Number(id));
                     :chat="activeChat"
                     :header-title="activeHeader"
                     :typing-indicator="typingIndicator"
-                    :connection-state="
-                        realtimeState?.connectionState ?? 'disconnected'
-                    "
-                    :subscribed-count="
-                        realtimeState?.subscribedChannels?.size ?? 0
-                    "
                     :is-mobile="isMobile"
                     @toggle-drawer="drawerOpen = !drawerOpen"
                     @toggle-sidebar="showSidebar = !showSidebar"
@@ -364,6 +386,8 @@ const handleDeclineInvite = (id: any) => declineInvite(Number(id));
                     @jump-to-message="jumpToMessage"
                     @scroll-to-bottom="scrollToBottom"
                     @retry="handleRetryMessage"
+                    @react="handleReactMessage"
+                    @toggle-pin="handleTogglePinMessage"
                 />
 
                 <!-- Typing Indicator (Fixed above composer) -->
@@ -404,6 +428,7 @@ const handleDeclineInvite = (id: any) => declineInvite(Number(id));
                     @remove-file="removeFile"
                     @typing="handleInputChange"
                     @send-gif="sendGif"
+                    @send-recorded-audio="sendRecordedAudio"
                 />
             </template>
 

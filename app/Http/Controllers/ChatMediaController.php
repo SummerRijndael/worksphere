@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Chat\ChatMessage;
 use App\Services\Chat\ChatMediaService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -18,7 +19,7 @@ class ChatMediaController extends Controller
     /**
      * View/stream a chat media file.
      */
-    public function view(int $mediaId): StreamedResponse|Response|JsonResponse
+    public function view(Request $request, int $mediaId): StreamedResponse|Response|JsonResponse
     {
         $media = $this->getAuthorizedMedia($mediaId);
         if (! $media instanceof Media) {
@@ -35,29 +36,12 @@ class ChatMediaController extends Controller
             'user_id' => Auth::id(),
         ]);
 
-        return response()->stream(
-            function () use ($media, $path) {
-                try {
-                    $stream = Storage::disk($media->disk)->readStream($path);
-                    if (is_resource($stream)) {
-                        fpassthru($stream);
-                        fclose($stream);
-                    } else {
-                        Log::warning('ChatMediaController@view: Stream is not a resource', ['media_id' => $media->id]);
-                    }
-                } catch (\Exception $e) {
-                    Log::error('ChatMediaController@view: Failed to read stream', [
-                        'media_id' => $media->id,
-                        'error' => $e->getMessage(),
-                    ]);
-                }
-            },
-            200,
-            [
-                'Content-Type' => $media->mime_type,
-                'Content-Length' => $media->size,
-                'Cache-Control' => 'private, max-age=3600',
-            ]
+        return $this->streamWithByteRange(
+            request: $request,
+            media: $media,
+            path: $path,
+            contentType: (string) $media->mime_type,
+            cacheControl: 'private, max-age=3600'
         );
     }
 
@@ -102,7 +86,7 @@ class ChatMediaController extends Controller
         }
 
         // Validate conversion name
-        $allowedConversions = ['thumb', 'web', 'optimized', 'webp'];
+        $allowedConversions = ['thumb', 'video_thumb', 'web', 'optimized', 'webp'];
         if (! in_array($conversion, $allowedConversions, true)) {
             Log::warning('ChatMediaController@conversion: Invalid conversion requested', [
                 'media_id' => $mediaId,
@@ -214,5 +198,119 @@ class ChatMediaController extends Controller
         }
 
         return $media;
+    }
+
+    protected function streamWithByteRange(
+        Request $request,
+        Media $media,
+        string $path,
+        string $contentType,
+        string $cacheControl
+    ): StreamedResponse|Response {
+        $disk = Storage::disk($media->disk);
+        if (! $disk->exists($path)) {
+            return response()->noContent(404);
+        }
+
+        $size = (int) ($disk->size($path) ?: $media->size ?: 0);
+        if ($size <= 0) {
+            return response()->noContent(404);
+        }
+
+        $start = 0;
+        $end = $size - 1;
+        $status = 200;
+
+        $rangeHeader = $request->header('Range');
+        if (is_string($rangeHeader) && preg_match('/bytes=(\d*)-(\d*)/i', $rangeHeader, $matches)) {
+            $rangeStart = $matches[1] !== '' ? (int) $matches[1] : null;
+            $rangeEnd = $matches[2] !== '' ? (int) $matches[2] : null;
+
+            if ($rangeStart === null && $rangeEnd !== null) {
+                $rangeStart = max($size - $rangeEnd, 0);
+                $rangeEnd = $size - 1;
+            }
+
+            if ($rangeStart !== null) {
+                $start = max($rangeStart, 0);
+            }
+
+            if ($rangeEnd !== null) {
+                $end = min($rangeEnd, $size - 1);
+            }
+
+            if ($start > $end || $start >= $size) {
+                return response('', 416, [
+                    'Content-Range' => "bytes */{$size}",
+                    'Accept-Ranges' => 'bytes',
+                ]);
+            }
+
+            $status = 206;
+        }
+
+        $length = $end - $start + 1;
+
+        $headers = [
+            'Content-Type' => $contentType,
+            'Content-Length' => (string) $length,
+            'Accept-Ranges' => 'bytes',
+            'Cache-Control' => $cacheControl,
+        ];
+
+        if ($status === 206) {
+            $headers['Content-Range'] = "bytes {$start}-{$end}/{$size}";
+        }
+
+        return response()->stream(function () use ($disk, $path, $media, $start, $length): void {
+            try {
+                $stream = $disk->readStream($path);
+                if (! is_resource($stream)) {
+                    Log::warning('ChatMediaController@view: Stream is not a resource', ['media_id' => $media->id]);
+
+                    return;
+                }
+
+                $meta = stream_get_meta_data($stream);
+                $seekable = (bool) ($meta['seekable'] ?? false);
+
+                if ($start > 0) {
+                    if ($seekable) {
+                        fseek($stream, $start);
+                    } else {
+                        $bytesToSkip = $start;
+                        while ($bytesToSkip > 0 && ! feof($stream)) {
+                            $chunk = fread($stream, (int) min(8192, $bytesToSkip));
+                            if ($chunk === false || $chunk === '') {
+                                break;
+                            }
+                            $bytesToSkip -= strlen($chunk);
+                        }
+                    }
+                }
+
+                $remaining = $length;
+                while ($remaining > 0 && ! feof($stream)) {
+                    $readSize = (int) min(8192, $remaining);
+                    $buffer = fread($stream, $readSize);
+                    if ($buffer === false || $buffer === '') {
+                        break;
+                    }
+                    echo $buffer;
+                    $remaining -= strlen($buffer);
+
+                    if (connection_aborted()) {
+                        break;
+                    }
+                }
+
+                fclose($stream);
+            } catch (\Exception $e) {
+                Log::error('ChatMediaController@view: Failed to read stream', [
+                    'media_id' => $media->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }, $status, $headers);
     }
 }

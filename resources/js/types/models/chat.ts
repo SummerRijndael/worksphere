@@ -32,6 +32,7 @@ export interface LastMessage {
     content: string | null;
     created_at: string;
     has_media: boolean;
+    preview?: string;
 }
 
 export interface Chat {
@@ -55,6 +56,11 @@ export interface MessageAttachment {
     size: number;
     mime_type: string;
     is_image: boolean;
+    media_kind?: "image" | "audio" | "video" | "file";
+    is_audio?: boolean;
+    is_video?: boolean;
+    is_voice_clip?: boolean;
+    duration_seconds?: number | null;
     url: string;
     download_url: string;
     thumb_url: string | null;
@@ -84,6 +90,11 @@ export interface Message {
     reply_to: MessageReply | null;
     attachments: MessageAttachment[];
     metadata?: Record<string, any> | null;
+    is_pinned?: boolean;
+    pinned_at?: string | null;
+    pinned_by_user_public_id?: string | null;
+    pinned_by_user_name?: string | null;
+    reactions?: Record<string, string[]>;
     // Optimistic UI state
     pending?: boolean;
     failed?: boolean;
@@ -211,4 +222,3 @@ export interface MediaListResponse {
 
 // Alias for backwards compatibility
 export type ChatMedia = MediaItem;
-

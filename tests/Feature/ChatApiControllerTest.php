@@ -271,4 +271,115 @@ class ChatApiControllerTest extends TestCase
         $responseData = $response->json('data');
         $this->assertStringNotContainsString('<script>', $responseData['content']);
     }
+
+    public function test_user_can_toggle_message_reaction(): void
+    {
+        $chat = Chat::create([
+            'type' => 'dm',
+            'created_by' => $this->user->id,
+        ]);
+
+        $this->attachParticipant($chat, $this->user->id);
+        $this->attachParticipant($chat, $this->otherUser->id);
+
+        $messageResponse = $this->actingAs($this->user)
+            ->postJson("/api/chat/{$chat->public_id}/send", [
+                'content' => 'React to me',
+            ])
+            ->assertOk();
+
+        $messagePublicId = (string) $messageResponse->json('data.id');
+
+        $addResponse = $this->actingAs($this->user)
+            ->postJson("/api/chat/{$chat->public_id}/messages/{$messagePublicId}/reactions", [
+                'reaction' => 'like',
+            ]);
+
+        $addResponse->assertOk()
+            ->assertJsonPath('meta.active', true)
+            ->assertJsonPath('data.reactions.like.0', strtolower((string) $this->user->public_id));
+
+        $removeResponse = $this->actingAs($this->user)
+            ->postJson("/api/chat/{$chat->public_id}/messages/{$messagePublicId}/reactions", [
+                'reaction' => 'like',
+            ]);
+
+        $removeResponse->assertOk()
+            ->assertJsonPath('meta.active', false);
+
+        $this->assertNull($removeResponse->json('data.reactions.like'));
+    }
+
+    public function test_user_reaction_overwrites_previous_reaction_on_same_message(): void
+    {
+        $chat = Chat::create([
+            'type' => 'dm',
+            'created_by' => $this->user->id,
+        ]);
+
+        $this->attachParticipant($chat, $this->user->id);
+        $this->attachParticipant($chat, $this->otherUser->id);
+
+        $messageResponse = $this->actingAs($this->user)
+            ->postJson("/api/chat/{$chat->public_id}/send", [
+                'content' => 'Only one reaction',
+            ])
+            ->assertOk();
+
+        $messagePublicId = (string) $messageResponse->json('data.id');
+        $actor = strtolower((string) $this->user->public_id);
+
+        $this->actingAs($this->user)
+            ->postJson("/api/chat/{$chat->public_id}/messages/{$messagePublicId}/reactions", [
+                'reaction' => 'laugh',
+            ])
+            ->assertOk();
+
+        $overwriteResponse = $this->actingAs($this->user)
+            ->postJson("/api/chat/{$chat->public_id}/messages/{$messagePublicId}/reactions", [
+                'reaction' => 'love',
+            ]);
+
+        $overwriteResponse->assertOk()
+            ->assertJsonPath('data.reactions.love.0', $actor);
+
+        $this->assertNull($overwriteResponse->json('data.reactions.laugh'));
+    }
+
+    public function test_user_can_pin_and_unpin_message(): void
+    {
+        $chat = Chat::create([
+            'type' => 'dm',
+            'created_by' => $this->user->id,
+        ]);
+
+        $this->attachParticipant($chat, $this->user->id);
+        $this->attachParticipant($chat, $this->otherUser->id);
+
+        $messageResponse = $this->actingAs($this->user)
+            ->postJson("/api/chat/{$chat->public_id}/send", [
+                'content' => 'Pin me',
+            ])
+            ->assertOk();
+
+        $messagePublicId = (string) $messageResponse->json('data.id');
+
+        $pinResponse = $this->actingAs($this->user)
+            ->postJson("/api/chat/{$chat->public_id}/messages/{$messagePublicId}/pin");
+
+        $pinResponse->assertOk()
+            ->assertJsonPath('data.is_pinned', true)
+            ->assertJsonPath('data.pinned_by_user_public_id', (string) $this->user->public_id)
+            ->assertJsonPath('data.pinned_by_user_name', (string) $this->user->name);
+
+        $unpinResponse = $this->actingAs($this->user)
+            ->deleteJson("/api/chat/{$chat->public_id}/messages/{$messagePublicId}/pin");
+
+        $unpinResponse->assertOk()
+            ->assertJsonPath('data.is_pinned', false);
+
+        $this->assertNull($unpinResponse->json('data.pinned_at'));
+        $this->assertNull($unpinResponse->json('data.pinned_by_user_public_id'));
+        $this->assertNull($unpinResponse->json('data.pinned_by_user_name'));
+    }
 }

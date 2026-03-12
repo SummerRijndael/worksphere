@@ -919,6 +919,9 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
         Route::get('/{chat}/messages', [\App\Http\Controllers\Api\Chat\ChatApiController::class, 'messages']);
         Route::get('/{chat}/messages/search', [\App\Http\Controllers\Api\Chat\ChatApiController::class, 'searchMessages']);
         Route::get('/{chat}/messages/around/{messagePublicId}', [\App\Http\Controllers\Api\Chat\ChatApiController::class, 'messagesAround']);
+        Route::post('/{chat}/messages/{messagePublicId}/reactions', [\App\Http\Controllers\Api\Chat\ChatApiController::class, 'toggleMessageReaction']);
+        Route::post('/{chat}/messages/{messagePublicId}/pin', [\App\Http\Controllers\Api\Chat\ChatApiController::class, 'pinMessage']);
+        Route::delete('/{chat}/messages/{messagePublicId}/pin', [\App\Http\Controllers\Api\Chat\ChatApiController::class, 'unpinMessage']);
         Route::post('/{chat}/send', [\App\Http\Controllers\Api\Chat\ChatApiController::class, 'send']);
         Route::post('/{chat}/upload', [\App\Http\Controllers\Api\Chat\ChatApiController::class, 'upload']);
         Route::post('/{chat}/typing', [\App\Http\Controllers\Api\Chat\ChatApiController::class, 'typing']);

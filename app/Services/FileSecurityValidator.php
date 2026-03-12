@@ -113,6 +113,14 @@ class FileSecurityValidator
             'text/csv' => ['text/plain', 'application/csv', 'application/vnd.ms-excel'],
             'image/png' => ['image/x-png'],
             'image/jpeg' => ['image/pjpeg'],
+            // Browser recorder containers can report audio/* in JS while finfo sees video/* container
+            'audio/webm' => ['video/webm'],
+            'video/webm' => ['audio/webm'],
+            'audio/ogg' => ['video/ogg'],
+            'video/ogg' => ['audio/ogg'],
+            'audio/mp4' => ['video/mp4', 'audio/x-m4a'],
+            'audio/x-m4a' => ['audio/mp4', 'video/mp4'],
+            'video/mp4' => ['audio/mp4', 'audio/x-m4a'],
             'application/octet-stream' => true, // Always allow identified stream
         ];
 

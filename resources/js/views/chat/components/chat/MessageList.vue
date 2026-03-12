@@ -24,7 +24,49 @@ const emit = defineEmits<{
     jumpToMessage: [messageId: string];
     scrollToBottom: [];
     retry: [message: Message];
+    react: [message: Message, reaction: string];
+    togglePin: [message: Message];
 }>();
+
+const pinnedMessages = computed(() =>
+    props.messages.filter(
+        (msg) =>
+            msg.type !== "system" &&
+            Boolean(msg.is_pinned || msg.metadata?.is_pinned),
+    ),
+);
+
+const activePinnedMessage = computed(() => {
+    if (!pinnedMessages.value.length) return null;
+    const sorted = [...pinnedMessages.value].sort((a, b) => {
+        const aPin = new Date(
+            String(a.pinned_at || a.metadata?.pinned_at || a.created_at),
+        ).getTime();
+        const bPin = new Date(
+            String(b.pinned_at || b.metadata?.pinned_at || b.created_at),
+        ).getTime();
+        return bPin - aPin;
+    });
+    return sorted[0] ?? null;
+});
+
+const pinnedPreview = computed(() => {
+    const msg = activePinnedMessage.value;
+    if (!msg) return "";
+    if (msg.content?.trim()) return msg.content.trim();
+    if (msg.attachments?.length) {
+        return `${msg.attachments.length} attachment${msg.attachments.length > 1 ? "s" : ""}`;
+    }
+    if (msg.metadata?.giphy?.title) return `GIF: ${msg.metadata.giphy.title}`;
+    return "Pinned message";
+});
+
+const pinnedPreviewShort = computed(() => {
+    const text = pinnedPreview.value.trim();
+    if (!text) return "";
+    const max = 72;
+    return text.length > max ? `${text.slice(0, max - 1)}...` : text;
+});
 
 const videoCallStore = useVideoCallStore();
 const { startCall, joinActiveCall } = useVideoCall();
@@ -253,9 +295,28 @@ function joinCall(invite: {
 
 <template>
     <div class="relative flex-1 flex flex-col min-h-0 overflow-hidden">
+        <button
+            v-if="activePinnedMessage"
+            type="button"
+            class="shrink-0 px-4 py-2 border-b border-(--border-default) bg-(--surface-secondary)/95 backdrop-blur-sm text-left hover:bg-(--surface-tertiary)/95 focus-visible:outline-none"
+            :title="pinnedPreview"
+            @click="handleJumpToMessage(String(activePinnedMessage.id))"
+        >
+            <div class="flex items-center gap-2 min-w-0">
+                <Icon
+                    name="Pin"
+                    :size="12"
+                    class="text-(--text-tertiary) shrink-0"
+                />
+                <span class="text-sm text-(--text-primary) truncate">
+                {{ pinnedPreviewShort }}
+                </span>
+            </div>
+        </button>
+
         <div
             ref="containerRef"
-            class="flex-1 overflow-y-auto px-4 py-6 space-y-1 flex flex-col"
+            class="flex-1 overflow-y-auto px-4 py-4 space-y-0.5 flex flex-col"
             :class="{ 'opacity-0': isCloaked, 'opacity-100': !isCloaked }"
             @scroll="handleScroll"
         >
@@ -269,7 +330,7 @@ function joinCall(invite: {
             <div
                 v-if="activeChat && messages.length"
                 :key="activeChat.public_id || 'empty'"
-                class="space-y-1 mt-auto"
+                class="space-y-0.5"
             >
                 <template
                     v-for="(msg, index) in messages"
@@ -278,7 +339,7 @@ function joinCall(invite: {
                     <!-- Date Divider -->
                     <div
                         v-if="shouldShowDateDivider(messages, index)"
-                        class="flex items-center justify-center gap-3 py-6"
+                        class="flex items-center justify-center gap-3 py-3"
                     >
                         <div class="h-px w-16 bg-(--border-default)" />
                         <span
@@ -303,6 +364,8 @@ function joinCall(invite: {
                         @reply="handleReply(msg)"
                         @jump-to-reply="handleJumpToMessage"
                         @retry="emit('retry', msg)"
+                        @react="(reaction) => emit('react', msg, reaction)"
+                        @toggle-pin="emit('togglePin', msg)"
                         @callback="handleCallback"
                         @join-call="joinCall"
                     />

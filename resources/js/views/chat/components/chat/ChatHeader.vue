@@ -19,8 +19,6 @@ interface Props {
     chat: Chat;
     headerTitle: string;
     typingIndicator: string | null;
-    connectionState: "connected" | "connecting" | "disconnected";
-    subscribedCount: number;
     isMobile: boolean;
 }
 
@@ -329,40 +327,6 @@ watch(
                         {{ theme.label }}
                     </button>
                 </div>
-            </div>
-
-            <!-- Connection Indicator -->
-            <div
-                class="flex items-center gap-1.5 px-2 py-1 lg:px-2.5 lg:py-1 rounded-full text-[10px] lg:text-[11px] font-medium transition-colors duration-300"
-                :class="{
-                    'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400':
-                        connectionState === 'connected',
-                    'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400':
-                        connectionState === 'connecting',
-                    'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400':
-                        connectionState === 'disconnected',
-                }"
-                :title="`Subscribed: ${subscribedCount} channels`"
-            >
-                <span
-                    class="w-1.5 h-1.5 lg:w-2 lg:h-2 rounded-full"
-                    :class="{
-                        'bg-green-500 shadow-[0_0_6px_var(--color-green-500)]':
-                            connectionState === 'connected',
-                        'bg-yellow-500 animate-pulse':
-                            connectionState === 'connecting',
-                        'bg-red-500': connectionState === 'disconnected',
-                    }"
-                />
-                <span :class="{ 'hidden sm:inline': true }">
-                    {{
-                        connectionState === "connected"
-                            ? "Live"
-                            : connectionState === "connecting"
-                              ? "Connecting..."
-                              : "Offline"
-                    }}
-                </span>
             </div>
 
             <!-- Search (placeholder) -->

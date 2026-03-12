@@ -147,6 +147,21 @@ class ChatMessage extends Model implements HasMedia
                 'image/png',
                 'image/webp',
                 'image/gif',
+                // Audio clips
+                'audio/webm',
+                'audio/ogg',
+                'audio/mpeg',
+                'audio/mp3',
+                'audio/wav',
+                'audio/x-wav',
+                'audio/mp4',
+                'audio/x-m4a',
+                'audio/aac',
+                'audio/flac',
+                // Some browsers produce audio-only recordings with video/* container MIME
+                'video/webm',
+                'video/ogg',
+                'video/mp4',
                 // Documents
                 'application/pdf',
                 'application/msword',
@@ -181,6 +196,18 @@ class ChatMessage extends Model implements HasMedia
             ->optimize()
             ->withResponsiveImages()
             ->performOnCollections('chat_attachments');
+
+        // Video poster thumbnail for chat previews.
+        // Keep this separate from image `thumb` to avoid changing existing image behavior.
+        if ($media && str_starts_with((string) $media->mime_type, 'video/') && ! (bool) $media->getCustomProperty('is_voice_clip', false)) {
+            $this->addMediaConversion('video_thumb')
+                ->extractVideoFrameAtSecond(1)
+                ->fit(Fit::Crop, 300, 300)
+                ->format('webp')
+                ->quality(80)
+                ->optimize()
+                ->performOnCollections('chat_attachments');
+        }
     }
 
     /**

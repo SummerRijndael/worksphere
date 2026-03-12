@@ -32,6 +32,20 @@ class ChatApiController extends Controller
     private const SEND_MAX_PER_WINDOW = 20;
 
     /**
+     * @var list<string>
+     */
+    private const REACTION_KEYS = [
+        'like',
+        'laugh',
+        'hundred',
+        'sad',
+        'love',
+        'angry',
+        'scared',
+        'care',
+    ];
+
+    /**
      * Find a chat by ID and verify the user is a participant.
      */
     protected function findChatOrFail(int $chatId): Chat
@@ -76,7 +90,14 @@ class ChatApiController extends Controller
      *   avatar_url: string|null,
      *   created_at: string|null,
      *   participants: array<int, array{id: string, name: string, public_id: string, avatar: string|null, role: string|null, is_online: bool, presence_status: string}>,
-     *   last_message: array{id: string|int, user_name: string|null, content: string|null, created_at: string|null, has_media: bool}|null,
+     *   last_message: array{
+     *     id: string|int,
+     *     user_name: string|null,
+     *     content: string|null,
+     *     created_at: string|null,
+     *     has_media: bool,
+     *     preview?: string
+     *   }|null,
      *   updated_at: string|null,
      *   team_owner_id: int|null
      * }
@@ -116,10 +137,70 @@ class ChatApiController extends Controller
                 'content' => $last->content,
                 'created_at' => $last->created_at?->toIso8601String(),
                 'has_media' => $last->media?->isNotEmpty() ?? false,
+                'preview' => $this->buildLastMessagePreview($last),
             ] : null,
             'updated_at' => $chat->updated_at?->toIso8601String(),
             'team_owner_id' => $chat->team?->owner_id,
         ];
+    }
+
+    protected function buildLastMessagePreview(ChatMessage $message): string
+    {
+        $content = trim(preg_replace('/\s+/', ' ', (string) ($message->content ?? '')) ?? '');
+        if ($content !== '') {
+            return Str::limit($content, 120, '...');
+        }
+
+        $metadata = is_array($message->metadata) ? $message->metadata : [];
+        if (
+            $message->type === 'system'
+            && ($metadata['system_type'] ?? null) === 'call_event'
+        ) {
+            $event = (string) ($metadata['event'] ?? '');
+            $callType = (string) ($metadata['type'] ?? 'video');
+
+            return match ($event) {
+                'started' => sprintf(
+                    '%s started a %s call',
+                    (string) ($metadata['user_name'] ?? 'Someone'),
+                    $callType
+                ),
+                'ended' => $this->buildEndedCallPreview($metadata),
+                'missed', 'no_answer' => $this->buildMissedCallPreview($metadata, $callType),
+                default => 'Call update',
+            };
+        }
+
+        return ($message->media?->isNotEmpty() ?? false) ? '📎 Attachment' : '';
+    }
+
+    /**
+     * @param  array<string, mixed>  $metadata
+     */
+    protected function buildEndedCallPreview(array $metadata): string
+    {
+        $duration = (int) ($metadata['duration'] ?? 0);
+        if ($duration <= 0) {
+            return 'Call ended';
+        }
+
+        $minutes = intdiv($duration, 60);
+        $seconds = $duration % 60;
+
+        return sprintf('Call ended (%d:%02d)', $minutes, $seconds);
+    }
+
+    /**
+     * @param  array<string, mixed>  $metadata
+     */
+    protected function buildMissedCallPreview(array $metadata, string $callType): string
+    {
+        $callerName = trim((string) ($metadata['caller_name'] ?? ''));
+        if ($callerName === '') {
+            return sprintf('Missed %s call', $callType);
+        }
+
+        return sprintf('Missed %s call from %s', $callType, $callerName);
     }
 
     /**
@@ -472,6 +553,191 @@ class ChatApiController extends Controller
         return response()->json([
             'data' => ChatEngine::normalizeOne($msg),
         ]);
+    }
+
+    /**
+     * Toggle a single-reaction-per-user entry on a message.
+     */
+    public function toggleMessageReaction(Request $request, Chat $chat, string $messagePublicId): JsonResponse
+    {
+        abort_if(! $chat->participants->contains(Auth::id()), 404);
+
+        $message = $this->resolveChatMessage($chat, $messagePublicId);
+        if (! $message) {
+            return response()->json(['message' => 'Message not found.'], 404);
+        }
+
+        $validated = $request->validate([
+            'reaction' => 'required|string|in:like,laugh,100,hundred,sad,love,angry,scared,care',
+        ]);
+
+        $reaction = (string) $validated['reaction'];
+        if ($reaction === '100') {
+            $reaction = 'hundred';
+        }
+
+        $metadata = is_array($message->metadata) ? $message->metadata : [];
+        $reactions = is_array($metadata['reactions'] ?? null) ? $metadata['reactions'] : [];
+        $actorPublicId = strtolower((string) Auth::user()?->public_id);
+
+        if ($actorPublicId === '') {
+            return response()->json(['message' => 'Unable to identify reactor.'], 422);
+        }
+
+        $currentForRequested = $this->reactionParticipantsForKey($reactions, $reaction);
+        $alreadyReacted = in_array($actorPublicId, $currentForRequested, true);
+
+        // Enforce one reaction per user: remove actor from all buckets first.
+        foreach ($reactions as $key => $ids) {
+            $normalized = array_values(array_filter(
+                array_map(static fn ($id) => strtolower((string) $id), is_array($ids) ? $ids : []),
+                static fn (string $id) => $id !== '' && $id !== $actorPublicId
+            ));
+
+            if (empty($normalized)) {
+                unset($reactions[$key]);
+                continue;
+            }
+
+            $reactions[$key] = array_values(array_unique($normalized));
+        }
+
+        if (! $alreadyReacted) {
+            $next = is_array($reactions[$reaction] ?? null) ? $reactions[$reaction] : [];
+            $next[] = $actorPublicId;
+            $reactions[$reaction] = array_values(array_unique(array_filter(
+                array_map(static fn ($id) => strtolower((string) $id), $next),
+                static fn (string $id) => $id !== ''
+            )));
+        }
+
+        if (empty($reactions)) {
+            unset($metadata['reactions']);
+        } else {
+            // Keep only known keys to avoid unexpected payload bloat.
+            $metadata['reactions'] = collect($reactions)
+                ->only(self::REACTION_KEYS)
+                ->map(fn ($ids) => array_values(array_unique(array_filter(
+                    array_map(static fn ($id) => strtolower((string) $id), is_array($ids) ? $ids : []),
+                    static fn (string $id) => $id !== ''
+                ))))
+                ->filter(fn ($ids) => ! empty($ids))
+                ->all();
+        }
+
+        $message->forceFill(['metadata' => $metadata])->save();
+
+        $message = $message->fresh([
+            'user:id,public_id,name',
+            'media',
+            'replyTo.user:id,public_id,name',
+            'chat',
+        ]);
+
+        \App\Services\Chat\ChatEvents::messageUpdated($message, $chat->type ?? 'dm');
+
+        return response()->json([
+            'data' => ChatEngine::normalizeOne($message),
+            'meta' => [
+                'reaction' => $reaction,
+                'active' => ! $alreadyReacted,
+            ],
+        ]);
+    }
+
+    public function pinMessage(Request $request, Chat $chat, string $messagePublicId): JsonResponse
+    {
+        abort_if(! $chat->participants->contains(Auth::id()), 404);
+
+        $message = $this->resolveChatMessage($chat, $messagePublicId);
+        if (! $message) {
+            return response()->json(['message' => 'Message not found.'], 404);
+        }
+
+        $metadata = is_array($message->metadata) ? $message->metadata : [];
+        $metadata['is_pinned'] = true;
+        $metadata['pinned_at'] = now()->toIso8601String();
+        $metadata['pinned_by_user_public_id'] = (string) Auth::user()?->public_id;
+        $metadata['pinned_by_user_name'] = (string) Auth::user()?->name;
+
+        $message->forceFill(['metadata' => $metadata])->save();
+
+        $message = $message->fresh([
+            'user:id,public_id,name',
+            'media',
+            'replyTo.user:id,public_id,name',
+            'chat',
+        ]);
+
+        \App\Services\Chat\ChatEvents::messageUpdated($message, $chat->type ?? 'dm');
+
+        return response()->json([
+            'data' => ChatEngine::normalizeOne($message),
+        ]);
+    }
+
+    public function unpinMessage(Request $request, Chat $chat, string $messagePublicId): JsonResponse
+    {
+        abort_if(! $chat->participants->contains(Auth::id()), 404);
+
+        $message = $this->resolveChatMessage($chat, $messagePublicId);
+        if (! $message) {
+            return response()->json(['message' => 'Message not found.'], 404);
+        }
+
+        $metadata = is_array($message->metadata) ? $message->metadata : [];
+        unset(
+            $metadata['is_pinned'],
+            $metadata['pinned_at'],
+            $metadata['pinned_by_user_public_id'],
+            $metadata['pinned_by_user_name']
+        );
+
+        $message->forceFill(['metadata' => $metadata])->save();
+
+        $message = $message->fresh([
+            'user:id,public_id,name',
+            'media',
+            'replyTo.user:id,public_id,name',
+            'chat',
+        ]);
+
+        \App\Services\Chat\ChatEvents::messageUpdated($message, $chat->type ?? 'dm');
+
+        return response()->json([
+            'data' => ChatEngine::normalizeOne($message),
+        ]);
+    }
+
+    /**
+     * Resolve a message in a chat by public identifier.
+     */
+    protected function resolveChatMessage(Chat $chat, string $messagePublicId): ?ChatMessage
+    {
+        return ChatMessage::query()
+            ->where('chat_id', $chat->id)
+            ->whereRaw('LOWER(public_id) = ?', [strtolower($messagePublicId)])
+            ->first();
+    }
+
+    /**
+     * @param  array<string, mixed>  $reactions
+     * @return list<string>
+     */
+    protected function reactionParticipantsForKey(array $reactions, string $reaction): array
+    {
+        $buckets = [];
+        if (is_array($reactions[$reaction] ?? null)) {
+            $buckets = array_merge($buckets, $reactions[$reaction]);
+        }
+        if ($reaction === 'hundred' && is_array($reactions['100'] ?? null)) {
+            $buckets = array_merge($buckets, $reactions['100']);
+        }
+
+        return array_values(array_unique(array_filter(
+            array_map(static fn ($id) => strtolower((string) $id), $buckets),
+            static fn (string $id) => $id !== ''
+        )));
     }
 
     /**
@@ -1173,6 +1439,18 @@ class ChatApiController extends Controller
             : number_format(max($size, 1) / 1024, 1).' KB';
         $viewUrl = route('chat.media.view', ['mediaId' => $media->id], false);
         $downloadUrl = route('chat.media.download', ['mediaId' => $media->id], false);
+        $isVoiceClip = (bool) $media->getCustomProperty('is_voice_clip', false);
+        $mediaKind = (string) ($media->getCustomProperty('media_kind')
+            ?: $this->inferMediaKind((string) $media->mime_type, $isVoiceClip));
+        $isImage = $mediaKind === 'image';
+        $isVideo = $mediaKind === 'video';
+
+        $thumbConversion = null;
+        if ($isImage && $media->hasGeneratedConversion('thumb')) {
+            $thumbConversion = 'thumb';
+        } elseif ($isVideo && $media->hasGeneratedConversion('video_thumb')) {
+            $thumbConversion = 'video_thumb';
+        }
 
         return [
             'id' => $media->id,
@@ -1180,17 +1458,59 @@ class ChatApiController extends Controller
             'size' => $size,
             'size_human' => $sizeLabel,
             'mime_type' => $media->mime_type,
-            'is_image' => str_starts_with($media->mime_type, 'image/'),
+            'is_image' => $isImage,
+            'is_audio' => $mediaKind === 'audio',
+            'is_video' => $mediaKind === 'video',
+            'is_voice_clip' => $isVoiceClip,
+            'media_kind' => $mediaKind,
+            'duration_seconds' => $this->normalizeDurationSeconds($media->getCustomProperty('duration_seconds')),
             'created_at_human' => $media->created_at?->shortRelativeDiffForHumans() ?? '',
             'url' => $viewUrl,
             'download_url' => $downloadUrl,
-            'thumb_url' => $media->hasGeneratedConversion('thumb')
+            'thumb_url' => $thumbConversion
                 ? route('chat.media.conversion', [
                     'mediaId' => $media->id,
-                    'conversion' => 'thumb',
+                    'conversion' => $thumbConversion,
                 ], false)
-                : $viewUrl,
+                : null,
         ];
+    }
+
+    protected function inferMediaKind(string $mimeType, bool $isVoiceClip = false): string
+    {
+        if ($isVoiceClip) {
+            return 'audio';
+        }
+
+        $normalized = strtolower(trim($mimeType));
+        if ($normalized === '') {
+            return 'file';
+        }
+
+        if (str_starts_with($normalized, 'image/')) {
+            return 'image';
+        }
+
+        if (str_starts_with($normalized, 'audio/')) {
+            return 'audio';
+        }
+
+        if (str_starts_with($normalized, 'video/')) {
+            return 'video';
+        }
+
+        return 'file';
+    }
+
+    protected function normalizeDurationSeconds(mixed $value): ?int
+    {
+        if (! is_numeric($value)) {
+            return null;
+        }
+
+        $seconds = (int) round((float) $value);
+
+        return $seconds >= 0 ? $seconds : null;
     }
 
     // =========================================================================

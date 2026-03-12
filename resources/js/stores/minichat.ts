@@ -24,6 +24,10 @@ export const useMiniChatStore = defineStore('minichat', () => {
   
   // Max visible chat heads when minimized
   const MAX_VISIBLE_HEADS = 5;
+  const DOCK_WINDOW_WIDTH = 360;
+  const DOCK_WINDOW_GAP = 14;
+  const DOCK_START_RIGHT = 96;
+  const DOCK_START_BOTTOM = 0;
 
   // Persistence Logic
   const authStore = useAuthStore();
@@ -116,13 +120,10 @@ export const useMiniChatStore = defineStore('minichat', () => {
 
   function rearrangeDockedWindows() {
     const wins = openWindows.value;
-    const windowWidth = 340;
-    const gap = 12; // Adjusted gap
-    const startRight = 90; // Launcher width + margin
     
     wins.forEach((win, index) => {
-      const right = startRight + (index * (windowWidth + gap));
-      const bottom = 0; // Docked to bottom
+      const right = DOCK_START_RIGHT + (index * (DOCK_WINDOW_WIDTH + DOCK_WINDOW_GAP));
+      const bottom = DOCK_START_BOTTOM; // Docked to bottom
       
       const updatedWin = windows.value.get(win.chatId);
       if (updatedWin) {
@@ -147,21 +148,17 @@ export const useMiniChatStore = defineStore('minichat', () => {
     }
     
     // Calculate position for new window
-    let rightOffset = 90;
+    let rightOffset = DOCK_START_RIGHT;
     let bottomOffset = 90;
     
-    // CONSTANTS
-    const WINDOW_GAP = 12; // Adjust gap here
-    
     if (anchoringMode.value === 'docked') {
-        const windowWidth = 340;
         const openCount = openWindows.value.length;
-        rightOffset = 90 + (openCount * (windowWidth + WINDOW_GAP));
-        bottomOffset = 0;
+        rightOffset = DOCK_START_RIGHT + (openCount * (DOCK_WINDOW_WIDTH + DOCK_WINDOW_GAP));
+        bottomOffset = DOCK_START_BOTTOM;
     } else {
         // Free mode: Stack diagonally
         const openCount = openWindows.value.length;
-        rightOffset = 90 + (openCount * 30);
+        rightOffset = DOCK_START_RIGHT + (openCount * 30);
         bottomOffset = 90 + (openCount * 30);
     }
     
