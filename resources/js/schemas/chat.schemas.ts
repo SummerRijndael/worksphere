@@ -20,6 +20,7 @@ export const lastMessageSchema = z.object({
   content: z.string().nullable(),
   created_at: z.string(),
   has_media: z.boolean(),
+  preview: z.string().optional(),
 });
 
 export const chatSchema = z.object({
@@ -42,6 +43,11 @@ export const attachmentSchema = z.object({
   size: z.number(),
   mime_type: z.string(),
   is_image: z.boolean(),
+  media_kind: z.enum(['image', 'audio', 'video', 'file']).optional(),
+  is_audio: z.boolean().optional(),
+  is_video: z.boolean().optional(),
+  is_voice_clip: z.boolean().optional(),
+  duration_seconds: z.number().nullable().optional(),
   url: z.string(),
   download_url: z.string(),
   thumb_url: z.string().nullable(),
@@ -66,6 +72,11 @@ export const messageSchema = z.object({
   is_seen: z.boolean(),
   seen: z.boolean(),
   seen_at: z.string().nullable(),
+  is_pinned: z.boolean().optional(),
+  pinned_at: z.string().nullable().optional(),
+  pinned_by_user_public_id: z.string().nullable().optional(),
+  pinned_by_user_name: z.string().nullable().optional(),
+  reactions: z.record(z.array(z.string())).optional(),
   reply_to: messageReplySchema.nullable(),
   attachments: z.array(attachmentSchema),
   metadata: z.record(z.any()).nullable().optional(),

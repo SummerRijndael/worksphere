@@ -6,6 +6,7 @@ import { Icon } from "@/components/ui";
 import data from "@emoji-mart/data";
 import { Picker } from "emoji-mart";
 import GiphyPicker from "./GiphyPicker.vue";
+import { useAudioClipRecorder } from "@/composables/useAudioClipRecorder";
 
 interface Props {
     modelValue: string;
@@ -15,6 +16,15 @@ interface Props {
     isMobile?: boolean;
     chatId?: string;
     compact?: boolean;
+}
+
+interface RecordedAudioDraft {
+    file: File;
+    durationSeconds: number;
+    mimeType: string;
+    rawMimeType?: string;
+    url: string;
+    fallbackUrl?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -31,6 +41,7 @@ const emit = defineEmits<{
     send: [];
     cancelReply: [];
     addFiles: [files: File[]];
+    sendRecordedAudio: [file: File];
     removeFile: [index: number];
     typing: [];
     sendGif: [gif: any];
@@ -43,16 +54,196 @@ const showEmoji = ref(false);
 const showGiphy = ref(false);
 const emojiMountRef = ref<HTMLElement | null>(null);
 const giphyMountRef = ref<HTMLElement | null>(null);
+const recordedAudioDraft = ref<RecordedAudioDraft | null>(null);
+const draftAudioRef = ref<HTMLAudioElement | null>(null);
+const isDraftPlaying = ref(false);
 let pickerInstance: any = null;
 
 const canSend = computed(() => {
     return (
-        (props.modelValue.trim().length > 0 || props.pendingFiles.length > 0) &&
-        !props.sending
+        (props.modelValue.trim().length > 0 ||
+            props.pendingFiles.length > 0 ||
+            !!recordedAudioDraft.value) &&
+        !props.sending &&
+        !isRecorderActive.value
     );
 });
 
 const isValidMessage = computed(() => props.modelValue.trim().length > 0);
+const hasAudioDraft = computed(() => !!recordedAudioDraft.value);
+const isComposerLockedForDraft = computed(
+    () => hasAudioDraft.value || isRecorderActive.value || isRecorderBusy.value,
+);
+const isRecordButtonBlocked = computed(
+    () =>
+        hasAudioDraft.value ||
+        props.sending ||
+        props.modelValue.trim().length > 0 ||
+        props.pendingFiles.length > 0,
+);
+
+const {
+    isSupported: isRecorderSupported,
+    isRecording: isRecorderActive,
+    isBusy: isRecorderBusy,
+    isPaused: isRecorderPaused,
+    formattedElapsed: recorderElapsed,
+    liveWaveformBars,
+    draftWaveformBars,
+    error: recorderError,
+    onRecordButtonClick,
+    onRecordButtonPointerDown,
+    onRecordButtonPointerUp,
+    cancelRecording,
+    stopAndPrepareRecording,
+    toggleRecordingPause,
+} = useAudioClipRecorder({
+    maxSeconds: 120,
+    onReady: async (file, meta) => {
+        setRecordedAudioDraft(
+            file,
+            meta.durationSeconds,
+            meta.mimeType,
+            meta.rawMimeType,
+            meta.playbackBlob,
+        );
+    },
+});
+
+function formatDuration(totalSeconds: number) {
+    const safeSeconds = Math.max(0, Math.floor(totalSeconds || 0));
+    const mins = Math.floor(safeSeconds / 60);
+    const secs = safeSeconds % 60;
+    return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+}
+
+function setRecordedAudioDraft(
+    file: File,
+    durationSeconds: number,
+    mimeType: string,
+    rawMimeType?: string,
+    playbackBlob?: Blob,
+) {
+    if (recordedAudioDraft.value?.url) {
+        URL.revokeObjectURL(recordedAudioDraft.value.url);
+    }
+    if (
+        recordedAudioDraft.value?.fallbackUrl &&
+        recordedAudioDraft.value.fallbackUrl !== recordedAudioDraft.value.url
+    ) {
+        URL.revokeObjectURL(recordedAudioDraft.value.fallbackUrl);
+    }
+
+    const primaryUrl = URL.createObjectURL(playbackBlob ?? file);
+    const fallbackUrl =
+        playbackBlob && playbackBlob !== file ? URL.createObjectURL(file) : undefined;
+
+    recordedAudioDraft.value = {
+        file,
+        durationSeconds,
+        mimeType,
+        rawMimeType,
+        url: primaryUrl,
+        fallbackUrl,
+    };
+
+    emit("update:modelValue", "");
+    showEmoji.value = false;
+    showGiphy.value = false;
+    isDraftPlaying.value = false;
+}
+
+function clearRecordedAudioDraft() {
+    if (recordedAudioDraft.value?.url) {
+        URL.revokeObjectURL(recordedAudioDraft.value.url);
+    }
+    if (
+        recordedAudioDraft.value?.fallbackUrl &&
+        recordedAudioDraft.value.fallbackUrl !== recordedAudioDraft.value.url
+    ) {
+        URL.revokeObjectURL(recordedAudioDraft.value.fallbackUrl);
+    }
+    recordedAudioDraft.value = null;
+    isDraftPlaying.value = false;
+}
+
+async function toggleDraftPlayback() {
+    const player = draftAudioRef.value;
+    if (!player) return;
+
+    try {
+        if (isDraftPlaying.value) {
+            player.pause();
+            isDraftPlaying.value = false;
+            return;
+        }
+
+        if (
+            Number.isFinite(player.duration) &&
+            player.duration > 0 &&
+            player.currentTime >= Math.max(player.duration - 0.05, 0)
+        ) {
+            player.currentTime = 0;
+        }
+
+        if (player.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+            await new Promise<void>((resolve, reject) => {
+                const onCanPlay = () => {
+                    cleanup();
+                    resolve();
+                };
+                const onError = () => {
+                    cleanup();
+                    reject(new Error("audio-not-playable"));
+                };
+                const cleanup = () => {
+                    player.removeEventListener("canplay", onCanPlay);
+                    player.removeEventListener("error", onError);
+                };
+
+                player.addEventListener("canplay", onCanPlay);
+                player.addEventListener("error", onError);
+                player.load();
+            });
+        }
+
+        await player.play();
+        isDraftPlaying.value = true;
+    } catch {
+        const draft = recordedAudioDraft.value;
+        if (draft?.fallbackUrl) {
+            draft.url = draft.fallbackUrl;
+            draft.fallbackUrl = undefined;
+
+            await nextTick();
+            const retryPlayer = draftAudioRef.value;
+            if (retryPlayer) {
+                try {
+                    retryPlayer.currentTime = 0;
+                    await retryPlayer.play();
+                    isDraftPlaying.value = true;
+                    return;
+                } catch {
+                    // final failure path below
+                }
+            }
+        }
+
+        isDraftPlaying.value = false;
+    }
+}
+
+function handleDraftEnded() {
+    isDraftPlaying.value = false;
+}
+
+function handleDraftPaused() {
+    isDraftPlaying.value = false;
+}
+
+async function handleRecordingCancel() {
+    await cancelRecording();
+}
 
 const handleInput = (e: Event) => {
     const target = e.target as HTMLTextAreaElement;
@@ -70,6 +261,12 @@ const autoResize = () => {
 };
 
 const handleSend = () => {
+    if (recordedAudioDraft.value && !props.sending && !isRecorderActive.value) {
+        emit("sendRecordedAudio", recordedAudioDraft.value.file);
+        clearRecordedAudioDraft();
+        return;
+    }
+
     if (canSend.value) {
         emit("send");
         nextTick(() => {
@@ -241,6 +438,18 @@ watch(
         }
     },
 );
+
+onUnmounted(() => {
+    if (recordedAudioDraft.value?.url) {
+        URL.revokeObjectURL(recordedAudioDraft.value.url);
+    }
+    if (
+        recordedAudioDraft.value?.fallbackUrl &&
+        recordedAudioDraft.value.fallbackUrl !== recordedAudioDraft.value.url
+    ) {
+        URL.revokeObjectURL(recordedAudioDraft.value.fallbackUrl);
+    }
+});
 </script>
 
 <template>
@@ -342,6 +551,72 @@ watch(
             </transition-group>
         </div>
 
+        <div
+            v-if="
+                !hasAudioDraft &&
+                (isRecorderActive || isRecorderBusy || recorderError)
+            "
+            class="mb-3 flex items-center justify-between rounded-xl border px-3 py-2 text-xs"
+            :class="
+                recorderError
+                    ? 'border-red-300/60 bg-red-50 text-red-600 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-300'
+                    : 'border-(--border-subtle) bg-(--surface-secondary) text-(--text-secondary)'
+            "
+        >
+            <template v-if="isRecorderBusy && !isRecorderActive">
+                <div class="flex items-center gap-2 font-medium">
+                    <span
+                        class="inline-block h-2 w-2 rounded-full bg-red-500 animate-pulse"
+                    ></span>
+                    <span>Preparing microphone...</span>
+                </div>
+                <button
+                    type="button"
+                    class="rounded-md px-2 py-1 text-xs font-medium text-(--text-primary) hover:bg-(--surface-tertiary)"
+                    @click="handleRecordingCancel"
+                >
+                    Cancel
+                </button>
+            </template>
+            <template v-else-if="isRecorderActive">
+                <div class="flex items-center gap-2 font-medium">
+                    <span
+                        class="inline-block h-2 w-2 rounded-full bg-red-500 animate-pulse"
+                    ></span>
+                    <span>
+                        {{ isRecorderPaused ? "Paused" : "Recording" }}
+                        {{ recorderElapsed }} / 02:00
+                    </span>
+                </div>
+                <div class="flex items-center gap-1.5">
+                    <button
+                        type="button"
+                        class="rounded-md px-2 py-1 text-xs font-medium text-(--text-primary) hover:bg-(--surface-tertiary)"
+                        @click="toggleRecordingPause"
+                    >
+                        {{ isRecorderPaused ? "Resume" : "Pause" }}
+                    </button>
+                    <button
+                        type="button"
+                        class="rounded-md px-2 py-1 text-xs font-medium text-(--text-primary) hover:bg-(--surface-tertiary)"
+                        @click="stopAndPrepareRecording"
+                    >
+                        Stop
+                    </button>
+                    <button
+                        type="button"
+                        class="rounded-md px-2 py-1 text-xs font-medium text-(--text-primary) hover:bg-(--surface-tertiary)"
+                        @click="handleRecordingCancel"
+                    >
+                        Cancel
+                    </button>
+                </div>
+            </template>
+            <template v-else>
+                <span>{{ recorderError }}</span>
+            </template>
+        </div>
+
         <!-- Input Row -->
         <div class="flex gap-3" :class="compact ? 'items-center' : 'items-end'">
             <!-- Left Actions Group -->
@@ -352,12 +627,15 @@ watch(
                 <!-- Attach Button -->
                 <label
                     class="p-2.5 rounded-full cursor-pointer text-(--text-secondary) hover:text-(--interactive-primary) hover:bg-(--surface-secondary) transition-all duration-200 group relative"
+                    :class="{
+                        'opacity-50 pointer-events-none': isComposerLockedForDraft,
+                    }"
                     title="Attach File"
                 >
                     <input
                         type="file"
                         multiple
-                        accept="image/*,.pdf,.doc,.docx,.txt,.zip"
+                        accept="image/*,audio/*,.pdf,.doc,.docx,.txt,.zip"
                         class="hidden"
                         @change="handleFileSelect"
                     />
@@ -369,6 +647,32 @@ watch(
                     />
                 </label>
 
+                <button
+                    v-if="isRecorderSupported"
+                    type="button"
+                    class="p-2.5 rounded-full text-(--text-secondary) hover:text-(--interactive-primary) hover:bg-(--surface-secondary) transition-all duration-200"
+                    :class="{
+                        'text-red-500 bg-red-50 dark:bg-red-500/10': isRecorderActive,
+                        'opacity-50 pointer-events-none': isRecordButtonBlocked,
+                    }"
+                    :title="
+                        isRecorderActive
+                            ? 'Stop recording'
+                            : 'Record audio (click to start/stop or hold to record)'
+                    "
+                    :disabled="isRecordButtonBlocked"
+                    @click.stop="onRecordButtonClick"
+                    @pointerdown.stop.prevent="onRecordButtonPointerDown"
+                    @pointerup.stop.prevent="onRecordButtonPointerUp"
+                    @pointercancel.stop.prevent="onRecordButtonPointerUp"
+                    @pointerleave.stop.prevent="onRecordButtonPointerUp"
+                >
+                    <Icon
+                        :name="isRecorderActive ? 'Square' : 'Mic'"
+                        :size="20"
+                    />
+                </button>
+
                 <div class="relative">
                     <button
                         class="text-(--text-tertiary) hover:text-(--text-primary) transition-colors rounded-full hover:bg-(--surface-tertiary)"
@@ -376,6 +680,9 @@ watch(
                             compact ? 'p-1.5' : 'p-2',
                             showEmoji
                                 ? 'text-yellow-500 bg-(--surface-secondary)'
+                                : '',
+                            isComposerLockedForDraft
+                                ? 'opacity-50 pointer-events-none'
                                 : '',
                         ]"
                         title="Insert emoji"
@@ -389,6 +696,9 @@ watch(
                 <div v-if="!compact" class="relative group">
                     <button
                         class="p-2 text-(--text-tertiary) hover:text-(--text-primary) transition-colors rounded-full hover:bg-(--surface-tertiary)"
+                        :class="{
+                            'opacity-50 pointer-events-none': isComposerLockedForDraft,
+                        }"
                         title="GIF"
                         @click.stop="toggleGiphy"
                     >
@@ -411,6 +721,7 @@ watch(
                 "
             >
                 <textarea
+                    v-if="!hasAudioDraft && !isRecorderBusy && !isRecorderActive"
                     ref="textareaRef"
                     :value="modelValue"
                     placeholder="Type a message..."
@@ -423,9 +734,109 @@ watch(
                     @blur="isFocused = false"
                 />
 
+                <div
+                    v-else-if="isRecorderBusy || isRecorderActive"
+                    class="flex items-center gap-3 py-3 px-4"
+                >
+                    <button
+                        type="button"
+                        class="w-8 h-8 rounded-full bg-red-500 text-white flex items-center justify-center shrink-0"
+                        :title="isRecorderPaused ? 'Resume recording' : 'Pause recording'"
+                        @click="toggleRecordingPause"
+                        :disabled="isRecorderBusy && !isRecorderActive"
+                    >
+                        <Icon
+                            :name="isRecorderPaused ? 'Play' : 'Pause'"
+                            size="14"
+                        />
+                    </button>
+                    <button
+                        type="button"
+                        class="w-8 h-8 rounded-full bg-(--interactive-primary) text-white flex items-center justify-center shrink-0"
+                        title="Stop recording"
+                        @click="stopAndPrepareRecording"
+                        :disabled="isRecorderBusy && !isRecorderActive"
+                    >
+                        <Icon name="Square" size="14" />
+                    </button>
+                    <div
+                        class="flex-1 h-8 rounded-full border border-(--border-subtle) bg-(--surface-secondary) px-3 flex items-center gap-1 overflow-hidden"
+                    >
+                        <span
+                            v-for="(barHeight, idx) in liveWaveformBars"
+                            :key="`recording-wave-${idx}`"
+                            class="inline-block w-0.5 rounded-full bg-(--text-tertiary)/70 animate-pulse"
+                            :style="{ height: `${barHeight}px` }"
+                        ></span>
+                    </div>
+                    <span
+                        class="text-xs font-semibold text-(--text-secondary) w-11 text-right"
+                    >
+                        {{
+                            isRecorderBusy && !isRecorderActive
+                                ? "..."
+                                : isRecorderPaused
+                                  ? `${recorderElapsed}P`
+                                  : recorderElapsed
+                        }}
+                    </span>
+                    <button
+                        type="button"
+                        class="w-7 h-7 rounded-full hover:bg-(--surface-tertiary) text-(--text-secondary) flex items-center justify-center shrink-0"
+                        title="Cancel recording"
+                        @click="handleRecordingCancel"
+                    >
+                        <Icon name="X" size="14" />
+                    </button>
+                </div>
+
+                <div
+                    v-else-if="hasAudioDraft && recordedAudioDraft"
+                    class="flex items-center gap-3 py-3 px-4"
+                >
+                    <button
+                        type="button"
+                        class="w-8 h-8 rounded-full bg-(--interactive-primary) text-white flex items-center justify-center shrink-0"
+                        :title="isDraftPlaying ? 'Pause preview' : 'Play / resume preview'"
+                        @click="toggleDraftPlayback"
+                    >
+                        <Icon :name="isDraftPlaying ? 'Pause' : 'Play'" size="14" />
+                    </button>
+                    <div
+                        class="flex-1 h-8 rounded-full border border-(--border-subtle) bg-(--surface-secondary) px-3 flex items-center gap-1 overflow-hidden"
+                    >
+                        <span
+                            v-for="(barHeight, idx) in draftWaveformBars"
+                            :key="`draft-wave-${idx}`"
+                            class="inline-block w-0.5 rounded-full bg-(--interactive-primary)/55"
+                            :style="{ height: `${barHeight}px` }"
+                        ></span>
+                    </div>
+                    <span
+                        class="text-xs font-semibold text-(--text-secondary) w-11 text-right"
+                    >
+                        {{ formatDuration(recordedAudioDraft.durationSeconds) }}
+                    </span>
+                    <button
+                        type="button"
+                        class="w-7 h-7 rounded-full hover:bg-(--surface-tertiary) text-(--text-secondary) flex items-center justify-center shrink-0"
+                        title="Discard recording"
+                        @click="clearRecordedAudioDraft"
+                    >
+                        <Icon name="X" size="14" />
+                    </button>
+                    <audio
+                        ref="draftAudioRef"
+                        :src="recordedAudioDraft.url"
+                        class="hidden"
+                        @ended="handleDraftEnded"
+                        @pause="handleDraftPaused"
+                    />
+                </div>
+
                 <!-- Character Count -->
                 <div
-                    v-if="modelValue.length > 3000"
+                    v-if="!hasAudioDraft && modelValue.length > 3000"
                     class="absolute bottom-2 right-4 text-[10px] font-medium transition-colors pointer-events-none"
                     :class="
                         modelValue.length >= 4000
@@ -440,10 +851,16 @@ watch(
             <!-- Send Button -->
             <button
                 @click="handleSend"
-                :disabled="!isValidMessage && pendingFiles.length === 0"
+                :disabled="
+                    (!isValidMessage &&
+                        pendingFiles.length === 0 &&
+                        !hasAudioDraft) ||
+                    isRecorderActive ||
+                    isRecorderBusy
+                "
                 class="flex items-center justify-center rounded-full transition-all duration-200 transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                 :class="[
-                    isValidMessage || pendingFiles.length > 0
+                    isValidMessage || pendingFiles.length > 0 || hasAudioDraft
                         ? 'bg-(--interactive-primary) text-white shadow-md hover:bg-(--interactive-primary-hover)'
                         : 'bg-(--surface-tertiary) text-(--text-tertiary)',
                     compact ? 'w-9 h-9' : 'w-10 h-10',

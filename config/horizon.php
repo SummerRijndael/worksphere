@@ -364,6 +364,17 @@ return [
                 'timeout' => 180,
                 'sleep' => 3, // Throttle between batches
             ],
+            'supervisor-media' => [
+                'connection' => 'redis',
+                'queue' => ['media-conversions'],
+                'balance' => 'simple',
+                'minProcesses' => 1,
+                'maxProcesses' => 2,
+                'tries' => 3,
+                'memory' => 256,
+                'retry_after' => 300,
+                'timeout' => 120,
+            ],
         ],
 
         'local' => [
@@ -423,6 +434,17 @@ return [
                 'retry_after' => 300,
                 'timeout' => 180,
                 'sleep' => 3,
+            ],
+            'supervisor-media' => [
+                'connection' => 'redis',
+                'queue' => ['media-conversions'],
+                'balance' => 'simple',
+                'minProcesses' => 1,
+                'maxProcesses' => 2,
+                'tries' => 1,
+                'memory' => 256,
+                'retry_after' => 300,
+                'timeout' => 120,
             ],
         ],
     ],

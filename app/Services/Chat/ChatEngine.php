@@ -346,6 +346,9 @@ class ChatEngine
     {
         $isSeen = false;
         $authorId = $message->user->id ?? $message->user_id;
+        $metadataArray = is_array($message->metadata) ? $message->metadata : [];
+        $metadata = empty($metadataArray) ? null : $metadataArray;
+        $normalizedReactions = self::normalizeReactions($metadataArray['reactions'] ?? null);
 
         if ($seenThreshold && $authorId && $message->user_id === $authorId) {
             $isSeen = $ownSeenId ? $message->id === $ownSeenId : $message->id <= $seenThreshold;
@@ -354,7 +357,7 @@ class ChatEngine
         return [
             'id' => $message->public_id, // Map Public ID to id
             'type' => $message->type,
-            'metadata' => $message->metadata, // Expose metadata
+            'metadata' => $metadata, // Expose metadata
             'user_public_id' => $message->user->public_id ?? null,
             'user_name' => $message->user->name ?? ($message->type === 'system' ? 'System' : 'Deactivated User'),
             'user_avatar' => $message->user->avatar_url ?? null,
@@ -363,6 +366,16 @@ class ChatEngine
             'is_seen' => $isSeen,
             'seen' => $isSeen,
             'seen_at' => $isSeen ? ($message->updated_at?->toIso8601String() ?? null) : null,
+            'is_pinned' => (bool) ($metadataArray['is_pinned'] ?? false),
+            'pinned_at' => is_string($metadataArray['pinned_at'] ?? null) ? $metadataArray['pinned_at'] : null,
+            'pinned_by_user_public_id' => is_string($metadataArray['pinned_by_user_public_id'] ?? null)
+                ? $metadataArray['pinned_by_user_public_id']
+                : null,
+            'pinned_by_user_name' => is_string($metadataArray['pinned_by_user_name'] ?? null)
+                ? $metadataArray['pinned_by_user_name']
+                : null,
+            // Keep response shape object-like for schema compatibility (never an empty array).
+            'reactions' => empty($normalizedReactions) ? (object) [] : $normalizedReactions,
             'reply_to' => $message->replyTo ? [
                 'id' => $message->replyTo->public_id,
                 'user_public_id' => $message->replyTo->user?->public_id,
@@ -371,7 +384,12 @@ class ChatEngine
                 'has_media' => $message->replyTo->media->isNotEmpty(),
             ] : null,
             'attachments' => $message->media->map(function ($media) {
-                $isImage = str_starts_with($media->mime_type, 'image/');
+                $isVoiceClip = (bool) $media->getCustomProperty('is_voice_clip', false);
+                $mediaKind = (string) ($media->getCustomProperty('media_kind')
+                    ?: self::inferMediaKind((string) $media->mime_type, $isVoiceClip));
+                $isImage = $mediaKind === 'image';
+                $isAudio = $mediaKind === 'audio';
+                $isVideo = $mediaKind === 'video';
                 $viewUrl = route('chat.media.view', ['mediaId' => $media->id], false);
                 $downloadUrl = route('chat.media.download', ['mediaId' => $media->id], false);
 
@@ -382,23 +400,108 @@ class ChatEngine
                     ], false)
                     : $viewUrl;
 
+                $thumbConversion = null;
+                if ($isImage && $media->hasGeneratedConversion('thumb')) {
+                    $thumbConversion = 'thumb';
+                } elseif ($isVideo && $media->hasGeneratedConversion('video_thumb')) {
+                    $thumbConversion = 'video_thumb';
+                }
+
                 return [
                     'id' => $media->id,
                     'name' => Str::limit($media->getCustomProperty('original_filename') ?? $media->file_name, 40),
                     'size' => $media->size,
                     'mime_type' => $media->mime_type,
                     'is_image' => $isImage,
+                    'is_audio' => $isAudio,
+                    'is_video' => $isVideo,
+                    'is_voice_clip' => $isVoiceClip,
+                    'media_kind' => $mediaKind,
+                    'duration_seconds' => self::normalizeDurationSeconds($media->getCustomProperty('duration_seconds')),
                     'url' => $optimizedUrl,
                     'download_url' => $downloadUrl,
-                    'thumb_url' => $isImage && $media->hasGeneratedConversion('thumb')
+                    'thumb_url' => $thumbConversion
                         ? route('chat.media.conversion', [
                             'mediaId' => $media->id,
-                            'conversion' => 'thumb',
+                            'conversion' => $thumbConversion,
                         ], false)
                         : null,
                 ];
             })->toArray(),
         ];
+    }
+
+    protected static function inferMediaKind(string $mimeType, bool $isVoiceClip = false): string
+    {
+        if ($isVoiceClip) {
+            return 'audio';
+        }
+
+        $normalized = strtolower(trim($mimeType));
+        if ($normalized === '') {
+            return 'file';
+        }
+
+        if (str_starts_with($normalized, 'image/')) {
+            return 'image';
+        }
+
+        if (str_starts_with($normalized, 'audio/')) {
+            return 'audio';
+        }
+
+        if (str_starts_with($normalized, 'video/')) {
+            return 'video';
+        }
+
+        return 'file';
+    }
+
+    protected static function normalizeDurationSeconds(mixed $value): ?int
+    {
+        if (! is_numeric($value)) {
+            return null;
+        }
+
+        $seconds = (int) round((float) $value);
+
+        return $seconds >= 0 ? $seconds : null;
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    protected static function normalizeReactions(mixed $reactions): array
+    {
+        if (! is_array($reactions)) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($reactions as $key => $ids) {
+            if (! is_string($key) || ! is_array($ids)) {
+                continue;
+            }
+
+            $reactionKey = strtolower($key);
+            if ($reactionKey === '100') {
+                $reactionKey = 'hundred';
+            }
+
+            $userIds = array_values(array_unique(array_filter(
+                array_map(static fn ($id) => strtolower((string) $id), $ids),
+                static fn (string $id) => $id !== ''
+            )));
+
+            if (empty($userIds)) {
+                continue;
+            }
+
+            $existing = $normalized[$reactionKey] ?? [];
+            $normalized[$reactionKey] = array_values(array_unique(array_merge($existing, $userIds)));
+        }
+
+        return $normalized;
     }
 
     /**

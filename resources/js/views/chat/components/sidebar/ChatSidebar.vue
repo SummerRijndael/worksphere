@@ -6,6 +6,7 @@ import StatusSelector from "@/components/ui/StatusSelector.vue";
 import { Avatar, Icon } from "@/components/ui";
 import { useAvatar } from "@/composables/useAvatar";
 import { usePresence, getStatusLabel } from "@/composables/usePresence.ts";
+import { buildChatListPreview, truncateChatPreview } from "@/utils/chatPreview";
 
 interface User {
     id: number;
@@ -56,11 +57,7 @@ const tabs = [
 const inviteCount = computed(() => props.invites.length);
 
 const formatLastMessage = (chat: Chat) => {
-    if (!chat.last_message) return "";
-    const content = chat.last_message.content;
-    return content && content.length > 40
-        ? content.substring(0, 40) + "..."
-        : content || "📎 Attachment";
+    return truncateChatPreview(buildChatListPreview(chat.last_message), 40);
 };
 
 const formatTime = (date: string) => {

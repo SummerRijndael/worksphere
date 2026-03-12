@@ -11,6 +11,7 @@ import { usePresence } from "@/composables/usePresence"; // Import usePresence
 import { useAvatar } from "@/composables/useAvatar";
 import { useToast } from "@/composables/useToast";
 import { Icon, Avatar } from "@/components/ui";
+import { buildChatListPreview } from "@/utils/chatPreview";
 import type { Chat, DiscoverablePerson, ChatInvite } from "@/types/models/chat";
 
 const emit = defineEmits<{
@@ -180,9 +181,7 @@ function getChatAvatarData(chat: Chat) {
 }
 
 function getLastMessagePreview(chat: Chat): string {
-    if (!chat.last_message) return "No messages yet";
-    if (chat.last_message.has_media) return "📎 Attachment";
-    return chat.last_message.content || "";
+    return buildChatListPreview(chat.last_message, "No messages yet");
 }
 
 // Local formatTime removed in favor of useDate composable

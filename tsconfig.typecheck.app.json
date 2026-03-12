@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "exclude": [
+    "node_modules",
+    "vendor",
+    "public/build",
+    "storage",
+    "bootstrap/cache",
+    "tests",
+    "resources/js/vendor/**"
+  ]
+}

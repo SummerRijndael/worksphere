@@ -17,10 +17,20 @@ import { Picker } from "emoji-mart";
 import MiniChatMessageBubble from "./MiniChatMessageBubble.vue";
 import GiphyPicker from "@/views/chat/components/chat/GiphyPicker.vue";
 import { useMention } from "@/composables/useMention";
+import { useAudioClipRecorder } from "@/composables/useAudioClipRecorder";
 
 const props = defineProps<{
     window: MiniChatWindow;
 }>();
+
+interface RecordedAudioDraft {
+    file: File;
+    durationSeconds: number;
+    mimeType: string;
+    rawMimeType?: string;
+    url: string;
+    fallbackUrl?: string;
+}
 
 const router = useRouter();
 const miniChatStore = useMiniChatStore();
@@ -145,7 +155,7 @@ const { attach: attachMention } = useMention(
     textareaRef,
     computed(() => props.window.chat.public_id),
     {
-        onSelect: (item: any) => {
+        onSelect: (_item: any) => {
             nextTick(() => {
                 if (textareaRef.value) {
                     messageInput.value = textareaRef.value.value;
@@ -164,7 +174,41 @@ const showEmoji = ref(false);
 const showGiphy = ref(false);
 const replyingTo = ref<Message | null>(null);
 const pendingFiles = ref<PendingFile[]>([]);
+const recordedAudioDraft = ref<RecordedAudioDraft | null>(null);
+const draftAudioRef = ref<HTMLAudioElement | null>(null);
+const isDraftPlaying = ref(false);
 let pickerInstance: any = null;
+
+const {
+    isSupported: isRecorderSupported,
+    isRecording: isRecorderActive,
+    isBusy: isRecorderBusy,
+    isPaused: isRecorderPaused,
+    formattedElapsed: recorderElapsed,
+    liveWaveformBars,
+    draftWaveformBars,
+    error: recorderError,
+    onRecordButtonClick,
+    onRecordButtonPointerDown,
+    onRecordButtonPointerUp,
+    cancelRecording,
+    stopAndPrepareRecording,
+    toggleRecordingPause,
+} = useAudioClipRecorder({
+    maxSeconds: 120,
+    onReady: async (file, meta) => {
+        setRecordedAudioDraft(
+            file,
+            meta.durationSeconds,
+            meta.mimeType,
+            meta.rawMimeType,
+            meta.playbackBlob,
+        );
+    },
+    onError: (message) => {
+        toast.error("Recorder", message);
+    },
+});
 // typingUser ref removed
 // Removed local typing/channel state in favor of useChatRealtime
 // typingTimeout removed (unused)
@@ -174,6 +218,46 @@ const currentUserPublicId = computed(() => authStore.user?.public_id || "");
 
 const messages = computed(() => {
     return chatStore.messagesByChat.get(props.window.chatId) || [];
+});
+
+const pinnedMessages = computed(() =>
+    messages.value.filter(
+        (msg) =>
+            msg.type !== "system" &&
+            Boolean(msg.is_pinned || msg.metadata?.is_pinned),
+    ),
+);
+
+const activePinnedMessage = computed(() => {
+    if (!pinnedMessages.value.length) return null;
+    const sorted = [...pinnedMessages.value].sort((a, b) => {
+        const aPin = new Date(
+            String(a.pinned_at || a.metadata?.pinned_at || a.created_at),
+        ).getTime();
+        const bPin = new Date(
+            String(b.pinned_at || b.metadata?.pinned_at || b.created_at),
+        ).getTime();
+        return bPin - aPin;
+    });
+    return sorted[0] ?? null;
+});
+
+const pinnedPreview = computed(() => {
+    const msg = activePinnedMessage.value;
+    if (!msg) return "";
+    if (msg.content?.trim()) return msg.content.trim();
+    if (msg.attachments?.length) {
+        return `${msg.attachments.length} attachment${msg.attachments.length > 1 ? "s" : ""}`;
+    }
+    if (msg.metadata?.giphy?.title) return `GIF: ${msg.metadata.giphy.title}`;
+    return "Pinned message";
+});
+
+const pinnedPreviewShort = computed(() => {
+    const text = pinnedPreview.value.trim();
+    if (!text) return "";
+    const max = 72;
+    return text.length > max ? `${text.slice(0, max - 1)}...` : text;
 });
 
 const chatTitle = computed(() => {
@@ -214,10 +298,172 @@ const otherParticipantStatus = computed(() => {
 const canSend = computed(() => {
     return (
         (messageInput.value.trim().length > 0 ||
-            pendingFiles.value.length > 0) &&
-        !isSending.value
+            pendingFiles.value.length > 0 ||
+            !!recordedAudioDraft.value) &&
+        !isSending.value &&
+        !isRecorderActive.value
     );
 });
+
+const isComposerLockedForDraft = computed(
+    () =>
+        !!recordedAudioDraft.value ||
+        isRecorderActive.value ||
+        isRecorderBusy.value,
+);
+const isRecordButtonBlocked = computed(
+    () =>
+        !!recordedAudioDraft.value ||
+        isSending.value ||
+        messageInput.value.trim().length > 0 ||
+        pendingFiles.value.length > 0,
+);
+
+function formatDuration(totalSeconds: number) {
+    const safeSeconds = Math.max(0, Math.floor(totalSeconds || 0));
+    const mins = Math.floor(safeSeconds / 60);
+    const secs = safeSeconds % 60;
+    return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+}
+
+function setRecordedAudioDraft(
+    file: File,
+    durationSeconds: number,
+    mimeType: string,
+    rawMimeType?: string,
+    playbackBlob?: Blob,
+) {
+    if (recordedAudioDraft.value?.url) {
+        URL.revokeObjectURL(recordedAudioDraft.value.url);
+    }
+    if (
+        recordedAudioDraft.value?.fallbackUrl &&
+        recordedAudioDraft.value.fallbackUrl !== recordedAudioDraft.value.url
+    ) {
+        URL.revokeObjectURL(recordedAudioDraft.value.fallbackUrl);
+    }
+
+    const primaryUrl = URL.createObjectURL(playbackBlob ?? file);
+    const fallbackUrl =
+        playbackBlob && playbackBlob !== file ? URL.createObjectURL(file) : undefined;
+
+    recordedAudioDraft.value = {
+        file,
+        durationSeconds,
+        mimeType,
+        rawMimeType,
+        url: primaryUrl,
+        fallbackUrl,
+    };
+
+    messageInput.value = "";
+    showEmoji.value = false;
+    showGiphy.value = false;
+    isDraftPlaying.value = false;
+}
+
+function clearRecordedAudioDraft() {
+    const player = draftAudioRef.value;
+    if (player) {
+        player.pause();
+        player.currentTime = 0;
+    }
+
+    if (recordedAudioDraft.value?.url) {
+        URL.revokeObjectURL(recordedAudioDraft.value.url);
+    }
+    if (
+        recordedAudioDraft.value?.fallbackUrl &&
+        recordedAudioDraft.value.fallbackUrl !== recordedAudioDraft.value.url
+    ) {
+        URL.revokeObjectURL(recordedAudioDraft.value.fallbackUrl);
+    }
+    recordedAudioDraft.value = null;
+    isDraftPlaying.value = false;
+}
+
+async function toggleDraftPlayback() {
+    const player = draftAudioRef.value;
+    if (!player) return;
+
+    try {
+        if (isDraftPlaying.value) {
+            player.pause();
+            isDraftPlaying.value = false;
+            return;
+        }
+
+        if (
+            Number.isFinite(player.duration) &&
+            player.duration > 0 &&
+            player.currentTime >= Math.max(player.duration - 0.05, 0)
+        ) {
+            player.currentTime = 0;
+        }
+
+        if (player.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+            await new Promise<void>((resolve, reject) => {
+                const onCanPlay = () => {
+                    cleanup();
+                    resolve();
+                };
+                const onError = () => {
+                    cleanup();
+                    reject(new Error("audio-not-playable"));
+                };
+                const cleanup = () => {
+                    player.removeEventListener("canplay", onCanPlay);
+                    player.removeEventListener("error", onError);
+                };
+
+                player.addEventListener("canplay", onCanPlay);
+                player.addEventListener("error", onError);
+                player.load();
+            });
+        }
+
+        await player.play();
+        isDraftPlaying.value = true;
+    } catch (error) {
+        const draft = recordedAudioDraft.value;
+        if (draft?.fallbackUrl) {
+            draft.url = draft.fallbackUrl;
+            draft.fallbackUrl = undefined;
+
+            await nextTick();
+            const retryPlayer = draftAudioRef.value;
+            if (retryPlayer) {
+                try {
+                    retryPlayer.currentTime = 0;
+                    await retryPlayer.play();
+                    isDraftPlaying.value = true;
+                    return;
+                } catch (retryError) {
+                    console.warn("Retry preview failed:", retryError);
+                }
+            }
+        }
+
+        console.warn("Unable to preview recorded audio:", error);
+        toast.error("Playback failed", "Could not play this recording.");
+        isDraftPlaying.value = false;
+    }
+}
+
+function handleDraftEnded() {
+    isDraftPlaying.value = false;
+}
+
+function handleDraftPaused() {
+    isDraftPlaying.value = false;
+}
+
+async function handleAudioDraftCancel() {
+    if (isRecorderActive.value || isRecorderBusy.value) {
+        await cancelRecording();
+    }
+    clearRecordedAudioDraft();
+}
 
 // Local typing indicator (V1 style isolation)
 // Local typing indicator (aligned with Full Chat)
@@ -284,6 +530,15 @@ onUnmounted(() => {
     pendingFiles.value.forEach((f) => {
         if (f.url) URL.revokeObjectURL(f.url);
     });
+    if (recordedAudioDraft.value?.url) {
+        URL.revokeObjectURL(recordedAudioDraft.value.url);
+    }
+    if (
+        recordedAudioDraft.value?.fallbackUrl &&
+        recordedAudioDraft.value.fallbackUrl !== recordedAudioDraft.value.url
+    ) {
+        URL.revokeObjectURL(recordedAudioDraft.value.fallbackUrl);
+    }
 });
 
 // Watch for new messages
@@ -304,6 +559,26 @@ function scrollToBottom() {
 
 async function handleSend() {
     if (!canSend.value) return;
+
+    if (recordedAudioDraft.value) {
+        isSending.value = true;
+        try {
+            await sendRecordedAudio(recordedAudioDraft.value.file);
+            clearRecordedAudioDraft();
+            replyingTo.value = null;
+            await nextTick();
+            scrollToBottom();
+        } catch (error: any) {
+            console.error("Failed to send recorded audio:", error);
+            toast.error(
+                "Send Failed",
+                error?.message || "Failed to send recorded audio",
+            );
+        } finally {
+            isSending.value = false;
+        }
+        return;
+    }
 
     const content = messageInput.value.trim();
     messageInput.value = "";
@@ -339,6 +614,16 @@ async function handleSend() {
     } finally {
         isSending.value = false;
     }
+}
+
+async function sendRecordedAudio(file: File) {
+    if (!props.window.chatId) return;
+    await chatStore.uploadMessage(
+        props.window.chatId,
+        [file],
+        "",
+        replyingTo.value?.id,
+    );
 }
 
 async function sendGif(gif: any) {
@@ -508,6 +793,42 @@ const handleRetry = async (messageId: string) => {
     }
 };
 
+const handleReactMessage = async (message: Message, reaction: string) => {
+    if (!message?.id) return;
+    try {
+        await chatStore.toggleMessageReaction(
+            props.window.chatId,
+            String(message.id),
+            reaction,
+        );
+    } catch (error: any) {
+        toast.error(
+            "Reaction failed",
+            error?.message || "Could not update reaction.",
+        );
+    }
+};
+
+const handleTogglePinMessage = async (message: Message) => {
+    if (!message?.id) return;
+    const isPinned = Boolean(message.is_pinned || message.metadata?.is_pinned);
+    try {
+        if (isPinned) {
+            await chatStore.unpinMessage(
+                props.window.chatId,
+                String(message.id),
+            );
+        } else {
+            await chatStore.pinMessage(props.window.chatId, String(message.id));
+        }
+    } catch (error: any) {
+        toast.error(
+            "Pin update failed",
+            error?.message || "Could not update pin state.",
+        );
+    }
+};
+
 // ============================================================================
 // File Handling
 // ============================================================================
@@ -519,53 +840,48 @@ function openFilePicker() {
     fileInputRef.value?.click();
 }
 
+function appendPendingFiles(newFiles: File[]) {
+    if (!newFiles.length) return;
+
+    const currentTotalSize = pendingFiles.value.reduce(
+        (acc, f) => acc + f.size,
+        0,
+    );
+
+    if (pendingFiles.value.length + newFiles.length > MAX_FILES) {
+        toast.error(
+            "Limit Exceeded",
+            `You can only upload up to ${MAX_FILES} files at a time.`,
+        );
+        return;
+    }
+
+    const newBatchSize = newFiles.reduce((sum, file) => sum + file.size, 0);
+    if (currentTotalSize + newBatchSize > MAX_TOTAL_SIZE) {
+        toast.error("Limit Exceeded", "Total upload size cannot exceed 10MB.");
+        return;
+    }
+
+    newFiles.forEach((file) => {
+        if (file.size > MAX_FILE_SIZE) {
+            toast.error("File Too Large", `${file.name} exceeds the 5MB limit.`);
+            return;
+        }
+        const isImage = file.type.startsWith("image/");
+        pendingFiles.value.push({
+            file,
+            name: file.name,
+            size: file.size,
+            isImage,
+            url: isImage ? URL.createObjectURL(file) : undefined,
+        });
+    });
+}
+
 function handleFileSelect(e: Event) {
     const input = e.target as HTMLInputElement;
     if (input.files) {
-        const newFiles = Array.from(input.files);
-        const currentTotalSize = pendingFiles.value.reduce(
-            (acc, f) => acc + f.size,
-            0,
-        );
-
-        if (pendingFiles.value.length + newFiles.length > MAX_FILES) {
-            toast.error(
-                "Limit Exceeded",
-                `You can only upload up to ${MAX_FILES} files at a time.`,
-            );
-            input.value = "";
-            return;
-        }
-
-        let newBatchSize = 0;
-        newFiles.forEach((f) => (newBatchSize += f.size));
-
-        if (currentTotalSize + newBatchSize > MAX_TOTAL_SIZE) {
-            toast.error(
-                "Limit Exceeded",
-                "Total upload size cannot exceed 10MB.",
-            );
-            input.value = "";
-            return;
-        }
-
-        newFiles.forEach((file) => {
-            if (file.size > MAX_FILE_SIZE) {
-                toast.error(
-                    "File Too Large",
-                    `${file.name} exceeds the 5MB limit.`,
-                );
-                return;
-            }
-            const isImage = file.type.startsWith("image/");
-            pendingFiles.value.push({
-                file,
-                name: file.name,
-                size: file.size,
-                isImage,
-                url: isImage ? URL.createObjectURL(file) : undefined,
-            });
-        });
+        appendPendingFiles(Array.from(input.files));
         input.value = "";
     }
 }
@@ -573,48 +889,7 @@ function handleFileSelect(e: Event) {
 function handlePaste(e: ClipboardEvent) {
     if (e.clipboardData && e.clipboardData.files.length > 0) {
         e.preventDefault();
-        const newFiles = Array.from(e.clipboardData.files);
-        const currentTotalSize = pendingFiles.value.reduce(
-            (acc, f) => acc + f.size,
-            0,
-        );
-
-        if (pendingFiles.value.length + newFiles.length > MAX_FILES) {
-            toast.error(
-                "Limit Exceeded",
-                `You can only upload up to ${MAX_FILES} files at a time.`,
-            );
-            return;
-        }
-
-        let newBatchSize = 0;
-        newFiles.forEach((f) => (newBatchSize += f.size));
-
-        if (currentTotalSize + newBatchSize > MAX_TOTAL_SIZE) {
-            toast.error(
-                "Limit Exceeded",
-                "Total upload size cannot exceed 10MB.",
-            );
-            return;
-        }
-
-        newFiles.forEach((file) => {
-            if (file.size > MAX_FILE_SIZE) {
-                toast.error(
-                    "File Too Large",
-                    `${file.name} exceeds the 5MB limit.`,
-                );
-                return;
-            }
-            const isImage = file.type.startsWith("image/");
-            pendingFiles.value.push({
-                file,
-                name: file.name,
-                size: file.size,
-                isImage,
-                url: isImage ? URL.createObjectURL(file) : undefined,
-            });
-        });
+        appendPendingFiles(Array.from(e.clipboardData.files));
     }
 }
 
@@ -753,7 +1028,7 @@ function handleDragMove(e: MouseEvent) {
     );
     const newBottom = Math.max(
         20,
-        Math.min(window.innerHeight - 480, startPos.value.bottom + deltaY),
+        Math.min(window.innerHeight - 500, startPos.value.bottom + deltaY),
     );
 
     miniChatStore.updateWindowPosition(props.window.chatId, {
@@ -931,6 +1206,19 @@ function isOwnMessage(msg: Message): boolean {
             </div>
         </div>
 
+        <!-- Fixed Pinned Message Strip -->
+        <div
+            v-if="activePinnedMessage"
+            class="minichat-pinned-strip"
+            :title="pinnedPreview"
+            @click="jumpToMessage(String(activePinnedMessage.id))"
+        >
+            <Icon name="Pin" :size="11" class="minichat-pinned-strip-icon" />
+            <div class="minichat-pinned-strip-content">
+                {{ pinnedPreviewShort }}
+            </div>
+        </div>
+
         <!-- Messages -->
         <div
             ref="messagesRef"
@@ -959,6 +1247,8 @@ function isOwnMessage(msg: Message): boolean {
                         @reply="handleReply"
                         @jump="jumpToMessage"
                         @retry="handleRetry"
+                        @react="(reaction) => handleReactMessage(msg, reaction)"
+                        @toggle-pin="handleTogglePinMessage(msg)"
                         @callback="handleCallback"
                         @join-call="
                             (data) =>
@@ -1025,23 +1315,20 @@ function isOwnMessage(msg: Message): boolean {
         <!-- Typing Indicator (Fixed above composer) -->
         <div
             v-if="typingIndicator"
-            class="flex items-center gap-2 px-3 text-xs text-(--text-muted) transition-all duration-300 w-full"
-            style="background: transparent !important"
+            class="minichat-typing-float"
         >
-            <div
-                class="flex space-x-1 p-2 bg-(--surface-elevated) rounded-2xl shadow-sm border border-(--border-default)"
-            >
-                <div
-                    class="w-1 h-1 bg-(--text-tertiary) rounded-full animate-bounce [animation-delay:-0.3s]"
-                ></div>
-                <div
-                    class="w-1 h-1 bg-(--text-tertiary) rounded-full animate-bounce [animation-delay:-0.15s]"
-                ></div>
-                <div
-                    class="w-1 h-1 bg-(--text-tertiary) rounded-full animate-bounce"
-                ></div>
+            <div class="minichat-typing-pill">
+                <div class="minichat-typing-dots">
+                    <div
+                        class="minichat-typing-dot animate-bounce [animation-delay:-0.3s]"
+                    ></div>
+                    <div
+                        class="minichat-typing-dot animate-bounce [animation-delay:-0.15s]"
+                    ></div>
+                    <div class="minichat-typing-dot animate-bounce"></div>
+                </div>
+                <span class="minichat-typing-text">{{ typingIndicator }}</span>
             </div>
-            <span class="animate-pulse">{{ typingIndicator }}</span>
         </div>
 
         <!-- Reply Preview -->
@@ -1084,46 +1371,71 @@ function isOwnMessage(msg: Message): boolean {
 
         <!-- Composer -->
         <div class="minichat-window-composer">
-            <!-- Attach button -->
-            <button
-                class="minichat-composer-btn"
-                title="Attach file"
-                @click="openFilePicker"
-            >
-                <Icon name="Paperclip" :size="18" />
-            </button>
             <input
                 ref="fileInputRef"
                 type="file"
                 multiple
-                accept="image/*,.pdf,.doc,.docx,.txt,.zip"
+                accept="image/*,audio/*,.pdf,.doc,.docx,.txt,.zip"
                 class="hidden"
                 @change="handleFileSelect"
             />
 
-            <!-- Emoji button -->
-            <button
-                class="minichat-composer-btn minichat-emoji-btn"
-                :class="{ 'is-active': showEmoji }"
-                title="Emoji"
-                @click.stop="toggleEmoji"
-            >
-                <Icon name="Smile" :size="18" />
-            </button>
-
-            <!-- GIF button -->
-            <button
-                class="minichat-composer-btn"
-                :class="{ 'is-active': showGiphy }"
-                title="GIF"
-                @click.stop="toggleGiphy"
-            >
-                <div
-                    class="font-bold text-[8px] leading-none border border-current rounded px-0.5 py-0.5"
+            <template v-if="!isComposerLockedForDraft">
+                <!-- Attach button -->
+                <button
+                    class="minichat-composer-btn"
+                    title="Attach file"
+                    @click="openFilePicker"
                 >
-                    GIF
-                </div>
-            </button>
+                    <Icon name="Paperclip" :size="16" />
+                </button>
+
+                <button
+                    v-if="isRecorderSupported"
+                    class="minichat-composer-btn"
+                    :class="{
+                        'is-active': isRecorderActive,
+                        'is-disabled': isRecordButtonBlocked,
+                    }"
+                    :title="
+                        isRecorderActive
+                            ? 'Stop recording'
+                            : 'Record audio (click or hold)'
+                    "
+                    :disabled="isRecordButtonBlocked"
+                    @click.stop="onRecordButtonClick"
+                    @pointerdown.stop.prevent="onRecordButtonPointerDown"
+                    @pointerup.stop.prevent="onRecordButtonPointerUp"
+                    @pointercancel.stop.prevent="onRecordButtonPointerUp"
+                    @pointerleave.stop.prevent="onRecordButtonPointerUp"
+                >
+                    <Icon :name="isRecorderActive ? 'Square' : 'Mic'" :size="16" />
+                </button>
+
+                <!-- Emoji button -->
+                <button
+                    class="minichat-composer-btn minichat-emoji-btn"
+                    :class="{ 'is-active': showEmoji }"
+                    title="Emoji"
+                    @click.stop="toggleEmoji"
+                >
+                    <Icon name="Smile" :size="16" />
+                </button>
+
+                <!-- GIF button -->
+                <button
+                    class="minichat-composer-btn"
+                    :class="{ 'is-active': showGiphy }"
+                    title="GIF"
+                    @click.stop="toggleGiphy"
+                >
+                    <div
+                        class="font-bold text-[8px] leading-none border border-current rounded px-0.5 py-0.5"
+                    >
+                        GIF
+                    </div>
+                </button>
+            </template>
 
             <!-- Emoji Picker -->
             <div
@@ -1137,8 +1449,82 @@ function isOwnMessage(msg: Message): boolean {
                 <GiphyPicker compact @select="sendGif" />
             </div>
 
+            <div
+                v-if="isRecorderBusy || isRecorderActive"
+                class="minichat-audio-draft"
+            >
+                <button
+                    type="button"
+                    class="minichat-audio-draft-play"
+                    :title="isRecorderPaused ? 'Resume recording' : 'Pause recording'"
+                    :disabled="isRecorderBusy && !isRecorderActive"
+                    @click="toggleRecordingPause"
+                >
+                    <Icon :name="isRecorderPaused ? 'Play' : 'Pause'" :size="12" />
+                </button>
+                <button
+                    type="button"
+                    class="minichat-audio-draft-play"
+                    title="Stop recording"
+                    :disabled="isRecorderBusy && !isRecorderActive"
+                    @click="stopAndPrepareRecording"
+                >
+                    <Icon name="Square" :size="12" />
+                </button>
+                <div class="minichat-audio-draft-wave">
+                    <span
+                        v-for="(barHeight, idx) in liveWaveformBars"
+                        :key="`recording-wave-${idx}`"
+                        class="minichat-audio-draft-bar is-recording"
+                        :style="{ height: `${barHeight}px` }"
+                    ></span>
+                </div>
+                <span class="minichat-audio-draft-time">
+                    {{
+                        isRecorderBusy && !isRecorderActive
+                            ? "..."
+                            : isRecorderPaused
+                              ? `${recorderElapsed}P`
+                              : recorderElapsed
+                    }}
+                </span>
+            </div>
+
+            <div
+                v-else-if="recordedAudioDraft"
+                class="minichat-audio-draft"
+            >
+                <button
+                    type="button"
+                    class="minichat-audio-draft-play"
+                    :title="isDraftPlaying ? 'Pause preview' : 'Play / resume preview'"
+                    @click="toggleDraftPlayback"
+                >
+                    <Icon :name="isDraftPlaying ? 'Pause' : 'Play'" :size="12" />
+                </button>
+                <div class="minichat-audio-draft-wave">
+                    <span
+                        v-for="(barHeight, idx) in draftWaveformBars"
+                        :key="`draft-wave-${idx}`"
+                        class="minichat-audio-draft-bar"
+                        :style="{ height: `${barHeight}px` }"
+                    ></span>
+                </div>
+                <span class="minichat-audio-draft-time">{{
+                    formatDuration(recordedAudioDraft.durationSeconds)
+                }}</span>
+                <audio
+                    ref="draftAudioRef"
+                    :src="recordedAudioDraft.url"
+                    class="hidden"
+                    @ended="handleDraftEnded"
+                    @pause="handleDraftPaused"
+                />
+            </div>
+
             <!-- Input -->
             <textarea
+                v-else
                 ref="textareaRef"
                 v-model="messageInput"
                 rows="1"
@@ -1149,10 +1535,19 @@ function isOwnMessage(msg: Message): boolean {
                 @paste="handlePaste"
             />
 
+            <button
+                v-if="isComposerLockedForDraft || recordedAudioDraft"
+                type="button"
+                class="minichat-draft-cancel-btn"
+                @click="handleAudioDraftCancel"
+            >
+                Cancel
+            </button>
+
             <!-- Send button -->
             <button
                 class="minichat-send-btn"
-                :disabled="!canSend"
+                :disabled="!canSend || isRecorderBusy"
                 @click="handleSend"
             >
                 <Icon
@@ -1164,14 +1559,21 @@ function isOwnMessage(msg: Message): boolean {
                 <Icon v-else name="Send" :size="16" />
             </button>
         </div>
+
+        <div
+            v-if="recorderError && !isRecorderActive && !isRecorderBusy"
+            class="minichat-recorder-error"
+        >
+            {{ recorderError }}
+        </div>
     </div>
 </template>
 
 <style scoped>
 .minichat-window {
     position: fixed;
-    width: 340px;
-    height: 480px;
+    width: 360px;
+    height: 500px;
     background: var(--surface-elevated);
     border: 1px solid var(--border-default);
     border-radius: 16px;
@@ -1269,10 +1671,10 @@ function isOwnMessage(msg: Message): boolean {
 .minichat-window-messages {
     flex: 1;
     overflow-y: auto;
-    padding: 12px;
+    padding: 12px 14px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
 }
 
 .minichat-window-empty {
@@ -1294,6 +1696,46 @@ function isOwnMessage(msg: Message): boolean {
     display: flex;
     flex-direction: column;
     width: 100%;
+    margin-bottom: 0;
+}
+
+.minichat-pinned-strip {
+    margin: 0;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-default);
+    background: color-mix(
+        in srgb,
+        var(--surface-secondary) 88%,
+        transparent
+    );
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 34px;
+}
+
+.minichat-pinned-strip:hover {
+    background: color-mix(
+        in srgb,
+        var(--surface-tertiary) 90%,
+        transparent
+    );
+}
+
+.minichat-pinned-strip-icon {
+    color: var(--text-tertiary);
+    flex: 0 0 auto;
+}
+
+.minichat-pinned-strip-content {
+    font-size: 12px;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
 }
 
 .minichat-message-container.is-own {
@@ -1550,20 +1992,125 @@ function isOwnMessage(msg: Message): boolean {
     font-size: 10px;
 }
 
+.minichat-recorder-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 12px;
+    background: var(--surface-secondary);
+    border-top: 1px solid var(--border-default);
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.minichat-recorder-indicator.is-error {
+    color: var(--color-error);
+}
+
+.minichat-recorder-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 500;
+}
+
+.minichat-recorder-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: #ef4444;
+    animation: minichatRecorderPulse 1s ease-in-out infinite;
+}
+
+@keyframes minichatRecorderPulse {
+    0%,
+    100% {
+        transform: scale(0.95);
+        opacity: 0.8;
+    }
+    50% {
+        transform: scale(1.2);
+        opacity: 1;
+    }
+}
+
+.minichat-recorder-cancel {
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    background: var(--surface-tertiary);
+    color: var(--text-secondary);
+    padding: 2px 8px;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.minichat-recorder-cancel:hover {
+    color: var(--text-primary);
+}
+
 /* Composer */
 .minichat-window-composer {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 10px 12px;
+    gap: 4px;
+    padding: 8px 10px;
     border-top: 1px solid var(--border-default);
     background: var(--surface-secondary);
     position: relative;
 }
 
+.minichat-typing-float {
+    position: absolute;
+    left: 12px;
+    bottom: 64px;
+    z-index: 24;
+    pointer-events: none;
+    max-width: calc(100% - 92px);
+}
+
+.minichat-typing-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: color-mix(
+        in srgb,
+        var(--surface-elevated) 78%,
+        transparent
+    );
+    border: 1px solid color-mix(in srgb, var(--border-default) 70%, transparent);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+}
+
+.minichat-typing-dots {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    flex-shrink: 0;
+}
+
+.minichat-typing-dot {
+    width: 4px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--text-tertiary);
+}
+
+.minichat-typing-text {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .minichat-composer-btn {
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
     border-radius: 50%;
     border: none;
     background: transparent;
@@ -1580,6 +2127,11 @@ function isOwnMessage(msg: Message): boolean {
 .minichat-composer-btn.is-active {
     background: var(--surface-tertiary);
     color: var(--text-primary);
+}
+
+.minichat-composer-btn.is-disabled {
+    opacity: 0.45;
+    pointer-events: none;
 }
 
 .minichat-emoji-picker {
@@ -1600,15 +2152,16 @@ function isOwnMessage(msg: Message): boolean {
 
 .minichat-input {
     flex: 1;
-    padding: 8px 12px;
+    min-width: 0;
+    padding: 7px 10px;
     border-radius: 18px;
     border: 1px solid var(--border-default);
     background: var(--surface-elevated);
     color: var(--text-primary);
-    font-size: 13px;
+    font-size: 12.5px;
     outline: none;
     resize: none;
-    min-height: 36px;
+    min-height: 34px;
     max-height: 80px;
     transition: all 0.15s ease;
 }
@@ -1621,9 +2174,106 @@ function isOwnMessage(msg: Message): boolean {
     color: var(--text-muted);
 }
 
+.minichat-audio-draft {
+    flex: 1;
+    min-width: 0;
+    min-height: 34px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 6px;
+    border-radius: 18px;
+    border: 1px solid var(--border-default);
+    background: var(--surface-elevated);
+}
+
+.minichat-audio-draft-play,
+.minichat-audio-draft-clear {
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.minichat-audio-draft-play {
+    background: var(--interactive-primary);
+    color: #fff;
+}
+
+.minichat-audio-draft-clear {
+    background: transparent;
+    color: var(--text-secondary);
+}
+
+.minichat-audio-draft-clear:hover {
+    background: var(--surface-tertiary);
+    color: var(--text-primary);
+}
+
+.minichat-audio-draft-wave {
+    flex: 1;
+    min-width: 0;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    padding: 0;
+}
+
+.minichat-audio-draft-bar {
+    flex: 1 1 0;
+    min-width: 1px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--interactive-primary) 60%, transparent);
+    opacity: 0.85;
+}
+
+.minichat-audio-draft-bar.is-recording {
+    background: #ef4444;
+    animation: minichatRecorderPulse 1s ease-in-out infinite;
+}
+
+.minichat-audio-draft-time {
+    width: 34px;
+    font-size: 10px;
+    color: var(--text-secondary);
+    text-align: right;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.minichat-draft-cancel-btn {
+    height: 26px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--color-error) 45%, transparent);
+    background: color-mix(in srgb, var(--color-error) 12%, transparent);
+    color: var(--color-error);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 0 9px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.15s ease;
+}
+
+.minichat-draft-cancel-btn:hover {
+    background: color-mix(in srgb, var(--color-error) 18%, transparent);
+}
+
+.minichat-recorder-error {
+    padding: 0 12px 8px;
+    font-size: 11px;
+    color: var(--color-error);
+}
+
 .minichat-send-btn {
-    width: 36px;
-    height: 36px;
+    width: 32px;
+    height: 32px;
     border-radius: 50%;
     border: none;
     background: var(--interactive-primary);
@@ -1634,6 +2284,8 @@ function isOwnMessage(msg: Message): boolean {
     justify-content: center;
     transition: all 0.15s ease;
     flex-shrink: 0;
+    position: relative;
+    z-index: 1;
 }
 
 .minichat-send-btn:hover:not(:disabled) {

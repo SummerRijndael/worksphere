@@ -28,6 +28,7 @@
         "league/flysystem-aws-s3-v3": "^3.0",
         "maatwebsite/excel": "^3.1",
         "mews/purifier": "^3.4",
+        "php-ffmpeg/php-ffmpeg": "^1.3",
         "predis/predis": "^3.3",
         "shweshi/opengraph": "^1.2",
         "spatie/dns": "^2.7",

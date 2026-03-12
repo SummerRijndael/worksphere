@@ -75,7 +75,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         ->name('chat.media.download');
     Route::get('/chat/media/{mediaId}/{conversion}', [\App\Http\Controllers\ChatMediaController::class, 'conversion'])
         ->name('chat.media.conversion')
-        ->where('conversion', 'thumb|web|optimized|webp');
+        ->where('conversion', 'thumb|video_thumb|web|optimized|webp');
 });
 
 Route::middleware(['signed'])->group(function () {

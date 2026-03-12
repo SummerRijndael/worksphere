@@ -75,6 +75,10 @@ export function useChatRealtime() {
         console.log(`[ChatRealtime] 📩 RECEIVED .MessageCreated on ${channelName}`, JSON.stringify(event, null, 2));
         handleNewMessage(chatId, event.message);
       })
+      .listen('.MessageUpdated', (event: { message: Message }) => {
+        console.log(`[ChatRealtime] ✏️ RECEIVED .MessageUpdated on ${channelName}`, JSON.stringify(event, null, 2));
+        handleMessageUpdated(chatId, event.message);
+      })
       .listen('.TypingStarted', (event: { user_public_id: string }) => {
         console.log(`[ChatRealtime] ⌨️ RECEIVED .TypingStarted on ${channelName}`, JSON.stringify(event, null, 2));
         handleTypingStarted(chatId, event.user_public_id);
@@ -274,6 +278,15 @@ export function useChatRealtime() {
     if (message.user_public_id) {
       handleTypingStopped(chatId, message.user_public_id);
     }
+  }
+
+  function handleMessageUpdated(chatId: string, message: Message) {
+    console.log(`[ChatRealtime] 🔄 handleMessageUpdated for chat: ${chatId}`, {
+      messageId: message.id,
+      sender: message.user_public_id,
+    });
+
+    chatStore.upsertMessage(chatId, message);
   }
 
   /**

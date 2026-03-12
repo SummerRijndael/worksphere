@@ -6,6 +6,7 @@ use App\Events\Chat\ChatBadgeUpdated;
 use App\Events\Chat\MessageConfirmed;
 use App\Events\Chat\MessageCreated;
 use App\Events\Chat\MessageRead;
+use App\Events\Chat\MessageUpdated;
 use App\Events\Chat\UserTyping;
 use App\Models\Chat\ChatMessage;
 use App\Models\User;
@@ -21,6 +22,14 @@ class ChatEvents
     public static function messageCreated(ChatMessage $message, string $chatType = 'dm'): void
     {
         broadcast(new MessageCreated($message))->toOthers();
+    }
+
+    /**
+     * Broadcast message metadata/content updates to chat participants.
+     */
+    public static function messageUpdated(ChatMessage $message, string $chatType = 'dm'): void
+    {
+        broadcast(new MessageUpdated($message))->toOthers();
     }
 
     /**

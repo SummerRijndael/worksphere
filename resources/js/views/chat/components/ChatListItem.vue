@@ -2,6 +2,7 @@
 import { computed } from "vue";
 import { useDate } from "@/composables/useDate";
 import { useAvatar } from "@/composables/useAvatar";
+import { buildChatListPreview } from "@/utils/chatPreview";
 import { Avatar } from "@/components/ui";
 const { formatDate } = useDate();
 const avatar = useAvatar();
@@ -49,10 +50,7 @@ const isOnline = computed(() => {
 });
 
 const lastMessagePreview = computed(() => {
-    const msg = props.chat.last_message;
-    if (!msg) return "";
-    if (msg.has_media) return "📎 Attachment";
-    return msg.content ?? "";
+    return buildChatListPreview(props.chat.last_message);
 });
 
 const lastMessageTime = computed(() => {

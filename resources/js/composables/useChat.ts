@@ -253,6 +253,27 @@ export function useChat(options: UseChatOptions = {}) {
     }
   }
 
+  async function sendRecordedAudio(file: File) {
+    if (!store.activeChatPublicId || isSending.value) return;
+
+    isSending.value = true;
+    try {
+      await store.uploadMessage(
+        store.activeChatPublicId,
+        [file],
+        '',
+        store.replyingToMessage?.id,
+      );
+      store.setReplyingTo(null);
+      scrollToBottom();
+    } catch (error: any) {
+      console.error('Failed to send recorded audio:', error);
+      toast.error('Send Failed', error?.message || 'Failed to send recorded audio');
+    } finally {
+      isSending.value = false;
+    }
+  }
+
   async function loadMoreMessages() {
     if (!store.activeChatPublicId || isLoadingMore.value || !canLoadMore.value) return;
 
@@ -637,6 +658,7 @@ export function useChat(options: UseChatOptions = {}) {
     // Messages
     sendMessage,
     sendGif,
+    sendRecordedAudio,
     loadMoreMessages,
     scrollToBottom,
     handleInputChange,
