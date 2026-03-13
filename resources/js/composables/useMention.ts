@@ -9,14 +9,24 @@ export interface MentionOptions {
     selectClass?: string;
     containerClass?: string;
     itemClass?: string;
+    menuContainer?:
+        | HTMLElement
+        | null
+        | (() => HTMLElement | null);
     // Callback to fetch users
     fetchUsers?: (query: string) => Promise<any[]>;
     // Callback when an item is selected
     onSelect?: (item: any) => void;
+    // Optional hook to adjust mention menu position
+    onMenuPosition?: (
+        menu: HTMLElement,
+        textarea: HTMLTextAreaElement,
+    ) => void;
 }
 
 export function useMention(textareaRef: Ref<HTMLTextAreaElement | null>, chatId: Ref<string | undefined> | string | undefined, options: MentionOptions = {}) {
     const tribute = ref<Tribute<any> | null>(null);
+    let activeHandler: (() => void) | null = null;
 
     // Debounced search function
     const debouncedSearch = debounce(async (text: string, cb: (users: any[]) => void) => {
@@ -37,6 +47,18 @@ export function useMention(textareaRef: Ref<HTMLTextAreaElement | null>, chatId:
 
     const attach = () => {
         if (!textareaRef.value) return;
+
+        const resolvedMenuContainer =
+            typeof options.menuContainer === "function"
+                ? options.menuContainer()
+                : options.menuContainer;
+
+        const {
+            menuContainer: _menuContainer,
+            fetchUsers: _fetchUsers,
+            onSelect: _onSelect,
+            ...tributeOptions
+        } = options;
 
         tribute.value = new Tribute({
             trigger: options.trigger || "@",
@@ -72,14 +94,40 @@ export function useMention(textareaRef: Ref<HTMLTextAreaElement | null>, chatId:
             noMatchTemplate: function () {
                 return '<div class="p-2 text-sm text-[var(--text-tertiary)]">No results found</div>';
             },
-            menuContainer: document.body,
-            ...options
+            menuContainer: resolvedMenuContainer || document.body,
+            ...tributeOptions
         });
 
         tribute.value.attach(textareaRef.value);
+
+        if (options.onMenuPosition) {
+            activeHandler = () => {
+                requestAnimationFrame(() => {
+                    const menu =
+                        ((tribute.value as any)?.menu as HTMLElement | undefined) ||
+                        (document.querySelector(
+                            ".tribute-container:last-of-type",
+                        ) as HTMLElement | null);
+                    if (!menu || !textareaRef.value || !options.onMenuPosition)
+                        return;
+                    options.onMenuPosition(menu, textareaRef.value);
+                });
+            };
+            textareaRef.value.addEventListener(
+                "tribute-active-true",
+                activeHandler as EventListener,
+            );
+        }
     };
 
     const detach = () => {
+        if (textareaRef.value && activeHandler) {
+            textareaRef.value.removeEventListener(
+                "tribute-active-true",
+                activeHandler as EventListener,
+            );
+            activeHandler = null;
+        }
         if (tribute.value && textareaRef.value) {
             try {
                 tribute.value.detach(textareaRef.value);

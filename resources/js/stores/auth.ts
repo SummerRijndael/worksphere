@@ -522,6 +522,15 @@ export const useAuthStore = defineStore('auth', () => {
         console.warn('[Auth] Failed to clear chat state:', chatError);
       }
 
+      // Clear MiniChat UI/session state (prevent cross-account chat window residue)
+      try {
+        const { useMiniChatStore } = await import('@/stores/minichat');
+        const miniChatStore = useMiniChatStore();
+        miniChatStore.clearSessionState();
+      } catch (miniChatError) {
+        console.warn('[Auth] Failed to clear minichat state:', miniChatError);
+      }
+
       await authService.logout();
     } catch (error) {
       console.error('Logout error:', error);

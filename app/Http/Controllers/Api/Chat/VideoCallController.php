@@ -7,6 +7,7 @@ use App\Events\Chat\CallInitiated;
 use App\Events\Chat\CallSignal;
 use App\Http\Controllers\Controller;
 use App\Models\Chat\Chat;
+use App\Models\Chat\CallSession;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -188,19 +189,15 @@ class VideoCallController extends Controller
         $this->storeCallMetadata($chat->public_id, $callId, [
             'type' => $request->input('call_type'),
             'initiator_id' => $user->public_id,
+            'initiator_name' => $user->name,
             'started_at' => now()->timestamp,
         ]);
+        $this->createCallSession($chat, $callId, $user, $request->input('call_type'));
 
         // Register initiator as the first participant
         $this->addParticipant($chat->public_id, $callId, $user);
 
         event(new CallInitiated($chat, $user, $callId, $request->input('call_type')));
-
-        // Log call start as system message
-        $this->logCallEvent($chat, $callId, 'started', [
-            'type' => $request->input('call_type'),
-            'user_name' => auth()->user()->name,
-        ]);
 
         // Set active call pointer for the chat (Short Lease: 3 mins)
         $key = "chat:active_call:{$chat->public_id}";
@@ -226,6 +223,208 @@ class VideoCallController extends Controller
             ]),
             'user_id' => auth()->id() ?? User::where('public_id', $chat->participants->first()->public_id)->first()?->id,
         ]);
+    }
+
+    protected function createCallSession(Chat $chat, string $callId, User $initiator, string $callType): void
+    {
+        CallSession::query()->updateOrCreate(
+            ['call_id' => $callId],
+            [
+                'chat_id' => $chat->id,
+                'initiator_user_id' => $initiator->id,
+                'call_type' => $callType,
+                'status' => 'ringing',
+                'metadata' => [
+                    'chat_public_id' => $chat->public_id,
+                    'initiator_public_id' => $initiator->public_id,
+                    'initiator_name' => $initiator->name,
+                ],
+            ],
+        );
+    }
+
+    protected function getOrCreateCallSession(Chat $chat, string $callId, array $metadata): CallSession
+    {
+        $session = CallSession::query()->firstOrNew(['call_id' => $callId]);
+
+        if (! $session->exists) {
+            $session->chat_id = $chat->id;
+            $session->call_type = (string) ($metadata['type'] ?? 'video');
+            $initiatorPublicId = (string) ($metadata['initiator_id'] ?? '');
+            $session->initiator_user_id = $initiatorPublicId !== ''
+                ? User::where('public_id', $initiatorPublicId)->value('id')
+                : null;
+            $session->status = 'ringing';
+            $session->metadata = ['chat_public_id' => $chat->public_id];
+            $session->save();
+
+            return $session;
+        }
+
+        $dirty = false;
+
+        if (! $session->chat_id) {
+            $session->chat_id = $chat->id;
+            $dirty = true;
+        }
+        if (! $session->call_type) {
+            $session->call_type = (string) ($metadata['type'] ?? 'video');
+            $dirty = true;
+        }
+        if (! $session->initiator_user_id && ! empty($metadata['initiator_id'])) {
+            $session->initiator_user_id = User::where('public_id', (string) $metadata['initiator_id'])->value('id');
+            $dirty = true;
+        }
+
+        if ($dirty) {
+            $session->save();
+        }
+
+        return $session;
+    }
+
+    protected function hydrateMetadataFromSession(array $metadata, CallSession $callSession): array
+    {
+        $callSession->loadMissing(['initiator', 'answeredBy']);
+
+        if (! isset($metadata['type']) || $metadata['type'] === '') {
+            $metadata['type'] = $callSession->call_type ?: 'video';
+        }
+
+        if (
+            (! isset($metadata['initiator_id']) || $metadata['initiator_id'] === '')
+            && $callSession->initiator?->public_id
+        ) {
+            $metadata['initiator_id'] = $callSession->initiator->public_id;
+        }
+
+        if (
+            (! isset($metadata['initiator_name']) || $metadata['initiator_name'] === '')
+            && $callSession->initiator?->name
+        ) {
+            $metadata['initiator_name'] = $callSession->initiator->name;
+        }
+
+        if (! isset($metadata['answered_at']) && $callSession->answered_at) {
+            $metadata['answered_at'] = $callSession->answered_at->timestamp;
+        }
+
+        if (
+            (! isset($metadata['answered_by_public_id']) || $metadata['answered_by_public_id'] === '')
+            && $callSession->answeredBy?->public_id
+        ) {
+            $metadata['answered_by_public_id'] = $callSession->answeredBy->public_id;
+        }
+
+        return $metadata;
+    }
+
+    protected function shouldFinalizeCall(Chat $chat, CallSession $callSession, string $reason, array $remainingParticipants): bool
+    {
+        if (in_array($reason, ['declined', 'busy', 'no_answer', 'timeout', 'failed'], true)) {
+            return true;
+        }
+
+        $remainingCount = count($remainingParticipants);
+        $isDm = ($chat->type ?? 'dm') === 'dm';
+
+        if ($callSession->answered_at) {
+            return $isDm ? $remainingCount < 2 : $remainingCount === 0;
+        }
+
+        return $remainingCount === 0;
+    }
+
+    protected function terminalStatusForReason(CallSession $callSession, string $reason): string
+    {
+        if ($callSession->answered_at) {
+            return $reason === 'failed' ? 'failed' : 'ended';
+        }
+
+        return match ($reason) {
+            'no_answer', 'timeout' => 'missed',
+            'declined' => 'declined',
+            'hangup' => 'cancelled',
+            'busy' => 'busy',
+            'failed' => 'failed',
+            default => 'ended',
+        };
+    }
+
+    protected function maybeMarkCallAnswered(Chat $chat, string $callId, array $metadata, User $user): array
+    {
+        $callSession = $this->getOrCreateCallSession($chat, $callId, $metadata);
+        $metadata = $this->hydrateMetadataFromSession($metadata, $callSession);
+        $initiatorId = (string) ($metadata['initiator_id'] ?? '');
+        if ($callSession->answered_at || $initiatorId === '' || $user->public_id === $initiatorId) {
+            return $metadata;
+        }
+
+        $answeredAt = now();
+        $claimed = CallSession::query()
+            ->whereKey($callSession->id)
+            ->whereNull('answered_at')
+            ->where(function ($query) use ($user) {
+                $query->whereNull('initiator_user_id')
+                    ->orWhere('initiator_user_id', '!=', $user->id);
+            })
+            ->update([
+                'status' => 'connected',
+                'answered_at' => $answeredAt,
+                'answered_by_user_id' => $user->id,
+                'updated_at' => $answeredAt,
+            ]);
+
+        if ($claimed === 0) {
+            return $metadata;
+        }
+
+        $metadata['answered_at'] = $answeredAt->timestamp;
+        $metadata['answered_by_public_id'] = $user->public_id;
+        $metadata['answered_by_name'] = $user->name;
+        $this->storeCallMetadata($chat->public_id, $callId, $metadata);
+
+        $this->logCallEvent($chat, $callId, 'started', [
+            'type' => $metadata['type'] ?? 'video',
+            'user_name' => (string) ($metadata['initiator_name'] ?? 'Someone'),
+        ]);
+
+        return $metadata;
+    }
+
+    protected function resolveTerminalCallLog(Chat $chat, CallSession $callSession, array $metadata, string $reason): ?array
+    {
+        $metadata = $this->hydrateMetadataFromSession($metadata, $callSession);
+
+        if ($callSession->answered_at) {
+            return [
+                'event' => 'ended',
+                'data' => [
+                    'duration' => max(0, $callSession->ended_at?->timestamp - $callSession->answered_at->timestamp),
+                    'type' => $metadata['type'] ?? 'video',
+                ],
+            ];
+        }
+
+        $callerPublicId = $metadata['initiator_id'] ?? null;
+        $callerName = (string) ($metadata['initiator_name'] ?? '');
+        if ($callerName === '' && $callerPublicId) {
+            $callerName = User::where('public_id', $callerPublicId)->first()?->name ?? 'Unknown';
+        }
+
+        $baseData = [
+            'type' => $metadata['type'] ?? 'video',
+            'chat_id' => $chat->public_id,
+            'caller_public_id' => $callerPublicId,
+            'caller_name' => $callerName !== '' ? $callerName : 'Unknown',
+        ];
+
+        return match ($reason) {
+            'no_answer', 'timeout' => ['event' => 'missed', 'data' => $baseData],
+            'declined' => ['event' => 'declined', 'data' => $baseData],
+            'hangup' => ['event' => 'cancelled', 'data' => $baseData],
+            default => null,
+        };
     }
 
     /**
@@ -270,6 +469,7 @@ class VideoCallController extends Controller
         // Return current participants so the joiner can connect to them
         $participants = $this->getParticipantsList($chat->public_id, $callId);
         $metadata = $this->getCallMetadata($chat->public_id, $callId);
+        $metadata = $this->maybeMarkCallAnswered($chat, $callId, $metadata, $user);
 
         // HYBRID LOGIC: Force SFU for group chats OR if total participants > 2.
         // This ensures group conversations start on Cloudflare immediately,
@@ -603,12 +803,22 @@ class VideoCallController extends Controller
         $reason = $request->input('reason', 'hangup');
 
         // Sec 2: Verify user is actually a participant
-        // Allow no_answer/busy reasons if they are a chat member but haven't "joined" yet
+        // Allow unanswered invite responses before the user has joined the call.
         $participants = $this->getParticipantsList($chat->public_id, $callId);
         $isInCall = collect($participants)->contains('public_id', $user->public_id);
 
-        if (! $isInCall && ! in_array($reason, ['no_answer', 'busy'])) {
+        if (! $isInCall && ! in_array($reason, ['no_answer', 'busy', 'declined'])) {
             abort(403, 'You are not in this call.');
+        }
+
+        $metadata = $this->getCallMetadata($chat->public_id, $callId);
+        $callSession = $this->getOrCreateCallSession($chat, $callId, $metadata);
+        $metadata = $this->hydrateMetadataFromSession($metadata, $callSession);
+        if (($metadata['finalized_at'] ?? null) !== null) {
+            return response()->json(['status' => 'ok', 'already_finalized' => true]);
+        }
+        if ($callSession->finalized_at !== null) {
+            return response()->json(['status' => 'ok', 'already_finalized' => true]);
         }
 
         // Remove from cache
@@ -625,32 +835,42 @@ class VideoCallController extends Controller
 
         // Check if call should be ended globally
         $participants = $this->getParticipantsList($chat->public_id, $callId);
-        $isLastPerson = empty($participants);
+        $callSession->refresh();
+        $metadata = $this->hydrateMetadataFromSession($metadata, $callSession);
+        $shouldFinalize = $this->shouldFinalizeCall($chat, $callSession, $reason, $participants);
 
-        if ($isLastPerson) {
-            // Calculate duration
-            $metadata = $this->getCallMetadata($chat->public_id, $callId);
-            $duration = 0;
-            if (isset($metadata['started_at'])) {
-                $duration = now()->timestamp - $metadata['started_at'];
+        if ($shouldFinalize) {
+            $finalizedAt = now();
+            $status = $this->terminalStatusForReason($callSession, $reason);
+            $claimed = CallSession::query()
+                ->whereKey($callSession->id)
+                ->whereNull('finalized_at')
+                ->update([
+                    'status' => $status,
+                    'ended_at' => $finalizedAt,
+                    'end_reason' => $reason,
+                    'finalized_at' => $finalizedAt,
+                    'updated_at' => $finalizedAt,
+                ]);
+
+            if ($claimed === 0) {
+                return response()->json(['status' => 'ok', 'already_finalized' => true]);
             }
 
-            // Determine event type for logging
-            $event = 'ended';
-            $logData = [
-                'duration' => $duration,
-                'user_name' => $user->name,
-            ];
+            $callSession->refresh();
+            $metadata['finalized_at'] = $finalizedAt->timestamp;
+            $metadata['final_reason'] = $reason;
+            $this->storeCallMetadata($chat->public_id, $callId, $metadata);
 
-            if ($reason === 'no_answer' || $reason === 'timeout') {
-                $event = 'missed';
-                $logData['caller_name'] = User::where('public_id', $metadata['initiator_id'] ?? '')->first()?->name ?? 'Unknown';
-                $logData['type'] = $metadata['type'] ?? 'video';
-                $logData['chat_id'] = $chat->public_id;
+            $terminalLog = $this->resolveTerminalCallLog($chat, $callSession, $metadata, $reason);
+            if ($terminalLog) {
+                $this->logCallEvent(
+                    $chat,
+                    $callId,
+                    $terminalLog['event'],
+                    $terminalLog['data'],
+                );
             }
-
-            // Log event
-            $this->logCallEvent($chat, $callId, $event, $logData);
 
             // Broadcast end
             event(new CallEnded($chat, $user->public_id, $callId, $reason));

@@ -919,6 +919,9 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
         Route::get('/{chat}/messages', [\App\Http\Controllers\Api\Chat\ChatApiController::class, 'messages']);
         Route::get('/{chat}/messages/search', [\App\Http\Controllers\Api\Chat\ChatApiController::class, 'searchMessages']);
         Route::get('/{chat}/messages/around/{messagePublicId}', [\App\Http\Controllers\Api\Chat\ChatApiController::class, 'messagesAround']);
+        Route::patch('/{chat}/messages/{messagePublicId}', [\App\Http\Controllers\Api\Chat\ChatApiController::class, 'updateMessage']);
+        Route::delete('/{chat}/messages/{messagePublicId}', [\App\Http\Controllers\Api\Chat\ChatApiController::class, 'deleteMessage']);
+        Route::get('/{chat}/messages/{messagePublicId}/history', [\App\Http\Controllers\Api\Chat\ChatApiController::class, 'messageHistory']);
         Route::post('/{chat}/messages/{messagePublicId}/reactions', [\App\Http\Controllers\Api\Chat\ChatApiController::class, 'toggleMessageReaction']);
         Route::post('/{chat}/messages/{messagePublicId}/pin', [\App\Http\Controllers\Api\Chat\ChatApiController::class, 'pinMessage']);
         Route::delete('/{chat}/messages/{messagePublicId}/pin', [\App\Http\Controllers\Api\Chat\ChatApiController::class, 'unpinMessage']);

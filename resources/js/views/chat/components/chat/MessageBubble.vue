@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import type { Message, MessageAttachment } from "@/types/models/chat";
 import { Icon } from "@/components/ui";
 import LinkPreview from "@/components/LinkPreview.vue";
@@ -23,6 +23,8 @@ const emit = defineEmits<{
     retry: [message: Message];
     react: [reaction: string];
     togglePin: [];
+    startEdit: [];
+    delete: [scope: "me" | "all"];
     'join-call': [payload: { chatId: string; callId: string; callType: 'video' | 'audio' }];
     callback: [payload: { chatId: string; callType: 'video' | 'audio' }];
 }>();
@@ -30,6 +32,11 @@ const emit = defineEmits<{
 const videoCallStore = useVideoCallStore();
 const authStore = useAuthStore();
 const showReactionMenu = ref(false);
+const showMoreMenu = ref(false);
+const showHistory = ref(false);
+const actionMenuRef = ref<HTMLElement | null>(null);
+const isActionHovering = ref(false);
+let hideActionsTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const REACTION_OPTIONS = [
     { key: "like", emoji: "👍", label: "Like" },
@@ -41,6 +48,7 @@ const REACTION_OPTIONS = [
     { key: "sad", emoji: "😢", label: "Sad" },
     { key: "love", emoji: "❤️", label: "Love" },
 ] as const;
+const QUICK_REACTION_KEYS = ["love", "laugh", "scared", "sad", "angry", "like"] as const;
 
 const formattedTime = computed(() => {
     return new Date(props.message.created_at).toLocaleTimeString([], {
@@ -125,6 +133,9 @@ const videos = computed<MessageAttachment[]>(
 );
 const giphy = computed(() => props.message.metadata?.giphy);
 const failedVideoThumbs = ref<Set<string>>(new Set());
+const loadedImageThumbs = ref<Set<string>>(new Set());
+const loadedVideoThumbs = ref<Set<string>>(new Set());
+const isGiphyLoaded = ref(false);
 
 const canUseVideoThumb = (attachment: MessageAttachment) =>
     Boolean(attachment.thumb_url) &&
@@ -132,6 +143,28 @@ const canUseVideoThumb = (attachment: MessageAttachment) =>
 
 const markVideoThumbFailed = (attachment: MessageAttachment) => {
     failedVideoThumbs.value.add(String(attachment.id));
+};
+
+const attachmentLoadKey = (
+    attachment: MessageAttachment,
+    kind: "image" | "video",
+) => {
+    const identity = attachment.id ?? attachment.url ?? attachment.name ?? "unknown";
+    return `${kind}:${props.message.id}:${String(identity)}`;
+};
+
+const isImageThumbLoaded = (attachment: MessageAttachment) =>
+    loadedImageThumbs.value.has(attachmentLoadKey(attachment, "image"));
+
+const markImageThumbLoaded = (attachment: MessageAttachment) => {
+    loadedImageThumbs.value.add(attachmentLoadKey(attachment, "image"));
+};
+
+const isVideoThumbLoaded = (attachment: MessageAttachment) =>
+    loadedVideoThumbs.value.has(attachmentLoadKey(attachment, "video"));
+
+const markVideoThumbLoaded = (attachment: MessageAttachment) => {
+    loadedVideoThumbs.value.add(attachmentLoadKey(attachment, "video"));
 };
 
 const displayImages = computed(() => images.value.slice(0, 4));
@@ -225,6 +258,16 @@ function handleVideoClick(video: MessageAttachment) {
     );
 }
 
+watch(
+    () => props.message.id,
+    () => {
+        loadedImageThumbs.value = new Set();
+        loadedVideoThumbs.value = new Set();
+        failedVideoThumbs.value = new Set();
+        isGiphyLoaded.value = false;
+    },
+);
+
 const handleJumpToReply = () => {
     if (props.message.reply_to?.id) {
         emit("jumpToReply", String(props.message.reply_to.id));
@@ -232,7 +275,7 @@ const handleJumpToReply = () => {
 };
 
 const firstUrl = computed(() => {
-    if (!props.message.content) return null;
+    if (isDeleted.value || !props.message.content) return null;
     const match = props.message.content.match(/(https?:\/\/[^\s]+)/);
     return match ? match[0] : null;
 });
@@ -240,9 +283,65 @@ const firstUrl = computed(() => {
 const myPublicId = computed(() =>
     String(authStore.user?.public_id || "").trim().toLowerCase(),
 );
+const myName = computed(() =>
+    String(authStore.user?.name || "").trim().toLowerCase(),
+);
+const isCallerSideCallEvent = computed(() => {
+    const event = String(props.message.metadata?.event || "");
+    if (!["missed", "no_answer", "cancelled"].includes(event)) return false;
+
+    const callerPublicId = String(
+        props.message.metadata?.caller_public_id || "",
+    )
+        .trim()
+        .toLowerCase();
+
+    if (callerPublicId && callerPublicId === myPublicId.value) return true;
+    const callerName = String(props.message.metadata?.caller_name || "")
+        .trim()
+        .toLowerCase();
+    if (callerName && myName.value && callerName === myName.value) return true;
+    return props.isMine;
+});
+const isCallerSideMissedEvent = computed(
+    () =>
+        ["missed", "no_answer"].includes(String(props.message.metadata?.event || "")) &&
+        isCallerSideCallEvent.value,
+);
 
 const isPinned = computed(
     () => !!(props.message.is_pinned || props.message.metadata?.is_pinned),
+);
+const isDeleted = computed(
+    () =>
+        Boolean(props.message.is_deleted) ||
+        Boolean(props.message.metadata?.is_deleted),
+);
+const isEdited = computed(
+    () =>
+        Boolean(props.message.is_edited) ||
+        Boolean(props.message.metadata?.is_edited),
+);
+const editHistory = computed(() => {
+    const raw = props.message.metadata?.edit_history;
+    return Array.isArray(raw)
+        ? raw.filter((entry) => typeof entry === "object" && !!entry)
+        : [];
+});
+const canEdit = computed(
+    () =>
+        props.isMine &&
+        !isDeleted.value &&
+        audioFiles.value.length === 0 &&
+        videos.value.length === 0 &&
+        !props.message.pending &&
+        !props.message.failed,
+);
+const canDeleteForAll = computed(
+    () => props.isMine && !props.message.pending && !props.message.failed,
+);
+const canHideForMe = computed(
+    () => !props.message.pending && !props.message.failed,
 );
 
 const reactionBuckets = computed<Record<string, string[]>>(() => {
@@ -275,8 +374,10 @@ const reactionBuckets = computed<Record<string, string[]>>(() => {
     return normalized;
 });
 
-const visibleReactions = computed(() =>
-    REACTION_OPTIONS.map((option) => {
+const visibleReactions = computed(() => {
+    if (isDeleted.value) return [];
+
+    return REACTION_OPTIONS.map((option) => {
         const bucket = reactionBuckets.value[option.key] || [];
         return {
             ...option,
@@ -285,17 +386,86 @@ const visibleReactions = computed(() =>
                 myPublicId.value !== "" &&
                 bucket.includes(myPublicId.value),
         };
-    }).filter((item) => item.count > 0),
+    }).filter((item) => item.count > 0);
+});
+const quickReactionOptions = computed(() =>
+    QUICK_REACTION_KEYS.map((key) =>
+        REACTION_OPTIONS.find((option) => option.key === key),
+    ).filter((option): option is (typeof REACTION_OPTIONS)[number] =>
+        Boolean(option),
+    ),
 );
 
 function toggleReactionMenu() {
+    if (isDeleted.value) return;
+    showMoreMenu.value = false;
     showReactionMenu.value = !showReactionMenu.value;
 }
 
 function selectReaction(reaction: string) {
+    if (isDeleted.value) return;
     emit("react", reaction);
     showReactionMenu.value = false;
 }
+
+function startEdit() {
+    showReactionMenu.value = false;
+    showMoreMenu.value = false;
+    showHistory.value = false;
+    emit("startEdit");
+}
+
+function toggleMoreMenu() {
+    showReactionMenu.value = false;
+    showMoreMenu.value = !showMoreMenu.value;
+}
+
+function closeMenus() {
+    showReactionMenu.value = false;
+    showMoreMenu.value = false;
+}
+
+function toggleHistory() {
+    if (!editHistory.value.length) return;
+    showHistory.value = !showHistory.value;
+    closeMenus();
+}
+
+function keepActionsVisible() {
+    if (hideActionsTimeout) {
+        clearTimeout(hideActionsTimeout);
+        hideActionsTimeout = null;
+    }
+    isActionHovering.value = true;
+}
+
+function scheduleHideActions() {
+    if (hideActionsTimeout) {
+        clearTimeout(hideActionsTimeout);
+    }
+
+    hideActionsTimeout = setTimeout(() => {
+        isActionHovering.value = false;
+    }, 180);
+}
+
+function handleDocumentClick(event: MouseEvent) {
+    const target = event.target;
+    if (!(target instanceof Node)) return;
+    if (actionMenuRef.value?.contains(target)) return;
+    closeMenus();
+}
+
+onMounted(() => {
+    document.addEventListener("click", handleDocumentClick);
+});
+
+onUnmounted(() => {
+    document.removeEventListener("click", handleDocumentClick);
+    if (hideActionsTimeout) {
+        clearTimeout(hideActionsTimeout);
+    }
+});
 </script>
 
 <template>
@@ -308,7 +478,9 @@ function selectReaction(reaction: string) {
             class="flex items-center gap-2 text-xs text-(--text-tertiary) bg-(--surface-tertiary)/50 border border-(--border-default) px-3 py-1 rounded-full shadow-sm"
             :class="{
                 'text-red-500! border-red-200! bg-red-50!':
-                    message.metadata?.event === 'missed',
+                    (message.metadata?.event === 'missed' ||
+                        message.metadata?.event === 'no_answer') &&
+                    !isCallerSideMissedEvent,
             }"
         >
             <template v-if="message.metadata?.system_type === 'call_event'">
@@ -334,11 +506,32 @@ function selectReaction(reaction: string) {
                         >({{ formatDuration(message.metadata.duration) }})</span
                     >
                 </span>
-                <span v-else-if="message.metadata.event === 'no_answer'">
-                    Missed {{ message.metadata.type }} call
-                    <span v-if="message.metadata.caller_name">
-                        from {{ message.metadata.caller_name }}</span
-                    >
+                <span
+                    v-else-if="
+                        message.metadata.event === 'missed' ||
+                        message.metadata.event === 'no_answer'
+                    "
+                >
+                    <template v-if="isCallerSideMissedEvent">
+                        No answer on your {{ message.metadata.type }} call
+                    </template>
+                    <template v-else>
+                        Missed {{ message.metadata.type }} call
+                        <span v-if="message.metadata.caller_name">
+                            from {{ message.metadata.caller_name }}</span
+                        >
+                    </template>
+                </span>
+                <span v-else-if="message.metadata.event === 'declined'">
+                    {{ message.metadata.type }} call declined
+                </span>
+                <span v-else-if="message.metadata.event === 'cancelled'">
+                    <template v-if="isCallerSideCallEvent">
+                        You cancelled the {{ message.metadata.type }} call
+                    </template>
+                    <template v-else>
+                        {{ message.metadata.type }} call cancelled
+                    </template>
                 </span>
 
                 <!-- Active Call Join Button -->
@@ -367,8 +560,9 @@ function selectReaction(reaction: string) {
                 <!-- Call Back button for missed calls -->
                 <button
                     v-if="
-                        message.metadata.event === 'missed' ||
-                        message.metadata.event === 'no_answer'
+                        !isCallerSideMissedEvent &&
+                        (message.metadata.event === 'missed' ||
+                            message.metadata.event === 'no_answer')
                     "
                     class="ml-2 px-2 py-0.5 rounded-full bg-green-500 hover:bg-green-600 text-white text-[10px] font-medium transition-colors flex items-center gap-1 cursor-pointer"
                     @click="
@@ -394,6 +588,8 @@ function selectReaction(reaction: string) {
         v-else
         class="group flex gap-2 px-2 py-0.5"
         :class="isMine ? 'flex-row-reverse' : 'flex-row'"
+        @mouseenter="keepActionsVisible"
+        @mouseleave="scheduleHideActions"
     >
         <!-- Avatar -->
         <div v-if="showAvatar && !isMine" class="shrink-0 self-start mt-0.5">
@@ -413,7 +609,7 @@ function selectReaction(reaction: string) {
 
         <!-- Bubble -->
         <div
-            class="flex flex-col gap-0.5 max-w-[75%]"
+            class="relative flex flex-col gap-0.5 max-w-[75%]"
             :class="isMine ? 'items-end' : 'items-start'"
         >
             <!-- Sender Name (if not mine) -->
@@ -443,6 +639,16 @@ function selectReaction(reaction: string) {
             </button>
 
             <!-- Message Body -->
+            <button
+                v-if="isEdited && !isDeleted"
+                type="button"
+                class="px-1 text-[11px] font-medium text-(--text-tertiary) hover:text-(--text-secondary) transition-colors"
+                :class="{ 'underline': showHistory }"
+                :title="editHistory.length ? 'Show edit history' : undefined"
+                @click.stop="toggleHistory"
+            >
+                Edited
+            </button>
             <div
                 class="relative px-3.5 py-2.5 rounded-2xl shadow-sm"
                 :class="[
@@ -453,7 +659,7 @@ function selectReaction(reaction: string) {
             >
                 <!-- Attachments -->
                 <div
-                    v-if="images.length || videos.length || audioFiles.length || files.length"
+                    v-if="!isDeleted && (images.length || videos.length || audioFiles.length || files.length)"
                     class="space-y-2 mb-2"
                 >
                     <!-- Image Grid -->
@@ -468,11 +674,23 @@ function selectReaction(reaction: string) {
                             class="relative bg-black/5 dark:bg-white/5 overflow-hidden group/img ring-1 ring-black/5 dark:ring-white/10"
                             :class="[getImageClass(index, images.length)]"
                         >
+                            <div
+                                v-if="!isImageThumbLoaded(img)"
+                                class="attachment-thumb-skeleton attachment-thumb-shimmer"
+                            />
                             <img
                                 :src="img.thumb_url || img.url"
                                 loading="lazy"
-                                class="w-full h-full object-cover cursor-pointer transition-transform duration-500 hover:scale-105"
+                                decoding="async"
+                                class="w-full h-full object-cover cursor-pointer transition-[transform,opacity] duration-500 hover:scale-105"
+                                :class="
+                                    isImageThumbLoaded(img)
+                                        ? 'opacity-100'
+                                        : 'opacity-0'
+                                "
                                 @click="handleImageClick(img)"
+                                @load="markImageThumbLoaded(img)"
+                                @error="markImageThumbLoaded(img)"
                             />
 
                             <!-- +N Overlay -->
@@ -500,12 +718,26 @@ function selectReaction(reaction: string) {
                                 @click="handleVideoClick(video)"
                             >
                                 <div class="relative aspect-video w-full overflow-hidden">
+                                    <div
+                                        v-if="!isVideoThumbLoaded(video)"
+                                        class="attachment-thumb-skeleton attachment-thumb-shimmer"
+                                    />
                                     <img
-                                        :src="video.thumb_url"
+                                        :src="video.thumb_url || undefined"
                                         :alt="video.name"
                                         loading="lazy"
-                                        class="h-full w-full object-cover transition-transform duration-500 group-hover/video:scale-[1.03]"
-                                        @error="markVideoThumbFailed(video)"
+                                        decoding="async"
+                                        class="h-full w-full object-cover transition-[transform,opacity] duration-500 group-hover/video:scale-[1.03]"
+                                        :class="
+                                            isVideoThumbLoaded(video)
+                                                ? 'opacity-100'
+                                                : 'opacity-0'
+                                        "
+                                        @load="markVideoThumbLoaded(video)"
+                                        @error="
+                                            markVideoThumbLoaded(video);
+                                            markVideoThumbFailed(video);
+                                        "
                                     />
                                     <div
                                         class="absolute inset-0 bg-gradient-to-t from-black/72 via-black/25 to-black/10"
@@ -600,6 +832,7 @@ function selectReaction(reaction: string) {
                             <AudioMessagePlayer
                                 :src="att.url"
                                 :is-mine="isMine"
+                                :duration-seconds="att.duration_seconds"
                             />
                         </div>
                     </div>
@@ -641,23 +874,37 @@ function selectReaction(reaction: string) {
 
                 <!-- GIF Display -->
                 <div
-                    v-if="giphy"
-                    class="mb-2 overflow-hidden rounded-xl bg-black/5 dark:bg-black/20 flex justify-center gif-wrapper"
+                    v-if="!isDeleted && giphy"
+                    class="relative mb-2 overflow-hidden rounded-xl bg-black/5 dark:bg-black/20 flex justify-center gif-wrapper"
                 >
+                    <div
+                        v-if="!isGiphyLoaded"
+                        class="attachment-thumb-skeleton attachment-thumb-shimmer"
+                    />
                     <img
                         :src="giphy.url"
                         :alt="giphy.title"
                         :width="giphy.width"
                         :height="giphy.height"
                         loading="lazy"
-                        class="max-w-full h-auto object-contain rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                        decoding="async"
+                        class="max-w-full h-auto object-contain rounded-lg cursor-pointer hover:opacity-90 transition-opacity duration-300"
+                        :class="isGiphyLoaded ? 'opacity-100' : 'opacity-0'"
                         style="max-height: 400px"
+                        @load="isGiphyLoaded = true"
+                        @error="isGiphyLoaded = true"
                     />
                 </div>
 
-                <!-- Text Content -->
                 <p
-                    v-if="message.content"
+                    v-if="isDeleted"
+                    class="text-sm leading-relaxed italic opacity-85"
+                    :class="isMine ? 'text-white/90' : 'text-(--text-tertiary)'"
+                >
+                    Message deleted
+                </p>
+                <p
+                    v-else-if="message.content"
                     class="whitespace-pre-wrap wrap-break-word break-all text-sm leading-relaxed"
                     :class="isMine ? 'text-white!' : 'text-(--text-primary)!'"
                 >
@@ -735,47 +982,177 @@ function selectReaction(reaction: string) {
             </div>
 
             <div
-                class="mt-1 hidden items-center gap-1 rounded-full border border-(--border-default) bg-(--surface-elevated)/95 px-1.5 py-1 shadow-sm md:group-hover:flex"
-                :class="isMine ? 'justify-end' : 'justify-start'"
+                v-if="showHistory && editHistory.length"
+                class="mt-1 w-[18rem] max-w-[75vw] rounded-xl border border-(--border-default) bg-(--surface-elevated) p-2 text-xs shadow-lg"
+                :class="isMine ? 'self-end' : 'self-start'"
             >
-                <button
-                    type="button"
-                    class="rounded-full px-2 py-0.5 text-[10px] font-medium text-(--text-secondary) hover:bg-(--surface-tertiary) hover:text-(--text-primary)"
-                    @click="emit('reply')"
-                >
-                    Reply
-                </button>
-                <button
-                    type="button"
-                    class="rounded-full px-2 py-0.5 text-[10px] font-medium text-(--text-secondary) hover:bg-(--surface-tertiary) hover:text-(--text-primary)"
-                    @click.stop="toggleReactionMenu"
-                >
-                    React
-                </button>
-                <button
-                    type="button"
-                    class="rounded-full px-2 py-0.5 text-[10px] font-medium text-(--text-secondary) hover:bg-(--surface-tertiary) hover:text-(--text-primary)"
-                    @click="emit('togglePin')"
-                >
-                    {{ isPinned ? "Unpin" : "Pin" }}
-                </button>
+                <div class="mb-1 font-semibold text-(--text-secondary)">
+                    Edit history
+                </div>
+                <div class="space-y-1.5 max-h-44 overflow-y-auto pr-0.5">
+                    <div
+                        v-for="(entry, index) in editHistory"
+                        :key="`history-${message.id}-${index}`"
+                        class="rounded-md bg-(--surface-tertiary) px-2 py-1"
+                    >
+                        <div class="text-(--text-primary) break-all">
+                            {{ entry.previous_content || "(empty)" }}
+                        </div>
+                        <div class="text-(--text-tertiary) mt-0.5">
+                            {{ entry.edited_by_user_name || "Unknown" }}
+                            ·
+                            {{
+                                entry.edited_at
+                                    ? new Date(entry.edited_at).toLocaleString()
+                                    : ""
+                            }}
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div
-                v-if="showReactionMenu"
-                class="flex flex-wrap gap-1.5 mt-1 p-2 rounded-xl border border-(--border-default) bg-(--surface-elevated)"
-                :class="isMine ? 'justify-end' : 'justify-start'"
+                ref="actionMenuRef"
+                class="absolute top-1/2 z-20 -translate-y-1/2"
+                :class="isMine ? 'right-full pr-2' : 'left-full pl-2'"
+                @mouseenter="keepActionsVisible"
+                @mouseleave="scheduleHideActions"
             >
-                <button
-                    v-for="option in REACTION_OPTIONS"
-                    :key="`reaction-opt-${message.id}-${option.key}`"
-                    type="button"
-                    class="px-2 py-1 rounded-lg text-xs border border-(--border-default) bg-(--surface-tertiary) hover:bg-(--surface-secondary)"
-                    @click="selectReaction(option.key)"
+                <div
+                    class="flex flex-col items-center gap-1.5 transition-all duration-150"
+                    :class="[
+                        isMine ? 'items-start' : 'items-end',
+                        showReactionMenu || showMoreMenu || isActionHovering
+                            ? 'opacity-100 pointer-events-auto'
+                            : 'opacity-0 pointer-events-none',
+                    ]"
                 >
-                    {{ option.emoji }} {{ option.label }}
-                </button>
+                    <div
+                        class="flex items-center gap-0.5 rounded-full border border-(--border-default) bg-(--surface-elevated)/95 px-1 py-1 text-(--text-primary) shadow-xl backdrop-blur-md"
+                    >
+                        <button
+                            type="button"
+                            class="inline-flex h-7 w-7 items-center justify-center rounded-full text-(--text-secondary) transition-colors hover:bg-(--surface-tertiary) hover:text-(--text-primary)"
+                            title="More"
+                            @click.stop="toggleMoreMenu"
+                        >
+                            <Icon name="MoreVertical" size="13" />
+                        </button>
+                        <button
+                            v-if="!isDeleted"
+                            type="button"
+                            class="inline-flex h-7 w-7 items-center justify-center rounded-full text-(--text-secondary) transition-colors hover:bg-(--surface-tertiary) hover:text-(--text-primary)"
+                            title="Reply"
+                            @click="emit('reply')"
+                        >
+                            <Icon name="CornerUpLeft" size="13" />
+                        </button>
+                        <button
+                            v-if="!isDeleted"
+                            type="button"
+                            class="inline-flex h-7 w-7 items-center justify-center rounded-full text-(--text-secondary) transition-colors hover:bg-(--surface-tertiary) hover:text-(--text-primary)"
+                            title="React"
+                            @click.stop="toggleReactionMenu"
+                        >
+                            <Icon name="Smile" size="13" />
+                        </button>
+                    </div>
+                </div>
+
+                <div
+                    v-if="showReactionMenu"
+                    class="absolute top-1/2 z-20 flex -translate-y-1/2 items-center gap-0.5 rounded-full border border-(--border-default) bg-(--surface-elevated)/95 px-1 py-1 shadow-xl backdrop-blur-md"
+                    :class="
+                        isMine
+                            ? 'left-full ml-2'
+                            : 'right-full mr-2'
+                    "
+                >
+                    <button
+                        v-for="option in quickReactionOptions"
+                        :key="`reaction-opt-${message.id}-${option.key}`"
+                        type="button"
+                        class="inline-flex h-7 w-7 items-center justify-center rounded-full text-[20px] leading-none transition-colors hover:bg-(--surface-tertiary)"
+                        :title="option.label"
+                        @click="selectReaction(option.key)"
+                    >
+                        {{ option.emoji }}
+                    </button>
+                </div>
+
+                <div
+                    v-if="showMoreMenu"
+                    class="absolute top-1/2 z-20 min-w-[11rem] -translate-y-1/2 rounded-2xl border border-(--border-default) bg-(--surface-elevated) p-1.5 shadow-xl"
+                    :class="isMine ? 'left-full ml-2' : 'right-full mr-2'"
+                >
+                    <button
+                        v-if="!isDeleted"
+                        type="button"
+                        class="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs font-medium text-(--text-primary) hover:bg-(--surface-tertiary)"
+                        @click="emit('togglePin'); closeMenus()"
+                    >
+                        <span>{{ isPinned ? "Unpin" : "Pin" }}</span>
+                        <Icon :name="isPinned ? 'PinOff' : 'Pin'" size="13" />
+                    </button>
+                    <button
+                        v-if="canEdit"
+                        type="button"
+                        class="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs font-medium text-(--text-primary) hover:bg-(--surface-tertiary)"
+                        @click="startEdit"
+                    >
+                        <span>Edit</span>
+                        <Icon name="Pencil" size="13" />
+                    </button>
+                    <button
+                        v-if="canHideForMe"
+                        type="button"
+                        class="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs font-medium text-(--text-primary) hover:bg-(--surface-tertiary)"
+                        @click="emit('delete', 'me'); closeMenus()"
+                    >
+                        <span>Unsend for me</span>
+                        <Icon name="EyeOff" size="13" />
+                    </button>
+                    <button
+                        v-if="canDeleteForAll"
+                        type="button"
+                        class="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10"
+                        @click="emit('delete', 'all'); closeMenus()"
+                    >
+                        <span>Delete</span>
+                        <Icon name="Trash2" size="13" />
+                    </button>
+                </div>
+
             </div>
         </div>
     </div>
 </template>
+
+<style scoped>
+.attachment-thumb-skeleton {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: color-mix(in srgb, var(--surface-tertiary) 90%, transparent);
+}
+
+.attachment-thumb-shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+        90deg,
+        transparent,
+        color-mix(in srgb, var(--surface-elevated) 45%, transparent),
+        transparent
+    );
+    animation: mediaThumbShimmer 1.15s linear infinite;
+}
+
+@keyframes mediaThumbShimmer {
+    100% {
+        transform: translateX(100%);
+    }
+}
+</style>

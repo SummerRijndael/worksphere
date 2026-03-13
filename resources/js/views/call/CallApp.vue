@@ -81,6 +81,9 @@ const callState = ref<
 >("initializing");
 const hasJoined = ref(false);
 const isJoining = ref(false);
+const permissionBlocked = ref(false);
+const permissionErrorMessage = ref<string | null>(null);
+const MIC_PERMISSION_PROMPT_DELAY_MS = 350;
 const isMobile = computed(() => {
     return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
         navigator.userAgent,
@@ -227,8 +230,7 @@ async function runHeartbeatTick() {
 
 const callOrchestrator = new CallOrchestrator({
     shouldHeartbeat: () =>
-        (callState.value === "connected" || callState.value === "ringing") &&
-        !!callData.value,
+        callState.value === "connected" && !!callData.value,
     heartbeat: runHeartbeatTick,
     pollNetworkStats: updateNetworkStats,
     onWarn: (message, error) => console.warn(`[CallOrchestrator] ${message}`, error),
@@ -254,10 +256,36 @@ let sfuSyncManager: CallSfuSyncManager | null = null;
 let sfuSignalManager: CallSfuSignalManager | null = null;
 let meshManager: CallMeshManager | null = null;
 const signalRuntimeManager = new CallSignalRuntimeManager();
+let outgoingNoAnswerTimer: ReturnType<typeof setTimeout> | null = null;
+const OUTGOING_NO_ANSWER_MS = 45000;
 
 watch(callState, () => {
     callOrchestrator.syncHeartbeat();
 });
+
+watch(
+    [callState, () => callData.value?.direction],
+    ([state, direction]) => {
+        if (outgoingNoAnswerTimer) {
+            clearTimeout(outgoingNoAnswerTimer);
+            outgoingNoAnswerTimer = null;
+        }
+
+        // Local fallback in case parent-side timer is unavailable.
+        if (state === "ringing" && direction === "outgoing") {
+            outgoingNoAnswerTimer = setTimeout(() => {
+                if (
+                    callState.value === "ringing" &&
+                    callData.value?.direction === "outgoing"
+                ) {
+                    toast.info("Call was not answered");
+                    endCall("no_answer");
+                }
+            }, OUTGOING_NO_ANSWER_MS);
+        }
+    },
+    { immediate: true },
+);
 
 // Link the child's scroll container to useChat composable
 watch(
@@ -840,7 +868,7 @@ const vSrcObject = {
 // Helper: Apply Output Device (setSinkId) to all media elements
 // This is critical for "Speaker Control" (sc) to work.
 async function applyOutputDevice(deviceId: string | null) {
-    await applyOutputDeviceThroughManager(deviceId, ringtoneAudio);
+    await applyOutputDeviceThroughManager(deviceId, null);
 }
 
 // Watch for output device changes and apply
@@ -871,7 +899,6 @@ let durationTimer: ReturnType<typeof setInterval> | null = null;
 let connectedFallbackTimer: ReturnType<typeof setTimeout> | null = null;
 const callDuration = ref(0);
 let broadcastChannel: BroadcastChannel | null = null;
-let ringtoneAudio: HTMLAudioElement | null = null;
 
 // ============================================================================
 // Computed
@@ -912,7 +939,6 @@ function markCallConnected() {
     callState.value = "connected";
     postToParent({ type: "state", state: "connected" });
     startDurationTimer();
-    stopRingtone();
     if (connectedFallbackTimer) {
         clearTimeout(connectedFallbackTimer);
         connectedFallbackTimer = null;
@@ -1216,6 +1242,85 @@ watch(
 
 // Local stream handling is now unified via v-src-object directive or ref in template
 
+function waitFor(ms: number): Promise<void> {
+    return new Promise((resolve) => {
+        window.setTimeout(resolve, ms);
+    });
+}
+
+function mapMicrophonePermissionError(error: unknown): string {
+    const name = (error as { name?: string })?.name || "";
+    if (name === "NotAllowedError" || name === "SecurityError") {
+        return "Microphone access is blocked. Allow microphone permission and try again.";
+    }
+    if (name === "NotFoundError") {
+        return "No microphone device found. Connect a microphone and try again.";
+    }
+    if (name === "NotReadableError" || name === "AbortError") {
+        return "Microphone is currently unavailable. Close other apps using it and retry.";
+    }
+
+    return "Unable to access microphone. Check permission settings and try again.";
+}
+
+async function queryMicrophonePermissionState(): Promise<PermissionState | "unsupported"> {
+    if (!("permissions" in navigator) || !navigator.permissions?.query) {
+        return "unsupported";
+    }
+
+    try {
+        const status = await navigator.permissions.query({
+            name: "microphone" as PermissionName,
+        });
+        return status.state;
+    } catch {
+        return "unsupported";
+    }
+}
+
+async function ensureMicrophonePermission(
+    delayMs = MIC_PERMISSION_PROMPT_DELAY_MS,
+): Promise<boolean> {
+    permissionBlocked.value = false;
+    permissionErrorMessage.value = null;
+
+    if (delayMs > 0) {
+        await waitFor(delayMs);
+    }
+
+    const micPermission = await queryMicrophonePermissionState();
+    if (micPermission === "denied") {
+        permissionBlocked.value = true;
+        permissionErrorMessage.value =
+            "Microphone access is blocked for this site. Allow it in browser settings, then retry.";
+        return false;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+        permissionBlocked.value = true;
+        permissionErrorMessage.value =
+            "This browser does not support microphone capture for calls.";
+        return false;
+    }
+
+    if (micPermission === "granted") {
+        return true;
+    }
+
+    try {
+        const probeStream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: false,
+        });
+        probeStream.getTracks().forEach((track) => track.stop());
+        return true;
+    } catch (err) {
+        permissionBlocked.value = true;
+        permissionErrorMessage.value = mapMicrophonePermissionError(err);
+        return false;
+    }
+}
+
 async function acquireMedia(): Promise<MediaStream | null> {
     if (!callData.value) return null;
     const result = await acquireLocalMedia({
@@ -1240,6 +1345,14 @@ async function acquireMedia(): Promise<MediaStream | null> {
     if (!result.stream) {
         if (result.errorMessage) {
             error.value = result.errorMessage;
+            if (
+                result.errorMessage.toLowerCase().includes("microphone access denied")
+            ) {
+                permissionBlocked.value = true;
+                permissionErrorMessage.value = result.errorMessage;
+                callState.value = "initializing";
+                return null;
+            }
         }
         callState.value = "error";
         return null;
@@ -1283,12 +1396,19 @@ function trace(area: string, message: string, data?: any) {
 // WebRTC (Mesh)
 // ============================================================================
 
-async function joinCall() {
+async function joinCall(permissionDelayMs = MIC_PERMISSION_PROMPT_DELAY_MS) {
     if (isJoining.value || hasJoined.value) return;
     isJoining.value = true;
-    console.log("[Call] User clicked JOIN");
+    console.log("[Call] Starting call session");
 
     try {
+        callState.value = "initializing";
+        const micPermissionGranted =
+            await ensureMicrophonePermission(permissionDelayMs);
+        if (!micPermissionGranted) {
+            return;
+        }
+
         const stream = await acquireMedia();
         if (!stream) return;
 
@@ -1441,6 +1561,14 @@ async function joinCall() {
     } finally {
         isJoining.value = false;
     }
+}
+
+async function retryPermissionAndJoin() {
+    if (isJoining.value || hasJoined.value) return;
+    error.value = null;
+    permissionBlocked.value = false;
+    permissionErrorMessage.value = null;
+    await joinCall(0);
 }
 
 // ============================================================================
@@ -2449,33 +2577,6 @@ function handleCallFailed() {
     cleanup();
 }
 
-function playRingtone(type: "incoming" | "outgoing") {
-    try {
-        ringtoneAudio = new Audio(
-            type === "incoming"
-                ? "/static/sounds/inbound-call.mp3"
-                : "/static/sounds/outbound-call.mp3",
-        );
-        ringtoneAudio.loop = true;
-        ringtoneAudio.volume = 0.5;
-        ringtoneAudio
-            .play()
-            .catch((e) =>
-                console.warn(
-                    "[Call] Ringtone play failed (autoplay policy?):",
-                    e,
-                ),
-            );
-    } catch {}
-}
-
-function stopRingtone() {
-    if (ringtoneAudio) {
-        ringtoneAudio.pause();
-        ringtoneAudio = null;
-    }
-}
-
 function startDurationTimer() {
     if (durationTimer) return;
     callDuration.value = 0;
@@ -2495,7 +2596,6 @@ function setupBroadcastChannel() {
 
 function cleanup() {
     callOrchestrator.stop();
-    stopRingtone();
     if (localStream.value) {
         localStream.value.getTracks().forEach((t) => t.stop());
         localStream.value = null;
@@ -2516,6 +2616,10 @@ function cleanup() {
     if (connectedFallbackTimer) {
         clearTimeout(connectedFallbackTimer);
         connectedFallbackTimer = null;
+    }
+    if (outgoingNoAnswerTimer) {
+        clearTimeout(outgoingNoAnswerTimer);
+        outgoingNoAnswerTimer = null;
     }
     callSignalingManager.teardown();
     broadcastChannel?.close();
@@ -2624,35 +2728,13 @@ async function initializeCall() {
     setupBroadcastChannel();
     setupEcho();
 
-    if (data.direction === "incoming" && data.remoteUser) {
-        // DM Call with Ringing
-        playRingtone("incoming");
-    } else if (data.direction === "outgoing" && data.remoteUser) {
-        // DM Outgoing
-        playRingtone("outgoing");
+    if (data.direction === "outgoing" && data.remoteUser) {
+        // Outgoing call state only; ringtone is handled by main app.
         callState.value = "ringing";
     }
 
-    // SMART JOIN LOGIC
-    const isGroup =
-        (data as any).chatType === "group" ||
-        data.remoteUser?.publicId === "group";
-
-    console.log("[Call] Checking for Smart Join...");
-    // If they already clicked "Accept" in the popup, user activation should be active
-    const canAutoJoin =
-        (navigator as any).userActivation?.isActive ||
-        data.direction === "outgoing" ||
-        data.direction === "incoming";
-
-    if (canAutoJoin) {
-        console.log("[Call] ⚡ Smart Join triggered: skipping lobby");
-        joinCall();
-    } else {
-        console.log(
-            "[Call] Smart Join skipped: User interaction required for audio, Showing lobby.",
-        );
-    }
+    console.log("[Call] Auto-launching call flow from main app handoff");
+    void joinCall();
 
     // Initial Output Device Sync
     if (store.selectedOutputDeviceId) {
@@ -2811,52 +2893,32 @@ onBeforeUnmount(() => cleanup());
             </button>
         </div>
 
-        <!-- JOIN SCREEN -->
-        <div v-else-if="!hasJoined" class="lobby-minimalist">
+        <!-- PERMISSION RECOVERY -->
+        <div v-else-if="permissionBlocked" class="lobby-minimalist">
             <div class="lobby-content">
                 <div class="avatar-preview">
-                    <!-- Avatar Preview -->
-                    <div
-                        class="preview-circle"
-                        :class="{
-                            'animate-pulse': callData?.direction === 'incoming',
-                        }"
-                    >
+                    <div class="preview-circle">
                         <span class="initials">{{ previewRemoteName[0] }}</span>
                     </div>
                 </div>
 
                 <div class="join-info">
-                    <h1 class="join-title">
-                        {{
-                            callData?.direction === "incoming"
-                                ? "Incoming Call"
-                                : "Join Call"
-                        }}
-                    </h1>
+                    <h1 class="join-title">Microphone access required</h1>
                     <p class="join-subtitle">
                         {{
-                            callData?.direction === "incoming" ? "From" : "With"
+                            permissionErrorMessage ||
+                            "Allow microphone access to continue this call."
                         }}
-                        {{ previewRemoteName }}
                     </p>
                 </div>
 
                 <div class="lobby-actions-grid">
                     <button
                         class="btn-lobby-action join"
-                        @click="joinCall"
+                        @click="retryPermissionAndJoin"
                         :disabled="isJoining"
                     >
-                        <Icon
-                            v-if="!isJoining"
-                            :name="
-                                callData?.direction === 'incoming'
-                                    ? 'PhoneCall'
-                                    : 'Phone'
-                            "
-                            size="20"
-                        />
+                        <Icon v-if="!isJoining" name="RefreshCw" size="20" />
                         <Icon
                             v-else
                             name="Loader"
@@ -2866,29 +2928,31 @@ onBeforeUnmount(() => cleanup());
                         <span>
                             {{
                                 isJoining
-                                    ? "Joining..."
-                                    : callData?.direction === "incoming"
-                                      ? "Accept"
-                                      : "Join"
+                                    ? "Retrying..."
+                                    : "Retry Permission"
                             }}
                         </span>
                     </button>
 
                     <button
-                        class="btn-lobby-action settings"
-                        @click="showSettings = true"
-                    >
-                        <Icon name="Settings" size="20" />
-                        <span>Settings</span>
-                    </button>
-                    <button
                         class="btn-lobby-action decline"
-                        @click="endCall('declined')"
+                        @click="endCall('failed')"
                     >
                         <Icon name="X" size="20" />
-                        <span>Decline</span>
+                        <span>End Call</span>
                     </button>
                 </div>
+            </div>
+        </div>
+
+        <!-- AUTO LAUNCH STATE -->
+        <div v-else-if="!hasJoined" class="call-connecting-state">
+            <div class="call-connecting-content">
+                <div class="call-loading-ring"></div>
+                <h2 class="call-connecting-title">Preparing call...</h2>
+                <p class="call-connecting-subtitle">
+                    Requesting microphone access and connecting call media
+                </p>
             </div>
         </div>
 

@@ -207,12 +207,16 @@ class ChatService extends BaseService {
     files: File[],
     content?: string,
     replyTo?: string | number,
+    mediaMetadata?: Array<{ duration_seconds?: number | null }>,
   ): Promise<Message> {
     try {
       const formData = new FormData();
       files.forEach((file) => formData.append('files[]', file));
       if (content) formData.append('content', content);
       if (replyTo) formData.append('reply_to', replyTo.toString());
+      if (mediaMetadata && mediaMetadata.length > 0) {
+        formData.append('media_metadata', JSON.stringify(mediaMetadata));
+      }
 
       const response = await this.api.post<SendMessageResponse>(
         `${this.basePath}/${chatId}/upload`,
@@ -273,6 +277,85 @@ class ChatService extends BaseService {
       );
       const validated = sendMessageResponseSchema.parse(response.data);
       return validated.data;
+    } catch (error) {
+      this.handleError(error);
+    }
+  }
+
+  /**
+   * Edit an existing message.
+   */
+  async editMessage(chatId: string, messageId: string, content: string): Promise<Message> {
+    try {
+      const response = await this.api.patch<SendMessageResponse>(
+        `${this.basePath}/${chatId}/messages/${messageId}`,
+        { content },
+      );
+      const validated = sendMessageResponseSchema.parse(response.data);
+      return validated.data;
+    } catch (error) {
+      this.handleError(error);
+    }
+  }
+
+  /**
+   * Delete/unsend a message.
+   * scope=all => delete for everyone
+   * scope=me => hide for current user only
+   */
+  async deleteMessage(chatId: string, messageId: string, scope: 'all' | 'me' = 'all'): Promise<{
+    data?: Message;
+    scope: 'all' | 'me';
+    status?: string;
+    message_id?: string;
+  }> {
+    try {
+      const response = await this.api.delete<{
+        data?: Message;
+        scope?: 'all' | 'me';
+        status?: string;
+        message_id?: string;
+      }>(
+        `${this.basePath}/${chatId}/messages/${messageId}`,
+        { data: { scope } },
+      );
+
+      const payload = response.data || {};
+      const normalizedData = payload.data
+        ? sendMessageResponseSchema.parse({ data: payload.data }).data
+        : undefined;
+
+      return {
+        data: normalizedData,
+        scope: payload.scope || scope,
+        status: payload.status,
+        message_id: payload.message_id,
+      };
+    } catch (error) {
+      this.handleError(error);
+    }
+  }
+
+  /**
+   * Fetch edit history for a message.
+   */
+  async getMessageHistory(chatId: string, messageId: string): Promise<Array<{
+    previous_content: string;
+    edited_at: string | null;
+    edited_by_user_public_id: string | null;
+    edited_by_user_name: string | null;
+  }>> {
+    try {
+      const response = await this.api.get<{
+        data: Array<{
+          previous_content: string;
+          edited_at: string | null;
+          edited_by_user_public_id: string | null;
+          edited_by_user_name: string | null;
+        }>;
+      }>(`${this.basePath}/${chatId}/messages/${messageId}/history`);
+
+      return Array.isArray(response.data?.data) ? response.data.data : [];
     } catch (error) {
       this.handleError(error);
     }

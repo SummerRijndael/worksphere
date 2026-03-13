@@ -6,19 +6,32 @@ interface Props {
     src: string;
     isMine?: boolean;
     compact?: boolean;
+    durationSeconds?: number | null;
 }
 
 const props = withDefaults(defineProps<Props>(), {
     isMine: false,
     compact: false,
+    durationSeconds: null,
 });
 
 const audioRef = ref<HTMLAudioElement | null>(null);
 const isPlaying = ref(false);
 const currentTime = ref(0);
 const duration = ref(0);
+const canSeek = ref(false);
 const hasError = ref(false);
 let rafId: number | null = null;
+
+const fallbackDuration = computed(() => {
+    if (typeof props.durationSeconds !== "number") return 0;
+    if (!Number.isFinite(props.durationSeconds) || props.durationSeconds <= 0) {
+        return 0;
+    }
+    return props.durationSeconds;
+});
+
+const effectiveDuration = computed(() => Math.max(duration.value, fallbackDuration.value));
 
 function stopProgressSync() {
     if (rafId !== null) {
@@ -33,10 +46,22 @@ function syncFromElement() {
 
     currentTime.value = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
 
+    let seekableEnd = 0;
+    if (audio.seekable && audio.seekable.length > 0) {
+        const nextSeekableEnd = audio.seekable.end(audio.seekable.length - 1);
+        if (Number.isFinite(nextSeekableEnd) && nextSeekableEnd > 0) {
+            seekableEnd = nextSeekableEnd;
+        }
+    }
+
     const nextDuration = Number.isFinite(audio.duration) ? audio.duration : 0;
     if (nextDuration > 0) {
         duration.value = nextDuration;
+    } else if (seekableEnd > duration.value) {
+        duration.value = seekableEnd;
     }
+
+    canSeek.value = seekableEnd > 0;
 }
 
 function startProgressSync() {
@@ -53,16 +78,19 @@ function startProgressSync() {
 }
 
 const progressPercent = computed(() => {
-    if (!duration.value || duration.value <= 0) return 0;
-    return Math.max(0, Math.min(100, (currentTime.value / duration.value) * 100));
+    if (!effectiveDuration.value || effectiveDuration.value <= 0) return 0;
+    return Math.max(
+        0,
+        Math.min(100, (currentTime.value / effectiveDuration.value) * 100),
+    );
 });
 
 const isIndeterminate = computed(
-    () => isPlaying.value && (!duration.value || duration.value <= 0),
+    () => isPlaying.value && (!effectiveDuration.value || effectiveDuration.value <= 0),
 );
 
 const formattedCurrent = computed(() => formatTime(currentTime.value));
-const formattedDuration = computed(() => formatTime(duration.value));
+const formattedDuration = computed(() => formatTime(effectiveDuration.value));
 
 function formatTime(value: number) {
     if (!Number.isFinite(value) || value < 0) return "0:00";
@@ -84,8 +112,8 @@ async function togglePlayback() {
     hasError.value = false;
     try {
         if (
-            duration.value > 0 &&
-            audio.currentTime >= Math.max(duration.value - 0.05, 0)
+            effectiveDuration.value > 0 &&
+            audio.currentTime >= Math.max(effectiveDuration.value - 0.05, 0)
         ) {
             audio.currentTime = 0;
             currentTime.value = 0;
@@ -132,11 +160,14 @@ function seek(event: Event) {
     const audio = audioRef.value;
     const target = event.target as HTMLInputElement | null;
     if (!audio || !target) return;
+    if (!canSeek.value) return;
 
     const next = Number(target.value);
     if (!Number.isFinite(next)) return;
-    audio.currentTime = next;
-    currentTime.value = next;
+    const max = effectiveDuration.value > 0 ? effectiveDuration.value : next;
+    const clamped = Math.max(0, Math.min(next, max));
+    audio.currentTime = clamped;
+    currentTime.value = clamped;
 }
 
 watch(
@@ -147,6 +178,7 @@ watch(
         hasError.value = false;
         currentTime.value = 0;
         duration.value = 0;
+        canSeek.value = false;
     },
 );
 
@@ -170,7 +202,11 @@ onBeforeUnmount(() => {
             :src="src"
             class="hidden"
             @loadedmetadata="handleLoadedMetadata"
+            @loadeddata="handleLoadedMetadata"
+            @durationchange="handleLoadedMetadata"
+            @canplay="handleLoadedMetadata"
             @timeupdate="handleTimeUpdate"
+            @seeked="handleTimeUpdate"
             @play="handlePlay"
             @pause="handlePause"
             @ended="handleEnded"
@@ -198,16 +234,16 @@ onBeforeUnmount(() => {
                 class="chat-audio-progress-input"
                 type="range"
                 min="0"
-                :max="duration || 0"
+                :max="effectiveDuration || 0"
                 step="0.01"
                 :value="currentTime"
-                :disabled="!duration || hasError"
+                :disabled="!canSeek || !effectiveDuration || hasError"
                 @input="seek"
             />
         </div>
 
         <span class="chat-audio-time">
-            {{ formattedCurrent }} / {{ formattedDuration }}
+            {{ formattedCurrent }}/{{ formattedDuration }}
         </span>
     </div>
 </template>
@@ -229,9 +265,18 @@ onBeforeUnmount(() => {
 }
 
 .chat-audio-player.is-compact {
-    gap: 6px;
     padding: 6px 7px;
     border-radius: 10px;
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr);
+    grid-template-areas:
+        "play progress"
+        ". time";
+    column-gap: 6px;
+    row-gap: 3px;
+    align-items: center;
+    width: 100%;
+    min-width: 0;
 }
 
 .chat-audio-play {
@@ -259,6 +304,7 @@ onBeforeUnmount(() => {
 .chat-audio-player.is-compact .chat-audio-play {
     width: 24px;
     height: 24px;
+    grid-area: play;
 }
 
 .chat-audio-progress-wrap {
@@ -334,8 +380,20 @@ onBeforeUnmount(() => {
 }
 
 .chat-audio-player.is-compact .chat-audio-time {
-    min-width: 56px;
-    font-size: 10px;
+    min-width: 0;
+    font-size: 8.5px;
+    flex: 0 0 auto;
+    white-space: nowrap;
+    grid-area: time;
+    justify-self: end;
+    line-height: 1;
+}
+
+.chat-audio-player.is-compact .chat-audio-progress-wrap {
+    min-width: 0;
+    width: 100%;
+    height: 18px;
+    grid-area: progress;
 }
 
 .chat-audio-player.has-error {

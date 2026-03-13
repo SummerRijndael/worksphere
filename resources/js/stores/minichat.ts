@@ -16,17 +16,21 @@ export const useMiniChatStore = defineStore('minichat', () => {
   // State
   // ============================================================================
   
+  const DEFAULT_ACTIVE_TAB: 'chats' | 'groups' | 'people' | 'invites' = 'chats';
+  const DEFAULT_ANCHORING_MODE: 'free' | 'docked' = 'docked';
+  const DEFAULT_NEXT_Z_INDEX = 100;
+
   const isLauncherOpen = ref(false);
-  const activeTab = ref<'chats' | 'groups' | 'people' | 'invites'>('chats');
+  const activeTab = ref<'chats' | 'groups' | 'people' | 'invites'>(DEFAULT_ACTIVE_TAB);
   const windows = ref<Map<string, MiniChatWindow>>(new Map());
-  const nextZIndex = ref(100);
-  const anchoringMode = ref<'free' | 'docked'>('docked');
+  const nextZIndex = ref(DEFAULT_NEXT_Z_INDEX);
+  const anchoringMode = ref<'free' | 'docked'>(DEFAULT_ANCHORING_MODE);
   
   // Max visible chat heads when minimized
   const MAX_VISIBLE_HEADS = 5;
-  const DOCK_WINDOW_WIDTH = 360;
-  const DOCK_WINDOW_GAP = 14;
-  const DOCK_START_RIGHT = 96;
+  const DOCK_WINDOW_WIDTH = 335;
+  const DOCK_WINDOW_GAP = 10;
+  const DOCK_START_RIGHT = 75;
   const DOCK_START_BOTTOM = 0;
 
   // Persistence Logic
@@ -35,14 +39,27 @@ export const useMiniChatStore = defineStore('minichat', () => {
   function getStorageKey() {
     return `worksphere_minichat_${authStore.user?.public_id || 'guest'}`;
   }
+
+  function resetSettingsToDefaults() {
+    activeTab.value = DEFAULT_ACTIVE_TAB;
+    anchoringMode.value = DEFAULT_ANCHORING_MODE;
+  }
   
   function loadFromStorage() {
       try {
+          resetSettingsToDefaults();
+
           const data = localStorage.getItem(getStorageKey());
           if (data) {
               const parsed = JSON.parse(data);
-              if (parsed.anchoringMode) anchoringMode.value = parsed.anchoringMode;
-              if (parsed.activeTab) activeTab.value = parsed.activeTab;
+
+              if (parsed.anchoringMode === 'free' || parsed.anchoringMode === 'docked') {
+                anchoringMode.value = parsed.anchoringMode;
+              }
+
+              if (parsed.activeTab === 'chats' || parsed.activeTab === 'groups' || parsed.activeTab === 'people' || parsed.activeTab === 'invites') {
+                activeTab.value = parsed.activeTab;
+              }
           }
       } catch (e) {
           console.warn('Failed to load minichat settings', e);
@@ -63,7 +80,11 @@ export const useMiniChatStore = defineStore('minichat', () => {
   });
 
   // Watch for user change to reload
-  watch(() => authStore.user?.public_id, () => {
+  watch(() => authStore.user?.public_id, (newPublicId, oldPublicId) => {
+      // Security: drop all volatile window/chat UI state when user session changes.
+      if (newPublicId !== oldPublicId) {
+        clearSessionState();
+      }
       loadFromStorage();
   });
   
@@ -234,6 +255,13 @@ export const useMiniChatStore = defineStore('minichat', () => {
   function closeAllWindows() {
     windows.value.clear();
   }
+
+  function clearSessionState() {
+    isLauncherOpen.value = false;
+    windows.value.clear();
+    nextZIndex.value = DEFAULT_NEXT_Z_INDEX;
+    resetSettingsToDefaults();
+  }
   
   function minimizeAllWindows() {
     windows.value.forEach(win => {
@@ -273,6 +301,7 @@ export const useMiniChatStore = defineStore('minichat', () => {
     updateWindowPosition,
     updateChatInWindow,
     closeAllWindows,
+    clearSessionState,
     minimizeAllWindows,
   };
 });

@@ -13,7 +13,7 @@ const props = defineProps({
     },
 });
 
-const { currentStatus, preferredStatus, setStatus, isOnline } = usePresence();
+const { currentStatus, preferredStatus, setStatus, isOnline } = usePresence({ manageLifecycle: false });
 
 const statusOptions = [
     { value: 'online', label: 'Online', color: 'bg-emerald-500', ringColor: 'ring-emerald-500/20', textColor: 'text-emerald-800 dark:text-emerald-400' },

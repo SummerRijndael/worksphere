@@ -190,9 +190,21 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  async function uploadMessage(chatId: string, files: File[], content?: string, replyTo?: string | number) {
+  async function uploadMessage(
+    chatId: string,
+    files: File[],
+    content?: string,
+    replyTo?: string | number,
+    mediaMetadata?: Array<{ duration_seconds?: number | null }>,
+  ) {
     try {
-      const message = await chatService.uploadMessage(chatId, files, content, replyTo);
+      const message = await chatService.uploadMessage(
+        chatId,
+        files,
+        content,
+        replyTo,
+        mediaMetadata,
+      );
       addMessage(chatId, message);
       replyingToMessage.value = null;
       clearPendingFiles(); // Clear and revoke URLs
@@ -269,6 +281,33 @@ export const useChatStore = defineStore('chat', () => {
     return updated;
   }
 
+  async function editMessage(chatId: string, messageId: string, content: string) {
+    const updated = await chatService.editMessage(chatId, messageId, content);
+    upsertMessage(chatId, updated);
+    return updated;
+  }
+
+  async function deleteMessage(chatId: string, messageId: string, scope: 'all' | 'me' = 'all') {
+    const result = await chatService.deleteMessage(chatId, messageId, scope);
+
+    if (result.scope === 'me') {
+      removeMessage(chatId, messageId);
+      return result;
+    }
+
+    if (result.data) {
+      upsertMessage(chatId, result.data);
+    } else {
+      removeMessage(chatId, messageId);
+    }
+
+    return result;
+  }
+
+  async function getMessageHistory(chatId: string, messageId: string) {
+    return chatService.getMessageHistory(chatId, messageId);
+  }
+
   function addMessage(chatId: string, message: Message) {
     console.log('[ChatStore] addMessage called', {
       chatId,
@@ -319,6 +358,29 @@ export const useChatStore = defineStore('chat', () => {
       message.tempId = tempId; 
       messages[index] = message;
       messagesByChat.value.set(chatId, [...messages]);
+    }
+  }
+
+  function removeMessage(chatId: string, messageId: string) {
+    const messages = messagesByChat.value.get(chatId) ?? [];
+    const filtered = messages.filter((m) => String(m.id) !== String(messageId));
+    messagesByChat.value.set(chatId, filtered);
+
+    const chat = chats.value.find((c) => c.public_id === chatId);
+    if (!chat) return;
+
+    if (String(chat.last_message?.id ?? '') === String(messageId)) {
+      const fallback = filtered.length ? filtered[filtered.length - 1] : null;
+      chat.last_message = fallback
+        ? {
+            id: String(fallback.id),
+            user_name: fallback.user_name,
+            content: fallback.content,
+            created_at: fallback.created_at,
+            has_media: (fallback.attachments?.length ?? 0) > 0,
+          }
+        : null;
+      chat.updated_at = fallback?.created_at ?? chat.updated_at;
     }
   }
 
@@ -669,6 +731,9 @@ export const useChatStore = defineStore('chat', () => {
     toggleMessageReaction,
     pinMessage,
     unpinMessage,
+    editMessage,
+    deleteMessage,
+    getMessageHistory,
 
     // Actions - Typing
     setUserTyping,

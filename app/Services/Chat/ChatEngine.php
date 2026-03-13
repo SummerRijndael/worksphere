@@ -134,10 +134,17 @@ class ChatEngine
      *
      * @param  array<\Illuminate\Http\UploadedFile>|null  $files
      */
-    public function send(string $content, ?array $files = null, ?int $replyToMessageId = null, ?array $metadata = null): ChatMessage
+    public function send(
+        string $content,
+        ?array $files = null,
+        ?int $replyToMessageId = null,
+        ?array $metadata = null,
+        ?array $fileMetadata = null
+    ): ChatMessage
     {
-        return DB::transaction(function () use ($content, $files, $replyToMessageId, $metadata) {
+        return DB::transaction(function () use ($content, $files, $replyToMessageId, $metadata, $fileMetadata) {
             $files = $files ?? [];
+            $fileMetadata = $fileMetadata ?? [];
 
             // Validate files if provided
             if (! empty($files)) {
@@ -149,7 +156,7 @@ class ChatEngine
 
             // Attach files if provided
             if (! empty($files)) {
-                app(ChatMediaService::class)->attachFilesToMessage($message, $files);
+                app(ChatMediaService::class)->attachFilesToMessage($message, $files, $fileMetadata);
             }
 
             // Refresh with relationships
@@ -264,16 +271,26 @@ class ChatEngine
     public function unreadCount(): int
     {
         $userId = $this->user->id;
+        $viewerPublicId = strtolower(trim((string) $this->user->public_id));
 
-        return DB::table('chat_messages AS m')
+        $query = DB::table('chat_messages AS m')
             ->join('chat_participants AS p', function ($join) use ($userId) {
                 $join->on('p.chat_id', '=', 'm.chat_id')
                     ->where('p.user_id', $userId);
             })
             ->where('m.chat_id', $this->chat->id)
             ->whereRaw('m.id > COALESCE(p.last_read_message_id, 0)')
-            ->where('m.user_id', '!=', $userId)
-            ->count();
+            ->where('m.user_id', '!=', $userId);
+
+        if ($viewerPublicId !== '') {
+            $query->where(function ($visibility) use ($viewerPublicId) {
+                $visibility->whereNull('m.metadata')
+                    ->orWhereNull('m.metadata->hidden_for_user_public_ids')
+                    ->orWhereJsonDoesntContain('m.metadata->hidden_for_user_public_ids', $viewerPublicId);
+            });
+        }
+
+        return $query->count();
     }
 
     /**
@@ -281,14 +298,25 @@ class ChatEngine
      */
     public static function unreadFor(User $user): int
     {
-        return DB::table('chat_messages AS m')
+        $viewerPublicId = strtolower(trim((string) $user->public_id));
+
+        $query = DB::table('chat_messages AS m')
             ->join('chat_participants AS p', function ($join) use ($user) {
                 $join->on('p.chat_id', '=', 'm.chat_id')
                     ->where('p.user_id', $user->id);
             })
             ->whereRaw('m.id > COALESCE(p.last_read_message_id, 0)')
-            ->where('m.user_id', '!=', $user->id)
-            ->count();
+            ->where('m.user_id', '!=', $user->id);
+
+        if ($viewerPublicId !== '') {
+            $query->where(function ($visibility) use ($viewerPublicId) {
+                $visibility->whereNull('m.metadata')
+                    ->orWhereNull('m.metadata->hidden_for_user_public_ids')
+                    ->orWhereJsonDoesntContain('m.metadata->hidden_for_user_public_ids', $viewerPublicId);
+            });
+        }
+
+        return $query->count();
     }
 
     /**
@@ -329,11 +357,22 @@ class ChatEngine
      */
     protected function queryMessages()
     {
-        return ChatMessage::with([
+        $query = ChatMessage::with([
             'user:id,public_id,name',
             'media',
             'replyTo.user:id,public_id,name',
         ])->where('chat_id', $this->chat->id);
+
+        $viewerPublicId = strtolower(trim((string) $this->user->public_id));
+        if ($viewerPublicId !== '') {
+            $query->where(function ($visibility) use ($viewerPublicId) {
+                $visibility->whereNull('metadata')
+                    ->orWhereNull('metadata->hidden_for_user_public_ids')
+                    ->orWhereJsonDoesntContain('metadata->hidden_for_user_public_ids', $viewerPublicId);
+            });
+        }
+
+        return $query;
     }
 
     /**
@@ -349,6 +388,12 @@ class ChatEngine
         $metadataArray = is_array($message->metadata) ? $message->metadata : [];
         $metadata = empty($metadataArray) ? null : $metadataArray;
         $normalizedReactions = self::normalizeReactions($metadataArray['reactions'] ?? null);
+        $editedAt = isset($metadataArray['edited_at']) && is_string($metadataArray['edited_at'])
+            ? $metadataArray['edited_at']
+            : null;
+        $deletedAt = isset($metadataArray['deleted_at']) && is_string($metadataArray['deleted_at'])
+            ? $metadataArray['deleted_at']
+            : null;
 
         if ($seenThreshold && $authorId && $message->user_id === $authorId) {
             $isSeen = $ownSeenId ? $message->id === $ownSeenId : $message->id <= $seenThreshold;
@@ -374,6 +419,25 @@ class ChatEngine
             'pinned_by_user_name' => is_string($metadataArray['pinned_by_user_name'] ?? null)
                 ? $metadataArray['pinned_by_user_name']
                 : null,
+            'is_edited' => ($metadataArray['is_edited'] ?? false) === true,
+            'edited_at' => $editedAt,
+            'edited_by_user_public_id' => is_string($metadataArray['edited_by_user_public_id'] ?? null)
+                ? $metadataArray['edited_by_user_public_id']
+                : null,
+            'edited_by_user_name' => is_string($metadataArray['edited_by_user_name'] ?? null)
+                ? $metadataArray['edited_by_user_name']
+                : null,
+            'is_deleted' => ($metadataArray['is_deleted'] ?? false) === true,
+            'deleted_at' => $deletedAt,
+            'deleted_by_user_public_id' => is_string($metadataArray['deleted_by_user_public_id'] ?? null)
+                ? $metadataArray['deleted_by_user_public_id']
+                : null,
+            'deleted_by_user_name' => is_string($metadataArray['deleted_by_user_name'] ?? null)
+                ? $metadataArray['deleted_by_user_name']
+                : null,
+            'edit_history_count' => is_array($metadataArray['edit_history'] ?? null)
+                ? count($metadataArray['edit_history'])
+                : 0,
             // Keep response shape object-like for schema compatibility (never an empty array).
             'reactions' => empty($normalizedReactions) ? (object) [] : $normalizedReactions,
             'reply_to' => $message->replyTo ? [

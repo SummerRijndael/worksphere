@@ -18,6 +18,7 @@ import MiniChatMessageBubble from "./MiniChatMessageBubble.vue";
 import GiphyPicker from "@/views/chat/components/chat/GiphyPicker.vue";
 import { useMention } from "@/composables/useMention";
 import { useAudioClipRecorder } from "@/composables/useAudioClipRecorder";
+import { buildUploadMediaMetadata } from "@/utils/mediaDuration";
 
 const props = defineProps<{
     window: MiniChatWindow;
@@ -150,11 +151,45 @@ const messagesRef = ref<HTMLElement | null>(null);
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const emojiMountRef = ref<HTMLElement | null>(null);
+const minichatWindowRef = ref<HTMLElement | null>(null);
 
 const { attach: attachMention } = useMention(
     textareaRef,
     computed(() => props.window.chat.public_id),
     {
+        menuContainer: () => minichatWindowRef.value,
+        onMenuPosition: (menu, textarea) => {
+            const windowEl = minichatWindowRef.value;
+            if (!windowEl) return;
+
+            const windowRect = windowEl.getBoundingClientRect();
+            const textareaRect = textarea.getBoundingClientRect();
+            const spacing = 8;
+
+            const menuWidth = menu.offsetWidth || 280;
+            const menuHeight = menu.offsetHeight || 140;
+
+            const desiredLeft = textareaRect.left - windowRect.left;
+            const minLeft = 8;
+            const maxLeft = Math.max(
+                minLeft,
+                windowRect.width - menuWidth - 8,
+            );
+            const left = Math.min(maxLeft, Math.max(minLeft, desiredLeft));
+
+            const desiredTop =
+                textareaRect.top - windowRect.top - menuHeight - spacing;
+            const minTop = 8;
+            const maxTop = Math.max(
+                minTop,
+                windowRect.height - menuHeight - 8,
+            );
+            const top = Math.min(maxTop, Math.max(minTop, desiredTop));
+
+            menu.style.position = "absolute";
+            menu.style.left = `${left}px`;
+            menu.style.top = `${top}px`;
+        },
         onSelect: (_item: any) => {
             nextTick(() => {
                 if (textareaRef.value) {
@@ -167,12 +202,14 @@ const { attach: attachMention } = useMention(
 );
 const isSending = ref(false);
 const isLoadingMore = ref(false);
+const isInitialLoading = ref(false);
 const showScrollButton = ref(false);
 const isJumping = ref(false);
 const isDragging = ref(false);
 const showEmoji = ref(false);
 const showGiphy = ref(false);
 const replyingTo = ref<Message | null>(null);
+const editingMessage = ref<Message | null>(null);
 const pendingFiles = ref<PendingFile[]>([]);
 const recordedAudioDraft = ref<RecordedAudioDraft | null>(null);
 const draftAudioRef = ref<HTMLAudioElement | null>(null);
@@ -512,7 +549,12 @@ watch(typingIndicator, (newVal) => {
 // Fetch messages on mount
 onMounted(async () => {
     if (messages.value.length === 0) {
-        await chatStore.fetchMessages(props.window.chatId);
+        isInitialLoading.value = true;
+        try {
+            await chatStore.fetchMessages(props.window.chatId);
+        } finally {
+            isInitialLoading.value = false;
+        }
     }
     await nextTick();
     scrollToBottom();
@@ -560,10 +602,45 @@ function scrollToBottom() {
 async function handleSend() {
     if (!canSend.value) return;
 
+    if (editingMessage.value) {
+        const next = messageInput.value.trim();
+        const current = String(editingMessage.value.content || "").trim();
+        if (!next) {
+            toast.error("Edit failed", "Message cannot be empty.");
+            return;
+        }
+        if (next === current) {
+            cancelEdit();
+            return;
+        }
+
+        isSending.value = true;
+        try {
+            await chatStore.editMessage(
+                props.window.chatId,
+                String(editingMessage.value.id),
+                next,
+            );
+            messageInput.value = "";
+            cancelEdit();
+        } catch (error: any) {
+            toast.error(
+                "Edit failed",
+                error?.message || "Could not edit this message.",
+            );
+        } finally {
+            isSending.value = false;
+        }
+        return;
+    }
+
     if (recordedAudioDraft.value) {
         isSending.value = true;
         try {
-            await sendRecordedAudio(recordedAudioDraft.value.file);
+            await sendRecordedAudio(
+                recordedAudioDraft.value.file,
+                recordedAudioDraft.value.durationSeconds,
+            );
             clearRecordedAudioDraft();
             replyingTo.value = null;
             await nextTick();
@@ -588,11 +665,13 @@ async function handleSend() {
         if (pendingFiles.value.length > 0) {
             // Send with files
             const files = pendingFiles.value.map((pf) => pf.file);
+            const mediaMetadata = await buildUploadMediaMetadata(files);
             await chatStore.uploadMessage(
                 props.window.chatId,
                 files,
                 content,
                 replyingTo.value?.id,
+                mediaMetadata,
             );
             pendingFiles.value.forEach((f) => {
                 if (f.url) URL.revokeObjectURL(f.url);
@@ -616,13 +695,19 @@ async function handleSend() {
     }
 }
 
-async function sendRecordedAudio(file: File) {
+async function sendRecordedAudio(file: File, durationSeconds?: number | null) {
     if (!props.window.chatId) return;
     await chatStore.uploadMessage(
         props.window.chatId,
         [file],
         "",
         replyingTo.value?.id,
+        [
+            {
+                duration_seconds:
+                    typeof durationSeconds === "number" ? durationSeconds : null,
+            },
+        ],
     );
 }
 
@@ -684,12 +769,36 @@ function handleInputChange() {
 
 // Reply handling
 function handleReply(msg: Message) {
+    if (editingMessage.value) {
+        messageInput.value = "";
+    }
+    editingMessage.value = null;
     replyingTo.value = msg;
     textareaRef.value?.focus();
 }
 
 function cancelReply() {
     replyingTo.value = null;
+}
+
+function handleStartEditMessage(message: Message) {
+    if (!message?.id) return;
+    if (isRecorderActive.value || isRecorderBusy.value) {
+        void cancelRecording();
+    }
+    if (recordedAudioDraft.value) {
+        clearRecordedAudioDraft();
+    }
+    editingMessage.value = message;
+    replyingTo.value = null;
+    clearPendingFiles();
+    messageInput.value = String(message.content || "");
+    nextTick(() => textareaRef.value?.focus());
+}
+
+function cancelEdit() {
+    editingMessage.value = null;
+    messageInput.value = "";
 }
 
 // ============================================================================
@@ -829,6 +938,28 @@ const handleTogglePinMessage = async (message: Message) => {
     }
 };
 
+const handleDeleteMessage = async (message: Message, scope: "me" | "all") => {
+    if (!message?.id) return;
+
+    if (scope === "all") {
+        const confirmed = window.confirm("Delete this message for everyone?");
+        if (!confirmed) return;
+    }
+
+    try {
+        await chatStore.deleteMessage(
+            props.window.chatId,
+            String(message.id),
+            scope,
+        );
+    } catch (error: any) {
+        toast.error(
+            "Delete failed",
+            error?.message || "Could not update this message.",
+        );
+    }
+};
+
 // ============================================================================
 // File Handling
 // ============================================================================
@@ -842,6 +973,10 @@ function openFilePicker() {
 
 function appendPendingFiles(newFiles: File[]) {
     if (!newFiles.length) return;
+    if (editingMessage.value) {
+        toast.error("Edit mode", "Finish editing before attaching files.");
+        return;
+    }
 
     const currentTotalSize = pendingFiles.value.reduce(
         (acc, f) => acc + f.size,
@@ -897,6 +1032,13 @@ function removeFile(index: number) {
     const file = pendingFiles.value[index];
     if (file.url) URL.revokeObjectURL(file.url);
     pendingFiles.value.splice(index, 1);
+}
+
+function clearPendingFiles() {
+    pendingFiles.value.forEach((file) => {
+        if (file.url) URL.revokeObjectURL(file.url);
+    });
+    pendingFiles.value = [];
 }
 
 // Emoji handling
@@ -1050,6 +1192,7 @@ function isOwnMessage(msg: Message): boolean {
 
 <template>
     <div
+        ref="minichatWindowRef"
         class="minichat-window"
         :class="[
             {
@@ -1249,6 +1392,8 @@ function isOwnMessage(msg: Message): boolean {
                         @retry="handleRetry"
                         @react="(reaction) => handleReactMessage(msg, reaction)"
                         @toggle-pin="handleTogglePinMessage(msg)"
+                        @start-edit="() => handleStartEditMessage(msg)"
+                        @delete="(scope) => handleDeleteMessage(msg, scope)"
                         @callback="handleCallback"
                         @join-call="
                             (data) =>
@@ -1261,6 +1406,27 @@ function isOwnMessage(msg: Message): boolean {
                     />
                 </div>
             </TransitionGroup>
+
+            <div
+                v-if="isInitialLoading && messages.length === 0"
+                class="minichat-skeleton-wrap"
+                aria-hidden="true"
+            >
+                <div class="minichat-skeleton-row">
+                    <div class="minichat-skeleton-avatar"></div>
+                    <div class="minichat-skeleton-bubble shimmer" style="width: 48%"></div>
+                </div>
+                <div class="minichat-skeleton-row is-own">
+                    <div class="minichat-skeleton-bubble shimmer" style="width: 36%"></div>
+                </div>
+                <div class="minichat-skeleton-row">
+                    <div class="minichat-skeleton-avatar"></div>
+                    <div class="minichat-skeleton-bubble shimmer" style="width: 62%"></div>
+                </div>
+                <div class="minichat-skeleton-row is-own">
+                    <div class="minichat-skeleton-bubble shimmer" style="width: 40%"></div>
+                </div>
+            </div>
 
             <!-- System Message: Active Call Invite -->
             <div
@@ -1294,7 +1460,10 @@ function isOwnMessage(msg: Message): boolean {
                 </div>
             </div>
 
-            <div v-if="messages.length === 0" class="minichat-window-empty">
+            <div
+                v-else-if="!isInitialLoading && messages.length === 0"
+                class="minichat-window-empty"
+            >
                 <Icon name="MessageSquare" :size="24" />
                 <p>No messages yet</p>
             </div>
@@ -1331,17 +1500,26 @@ function isOwnMessage(msg: Message): boolean {
             </div>
         </div>
 
-        <!-- Reply Preview -->
-        <div v-if="replyingTo" class="minichat-reply-preview">
+        <!-- Reply/Edit Preview -->
+        <div v-if="editingMessage || replyingTo" class="minichat-reply-preview">
             <div class="minichat-reply-content">
                 <span class="minichat-reply-label"
-                    >Replying to {{ replyingTo.user_name }}</span
+                    >{{
+                        editingMessage
+                            ? "Editing message"
+                            : `Replying to ${replyingTo?.user_name || "Unknown"}`
+                    }}</span
                 >
                 <span class="minichat-reply-text">{{
-                    replyingTo.content?.slice(0, 50)
+                    editingMessage
+                        ? editingMessage.content?.slice(0, 50)
+                        : replyingTo?.content?.slice(0, 50)
                 }}</span>
             </div>
-            <button class="minichat-reply-cancel" @click="cancelReply">
+            <button
+                class="minichat-reply-cancel"
+                @click="editingMessage ? cancelEdit() : cancelReply()"
+            >
                 <Icon name="X" :size="14" />
             </button>
         </div>
@@ -1375,7 +1553,7 @@ function isOwnMessage(msg: Message): boolean {
                 ref="fileInputRef"
                 type="file"
                 multiple
-                accept="image/*,audio/*,.pdf,.doc,.docx,.txt,.zip"
+                accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip,.webm,.mp4,.mov,.m4v,.avi,.mkv,.mp3,.wav,.ogg,.m4a,.aac,.flac"
                 class="hidden"
                 @change="handleFileSelect"
             />
@@ -1572,7 +1750,7 @@ function isOwnMessage(msg: Message): boolean {
 <style scoped>
 .minichat-window {
     position: fixed;
-    width: 360px;
+    width: 335px;
     height: 500px;
     background: var(--surface-elevated);
     border: 1px solid var(--border-default);
@@ -1689,6 +1867,64 @@ function isOwnMessage(msg: Message): boolean {
 
 .minichat-window-empty p {
     font-size: 13px;
+}
+
+.minichat-skeleton-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-top: 2px;
+}
+
+.minichat-skeleton-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+}
+
+.minichat-skeleton-row.is-own {
+    justify-content: flex-end;
+}
+
+.minichat-skeleton-avatar {
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--surface-tertiary) 90%, transparent);
+    flex: 0 0 22px;
+}
+
+.minichat-skeleton-bubble {
+    height: 30px;
+    border-radius: 12px;
+    min-width: 92px;
+    max-width: 76%;
+    background: color-mix(in srgb, var(--surface-tertiary) 88%, transparent);
+}
+
+.shimmer {
+    position: relative;
+    overflow: hidden;
+}
+
+.shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+        90deg,
+        transparent,
+        color-mix(in srgb, var(--surface-elevated) 45%, transparent),
+        transparent
+    );
+    animation: chatShimmer 1.25s infinite;
+}
+
+@keyframes chatShimmer {
+    100% {
+        transform: translateX(100%);
+    }
 }
 
 /* Messages */
