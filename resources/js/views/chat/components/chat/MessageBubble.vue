@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import type { Message, MessageAttachment } from "@/types/models/chat";
 import { Icon } from "@/components/ui";
 import LinkPreview from "@/components/LinkPreview.vue";
@@ -133,6 +133,9 @@ const videos = computed<MessageAttachment[]>(
 );
 const giphy = computed(() => props.message.metadata?.giphy);
 const failedVideoThumbs = ref<Set<string>>(new Set());
+const loadedImageThumbs = ref<Set<string>>(new Set());
+const loadedVideoThumbs = ref<Set<string>>(new Set());
+const isGiphyLoaded = ref(false);
 
 const canUseVideoThumb = (attachment: MessageAttachment) =>
     Boolean(attachment.thumb_url) &&
@@ -140,6 +143,28 @@ const canUseVideoThumb = (attachment: MessageAttachment) =>
 
 const markVideoThumbFailed = (attachment: MessageAttachment) => {
     failedVideoThumbs.value.add(String(attachment.id));
+};
+
+const attachmentLoadKey = (
+    attachment: MessageAttachment,
+    kind: "image" | "video",
+) => {
+    const identity = attachment.id ?? attachment.url ?? attachment.name ?? "unknown";
+    return `${kind}:${props.message.id}:${String(identity)}`;
+};
+
+const isImageThumbLoaded = (attachment: MessageAttachment) =>
+    loadedImageThumbs.value.has(attachmentLoadKey(attachment, "image"));
+
+const markImageThumbLoaded = (attachment: MessageAttachment) => {
+    loadedImageThumbs.value.add(attachmentLoadKey(attachment, "image"));
+};
+
+const isVideoThumbLoaded = (attachment: MessageAttachment) =>
+    loadedVideoThumbs.value.has(attachmentLoadKey(attachment, "video"));
+
+const markVideoThumbLoaded = (attachment: MessageAttachment) => {
+    loadedVideoThumbs.value.add(attachmentLoadKey(attachment, "video"));
 };
 
 const displayImages = computed(() => images.value.slice(0, 4));
@@ -233,6 +258,16 @@ function handleVideoClick(video: MessageAttachment) {
     );
 }
 
+watch(
+    () => props.message.id,
+    () => {
+        loadedImageThumbs.value = new Set();
+        loadedVideoThumbs.value = new Set();
+        failedVideoThumbs.value = new Set();
+        isGiphyLoaded.value = false;
+    },
+);
+
 const handleJumpToReply = () => {
     if (props.message.reply_to?.id) {
         emit("jumpToReply", String(props.message.reply_to.id));
@@ -247,6 +282,31 @@ const firstUrl = computed(() => {
 
 const myPublicId = computed(() =>
     String(authStore.user?.public_id || "").trim().toLowerCase(),
+);
+const myName = computed(() =>
+    String(authStore.user?.name || "").trim().toLowerCase(),
+);
+const isCallerSideCallEvent = computed(() => {
+    const event = String(props.message.metadata?.event || "");
+    if (!["missed", "no_answer", "cancelled"].includes(event)) return false;
+
+    const callerPublicId = String(
+        props.message.metadata?.caller_public_id || "",
+    )
+        .trim()
+        .toLowerCase();
+
+    if (callerPublicId && callerPublicId === myPublicId.value) return true;
+    const callerName = String(props.message.metadata?.caller_name || "")
+        .trim()
+        .toLowerCase();
+    if (callerName && myName.value && callerName === myName.value) return true;
+    return props.isMine;
+});
+const isCallerSideMissedEvent = computed(
+    () =>
+        ["missed", "no_answer"].includes(String(props.message.metadata?.event || "")) &&
+        isCallerSideCallEvent.value,
 );
 
 const isPinned = computed(
@@ -418,7 +478,9 @@ onUnmounted(() => {
             class="flex items-center gap-2 text-xs text-(--text-tertiary) bg-(--surface-tertiary)/50 border border-(--border-default) px-3 py-1 rounded-full shadow-sm"
             :class="{
                 'text-red-500! border-red-200! bg-red-50!':
-                    message.metadata?.event === 'missed',
+                    (message.metadata?.event === 'missed' ||
+                        message.metadata?.event === 'no_answer') &&
+                    !isCallerSideMissedEvent,
             }"
         >
             <template v-if="message.metadata?.system_type === 'call_event'">
@@ -444,11 +506,32 @@ onUnmounted(() => {
                         >({{ formatDuration(message.metadata.duration) }})</span
                     >
                 </span>
-                <span v-else-if="message.metadata.event === 'no_answer'">
-                    Missed {{ message.metadata.type }} call
-                    <span v-if="message.metadata.caller_name">
-                        from {{ message.metadata.caller_name }}</span
-                    >
+                <span
+                    v-else-if="
+                        message.metadata.event === 'missed' ||
+                        message.metadata.event === 'no_answer'
+                    "
+                >
+                    <template v-if="isCallerSideMissedEvent">
+                        No answer on your {{ message.metadata.type }} call
+                    </template>
+                    <template v-else>
+                        Missed {{ message.metadata.type }} call
+                        <span v-if="message.metadata.caller_name">
+                            from {{ message.metadata.caller_name }}</span
+                        >
+                    </template>
+                </span>
+                <span v-else-if="message.metadata.event === 'declined'">
+                    {{ message.metadata.type }} call declined
+                </span>
+                <span v-else-if="message.metadata.event === 'cancelled'">
+                    <template v-if="isCallerSideCallEvent">
+                        You cancelled the {{ message.metadata.type }} call
+                    </template>
+                    <template v-else>
+                        {{ message.metadata.type }} call cancelled
+                    </template>
                 </span>
 
                 <!-- Active Call Join Button -->
@@ -477,8 +560,9 @@ onUnmounted(() => {
                 <!-- Call Back button for missed calls -->
                 <button
                     v-if="
-                        message.metadata.event === 'missed' ||
-                        message.metadata.event === 'no_answer'
+                        !isCallerSideMissedEvent &&
+                        (message.metadata.event === 'missed' ||
+                            message.metadata.event === 'no_answer')
                     "
                     class="ml-2 px-2 py-0.5 rounded-full bg-green-500 hover:bg-green-600 text-white text-[10px] font-medium transition-colors flex items-center gap-1 cursor-pointer"
                     @click="
@@ -590,11 +674,23 @@ onUnmounted(() => {
                             class="relative bg-black/5 dark:bg-white/5 overflow-hidden group/img ring-1 ring-black/5 dark:ring-white/10"
                             :class="[getImageClass(index, images.length)]"
                         >
+                            <div
+                                v-if="!isImageThumbLoaded(img)"
+                                class="attachment-thumb-skeleton attachment-thumb-shimmer"
+                            />
                             <img
                                 :src="img.thumb_url || img.url"
                                 loading="lazy"
-                                class="w-full h-full object-cover cursor-pointer transition-transform duration-500 hover:scale-105"
+                                decoding="async"
+                                class="w-full h-full object-cover cursor-pointer transition-[transform,opacity] duration-500 hover:scale-105"
+                                :class="
+                                    isImageThumbLoaded(img)
+                                        ? 'opacity-100'
+                                        : 'opacity-0'
+                                "
                                 @click="handleImageClick(img)"
+                                @load="markImageThumbLoaded(img)"
+                                @error="markImageThumbLoaded(img)"
                             />
 
                             <!-- +N Overlay -->
@@ -622,12 +718,26 @@ onUnmounted(() => {
                                 @click="handleVideoClick(video)"
                             >
                                 <div class="relative aspect-video w-full overflow-hidden">
+                                    <div
+                                        v-if="!isVideoThumbLoaded(video)"
+                                        class="attachment-thumb-skeleton attachment-thumb-shimmer"
+                                    />
                                     <img
                                         :src="video.thumb_url || undefined"
                                         :alt="video.name"
                                         loading="lazy"
-                                        class="h-full w-full object-cover transition-transform duration-500 group-hover/video:scale-[1.03]"
-                                        @error="markVideoThumbFailed(video)"
+                                        decoding="async"
+                                        class="h-full w-full object-cover transition-[transform,opacity] duration-500 group-hover/video:scale-[1.03]"
+                                        :class="
+                                            isVideoThumbLoaded(video)
+                                                ? 'opacity-100'
+                                                : 'opacity-0'
+                                        "
+                                        @load="markVideoThumbLoaded(video)"
+                                        @error="
+                                            markVideoThumbLoaded(video);
+                                            markVideoThumbFailed(video);
+                                        "
                                     />
                                     <div
                                         class="absolute inset-0 bg-gradient-to-t from-black/72 via-black/25 to-black/10"
@@ -765,16 +875,24 @@ onUnmounted(() => {
                 <!-- GIF Display -->
                 <div
                     v-if="!isDeleted && giphy"
-                    class="mb-2 overflow-hidden rounded-xl bg-black/5 dark:bg-black/20 flex justify-center gif-wrapper"
+                    class="relative mb-2 overflow-hidden rounded-xl bg-black/5 dark:bg-black/20 flex justify-center gif-wrapper"
                 >
+                    <div
+                        v-if="!isGiphyLoaded"
+                        class="attachment-thumb-skeleton attachment-thumb-shimmer"
+                    />
                     <img
                         :src="giphy.url"
                         :alt="giphy.title"
                         :width="giphy.width"
                         :height="giphy.height"
                         loading="lazy"
-                        class="max-w-full h-auto object-contain rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                        decoding="async"
+                        class="max-w-full h-auto object-contain rounded-lg cursor-pointer hover:opacity-90 transition-opacity duration-300"
+                        :class="isGiphyLoaded ? 'opacity-100' : 'opacity-0'"
                         style="max-height: 400px"
+                        @load="isGiphyLoaded = true"
+                        @error="isGiphyLoaded = true"
                     />
                 </div>
 
@@ -1009,3 +1127,32 @@ onUnmounted(() => {
         </div>
     </div>
 </template>
+
+<style scoped>
+.attachment-thumb-skeleton {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: color-mix(in srgb, var(--surface-tertiary) 90%, transparent);
+}
+
+.attachment-thumb-shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+        90deg,
+        transparent,
+        color-mix(in srgb, var(--surface-elevated) 45%, transparent),
+        transparent
+    );
+    animation: mediaThumbShimmer 1.15s linear infinite;
+}
+
+@keyframes mediaThumbShimmer {
+    100% {
+        transform: translateX(100%);
+    }
+}
+</style>

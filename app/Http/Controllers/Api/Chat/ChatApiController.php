@@ -173,6 +173,8 @@ class ChatApiController extends Controller
                 ),
                 'ended' => $this->buildEndedCallPreview($metadata),
                 'missed', 'no_answer' => $this->buildMissedCallPreview($metadata, $callType),
+                'declined' => sprintf('%s call declined', ucfirst($callType)),
+                'cancelled' => $this->buildCancelledCallPreview($metadata, $callType),
                 default => 'Call update',
             };
         }
@@ -201,12 +203,32 @@ class ChatApiController extends Controller
      */
     protected function buildMissedCallPreview(array $metadata, string $callType): string
     {
+        $viewerPublicId = strtolower(trim((string) (Auth::user()?->public_id ?? '')));
+        $callerPublicId = strtolower(trim((string) ($metadata['caller_public_id'] ?? '')));
+        if ($viewerPublicId !== '' && $callerPublicId !== '' && $viewerPublicId === $callerPublicId) {
+            return sprintf('No answer on your %s call', $callType);
+        }
+
         $callerName = trim((string) ($metadata['caller_name'] ?? ''));
         if ($callerName === '') {
             return sprintf('Missed %s call', $callType);
         }
 
         return sprintf('Missed %s call from %s', $callType, $callerName);
+    }
+
+    /**
+     * @param  array<string, mixed>  $metadata
+     */
+    protected function buildCancelledCallPreview(array $metadata, string $callType): string
+    {
+        $viewerPublicId = strtolower(trim((string) (Auth::user()?->public_id ?? '')));
+        $callerPublicId = strtolower(trim((string) ($metadata['caller_public_id'] ?? '')));
+        if ($viewerPublicId !== '' && $callerPublicId !== '' && $viewerPublicId === $callerPublicId) {
+            return sprintf('You cancelled the %s call', $callType);
+        }
+
+        return sprintf('%s call cancelled', ucfirst($callType));
     }
 
     /**

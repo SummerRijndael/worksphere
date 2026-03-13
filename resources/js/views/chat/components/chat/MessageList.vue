@@ -13,6 +13,7 @@ interface Props {
     currentUserName: string;
     typingIndicator: string | null;
     isLoading: boolean;
+    isInitialLoading?: boolean;
     shouldShowDateDivider: (messages: Message[], index: number) => boolean;
     formatMessageDate: (date: string) => string;
 }
@@ -263,6 +264,14 @@ const jumpToLatest = () => {
     emit("scrollToBottom");
 };
 
+const skeletonRows = [
+    { mine: false, width: "42%" },
+    { mine: true, width: "34%" },
+    { mine: false, width: "58%" },
+    { mine: true, width: "40%" },
+    { mine: false, width: "48%" },
+];
+
 // Active Call Logic
 const activeCallInvite = computed(() => {
     if (!props.activeChat || props.activeChat.type !== "group") return null;
@@ -330,7 +339,26 @@ function joinCall(invite: {
             </div>
 
             <div
-                v-if="activeChat && messages.length"
+                v-if="activeChat && isInitialLoading && messages.length === 0"
+                class="chat-skeleton-wrap"
+                aria-hidden="true"
+            >
+                <div
+                    v-for="(row, idx) in skeletonRows"
+                    :key="`skeleton-${idx}`"
+                    class="chat-skeleton-row"
+                    :class="{ 'is-mine': row.mine }"
+                >
+                    <div class="chat-skeleton-avatar" />
+                    <div
+                        class="chat-skeleton-bubble shimmer"
+                        :style="{ width: row.width }"
+                    />
+                </div>
+            </div>
+
+            <div
+                v-else-if="activeChat && messages.length"
                 :key="activeChat.public_id || 'empty'"
                 class="space-y-0.5"
             >
@@ -408,7 +436,12 @@ function joinCall(invite: {
 
             <!-- Empty State: Has chat but no messages -->
             <div
-                v-else-if="activeChat && !isLoading && messages.length === 0"
+                v-else-if="
+                    activeChat &&
+                    !isLoading &&
+                    !isInitialLoading &&
+                    messages.length === 0
+                "
                 class="flex-1 flex items-center justify-center h-full min-h-[50vh]"
             >
                 <div class="text-(--text-primary) text-(--text-secondary)">
@@ -489,5 +522,67 @@ function joinCall(invite: {
 .overflow-y-auto::-webkit-scrollbar-thumb {
     background-color: rgba(255, 255, 255, 0.2);
     border-radius: 20px;
+}
+
+.chat-skeleton-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding-top: 6px;
+}
+
+.chat-skeleton-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+}
+
+.chat-skeleton-row.is-mine {
+    justify-content: flex-end;
+}
+
+.chat-skeleton-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--surface-tertiary) 92%, transparent);
+    flex: 0 0 28px;
+}
+
+.chat-skeleton-row.is-mine .chat-skeleton-avatar {
+    display: none;
+}
+
+.chat-skeleton-bubble {
+    height: 34px;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--surface-tertiary) 88%, transparent);
+    min-width: 100px;
+    max-width: 72%;
+}
+
+.shimmer {
+    position: relative;
+    overflow: hidden;
+}
+
+.shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+        90deg,
+        transparent,
+        color-mix(in srgb, var(--surface-elevated) 45%, transparent),
+        transparent
+    );
+    animation: chatShimmer 1.25s infinite;
+}
+
+@keyframes chatShimmer {
+    100% {
+        transform: translateX(100%);
+    }
 }
 </style>

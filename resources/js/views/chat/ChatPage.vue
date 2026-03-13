@@ -34,6 +34,7 @@ const {
     searchQuery,
     peopleSearchQuery,
     isLoadingMore,
+    isMessagesLoading,
 
     // Computed
     // Computed
@@ -402,6 +403,7 @@ const handleDeclineInvite = (id: any) => declineInvite(Number(id));
                     :current-user-name="currentUser?.name || ''"
                     :typing-indicator="typingIndicator"
                     :is-loading="isLoadingMore"
+                    :is-initial-loading="isMessagesLoading"
                     :should-show-date-divider="shouldShowDateDivider"
                     :format-message-date="formatMessageDate"
                     @scroll="handleScroll"

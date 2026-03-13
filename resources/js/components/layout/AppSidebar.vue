@@ -35,7 +35,6 @@ import {
     ChevronRight,
     LogOut,
     User,
-    MoreVertical,
     Ticket,
     CheckSquare,
     Users,
@@ -57,7 +56,7 @@ const route = useRoute();
 const router = useRouter();
 const navStore = useNavigationStore();
 const authStore = useAuthStore();
-const { currentStatus } = usePresence();
+const { currentStatus } = usePresence({ manageLifecycle: false });
 
 // Icon mapping
 const iconMap = {

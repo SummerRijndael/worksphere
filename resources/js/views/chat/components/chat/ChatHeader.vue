@@ -35,7 +35,7 @@ const authStore = useAuthStore();
 const themeStore = useThemeStore();
 const videoCallStore = useVideoCallStore();
 const avatar = useAvatar();
-const { presenceUsers } = usePresence();
+const { presenceUsers } = usePresence({ manageLifecycle: false });
 const videoCall = useVideoCall();
 
 const activeCall = computed(() => {

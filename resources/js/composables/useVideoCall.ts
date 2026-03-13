@@ -22,6 +22,7 @@ let callPopup: Window | null = null;
 let broadcastChannel: BroadcastChannel | null = null;
 let ringtoneAudio: HTMLAudioElement | null = null;
 let ringtoneTimeout: ReturnType<typeof setTimeout> | null = null;
+const CALL_RESPONSE_TIMEOUT_MS = 45000;
 
 // Pending signals (offer + ICE candidates) for incoming calls (received before user accepts)
 const pendingSignals = ref<any[]>([]);
@@ -36,7 +37,7 @@ export function useVideoCall() {
   // Popup Window Management
   // ============================================================================
 
-  function openCallPopup(callId: string) {
+  function openCallPopup(callId: string): boolean {
     const width = 1024;
     const height = 768;
     const left = window.screenX + window.outerWidth - width - 24;
@@ -53,11 +54,16 @@ export function useVideoCall() {
 
     if (!callPopup) {
       console.error('[VideoCall] ❌ Popup blocked by browser');
+      if (store.currentCall?.callId === callId) {
+        videoCallService
+          .endCall(store.currentCall.chatId, callId, 'failed')
+          .catch(() => {});
+      }
       toast.error('Popup Blocked', {
         description: 'Please allow popups for this site to make calls.',
       });
       cleanup();
-      return;
+      return false;
     }
 
     console.log('[VideoCall] Popup opened successfully');
@@ -70,6 +76,8 @@ export function useVideoCall() {
         handlePopupClosed();
       }
     }, 1000);
+
+    return true;
   }
 
   function handlePopupClosed() {
@@ -200,7 +208,10 @@ export function useVideoCall() {
       sessionStorage.setItem('callData', JSON.stringify(dataToStore));
 
       ensureBroadcastChannel();
-      openCallPopup(call_id);
+      const popupOpened = openCallPopup(call_id);
+      if (!popupOpened) return;
+      playRingtone('outgoing');
+      store.setState('ringing');
 
     } catch (err) {
       console.error('[VideoCall] ❌ Failed to start call:', err);
@@ -292,12 +303,12 @@ export function useVideoCall() {
         return;
     }
 
-    // Auto-decline after 45 seconds
+    // Auto-decline incoming call if unanswered.
     ringtoneTimeout = setTimeout(() => {
       if (store.callState === 'ringing') {
         timeoutCall();
       }
-    }, 45000);
+    }, CALL_RESPONSE_TIMEOUT_MS);
   }
 
   function joinActiveCall(chatId: string, callId: string, callType: CallType) {

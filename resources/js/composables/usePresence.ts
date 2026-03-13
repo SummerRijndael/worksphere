@@ -55,16 +55,19 @@ interface PresenceInstance {
     echoDisconnectedHandler: (() => void) | null;
     heartbeatRetries: number;
     isHeartbeatPaused: boolean;
+    initialized: boolean;
+    subscribed: boolean;
 }
 
 // Active instances map
 const activeInstances = new Map<symbol, PresenceInstance>();
+let lifecycleOwnerInstanceId: symbol | null = null;
 
 /**
  * Composable for managing user presence with proper cleanup and AbortController support.
  */
 export function usePresence(options: UsePresenceOptions = {}) {
-    const { manageLifecycle = true } = options;
+    const { manageLifecycle = false } = options;
     const authStore = useAuthStore();
 
     // Create unique instance ID
@@ -83,9 +86,21 @@ export function usePresence(options: UsePresenceOptions = {}) {
         echoDisconnectedHandler: null,
         heartbeatRetries: 0,
         isHeartbeatPaused: false,
+        initialized: false,
+        subscribed: false,
     };
 
     activeInstances.set(instanceId, instance);
+
+    let isLifecycleOwner = false;
+    if (manageLifecycle && lifecycleOwnerInstanceId === null) {
+        lifecycleOwnerInstanceId = instanceId;
+        isLifecycleOwner = true;
+    } else if (manageLifecycle) {
+        console.warn(
+            '[Presence] Lifecycle already has an owner. This instance will run in shared read-only mode.',
+        );
+    }
 
     // Computed values
     const isAuthenticated: ComputedRef<boolean> = computed(() => !!authStore.user);
@@ -287,8 +302,14 @@ export function usePresence(options: UsePresenceOptions = {}) {
     /**
      * Subscribe to presence channels.
      */
-    function subscribeToPresence(): void {
+    function subscribeToPresence(force = false): void {
+        if (!isLifecycleOwner) return;
         if (!isAuthenticated.value || !userPublicId.value || !isEchoAvailable()) return;
+        if (instance.subscribed && !force) return;
+
+        if (force) {
+            unsubscribeFromPresence();
+        }
 
         echo.private(`presence.${userPublicId.value}`)
             .listen('.presence.changed', (data: any) => {
@@ -324,21 +345,31 @@ export function usePresence(options: UsePresenceOptions = {}) {
             .listen('.presence.changed', (data: any) => {
                 updateUserPresence(data, data.status);
             });
+
+        instance.subscribed = true;
     }
 
     /**
      * Unsubscribe from presence channels.
      */
     function unsubscribeFromPresence(): void {
-        if (!isEchoAvailable()) return;
+        if (!isLifecycleOwner) return;
+        if (!isEchoAvailable()) {
+            instance.subscribed = false;
+            return;
+        }
         if (userPublicId.value) echo.leave(`presence.${userPublicId.value}`);
         echo.leave('online-users');
+        instance.subscribed = false;
     }
 
     /**
      * Initialize presence system.
      */
     function initialize(): void {
+        if (!isLifecycleOwner || instance.initialized) return;
+        instance.initialized = true;
+
         // 1. Visibility Handler
         instance.visibilityHandler = () => {
             if (document.visibilityState === 'visible') {
@@ -374,12 +405,13 @@ export function usePresence(options: UsePresenceOptions = {}) {
             instance.heartbeatRetries = 0;
             instance.isHeartbeatPaused = false;
             startHeartbeat();
-            subscribeToPresence();
+            subscribeToPresence(true);
             refreshData();
         };
         instance.echoDisconnectedHandler = () => {
             console.debug('[Presence] WebSocket Disconnected - Pausing Heartbeat');
             stopHeartbeat();
+            unsubscribeFromPresence();
         };
         window.addEventListener('echo:connected', instance.echoConnectedHandler);
         window.addEventListener('echo:disconnected', instance.echoDisconnectedHandler);
@@ -389,7 +421,7 @@ export function usePresence(options: UsePresenceOptions = {}) {
         if (isAuthenticated.value) {
             fetchMyPresence();
             startHeartbeat();
-            subscribeToPresence();
+            subscribeToPresence(true);
         }
     }
 
@@ -397,6 +429,11 @@ export function usePresence(options: UsePresenceOptions = {}) {
      * Cleanup listeners and timers.
      */
     function cleanup(): void {
+        if (!isLifecycleOwner) {
+            activeInstances.delete(instanceId);
+            return;
+        }
+
         instance.abortController.abort();
         stopHeartbeat();
         unsubscribeFromPresence();
@@ -410,6 +447,11 @@ export function usePresence(options: UsePresenceOptions = {}) {
         }
         if (instance.echoConnectedHandler) window.removeEventListener('echo:connected', instance.echoConnectedHandler);
         if (instance.echoDisconnectedHandler) window.removeEventListener('echo:disconnected', instance.echoDisconnectedHandler);
+
+        instance.initialized = false;
+        if (lifecycleOwnerInstanceId === instanceId) {
+            lifecycleOwnerInstanceId = null;
+        }
 
         activeInstances.delete(instanceId);
     }
@@ -495,43 +537,49 @@ export function usePresence(options: UsePresenceOptions = {}) {
         }
     }
 
-    // Watch for auth changes
-    watch(isAuthenticated, (authenticated) => {
-        if (authenticated) {
-            initialize();
-        } else {
-            cleanup();
-            currentStatus.value = 'offline';
-        }
-    });
-
-    // 2-way Sync between currentStatus and authStore.user.presence
-    // 1. When local currentStatus changes, update store
-    watch(currentStatus, (status) => {
-        if (authStore.user) {
-            console.log('[Presence] Syncing status to authStore:', status);
-            authStore.user.presence = status;
-        }
-    });
-
-    // 2. When user loads, sync current status to it
-    watch(() => authStore.user, (user) => {
-        if (user) {
-            // If we have a local status that isn't offline, prefer it? 
-            // Or prefer what the user object says?
-            // Usually, we want the local session to drive "online" status.
-            if (currentStatus.value !== 'offline') {
-                console.log('[Presence] Syncing status to new user object:', currentStatus.value);
-                user.presence = currentStatus.value === 'invisible' ? 'offline' : currentStatus.value;
-            } else if (user.presence) {
-                // If local is offline (default?) but user has status, probably adopt it
-                console.log('[Presence] Adopting status from user object:', user.presence);
-                currentStatus.value = user.presence;
+    if (isLifecycleOwner) {
+        // Watch for auth changes
+        watch(isAuthenticated, (authenticated) => {
+            if (authenticated) {
+                if (!instance.initialized) {
+                    initialize();
+                } else {
+                    fetchMyPresence();
+                    startHeartbeat();
+                    subscribeToPresence(true);
+                }
+            } else {
+                stopHeartbeat();
+                unsubscribeFromPresence();
+                currentStatus.value = 'offline';
             }
-        }
-    }, { immediate: true });
+        });
 
-    if (manageLifecycle) {
+        // 2-way Sync between currentStatus and authStore.user.presence
+        // 1. When local currentStatus changes, update store
+        watch(currentStatus, (status) => {
+            if (authStore.user) {
+                console.log('[Presence] Syncing status to authStore:', status);
+                authStore.user.presence = status;
+            }
+        });
+
+        // 2. When user loads, sync current status to it
+        watch(() => authStore.user, (user) => {
+            if (user) {
+                // If we have a local status that isn't offline, prefer it?
+                // Usually, we want the local session to drive "online" status.
+                if (currentStatus.value !== 'offline') {
+                    console.log('[Presence] Syncing status to new user object:', currentStatus.value);
+                    user.presence = currentStatus.value === 'invisible' ? 'offline' : currentStatus.value;
+                } else if (user.presence) {
+                    // If local is offline (default?) but user has status, probably adopt it
+                    console.log('[Presence] Adopting status from user object:', user.presence);
+                    currentStatus.value = user.presence;
+                }
+            }
+        }, { immediate: true });
+
         onMounted(() => {
             initialize();
         });

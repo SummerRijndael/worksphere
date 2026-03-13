@@ -151,11 +151,45 @@ const messagesRef = ref<HTMLElement | null>(null);
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const emojiMountRef = ref<HTMLElement | null>(null);
+const minichatWindowRef = ref<HTMLElement | null>(null);
 
 const { attach: attachMention } = useMention(
     textareaRef,
     computed(() => props.window.chat.public_id),
     {
+        menuContainer: () => minichatWindowRef.value,
+        onMenuPosition: (menu, textarea) => {
+            const windowEl = minichatWindowRef.value;
+            if (!windowEl) return;
+
+            const windowRect = windowEl.getBoundingClientRect();
+            const textareaRect = textarea.getBoundingClientRect();
+            const spacing = 8;
+
+            const menuWidth = menu.offsetWidth || 280;
+            const menuHeight = menu.offsetHeight || 140;
+
+            const desiredLeft = textareaRect.left - windowRect.left;
+            const minLeft = 8;
+            const maxLeft = Math.max(
+                minLeft,
+                windowRect.width - menuWidth - 8,
+            );
+            const left = Math.min(maxLeft, Math.max(minLeft, desiredLeft));
+
+            const desiredTop =
+                textareaRect.top - windowRect.top - menuHeight - spacing;
+            const minTop = 8;
+            const maxTop = Math.max(
+                minTop,
+                windowRect.height - menuHeight - 8,
+            );
+            const top = Math.min(maxTop, Math.max(minTop, desiredTop));
+
+            menu.style.position = "absolute";
+            menu.style.left = `${left}px`;
+            menu.style.top = `${top}px`;
+        },
         onSelect: (_item: any) => {
             nextTick(() => {
                 if (textareaRef.value) {
@@ -168,6 +202,7 @@ const { attach: attachMention } = useMention(
 );
 const isSending = ref(false);
 const isLoadingMore = ref(false);
+const isInitialLoading = ref(false);
 const showScrollButton = ref(false);
 const isJumping = ref(false);
 const isDragging = ref(false);
@@ -514,7 +549,12 @@ watch(typingIndicator, (newVal) => {
 // Fetch messages on mount
 onMounted(async () => {
     if (messages.value.length === 0) {
-        await chatStore.fetchMessages(props.window.chatId);
+        isInitialLoading.value = true;
+        try {
+            await chatStore.fetchMessages(props.window.chatId);
+        } finally {
+            isInitialLoading.value = false;
+        }
     }
     await nextTick();
     scrollToBottom();
@@ -1152,6 +1192,7 @@ function isOwnMessage(msg: Message): boolean {
 
 <template>
     <div
+        ref="minichatWindowRef"
         class="minichat-window"
         :class="[
             {
@@ -1366,6 +1407,27 @@ function isOwnMessage(msg: Message): boolean {
                 </div>
             </TransitionGroup>
 
+            <div
+                v-if="isInitialLoading && messages.length === 0"
+                class="minichat-skeleton-wrap"
+                aria-hidden="true"
+            >
+                <div class="minichat-skeleton-row">
+                    <div class="minichat-skeleton-avatar"></div>
+                    <div class="minichat-skeleton-bubble shimmer" style="width: 48%"></div>
+                </div>
+                <div class="minichat-skeleton-row is-own">
+                    <div class="minichat-skeleton-bubble shimmer" style="width: 36%"></div>
+                </div>
+                <div class="minichat-skeleton-row">
+                    <div class="minichat-skeleton-avatar"></div>
+                    <div class="minichat-skeleton-bubble shimmer" style="width: 62%"></div>
+                </div>
+                <div class="minichat-skeleton-row is-own">
+                    <div class="minichat-skeleton-bubble shimmer" style="width: 40%"></div>
+                </div>
+            </div>
+
             <!-- System Message: Active Call Invite -->
             <div
                 v-if="activeCallInvite"
@@ -1398,7 +1460,10 @@ function isOwnMessage(msg: Message): boolean {
                 </div>
             </div>
 
-            <div v-if="messages.length === 0" class="minichat-window-empty">
+            <div
+                v-else-if="!isInitialLoading && messages.length === 0"
+                class="minichat-window-empty"
+            >
                 <Icon name="MessageSquare" :size="24" />
                 <p>No messages yet</p>
             </div>
@@ -1685,7 +1750,7 @@ function isOwnMessage(msg: Message): boolean {
 <style scoped>
 .minichat-window {
     position: fixed;
-    width: 360px;
+    width: 335px;
     height: 500px;
     background: var(--surface-elevated);
     border: 1px solid var(--border-default);
@@ -1802,6 +1867,64 @@ function isOwnMessage(msg: Message): boolean {
 
 .minichat-window-empty p {
     font-size: 13px;
+}
+
+.minichat-skeleton-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-top: 2px;
+}
+
+.minichat-skeleton-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+}
+
+.minichat-skeleton-row.is-own {
+    justify-content: flex-end;
+}
+
+.minichat-skeleton-avatar {
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--surface-tertiary) 90%, transparent);
+    flex: 0 0 22px;
+}
+
+.minichat-skeleton-bubble {
+    height: 30px;
+    border-radius: 12px;
+    min-width: 92px;
+    max-width: 76%;
+    background: color-mix(in srgb, var(--surface-tertiary) 88%, transparent);
+}
+
+.shimmer {
+    position: relative;
+    overflow: hidden;
+}
+
+.shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+        90deg,
+        transparent,
+        color-mix(in srgb, var(--surface-elevated) 45%, transparent),
+        transparent
+    );
+    animation: chatShimmer 1.25s infinite;
+}
+
+@keyframes chatShimmer {
+    100% {
+        transform: translateX(100%);
+    }
 }
 
 /* Messages */
