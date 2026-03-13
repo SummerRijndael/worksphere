@@ -46,6 +46,7 @@ const {
     invites,
     isLoading,
     replyingTo,
+    editingMessage,
     pendingFiles,
     canLoadMore,
     typingIndicator,
@@ -67,6 +68,8 @@ const {
 
     setReplyTo,
     cancelReply,
+    startEdit,
+    cancelEdit,
     addFiles,
     removeFile,
 
@@ -211,6 +214,26 @@ const handleTogglePinMessage = async (message: any) => {
         }
     } catch (error: any) {
         toast.error("Pin update failed", error?.message || "Unable to update pin state.");
+    }
+};
+
+const handleStartEditMessage = (message: any) => {
+    if (!message?.id) return;
+    startEdit(message);
+};
+
+const handleDeleteMessage = async (message: any, scope: "me" | "all") => {
+    if (!activeChat.value || !message?.id) return;
+
+    if (scope === "all") {
+        const confirmed = window.confirm("Delete this message for everyone?");
+        if (!confirmed) return;
+    }
+
+    try {
+        await store.deleteMessage(activeChat.value.public_id, String(message.id), scope);
+    } catch (error: any) {
+        toast.error("Delete failed", error?.message || "Unable to update this message.");
     }
 };
 
@@ -388,6 +411,8 @@ const handleDeclineInvite = (id: any) => declineInvite(Number(id));
                     @retry="handleRetryMessage"
                     @react="handleReactMessage"
                     @toggle-pin="handleTogglePinMessage"
+                    @start-edit="handleStartEditMessage"
+                    @delete="handleDeleteMessage"
                 />
 
                 <!-- Typing Indicator (Fixed above composer) -->
@@ -419,11 +444,13 @@ const handleDeclineInvite = (id: any) => declineInvite(Number(id));
                     v-model="messageInput"
                     :sending="false"
                     :reply-to="replyingTo"
+                    :edit-to="editingMessage"
                     :pending-files="pendingFiles"
                     :is-mobile="isMobile"
                     :chat-id="activeChat.public_id"
                     @send="sendMessage"
                     @cancel-reply="cancelReply"
+                    @cancel-edit="cancelEdit"
                     @add-files="addFiles"
                     @remove-file="removeFile"
                     @typing="handleInputChange"

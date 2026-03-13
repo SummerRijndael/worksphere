@@ -6,6 +6,7 @@ import { useAvatar } from './useAvatar';
 import { useToast } from './useToast';
 import { chatService } from '@/services/chat.service';
 import type { Chat, Message, MediaItem } from '@/types/models/chat';
+import { buildUploadMediaMetadata } from "@/utils/mediaDuration";
 
 interface UseChatOptions {
   /**
@@ -99,6 +100,7 @@ export function useChat(options: UseChatOptions = {}) {
   const isMessagesLoading = computed(() => store.messagesLoading);
   const replyingTo = computed(() => store.replyingToMessage);
   const pendingFiles = computed(() => store.pendingFiles);
+  const editingMessage = ref<Message | null>(null);
 
   const canLoadMore = computed(() => {
     if (!store.activeChatPublicId) return false;
@@ -186,6 +188,7 @@ export function useChat(options: UseChatOptions = {}) {
     const content = contentArg ?? messageInput.value.trim();
     const pendingFiles = store.pendingFiles;
     const replyTo = replyToArg ?? store.replyingToMessage?.id;
+    const editing = editingMessage.value;
 
     console.log('[useChat] sendMessage called', { 
         content: content.substring(0, 50), 
@@ -205,11 +208,40 @@ export function useChat(options: UseChatOptions = {}) {
     }
 
     try {
+      if (editing) {
+        const next = content.trim();
+        const current = String(editing.content || "").trim();
+
+        if (!next) {
+          toast.error("Edit failed", "Message cannot be empty.");
+          if (!contentArg) {
+            messageInput.value = current;
+          }
+          return;
+        }
+
+        if (next === current) {
+          cancelEdit();
+          return;
+        }
+
+        await store.editMessage(store.activeChatPublicId, String(editing.id), next);
+        cancelEdit();
+        return;
+      }
+
       if (pendingFiles.length > 0) {
         // Files + optional content
         console.log('[useChat] Uploading files...', { count: pendingFiles.length });
         const files = pendingFiles.map(p => p.file);
-        await store.uploadMessage(store.activeChatPublicId, files, content, replyTo);
+        const mediaMetadata = await buildUploadMediaMetadata(files);
+        await store.uploadMessage(
+          store.activeChatPublicId,
+          files,
+          content,
+          replyTo,
+          mediaMetadata,
+        );
       } else {
         // Text only
         console.log('[useChat] Sending text...');
@@ -253,8 +285,14 @@ export function useChat(options: UseChatOptions = {}) {
     }
   }
 
-  async function sendRecordedAudio(file: File) {
+  async function sendRecordedAudio(
+    payload: File | { file: File; durationSeconds?: number | null },
+  ) {
     if (!store.activeChatPublicId || isSending.value) return;
+
+    const file = payload instanceof File ? payload : payload.file;
+    const durationSeconds =
+      payload instanceof File ? null : payload.durationSeconds ?? null;
 
     isSending.value = true;
     try {
@@ -263,6 +301,12 @@ export function useChat(options: UseChatOptions = {}) {
         [file],
         '',
         store.replyingToMessage?.id,
+        [
+          {
+            duration_seconds:
+              typeof durationSeconds === 'number' ? durationSeconds : null,
+          },
+        ],
       );
       store.setReplyingTo(null);
       scrollToBottom();
@@ -344,11 +388,34 @@ export function useChat(options: UseChatOptions = {}) {
   // ============================================================================
 
   function setReplyTo(message: Message | null) {
+    if (message) {
+      if (editingMessage.value) {
+        messageInput.value = '';
+      }
+      editingMessage.value = null;
+    }
     store.setReplyingTo(message);
   }
 
   function cancelReply() {
     store.setReplyingTo(null);
+  }
+
+  function startEdit(message: Message | null) {
+    editingMessage.value = message;
+    store.setReplyingTo(null);
+
+    if (!message) {
+      return;
+    }
+
+    store.clearPendingFiles();
+    messageInput.value = String(message.content || "");
+  }
+
+  function cancelEdit() {
+    editingMessage.value = null;
+    messageInput.value = "";
   }
 
   // ============================================================================
@@ -360,6 +427,11 @@ export function useChat(options: UseChatOptions = {}) {
   const MAX_FILES = 10;
 
   function addFiles(files: FileList | File[]) {
+    if (editingMessage.value) {
+      toast.error('Edit mode', 'Finish editing before attaching files.');
+      return;
+    }
+
     const currentCount = store.pendingFiles.length;
     // Fix: access f.file.size instead of f.size
     const currentTotalSize = store.pendingFiles.reduce((acc, f) => acc + (f.file?.size || 0), 0);
@@ -626,6 +698,13 @@ export function useChat(options: UseChatOptions = {}) {
     },
   );
 
+  watch(
+    () => store.activeChatPublicId,
+    () => {
+      editingMessage.value = null;
+    },
+  );
+
   return {
     // State
     messageInput,
@@ -648,6 +727,7 @@ export function useChat(options: UseChatOptions = {}) {
     isLoading,
     isMessagesLoading,
     replyingTo,
+    editingMessage,
     pendingFiles,
     canLoadMore,
     typingIndicator,
@@ -666,6 +746,8 @@ export function useChat(options: UseChatOptions = {}) {
     // Reply
     setReplyTo,
     cancelReply,
+    startEdit,
+    cancelEdit,
 
     // Files
     addFiles,

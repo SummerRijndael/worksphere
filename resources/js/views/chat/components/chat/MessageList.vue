@@ -26,6 +26,8 @@ const emit = defineEmits<{
     retry: [message: Message];
     react: [message: Message, reaction: string];
     togglePin: [message: Message];
+    startEdit: [message: Message];
+    delete: [message: Message, scope: "me" | "all"];
 }>();
 
 const pinnedMessages = computed(() =>
@@ -366,6 +368,8 @@ function joinCall(invite: {
                         @retry="emit('retry', msg)"
                         @react="(reaction) => emit('react', msg, reaction)"
                         @toggle-pin="emit('togglePin', msg)"
+                        @start-edit="emit('startEdit', msg)"
+                        @delete="(scope) => emit('delete', msg, scope)"
                         @callback="handleCallback"
                         @join-call="joinCall"
                     />

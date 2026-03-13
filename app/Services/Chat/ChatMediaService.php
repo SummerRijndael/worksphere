@@ -168,11 +168,11 @@ class ChatMediaService
      * @throws FileDoesNotExist
      * @throws FileIsTooBig
      */
-    public function attachFilesToMessage(ChatMessage $message, array $files): array
+    public function attachFilesToMessage(ChatMessage $message, array $files, array $fileMetadata = []): array
     {
         $mediaIds = [];
 
-        foreach ($files as $file) {
+        foreach ($files as $index => $file) {
             if (! $file instanceof UploadedFile) {
                 continue;
             }
@@ -193,22 +193,45 @@ class ChatMediaService
             $detectedMime = $serverMimeType !== '' ? $serverMimeType : $clientMimeType;
             $isVoiceClip = $this->isVoiceClipUpload($originalFilename, $clientMimeType, $serverMimeType);
             $mediaKind = $this->inferMediaKind($detectedMime, $isVoiceClip);
+            $entryMetadata = is_array($fileMetadata[$index] ?? null) ? $fileMetadata[$index] : [];
+            $durationSeconds = $this->normalizeDurationSeconds($entryMetadata['duration_seconds'] ?? null);
+
+            if (($entryMetadata['is_voice_clip'] ?? false) === true) {
+                $isVoiceClip = true;
+                $mediaKind = 'audio';
+            }
+
+            $customProperties = [
+                'original_filename' => $originalFilename,
+                'uploaded_by' => $message->user_id,
+                'media_kind' => $mediaKind,
+                'is_voice_clip' => $isVoiceClip,
+            ];
+            if ($durationSeconds !== null) {
+                $customProperties['duration_seconds'] = $durationSeconds;
+            }
 
             // Store original filename and media classification for rendering.
             $media = $message->addMedia($file)
                 ->usingFileName($fileName)
-                ->withCustomProperties([
-                    'original_filename' => $originalFilename,
-                    'uploaded_by' => $message->user_id,
-                    'media_kind' => $mediaKind,
-                    'is_voice_clip' => $isVoiceClip,
-                ])
+                ->withCustomProperties($customProperties)
                 ->toMediaCollection('chat_attachments');
 
             $mediaIds[] = $media->id;
         }
 
         return $mediaIds;
+    }
+
+    protected function normalizeDurationSeconds(mixed $value): ?int
+    {
+        if (! is_numeric($value)) {
+            return null;
+        }
+
+        $seconds = (int) round((float) $value);
+
+        return $seconds > 0 ? $seconds : null;
     }
 
     protected function isVoiceClipUpload(string $filename, string $clientMimeType, string $serverMimeType): bool

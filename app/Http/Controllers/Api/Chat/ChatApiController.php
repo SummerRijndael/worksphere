@@ -12,6 +12,7 @@ use App\Services\Chat\ChatEngine;
 use App\Services\Chat\ChatMediaService;
 use App\Services\Chat\ChatTransport;
 use App\Services\Chat\PresenceService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -104,7 +105,8 @@ class ChatApiController extends Controller
      */
     protected function mapChat(Chat $chat, array $activeIds = []): array
     {
-        $last = $chat->lastMessage;
+        $viewer = Auth::user();
+        $last = $this->resolveVisibleLastMessage($chat, $viewer);
         $activeLookup = collect($activeIds)->mapWithKeys(fn ($id) => [$id => true]);
         $presence = app(PresenceService::class);
 
@@ -146,12 +148,16 @@ class ChatApiController extends Controller
 
     protected function buildLastMessagePreview(ChatMessage $message): string
     {
+        $metadata = is_array($message->metadata) ? $message->metadata : [];
+        if (($metadata['is_deleted'] ?? false) === true) {
+            return 'Message deleted';
+        }
+
         $content = trim(preg_replace('/\s+/', ' ', (string) ($message->content ?? '')) ?? '');
         if ($content !== '') {
             return Str::limit($content, 120, '...');
         }
 
-        $metadata = is_array($message->metadata) ? $message->metadata : [];
         if (
             $message->type === 'system'
             && ($metadata['system_type'] ?? null) === 'call_event'
@@ -339,9 +345,10 @@ class ChatApiController extends Controller
                 ->value('id');
 
             if ($oldestInternalId) {
-                $hasMore = ChatMessage::where('chat_id', $chat->id)
-                    ->where('id', '<', $oldestInternalId)
-                    ->exists();
+                $hasMoreQuery = ChatMessage::query()
+                    ->where('chat_id', $chat->id)
+                    ->where('id', '<', $oldestInternalId);
+                $hasMore = $this->applyViewerVisibilityScope($hasMoreQuery, Auth::user())->exists();
             }
         }
 
@@ -376,6 +383,21 @@ class ChatApiController extends Controller
             ->where('chat_id', $chat->id)
             ->take(50)
             ->get();
+        $viewerPublicId = strtolower(trim((string) Auth::user()?->public_id));
+        if ($viewerPublicId !== '') {
+            $results = $results->filter(function (ChatMessage $message) use ($viewerPublicId) {
+                $metadata = is_array($message->metadata) ? $message->metadata : [];
+                $hiddenFor = is_array($metadata['hidden_for_user_public_ids'] ?? null)
+                    ? $metadata['hidden_for_user_public_ids']
+                    : [];
+                $normalized = array_values(array_unique(array_filter(
+                    array_map(static fn ($id) => strtolower((string) $id), $hiddenFor),
+                    static fn (string $id) => $id !== ''
+                )));
+
+                return ! in_array($viewerPublicId, $normalized, true);
+            })->values();
+        }
 
         $data = $results->map(fn (ChatMessage $m) => [
             'id' => $m->public_id,
@@ -419,31 +441,35 @@ class ChatApiController extends Controller
     {
         abort_if(! $chat->participants->contains(Auth::id()), 404);
 
-        $target = ChatMessage::where('public_id', $messagePublicId)
-            ->where('chat_id', $chat->id)
-            ->first();
+        $targetQuery = ChatMessage::query()
+            ->where('public_id', $messagePublicId)
+            ->where('chat_id', $chat->id);
+        $target = $this->applyViewerVisibilityScope($targetQuery, Auth::user())->first();
 
         if (! $target) {
             return response()->json(['message' => 'Message not found.'], 404);
         }
 
         // Get 15 messages before
-        $before = ChatMessage::where('chat_id', $chat->id)
+        $beforeQuery = ChatMessage::query()
+            ->where('chat_id', $chat->id)
             ->where('id', '<', $target->id)
             ->with(['user:id,name,public_id', 'replyTo.user:id,name,public_id', 'media'])
             ->orderByDesc('id')
-            ->take(15)
+            ->take(15);
+        $before = $this->applyViewerVisibilityScope($beforeQuery, Auth::user())
             ->get()
             ->reverse()
             ->values();
 
         // Get 15 messages after
-        $after = ChatMessage::where('chat_id', $chat->id)
+        $afterQuery = ChatMessage::query()
+            ->where('chat_id', $chat->id)
             ->where('id', '>', $target->id)
             ->with(['user:id,name,public_id', 'replyTo.user:id,name,public_id', 'media'])
             ->orderBy('id')
-            ->take(15)
-            ->get();
+            ->take(15);
+        $after = $this->applyViewerVisibilityScope($afterQuery, Auth::user())->get();
 
         // Load target with relations
         $target->load(['user:id,name,public_id', 'replyTo.user:id,name,public_id', 'media']);
@@ -457,12 +483,16 @@ class ChatApiController extends Controller
         return response()->json([
             'data' => $formatted,
             'target_id' => $messagePublicId,
-            'has_more_before' => ChatMessage::where('chat_id', $chat->id)
+            'has_more_before' => $this->applyViewerVisibilityScope(
+                ChatMessage::query()->where('chat_id', $chat->id)
                 ->where('id', '<', $before->first()?->id ?? $target->id)
-                ->exists(),
-            'has_more_after' => ChatMessage::where('chat_id', $chat->id)
+                , Auth::user()
+            )->exists(),
+            'has_more_after' => $this->applyViewerVisibilityScope(
+                ChatMessage::query()->where('chat_id', $chat->id)
                 ->where('id', '>', $after->last()?->id ?? $target->id)
-                ->exists(),
+                , Auth::user()
+            )->exists(),
         ]);
     }
 
@@ -524,6 +554,14 @@ class ChatApiController extends Controller
             $files = [$files];
         }
 
+        $mediaMetadata = $request->input('media_metadata', []);
+        if (is_string($mediaMetadata)) {
+            $decoded = json_decode($mediaMetadata, true);
+            $mediaMetadata = is_array($decoded) ? $decoded : [];
+        } elseif (! is_array($mediaMetadata)) {
+            $mediaMetadata = [];
+        }
+
         $replyPublicId = $request->filled('reply_to') ? (string) $request->input('reply_to') : null;
         $replyId = null;
 
@@ -548,10 +586,215 @@ class ChatApiController extends Controller
         }
 
         $msg = ChatEngine::for($chat, Auth::user())
-            ->send((string) $request->input('content', ''), $files, $replyId);
+            ->send((string) $request->input('content', ''), $files, $replyId, null, $mediaMetadata);
 
         return response()->json([
             'data' => ChatEngine::normalizeOne($msg),
+        ]);
+    }
+
+    /**
+     * Edit an existing message authored by the current user.
+     */
+    public function updateMessage(Request $request, Chat $chat, string $messagePublicId): JsonResponse
+    {
+        abort_if(! $chat->participants->contains(Auth::id()), 404);
+
+        $message = $this->resolveChatMessage($chat, $messagePublicId);
+        if (! $message) {
+            return response()->json(['message' => 'Message not found.'], 404);
+        }
+
+        $actor = Auth::user();
+        $isOwner = (int) $message->user_id === (int) $actor->id
+            || strtolower((string) ($message->user?->public_id ?? '')) === strtolower((string) $actor->public_id);
+        if (! $isOwner) {
+            return response()->json(['message' => 'Only the original sender can edit this message.'], 403);
+        }
+        if ($message->type !== 'user') {
+            return response()->json(['message' => 'Only user messages can be edited.'], 422);
+        }
+
+        $validated = $request->validate([
+            'content' => ['required', 'string', 'max:'.ChatEngine::MAX_MESSAGE_LENGTH],
+        ]);
+        $content = trim((string) $validated['content']);
+        if ($content === '') {
+            return response()->json(['message' => 'Message body cannot be empty.'], 422);
+        }
+
+        $metadata = is_array($message->metadata) ? $message->metadata : [];
+        if (($metadata['is_deleted'] ?? false) === true) {
+            return response()->json(['message' => 'Deleted messages cannot be edited.'], 422);
+        }
+
+        if ($content === (string) ($message->content ?? '')) {
+            return response()->json([
+                'data' => ChatEngine::normalizeOne($message->fresh([
+                    'user:id,public_id,name',
+                    'media',
+                    'replyTo.user:id,public_id,name',
+                ])),
+            ]);
+        }
+
+        $history = is_array($metadata['edit_history'] ?? null) ? $metadata['edit_history'] : [];
+        $history[] = [
+            'previous_content' => (string) ($message->content ?? ''),
+            'edited_at' => now()->toIso8601String(),
+            'edited_by_user_public_id' => (string) $actor->public_id,
+            'edited_by_user_name' => (string) $actor->name,
+        ];
+        $metadata['edit_history'] = array_values(array_slice($history, -100));
+        $metadata['is_edited'] = true;
+        $metadata['edited_at'] = now()->toIso8601String();
+        $metadata['edited_by_user_public_id'] = (string) $actor->public_id;
+        $metadata['edited_by_user_name'] = (string) $actor->name;
+        $metadata['edit_count'] = count($metadata['edit_history']);
+
+        $message->forceFill([
+            'content' => $content,
+            'metadata' => $metadata,
+        ])->save();
+
+        $message = $message->fresh([
+            'user:id,public_id,name',
+            'media',
+            'replyTo.user:id,public_id,name',
+            'chat',
+        ]);
+
+        \App\Services\Chat\ChatEvents::messageUpdated($message, $chat->type ?? 'dm');
+
+        return response()->json([
+            'data' => ChatEngine::normalizeOne($message),
+        ]);
+    }
+
+    /**
+     * Delete/unsend message. Scope:
+     * - `all`: soft-delete message for everyone (content/attachments removed)
+     * - `me`: hide message only for current user
+     */
+    public function deleteMessage(Request $request, Chat $chat, string $messagePublicId): JsonResponse
+    {
+        abort_if(! $chat->participants->contains(Auth::id()), 404);
+
+        $message = $this->resolveChatMessage($chat, $messagePublicId);
+        if (! $message) {
+            return response()->json(['message' => 'Message not found.'], 404);
+        }
+
+        $actor = Auth::user();
+        $validated = $request->validate([
+            'scope' => 'nullable|string|in:me,all',
+        ]);
+        $scope = (string) ($validated['scope'] ?? 'all');
+
+        $metadata = is_array($message->metadata) ? $message->metadata : [];
+        $actorPublicId = strtolower((string) $actor->public_id);
+
+        if ($scope === 'me') {
+            $hiddenFor = is_array($metadata['hidden_for_user_public_ids'] ?? null)
+                ? $metadata['hidden_for_user_public_ids']
+                : [];
+            $hiddenFor = array_values(array_unique(array_filter(
+                array_map(static fn ($id) => strtolower((string) $id), $hiddenFor),
+                static fn (string $id) => $id !== ''
+            )));
+
+            if ($actorPublicId !== '' && ! in_array($actorPublicId, $hiddenFor, true)) {
+                $hiddenFor[] = $actorPublicId;
+            }
+            $metadata['hidden_for_user_public_ids'] = $hiddenFor;
+            $message->forceFill(['metadata' => $metadata])->save();
+
+            return response()->json([
+                'status' => 'hidden',
+                'scope' => 'me',
+                'message_id' => $message->public_id,
+            ]);
+        }
+
+        if ($message->type !== 'user') {
+            return response()->json(['message' => 'System messages cannot be deleted for everyone.'], 422);
+        }
+
+        if (! $this->canDeleteMessageForAll($chat, $message, $actor)) {
+            return response()->json(['message' => 'You are not allowed to delete this message for everyone.'], 403);
+        }
+
+        if (($metadata['is_deleted'] ?? false) !== true) {
+            $metadata['is_deleted'] = true;
+            $metadata['deleted_at'] = now()->toIso8601String();
+            $metadata['deleted_by_user_public_id'] = (string) $actor->public_id;
+            $metadata['deleted_by_user_name'] = (string) $actor->name;
+            unset($metadata['is_pinned'], $metadata['pinned_at'], $metadata['pinned_by_user_public_id'], $metadata['pinned_by_user_name']);
+            unset($metadata['is_edited'], $metadata['edited_at'], $metadata['edited_by_user_public_id'], $metadata['edited_by_user_name']);
+
+            DB::transaction(function () use ($message, $metadata) {
+                $message->forceFill([
+                    'content' => '',
+                    'metadata' => $metadata,
+                ])->save();
+                $message->clearMediaCollection('chat_attachments');
+            });
+        }
+
+        $message = $message->fresh([
+            'user:id,public_id,name',
+            'media',
+            'replyTo.user:id,public_id,name',
+            'chat',
+        ]);
+
+        \App\Services\Chat\ChatEvents::messageUpdated($message, $chat->type ?? 'dm');
+
+        return response()->json([
+            'data' => ChatEngine::normalizeOne($message),
+            'scope' => 'all',
+        ]);
+    }
+
+    /**
+     * Get edit history for a single message.
+     */
+    public function messageHistory(Request $request, Chat $chat, string $messagePublicId): JsonResponse
+    {
+        abort_if(! $chat->participants->contains(Auth::id()), 404);
+
+        $message = $this->resolveChatMessage($chat, $messagePublicId);
+        if (! $message) {
+            return response()->json(['message' => 'Message not found.'], 404);
+        }
+
+        $metadata = is_array($message->metadata) ? $message->metadata : [];
+        $history = is_array($metadata['edit_history'] ?? null) ? $metadata['edit_history'] : [];
+
+        $normalized = collect($history)
+            ->filter(fn ($entry) => is_array($entry))
+            ->map(function ($entry) {
+                return [
+                    'previous_content' => (string) ($entry['previous_content'] ?? ''),
+                    'edited_at' => is_string($entry['edited_at'] ?? null) ? $entry['edited_at'] : null,
+                    'edited_by_user_public_id' => is_string($entry['edited_by_user_public_id'] ?? null)
+                        ? $entry['edited_by_user_public_id']
+                        : null,
+                    'edited_by_user_name' => is_string($entry['edited_by_user_name'] ?? null)
+                        ? $entry['edited_by_user_name']
+                        : null,
+                ];
+            })
+            ->values()
+            ->all();
+
+        return response()->json([
+            'data' => $normalized,
+            'meta' => [
+                'count' => count($normalized),
+                'is_edited' => ($metadata['is_edited'] ?? false) === true,
+                'edited_at' => is_string($metadata['edited_at'] ?? null) ? $metadata['edited_at'] : null,
+            ],
         ]);
     }
 
@@ -571,12 +814,16 @@ class ChatApiController extends Controller
             'reaction' => 'required|string|in:like,laugh,100,hundred,sad,love,angry,scared,care',
         ]);
 
+        $metadata = is_array($message->metadata) ? $message->metadata : [];
+        if (($metadata['is_deleted'] ?? false) === true) {
+            return response()->json(['message' => 'Cannot react to deleted messages.'], 422);
+        }
+
         $reaction = (string) $validated['reaction'];
         if ($reaction === '100') {
             $reaction = 'hundred';
         }
 
-        $metadata = is_array($message->metadata) ? $message->metadata : [];
         $reactions = is_array($metadata['reactions'] ?? null) ? $metadata['reactions'] : [];
         $actorPublicId = strtolower((string) Auth::user()?->public_id);
 
@@ -655,6 +902,9 @@ class ChatApiController extends Controller
         }
 
         $metadata = is_array($message->metadata) ? $message->metadata : [];
+        if (($metadata['is_deleted'] ?? false) === true) {
+            return response()->json(['message' => 'Deleted messages cannot be pinned.'], 422);
+        }
         $metadata['is_pinned'] = true;
         $metadata['pinned_at'] = now()->toIso8601String();
         $metadata['pinned_by_user_public_id'] = (string) Auth::user()?->public_id;
@@ -686,6 +936,9 @@ class ChatApiController extends Controller
         }
 
         $metadata = is_array($message->metadata) ? $message->metadata : [];
+        if (($metadata['is_deleted'] ?? false) === true) {
+            return response()->json(['message' => 'Deleted messages cannot be unpinned.'], 422);
+        }
         unset(
             $metadata['is_pinned'],
             $metadata['pinned_at'],
@@ -718,6 +971,73 @@ class ChatApiController extends Controller
             ->where('chat_id', $chat->id)
             ->whereRaw('LOWER(public_id) = ?', [strtolower($messagePublicId)])
             ->first();
+    }
+
+    protected function resolveVisibleLastMessage(Chat $chat, ?User $viewer): ?ChatMessage
+    {
+        $loaded = $chat->lastMessage;
+        if ($loaded && (! $viewer || ! $this->isMessageHiddenForViewer($loaded, $viewer))) {
+            return $loaded;
+        }
+
+        $query = ChatMessage::query()
+            ->where('chat_id', $chat->id)
+            ->with(['user:id,name,public_id', 'media'])
+            ->latest('id');
+
+        if ($viewer) {
+            $query = $this->applyViewerVisibilityScope($query, $viewer);
+        }
+
+        return $query->first();
+    }
+
+    protected function isMessageHiddenForViewer(ChatMessage $message, User $viewer): bool
+    {
+        $viewerPublicId = strtolower(trim((string) $viewer->public_id));
+        if ($viewerPublicId === '') {
+            return false;
+        }
+
+        $metadata = is_array($message->metadata) ? $message->metadata : [];
+        $hiddenFor = is_array($metadata['hidden_for_user_public_ids'] ?? null)
+            ? $metadata['hidden_for_user_public_ids']
+            : [];
+        $normalized = array_values(array_unique(array_filter(
+            array_map(static fn ($id) => strtolower((string) $id), $hiddenFor),
+            static fn (string $id) => $id !== ''
+        )));
+
+        return in_array($viewerPublicId, $normalized, true);
+    }
+
+    /**
+     * Apply per-viewer visibility filter (used by "unsend for me").
+     *
+     * @param  Builder<ChatMessage>  $query
+     * @return Builder<ChatMessage>
+     */
+    protected function applyViewerVisibilityScope(Builder $query, User $viewer): Builder
+    {
+        $viewerPublicId = strtolower(trim((string) $viewer->public_id));
+        if ($viewerPublicId === '') {
+            return $query;
+        }
+
+        return $query->where(function (Builder $visibility) use ($viewerPublicId) {
+            $visibility->whereNull('metadata')
+                ->orWhereNull('metadata->hidden_for_user_public_ids')
+                ->orWhereJsonDoesntContain('metadata->hidden_for_user_public_ids', $viewerPublicId);
+        });
+    }
+
+    protected function canDeleteMessageForAll(Chat $chat, ChatMessage $message, User $actor): bool
+    {
+        if ((int) $message->user_id === (int) $actor->id) {
+            return true;
+        }
+
+        return $this->canManageGroup($chat, (int) $actor->id);
     }
 
     /**

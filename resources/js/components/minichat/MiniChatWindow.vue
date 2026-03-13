@@ -18,6 +18,7 @@ import MiniChatMessageBubble from "./MiniChatMessageBubble.vue";
 import GiphyPicker from "@/views/chat/components/chat/GiphyPicker.vue";
 import { useMention } from "@/composables/useMention";
 import { useAudioClipRecorder } from "@/composables/useAudioClipRecorder";
+import { buildUploadMediaMetadata } from "@/utils/mediaDuration";
 
 const props = defineProps<{
     window: MiniChatWindow;
@@ -173,6 +174,7 @@ const isDragging = ref(false);
 const showEmoji = ref(false);
 const showGiphy = ref(false);
 const replyingTo = ref<Message | null>(null);
+const editingMessage = ref<Message | null>(null);
 const pendingFiles = ref<PendingFile[]>([]);
 const recordedAudioDraft = ref<RecordedAudioDraft | null>(null);
 const draftAudioRef = ref<HTMLAudioElement | null>(null);
@@ -560,10 +562,45 @@ function scrollToBottom() {
 async function handleSend() {
     if (!canSend.value) return;
 
+    if (editingMessage.value) {
+        const next = messageInput.value.trim();
+        const current = String(editingMessage.value.content || "").trim();
+        if (!next) {
+            toast.error("Edit failed", "Message cannot be empty.");
+            return;
+        }
+        if (next === current) {
+            cancelEdit();
+            return;
+        }
+
+        isSending.value = true;
+        try {
+            await chatStore.editMessage(
+                props.window.chatId,
+                String(editingMessage.value.id),
+                next,
+            );
+            messageInput.value = "";
+            cancelEdit();
+        } catch (error: any) {
+            toast.error(
+                "Edit failed",
+                error?.message || "Could not edit this message.",
+            );
+        } finally {
+            isSending.value = false;
+        }
+        return;
+    }
+
     if (recordedAudioDraft.value) {
         isSending.value = true;
         try {
-            await sendRecordedAudio(recordedAudioDraft.value.file);
+            await sendRecordedAudio(
+                recordedAudioDraft.value.file,
+                recordedAudioDraft.value.durationSeconds,
+            );
             clearRecordedAudioDraft();
             replyingTo.value = null;
             await nextTick();
@@ -588,11 +625,13 @@ async function handleSend() {
         if (pendingFiles.value.length > 0) {
             // Send with files
             const files = pendingFiles.value.map((pf) => pf.file);
+            const mediaMetadata = await buildUploadMediaMetadata(files);
             await chatStore.uploadMessage(
                 props.window.chatId,
                 files,
                 content,
                 replyingTo.value?.id,
+                mediaMetadata,
             );
             pendingFiles.value.forEach((f) => {
                 if (f.url) URL.revokeObjectURL(f.url);
@@ -616,13 +655,19 @@ async function handleSend() {
     }
 }
 
-async function sendRecordedAudio(file: File) {
+async function sendRecordedAudio(file: File, durationSeconds?: number | null) {
     if (!props.window.chatId) return;
     await chatStore.uploadMessage(
         props.window.chatId,
         [file],
         "",
         replyingTo.value?.id,
+        [
+            {
+                duration_seconds:
+                    typeof durationSeconds === "number" ? durationSeconds : null,
+            },
+        ],
     );
 }
 
@@ -684,12 +729,36 @@ function handleInputChange() {
 
 // Reply handling
 function handleReply(msg: Message) {
+    if (editingMessage.value) {
+        messageInput.value = "";
+    }
+    editingMessage.value = null;
     replyingTo.value = msg;
     textareaRef.value?.focus();
 }
 
 function cancelReply() {
     replyingTo.value = null;
+}
+
+function handleStartEditMessage(message: Message) {
+    if (!message?.id) return;
+    if (isRecorderActive.value || isRecorderBusy.value) {
+        void cancelRecording();
+    }
+    if (recordedAudioDraft.value) {
+        clearRecordedAudioDraft();
+    }
+    editingMessage.value = message;
+    replyingTo.value = null;
+    clearPendingFiles();
+    messageInput.value = String(message.content || "");
+    nextTick(() => textareaRef.value?.focus());
+}
+
+function cancelEdit() {
+    editingMessage.value = null;
+    messageInput.value = "";
 }
 
 // ============================================================================
@@ -829,6 +898,28 @@ const handleTogglePinMessage = async (message: Message) => {
     }
 };
 
+const handleDeleteMessage = async (message: Message, scope: "me" | "all") => {
+    if (!message?.id) return;
+
+    if (scope === "all") {
+        const confirmed = window.confirm("Delete this message for everyone?");
+        if (!confirmed) return;
+    }
+
+    try {
+        await chatStore.deleteMessage(
+            props.window.chatId,
+            String(message.id),
+            scope,
+        );
+    } catch (error: any) {
+        toast.error(
+            "Delete failed",
+            error?.message || "Could not update this message.",
+        );
+    }
+};
+
 // ============================================================================
 // File Handling
 // ============================================================================
@@ -842,6 +933,10 @@ function openFilePicker() {
 
 function appendPendingFiles(newFiles: File[]) {
     if (!newFiles.length) return;
+    if (editingMessage.value) {
+        toast.error("Edit mode", "Finish editing before attaching files.");
+        return;
+    }
 
     const currentTotalSize = pendingFiles.value.reduce(
         (acc, f) => acc + f.size,
@@ -897,6 +992,13 @@ function removeFile(index: number) {
     const file = pendingFiles.value[index];
     if (file.url) URL.revokeObjectURL(file.url);
     pendingFiles.value.splice(index, 1);
+}
+
+function clearPendingFiles() {
+    pendingFiles.value.forEach((file) => {
+        if (file.url) URL.revokeObjectURL(file.url);
+    });
+    pendingFiles.value = [];
 }
 
 // Emoji handling
@@ -1249,6 +1351,8 @@ function isOwnMessage(msg: Message): boolean {
                         @retry="handleRetry"
                         @react="(reaction) => handleReactMessage(msg, reaction)"
                         @toggle-pin="handleTogglePinMessage(msg)"
+                        @start-edit="() => handleStartEditMessage(msg)"
+                        @delete="(scope) => handleDeleteMessage(msg, scope)"
                         @callback="handleCallback"
                         @join-call="
                             (data) =>
@@ -1331,17 +1435,26 @@ function isOwnMessage(msg: Message): boolean {
             </div>
         </div>
 
-        <!-- Reply Preview -->
-        <div v-if="replyingTo" class="minichat-reply-preview">
+        <!-- Reply/Edit Preview -->
+        <div v-if="editingMessage || replyingTo" class="minichat-reply-preview">
             <div class="minichat-reply-content">
                 <span class="minichat-reply-label"
-                    >Replying to {{ replyingTo.user_name }}</span
+                    >{{
+                        editingMessage
+                            ? "Editing message"
+                            : `Replying to ${replyingTo?.user_name || "Unknown"}`
+                    }}</span
                 >
                 <span class="minichat-reply-text">{{
-                    replyingTo.content?.slice(0, 50)
+                    editingMessage
+                        ? editingMessage.content?.slice(0, 50)
+                        : replyingTo?.content?.slice(0, 50)
                 }}</span>
             </div>
-            <button class="minichat-reply-cancel" @click="cancelReply">
+            <button
+                class="minichat-reply-cancel"
+                @click="editingMessage ? cancelEdit() : cancelReply()"
+            >
                 <Icon name="X" :size="14" />
             </button>
         </div>
@@ -1375,7 +1488,7 @@ function isOwnMessage(msg: Message): boolean {
                 ref="fileInputRef"
                 type="file"
                 multiple
-                accept="image/*,audio/*,.pdf,.doc,.docx,.txt,.zip"
+                accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip,.webm,.mp4,.mov,.m4v,.avi,.mkv,.mp3,.wav,.ogg,.m4a,.aac,.flac"
                 class="hidden"
                 @change="handleFileSelect"
             />

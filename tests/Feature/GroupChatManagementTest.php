@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Chat\Chat;
+use App\Models\Chat\ChatMessage;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -153,7 +154,7 @@ class GroupChatManagementTest extends TestCase
     public function test_admin_can_restore_flagged_chat()
     {
         // 1. Create permission if needed
-        $permission = \Spatie\Permission\Models\Permission::create(['name' => 'chats.manage', 'guard_name' => 'web']);
+        $permission = \Spatie\Permission\Models\Permission::firstOrCreate(['name' => 'chats.manage', 'guard_name' => 'web']);
         // Note: Guard name might fail if default is different, usually 'web' or 'sanctum'.
         // Spatie usually defaults to config. Let's try without guard or with 'web'.
 
@@ -209,6 +210,50 @@ class GroupChatManagementTest extends TestCase
             'type' => 'system',
             'content' => "{$this->user->name} added {$invitee->name} to the group.",
             'user_id' => $this->user->id, // Inviter is the actor
+        ]);
+    }
+
+    public function test_member_loses_access_after_leave_and_recovers_full_history_after_rejoin()
+    {
+        $chat = $this->createGroupAndAttachUsers($this->user, [$this->otherUser]);
+
+        $beforeLeave = ChatMessage::create([
+            'chat_id' => $chat->id,
+            'user_id' => $this->user->id,
+            'content' => 'Message before leave',
+        ]);
+
+        $this->actingAs($this->otherUser)
+            ->postJson("/api/chat/{$chat->public_id}/leave")
+            ->assertOk();
+
+        ChatMessage::create([
+            'chat_id' => $chat->id,
+            'user_id' => $this->user->id,
+            'content' => 'Message while away',
+        ]);
+
+        $this->actingAs($this->otherUser)
+            ->getJson("/api/chat/{$chat->public_id}/messages")
+            ->assertStatus(404);
+
+        $this->actingAs($this->otherUser)
+            ->postJson("/api/chat/{$chat->public_id}/rejoin")
+            ->assertOk();
+
+        $messages = $this->actingAs($this->otherUser)
+            ->getJson("/api/chat/{$chat->public_id}/messages")
+            ->assertOk()
+            ->json('data');
+
+        $contents = collect($messages)->pluck('content')->all();
+        $this->assertContains('Message before leave', $contents);
+        $this->assertContains('Message while away', $contents);
+
+        $this->assertDatabaseHas('chat_messages', [
+            'id' => $beforeLeave->id,
+            'chat_id' => $chat->id,
+            'content' => 'Message before leave',
         ]);
     }
 }

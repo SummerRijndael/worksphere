@@ -6,7 +6,9 @@ use App\Models\Chat\Chat;
 use App\Models\Chat\ChatMessage;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Str;
+use Spatie\MediaLibrary\MediaCollections\Models\Media;
 use Tests\TestCase;
 
 class ChatApiControllerTest extends TestCase
@@ -34,6 +36,19 @@ class ChatApiControllerTest extends TestCase
             'role' => $role,
             'public_id' => (string) Str::ulid(),
         ]);
+    }
+
+    protected function createDmChat(): Chat
+    {
+        $chat = Chat::create([
+            'type' => 'dm',
+            'created_by' => $this->user->id,
+        ]);
+
+        $this->attachParticipant($chat, $this->user->id);
+        $this->attachParticipant($chat, $this->otherUser->id);
+
+        return $chat;
     }
 
     /**
@@ -134,6 +149,31 @@ class ChatApiControllerTest extends TestCase
             ->postJson("/api/chat/{$chat->public_id}/read");
 
         $response->assertOk();
+    }
+
+    public function test_upload_persists_duration_seconds_metadata(): void
+    {
+        $chat = $this->createDmChat();
+        $file = UploadedFile::fake()->image('sample.png');
+
+        $response = $this->actingAs($this->user)
+            ->post("/api/chat/{$chat->public_id}/upload", [
+                'files' => [$file],
+                'media_metadata' => json_encode([
+                    ['duration_seconds' => 17],
+                ]),
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.attachments.0.duration_seconds', 17);
+
+        $messagePublicId = (string) $response->json('data.id');
+        $message = ChatMessage::where('public_id', $messagePublicId)->firstOrFail();
+        $media = Media::where('model_type', ChatMessage::class)
+            ->where('model_id', $message->id)
+            ->firstOrFail();
+
+        $this->assertSame(17, (int) $media->getCustomProperty('duration_seconds'));
     }
 
     /**
@@ -348,13 +388,7 @@ class ChatApiControllerTest extends TestCase
 
     public function test_user_can_pin_and_unpin_message(): void
     {
-        $chat = Chat::create([
-            'type' => 'dm',
-            'created_by' => $this->user->id,
-        ]);
-
-        $this->attachParticipant($chat, $this->user->id);
-        $this->attachParticipant($chat, $this->otherUser->id);
+        $chat = $this->createDmChat();
 
         $messageResponse = $this->actingAs($this->user)
             ->postJson("/api/chat/{$chat->public_id}/send", [
@@ -381,5 +415,140 @@ class ChatApiControllerTest extends TestCase
         $this->assertNull($unpinResponse->json('data.pinned_at'));
         $this->assertNull($unpinResponse->json('data.pinned_by_user_public_id'));
         $this->assertNull($unpinResponse->json('data.pinned_by_user_name'));
+    }
+
+    public function test_user_can_edit_message_and_view_edit_history(): void
+    {
+        $chat = $this->createDmChat();
+
+        $send = $this->actingAs($this->user)
+            ->postJson("/api/chat/{$chat->public_id}/send", [
+                'content' => 'Original content',
+            ])
+            ->assertOk();
+
+        $messagePublicId = (string) $send->json('data.id');
+
+        $edit = $this->actingAs($this->user)
+            ->patchJson("/api/chat/{$chat->public_id}/messages/{$messagePublicId}", [
+                'content' => 'Edited content',
+            ]);
+
+        $edit->assertOk()
+            ->assertJsonPath('data.content', 'Edited content')
+            ->assertJsonPath('data.is_edited', true)
+            ->assertJsonPath('data.edit_history_count', 1);
+
+        $history = $this->actingAs($this->user)
+            ->getJson("/api/chat/{$chat->public_id}/messages/{$messagePublicId}/history");
+
+        $history->assertOk()
+            ->assertJsonPath('meta.count', 1)
+            ->assertJsonPath('meta.is_edited', true)
+            ->assertJsonPath('data.0.previous_content', 'Original content');
+    }
+
+    public function test_user_cannot_edit_other_users_message(): void
+    {
+        $chat = $this->createDmChat();
+
+        $send = $this->actingAs($this->otherUser)
+            ->postJson("/api/chat/{$chat->public_id}/send", [
+                'content' => 'Not yours',
+            ])
+            ->assertOk();
+
+        $messagePublicId = (string) $send->json('data.id');
+
+        $this->actingAs($this->user)
+            ->patchJson("/api/chat/{$chat->public_id}/messages/{$messagePublicId}", [
+                'content' => 'Trying to edit',
+            ])
+            ->assertStatus(403);
+    }
+
+    public function test_user_can_unsend_message_for_me_and_hidden_message_is_excluded(): void
+    {
+        $chat = $this->createDmChat();
+
+        $visible = $this->actingAs($this->otherUser)
+            ->postJson("/api/chat/{$chat->public_id}/send", [
+                'content' => 'Visible message',
+            ])
+            ->assertOk();
+        $hidden = $this->actingAs($this->otherUser)
+            ->postJson("/api/chat/{$chat->public_id}/send", [
+                'content' => 'Hide this for me',
+            ])
+            ->assertOk();
+
+        $hiddenPublicId = (string) $hidden->json('data.id');
+        $visiblePublicId = (string) $visible->json('data.id');
+
+        $this->actingAs($this->user)
+            ->deleteJson("/api/chat/{$chat->public_id}/messages/{$hiddenPublicId}", [
+                'scope' => 'me',
+            ])
+            ->assertOk()
+            ->assertJsonPath('scope', 'me');
+
+        $messages = $this->actingAs($this->user)
+            ->getJson("/api/chat/{$chat->public_id}/messages")
+            ->assertOk()
+            ->json('data');
+
+        $visibleIds = collect($messages)->pluck('id')->all();
+        $this->assertContains($visiblePublicId, $visibleIds);
+        $this->assertNotContains($hiddenPublicId, $visibleIds);
+
+        $this->actingAs($this->user)
+            ->getJson('/api/chat')
+            ->assertOk()
+            ->assertJsonPath('data.0.last_message.id', $visiblePublicId);
+    }
+
+    public function test_sender_can_delete_message_for_everyone(): void
+    {
+        $chat = $this->createDmChat();
+
+        $send = $this->actingAs($this->user)
+            ->postJson("/api/chat/{$chat->public_id}/send", [
+                'content' => 'Delete me',
+            ])
+            ->assertOk();
+        $messagePublicId = (string) $send->json('data.id');
+
+        $this->actingAs($this->user)
+            ->deleteJson("/api/chat/{$chat->public_id}/messages/{$messagePublicId}", [
+                'scope' => 'all',
+            ])
+            ->assertOk()
+            ->assertJsonPath('scope', 'all')
+            ->assertJsonPath('data.is_deleted', true)
+            ->assertJsonPath('data.content', '');
+
+        $this->actingAs($this->otherUser)
+            ->postJson("/api/chat/{$chat->public_id}/messages/{$messagePublicId}/reactions", [
+                'reaction' => 'like',
+            ])
+            ->assertStatus(422);
+    }
+
+    public function test_dm_recipient_cannot_delete_other_users_message_for_everyone(): void
+    {
+        $chat = $this->createDmChat();
+
+        $send = $this->actingAs($this->user)
+            ->postJson("/api/chat/{$chat->public_id}/send", [
+                'content' => 'Sender message',
+            ])
+            ->assertOk();
+        $messagePublicId = (string) $send->json('data.id');
+
+        $this->actingAs($this->otherUser)
+            ->deleteJson("/api/chat/{$chat->public_id}/messages/{$messagePublicId}", [
+                'scope' => 'all',
+            ])
+            ->assertStatus(403);
     }
 }

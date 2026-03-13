@@ -35,6 +35,8 @@ export function initMediaViewer() {
         tapMaxDistance: 10,
         tapMaxDurationMs: 260,
         chromeVisible: true,
+        updateToken: 0,
+        activeVideoSrc: null,
 
         open(media, index = 0) {
             this.media = media.map((item) =>
@@ -75,8 +77,9 @@ export function initMediaViewer() {
             setTimeout(() => {
                 this.viewer.classList.add("hidden");
                 this.imgEl.src = "";
-                this.videoEl.src = "";
-                this.videoEl.load(); // Reset video element
+                this.videoEl.removeAttribute("src");
+                this.videoEl.load();
+                this.activeVideoSrc = null;
                 this.toggleChrome(true);
             }, 300);
             document.body.style.overflow = "auto";
@@ -98,9 +101,11 @@ export function initMediaViewer() {
 
         detectMediaType(src) {
             const videoExts = /\.(mp4|webm|ogg|mov|avi)$/i;
-            const mimeType = src.mimeType || '';
+            const srcValue = typeof src === "string" ? src : src?.src || "";
+            const mimeType =
+                typeof src === "object" && src !== null ? src.mimeType || "" : "";
 
-            if (mimeType.startsWith('video/') || videoExts.test(src)) {
+            if (mimeType.startsWith('video/') || videoExts.test(srcValue)) {
                 return 'video';
             }
             return 'image';
@@ -108,12 +113,20 @@ export function initMediaViewer() {
 
         update(immediate = false) {
             const current = this.media[this.index];
+            if (!current) return;
+
+            const updateToken = ++this.updateToken;
             const isVideo = current.type === 'video' || current.mimeType?.startsWith('video/');
 
             // Hide both elements first
             this.imgEl.style.display = "none";
             this.videoEl.style.display = "none";
             this.playPauseBtn.style.display = "none";
+
+            // Pause previous video when switching item types.
+            if (!isVideo && this.videoEl && !this.videoEl.paused) {
+                this.videoEl.pause();
+            }
 
             if (!immediate) {
                 this.stageEl.style.opacity = "0.6";
@@ -122,18 +135,24 @@ export function initMediaViewer() {
 
             setTimeout(
                 () => {
+                    if (updateToken !== this.updateToken) return;
+
                     if (isVideo) {
-                        // Show video
-                        this.videoEl.src = current.src;
+                        if (this.activeVideoSrc !== current.src) {
+                            this.videoEl.pause();
+                            this.videoEl.src = current.src;
+                            this.videoEl.load();
+                            this.activeVideoSrc = current.src;
+                        }
+
                         this.videoEl.style.display = "block";
                         this.playPauseBtn.style.display = "flex";
-                        this.videoEl.load();
 
-                        // Auto-play video (muted for autoplay policy)
-                        this.videoEl.muted = false;
-                        this.videoEl.play().catch(() => {
-                            // Autoplay failed, that's okay
-                        });
+                        if (this.videoEl.paused) {
+                            this.videoEl.play().catch(() => {
+                                // Autoplay can fail depending on browser policy.
+                            });
+                        }
 
                         this.stageEl.style.opacity = "1";
                         this.stageEl.style.transform = "scale(1)";
@@ -431,6 +450,7 @@ export function initMediaViewer() {
         mv.videoEl = document.createElement("video");
         mv.videoEl.id = "mv-video";
         mv.videoEl.className = "mv-video"; // Apply CSS class for shadow/radius
+        mv.videoEl.preload = "metadata";
         mv.videoEl.controls = true;
         mv.videoEl.style.maxWidth = "100%";
         mv.videoEl.style.maxHeight = "100%"; // Fit within stage
@@ -594,4 +614,6 @@ export function initMediaViewer() {
             );
         }
     });
+
+    window.mediaViewerInitialized = true;
 }

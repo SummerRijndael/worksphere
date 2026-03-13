@@ -12,6 +12,7 @@ interface Props {
     modelValue: string;
     sending?: boolean;
     replyTo?: Message | null;
+    editTo?: Message | null;
     pendingFiles?: PendingFile[];
     isMobile?: boolean;
     chatId?: string;
@@ -30,6 +31,7 @@ interface RecordedAudioDraft {
 const props = withDefaults(defineProps<Props>(), {
     sending: false,
     replyTo: null,
+    editTo: null,
     pendingFiles: () => [],
     isMobile: false,
     chatId: undefined,
@@ -40,8 +42,9 @@ const emit = defineEmits<{
     "update:modelValue": [value: string];
     send: [];
     cancelReply: [];
+    cancelEdit: [];
     addFiles: [files: File[]];
-    sendRecordedAudio: [file: File];
+    sendRecordedAudio: [payload: { file: File; durationSeconds: number }];
     removeFile: [index: number];
     typing: [];
     sendGif: [gif: any];
@@ -70,6 +73,7 @@ const canSend = computed(() => {
 });
 
 const isValidMessage = computed(() => props.modelValue.trim().length > 0);
+const hasComposerContext = computed(() => Boolean(props.editTo || props.replyTo));
 const hasAudioDraft = computed(() => !!recordedAudioDraft.value);
 const isComposerLockedForDraft = computed(
     () => hasAudioDraft.value || isRecorderActive.value || isRecorderBusy.value,
@@ -262,7 +266,10 @@ const autoResize = () => {
 
 const handleSend = () => {
     if (recordedAudioDraft.value && !props.sending && !isRecorderActive.value) {
-        emit("sendRecordedAudio", recordedAudioDraft.value.file);
+        emit("sendRecordedAudio", {
+            file: recordedAudioDraft.value.file,
+            durationSeconds: recordedAudioDraft.value.durationSeconds,
+        });
         clearRecordedAudioDraft();
         return;
     }
@@ -276,6 +283,16 @@ const handleSend = () => {
         });
     }
 };
+
+function clearComposerContext() {
+    if (props.editTo) {
+        emit("cancelEdit");
+        return;
+    }
+    if (props.replyTo) {
+        emit("cancelReply");
+    }
+}
 
 const handleKeydown = (e: KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -431,9 +448,18 @@ onUnmounted(() => {
 
 // Focus textarea when replying
 watch(
-    () => props.replyTo,
+    () => [props.replyTo, props.editTo],
     (val) => {
-        if (val) {
+        if (val[1]) {
+            if (isRecorderActive.value || isRecorderBusy.value) {
+                void handleRecordingCancel();
+            }
+            if (recordedAudioDraft.value) {
+                clearRecordedAudioDraft();
+            }
+        }
+
+        if (val[0] || val[1]) {
             nextTick(() => textareaRef.value?.focus());
         }
     },
@@ -457,7 +483,7 @@ onUnmounted(() => {
         class="relative border-t border-(--border-default) bg-(--surface-elevated) transition-all duration-300"
         :class="compact ? 'px-2 py-2' : 'px-4 py-4 md:px-6 md:py-5'"
     >
-        <!-- Reply Preview -->
+        <!-- Reply/Edit Preview -->
         <transition
             enter-active-class="transition ease-out duration-200"
             enter-from-class="opacity-0 translate-y-2"
@@ -467,7 +493,7 @@ onUnmounted(() => {
             leave-to-class="opacity-0 translate-y-2"
         >
             <div
-                v-if="replyTo"
+                v-if="hasComposerContext"
                 class="flex items-center gap-3 mb-4 p-3 rounded-xl bg-(--surface-secondary) border border-(--border-subtle) shadow-sm relative overflow-hidden group"
             >
                 <div
@@ -476,23 +502,31 @@ onUnmounted(() => {
                 <div class="flex-1 min-w-0 pl-2">
                     <div class="flex items-center gap-2 mb-0.5">
                         <Icon
-                            name="CornerUpLeft"
+                            :name="editTo ? 'Pencil' : 'CornerUpLeft'"
                             size="14"
                             class="text-(--interactive-primary)"
                         />
                         <span
                             class="text-xs font-semibold text-(--text-primary)"
                         >
-                            Replying to {{ replyTo.user_name }}
+                            {{
+                                editTo
+                                    ? "Editing message"
+                                    : `Replying to ${replyTo?.user_name || "Unknown"}`
+                            }}
                         </span>
                     </div>
                     <div class="text-sm text-(--text-secondary) truncate">
-                        {{ replyTo.content || "📎 Attachment" }}
+                        {{
+                            editTo
+                                ? editTo.content || "(empty)"
+                                : replyTo?.content || "📎 Attachment"
+                        }}
                     </div>
                 </div>
                 <button
                     class="shrink-0 p-2 rounded-lg hover:bg-(--surface-tertiary) text-(--text-tertiary) hover:text-(--text-primary) transition-colors"
-                    @click="emit('cancelReply')"
+                    @click="clearComposerContext"
                 >
                     <Icon name="X" size="16" />
                 </button>
@@ -635,7 +669,7 @@ onUnmounted(() => {
                     <input
                         type="file"
                         multiple
-                        accept="image/*,audio/*,.pdf,.doc,.docx,.txt,.zip"
+                        accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip,.webm,.mp4,.mov,.m4v,.avi,.mkv,.mp3,.wav,.ogg,.m4a,.aac,.flac"
                         class="hidden"
                         @change="handleFileSelect"
                     />
@@ -724,7 +758,7 @@ onUnmounted(() => {
                     v-if="!hasAudioDraft && !isRecorderBusy && !isRecorderActive"
                     ref="textareaRef"
                     :value="modelValue"
-                    placeholder="Type a message..."
+                    :placeholder="editTo ? 'Edit message...' : 'Type a message...'"
                     rows="1"
                     class="block w-full resize-none border-0 bg-transparent text-(--text-primary) placeholder-(--text-muted) outline-none focus:ring-0 text-[15px] leading-relaxed max-h-40 py-3.5 px-4 rounded-[20px]"
                     @input="handleInput"

@@ -94,6 +94,15 @@ export interface Message {
     pinned_at?: string | null;
     pinned_by_user_public_id?: string | null;
     pinned_by_user_name?: string | null;
+    is_edited?: boolean;
+    edited_at?: string | null;
+    edited_by_user_public_id?: string | null;
+    edited_by_user_name?: string | null;
+    is_deleted?: boolean;
+    deleted_at?: string | null;
+    deleted_by_user_public_id?: string | null;
+    deleted_by_user_name?: string | null;
+    edit_history_count?: number;
     reactions?: Record<string, string[]>;
     // Optimistic UI state
     pending?: boolean;
