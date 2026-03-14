@@ -939,6 +939,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
         Route::match(['put', 'patch'], '/{chat}', [\App\Http\Controllers\Api\Chat\ChatApiController::class, 'update']);
         Route::post('/{chat}/members', [\App\Http\Controllers\Api\Chat\ChatApiController::class, 'addMember']);
         Route::delete('/{chat}/members/{memberId}', [\App\Http\Controllers\Api\Chat\ChatApiController::class, 'removeMember']);
+        Route::post('/{chat}/transfer-ownership/{memberPublicId}', [\App\Http\Controllers\Api\Chat\ChatApiController::class, 'transferOwnership']);
 
         // Giphy
         Route::get('/giphy/search', [\App\Http\Controllers\Api\GiphyController::class, 'search']);

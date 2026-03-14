@@ -234,6 +234,7 @@ export function useChatRealtime() {
       })
       .listen('.ChatBadgeUpdated', (event: { unread_count: number }) => {
         console.log(`[ChatRealtime] 🔢 RECEIVED .ChatBadgeUpdated on ${channelName}`, event);
+        chatStore.totalUnreadCount = event.unread_count;
       })
       .listen('.invite.sent', (event: any) => {
         console.log(`[ChatRealtime] 📨 RECEIVED .invite.sent on ${channelName}`, event);
@@ -292,13 +293,13 @@ export function useChatRealtime() {
       return;
     }
 
+    const added = chatStore.addMessage(chatId, message);
+    if (!added) return;
+
     // Play sound for incoming message
     chatSound.play().catch((e) => {
       console.warn('[ChatRealtime] Failed to play chat sound:', e);
     });
-
-    console.log(`[ChatRealtime] ✅ Adding message to store for chat: ${chatId}`);
-    chatStore.addMessage(chatId, message);
 
     // If this is the active chat, mark as read immediately
     // This triggers the "Seen" indicator for the sender
@@ -307,7 +308,7 @@ export function useChatRealtime() {
       chatStore.markAsRead(chatId);
     } else {
       // Increment unread count if not the active chat
-      const chat = chatStore.chats.find((c) => c.id === chatId);
+      const chat = chatStore.chats.find((c) => c.public_id === chatId);
       if (chat) {
         chatStore.updateChatUnreadCount(chatId, (chat.unread_count ?? 0) + 1);
       }

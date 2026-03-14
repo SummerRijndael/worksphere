@@ -17,6 +17,7 @@ interface Props {
     isMobile?: boolean;
     chatId?: string;
     compact?: boolean;
+    hideAudio?: boolean;
 }
 
 interface RecordedAudioDraft {
@@ -36,6 +37,7 @@ const props = withDefaults(defineProps<Props>(), {
     isMobile: false,
     chatId: undefined,
     compact: false,
+    hideAudio: false,
 });
 
 const emit = defineEmits<{
@@ -481,7 +483,7 @@ onUnmounted(() => {
 <template>
     <div
         class="relative border-t border-(--border-default) bg-(--surface-elevated) transition-all duration-300"
-        :class="compact ? 'px-2 py-2' : 'px-4 py-4 md:px-6 md:py-5'"
+        :class="compact ? 'px-2 py-2' : 'px-3 py-3 md:px-4 md:py-3.5'"
     >
         <!-- Reply/Edit Preview -->
         <transition
@@ -656,11 +658,11 @@ onUnmounted(() => {
             <!-- Left Actions Group -->
             <div
                 class="flex items-center gap-1"
-                :class="{ 'mb-1.5': !compact }"
+                :class="{ 'mb-1': !compact }"
             >
                 <!-- Attach Button -->
                 <label
-                    class="p-2.5 rounded-full cursor-pointer text-(--text-secondary) hover:text-(--interactive-primary) hover:bg-(--surface-secondary) transition-all duration-200 group relative"
+                    class="p-2 rounded-full cursor-pointer text-(--text-secondary) hover:text-(--interactive-primary) hover:bg-(--surface-secondary) transition-all duration-200 group relative"
                     :class="{
                         'opacity-50 pointer-events-none': isComposerLockedForDraft,
                     }"
@@ -675,16 +677,16 @@ onUnmounted(() => {
                     />
                     <Icon
                         name="Paperclip"
-                        size="22"
+                        size="20"
                         :stroke-width="2"
                         class="group-hover:rotate-45 transition-transform"
                     />
                 </label>
 
                 <button
-                    v-if="isRecorderSupported"
+                    v-if="isRecorderSupported && !hideAudio"
                     type="button"
-                    class="p-2.5 rounded-full text-(--text-secondary) hover:text-(--interactive-primary) hover:bg-(--surface-secondary) transition-all duration-200"
+                    class="p-2 rounded-full text-(--text-secondary) hover:text-(--interactive-primary) hover:bg-(--surface-secondary) transition-all duration-200"
                     :class="{
                         'text-red-500 bg-red-50 dark:bg-red-500/10': isRecorderActive,
                         'opacity-50 pointer-events-none': isRecordButtonBlocked,
@@ -703,7 +705,7 @@ onUnmounted(() => {
                 >
                     <Icon
                         :name="isRecorderActive ? 'Square' : 'Mic'"
-                        :size="20"
+                        :size="18"
                     />
                 </button>
 
@@ -711,7 +713,7 @@ onUnmounted(() => {
                     <button
                         class="text-(--text-tertiary) hover:text-(--text-primary) transition-colors rounded-full hover:bg-(--surface-tertiary)"
                         :class="[
-                            compact ? 'p-1.5' : 'p-2',
+                            compact ? 'p-1.5' : 'p-1.5',
                             showEmoji
                                 ? 'text-yellow-500 bg-(--surface-secondary)'
                                 : '',
@@ -722,7 +724,7 @@ onUnmounted(() => {
                         title="Insert emoji"
                         @click.stop="toggleEmoji"
                     >
-                        <Icon name="Smile" :size="compact ? 18 : 20" />
+                        <Icon name="Smile" :size="compact ? 18 : 18" />
                     </button>
                 </div>
 
@@ -747,7 +749,7 @@ onUnmounted(() => {
 
             <!-- Main Input Area -->
             <div
-                class="flex-1 min-w-0 relative rounded-[20px] bg-(--surface-secondary) border transition-all duration-200"
+                class="flex-1 min-w-0 relative rounded-2xl bg-(--surface-secondary) border transition-all duration-200"
                 :class="
                     isFocused
                         ? 'border-(--interactive-primary) ring-2 ring-(--interactive-primary)/10 shadow-sm bg-(--surface-primary)'
@@ -760,7 +762,8 @@ onUnmounted(() => {
                     :value="modelValue"
                     :placeholder="editTo ? 'Edit message...' : 'Type a message...'"
                     rows="1"
-                    class="block w-full resize-none border-0 bg-transparent text-(--text-primary) placeholder-(--text-muted) outline-none focus:ring-0 text-[15px] leading-relaxed max-h-40 py-3.5 px-4 rounded-[20px]"
+                    class="block w-full resize-none border-0 bg-transparent text-(--text-primary) placeholder-(--text-muted) outline-none focus:ring-0 text-[15px] leading-relaxed max-h-40 py-2.5 px-4 rounded-2xl scrollbar-hide"
+                    style="overflow-y: hidden"
                     @input="handleInput"
                     @keydown="handleKeydown"
                     @paste="handlePaste"
@@ -897,11 +900,11 @@ onUnmounted(() => {
                     isValidMessage || pendingFiles.length > 0 || hasAudioDraft
                         ? 'bg-(--interactive-primary) text-white shadow-md hover:bg-(--interactive-primary-hover)'
                         : 'bg-(--surface-tertiary) text-(--text-tertiary)',
-                    compact ? 'w-9 h-9' : 'w-10 h-10',
-                    !compact ? 'mb-1.5 pr-0.5' : '',
+                    compact ? 'w-9 h-9' : 'w-9 h-9',
+                    !compact ? 'mb-1 pr-0' : '',
                 ]"
             >
-                <Icon name="Send" :size="compact ? 16 : 18" />
+                <Icon name="Send" :size="compact ? 16 : 16" />
             </button>
         </div>
 

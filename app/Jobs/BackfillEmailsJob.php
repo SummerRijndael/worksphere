@@ -8,6 +8,7 @@ use App\Models\EmailSyncLog;
 use App\Services\EmailAdapters\AdapterFactory;
 use App\Services\EmailSyncService;
 use App\Support\EmailSyncLogger as Log;
+use Illuminate\Bus\Batchable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -23,10 +24,7 @@ use Illuminate\Queue\SerializesModels;
  */
 class BackfillEmailsJob implements ShouldQueue
 {
-    use Dispatchable;
-    use InteractsWithQueue;
-    use Queueable;
-    use SerializesModels;
+    use Batchable, Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 5;
 

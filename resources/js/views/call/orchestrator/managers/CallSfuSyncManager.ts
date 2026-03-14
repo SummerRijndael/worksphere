@@ -7,8 +7,8 @@ interface ParticipantLike {
 
 interface ParticipantMids {
     audioMid?: string;
-    audioMid?: string;
     videoMid?: string;
+    screenMid?: string;
 }
 
 interface RemoteMediaState {
@@ -24,14 +24,22 @@ export interface CallSfuSyncManagerOptions {
     getRemoteSessionId: (participantId: string) => string | undefined;
     getParticipantMids: (participantId: string) => ParticipantMids | undefined;
     getRemoteMainStream: (participantId: string) => MediaStream | undefined;
+    getRemoteScreenStream: (participantId: string) => MediaStream | undefined;
     requestRemoteMediaInfo: (participantId: string, force?: boolean) => void;
     pullParticipantTracks: (
         participantId: string,
         remoteSessionId?: string,
         audioMid?: string,
         videoMid?: string,
-        videoMid?: string,
+        screenMid?: string,
+        mediaType?: "audio" | "video" | "all",
     ) => void | Promise<void>;
+    pullRemoteScreen: (
+        participantId: string,
+        screenMid: string,
+        remoteSessionId: string,
+    ) => void | Promise<void>;
+    isVisible?: (participantId: string) => boolean;
     getRemoteMediaState: (participantId: string) => RemoteMediaState | undefined;
     setRemoteMediaState: (
         participantId: string,
@@ -138,17 +146,25 @@ export class CallSfuSyncManager {
             const hasLiveAudio = this.hasLiveTrack(mainStream, "audio");
             const hasLiveVideo = this.hasLiveTrack(mainStream, "video");
             const expectsAudio = !remoteState?.muted || !!mids?.audioMid;
-            const expectsVideo = !remoteState?.cameraOff || !!mids?.videoMid;
+            const isVisible = this.options.isVisible?.(participantId) ?? true;
+            const expectsVideo = isVisible && (!remoteState?.cameraOff || !!mids?.videoMid);
             const streamBroken = this.isRemoteStreamBroken(mainStream);
             const expectedMediaMissing =
                 (expectsAudio && !hasLiveAudio) || (expectsVideo && !hasLiveVideo);
 
             if (streamBroken || expectedMediaMissing) {
+                // Determine what exactly is missing to perform a selective pull
+                let mediaToPull: "audio" | "video" | "all" = "all";
+                if (hasLiveAudio && !hasLiveVideo && expectsVideo) mediaToPull = "video";
+                else if (!hasLiveAudio && hasLiveVideo) mediaToPull = "audio";
+
                 void this.options.pullParticipantTracks(
                     participantId,
                     sessionId,
                     mids?.audioMid,
                     mids?.videoMid,
+                    undefined,
+                    mediaToPull,
                 );
                 if (expectsVideo && !mids?.videoMid) {
                     this.options.requestRemoteMediaInfo(participantId, true);

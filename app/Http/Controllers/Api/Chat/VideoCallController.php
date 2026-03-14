@@ -14,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use App\Notifications\Chat\MissedCallNotification;
 use Illuminate\Support\Str;
 
 class VideoCallController extends Controller
@@ -868,6 +869,42 @@ class VideoCallController extends Controller
                     $terminalLog['event'],
                     $terminalLog['data'],
                 );
+            }
+
+            // Missed Call Notifications
+            if (in_array($reason, ['no_answer', 'timeout', 'declined', 'busy'])) {
+                $callerId = $metadata['initiator_id'] ?? null;
+                $callerName = $metadata['initiator_name'] ?? 'Someone';
+                $callType = $metadata['type'] ?? 'video';
+
+                Log::channel('videocall')->info('[NOTIFICATION] Processing missed call notifications', [
+                    'call_id' => $callId,
+                    'reason' => $reason,
+                    'caller' => $callerId
+                ]);
+
+                foreach ($chat->participants as $participant) {
+                    // Notify everyone except the initiator and anyone who actually JOINED the call.
+                    // (remainingParticipants list passed in is not enough as we need all intended recipients)
+                    if ($participant->public_id !== $callerId) {
+                        $pKey = $this->getCacheKey($chat->public_id, $callId);
+                        $currentParticipants = \Illuminate\Support\Facades\Cache::get($pKey, []);
+                        $hasJoined = collect($currentParticipants)->contains('public_id', $participant->public_id);
+
+                        if (!$hasJoined) {
+                            Log::channel('videocall')->info('[NOTIFICATION] Dispatching MissedCallNotification', [
+                                'to' => $participant->public_id,
+                                'caller' => $callerName
+                            ]);
+                            $participant->notify(new MissedCallNotification(
+                                $callerName,
+                                $callType,
+                                $chat->public_id,
+                                $chat->name ?? ''
+                            ));
+                        }
+                    }
+                }
             }
 
             // Broadcast end

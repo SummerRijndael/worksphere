@@ -33,6 +33,7 @@ export const useVideoCallStore = defineStore('videoCall', () => {
   
   // Maps publicId -> Stream
   const remoteStreams = reactive(new Map<string, MediaStream>());
+  const remoteScreenStreams = reactive(new Map<string, MediaStream>());
   
   const isMuted = ref(false);
   const isCameraOff = ref(false);
@@ -183,6 +184,14 @@ export const useVideoCallStore = defineStore('videoCall', () => {
     remoteVolumes.delete(publicId);
   }
 
+  function addRemoteScreenStream(publicId: string, stream: MediaStream) {
+    remoteScreenStreams.set(publicId, stream);
+  }
+
+  function removeRemoteScreenStream(publicId: string) {
+    remoteScreenStreams.delete(publicId);
+  }
+
   function toggleMute() {
     isMuted.value = !isMuted.value;
     if (localStream.value) {
@@ -326,6 +335,9 @@ export const useVideoCallStore = defineStore('videoCall', () => {
     setLocalStream,
     addRemoteStream,
     removeRemoteStream,
+    addRemoteScreenStream,
+    removeRemoteScreenStream,
+    remoteScreenStreams,
     toggleMute,
     toggleCamera,
     setError,

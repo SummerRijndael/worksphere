@@ -143,6 +143,7 @@ class ChatApiController extends Controller
             ] : null,
             'updated_at' => $chat->updated_at?->toIso8601String(),
             'team_owner_id' => $chat->team?->owner_id,
+            'unread_count' => $chat->unreadCountFor($viewer),
         ];
     }
 
@@ -507,13 +508,11 @@ class ChatApiController extends Controller
             'target_id' => $messagePublicId,
             'has_more_before' => $this->applyViewerVisibilityScope(
                 ChatMessage::query()->where('chat_id', $chat->id)
-                ->where('id', '<', $before->first()?->id ?? $target->id)
-                , Auth::user()
+                    ->where('id', '<', $before->first()?->id ?? $target->id), Auth::user()
             )->exists(),
             'has_more_after' => $this->applyViewerVisibilityScope(
                 ChatMessage::query()->where('chat_id', $chat->id)
-                ->where('id', '>', $after->last()?->id ?? $target->id)
-                , Auth::user()
+                    ->where('id', '>', $after->last()?->id ?? $target->id), Auth::user()
             )->exists(),
         ]);
     }
@@ -865,6 +864,7 @@ class ChatApiController extends Controller
 
             if (empty($normalized)) {
                 unset($reactions[$key]);
+
                 continue;
             }
 
@@ -1413,6 +1413,22 @@ class ChatApiController extends Controller
                     return response()->json(['message' => 'Invite expired.'], 410);
                 }
 
+                // Check group member limit
+                $maxMembers = config('worksphere.chat.limits.max_group_members', 50);
+                if ($chat->participants()->count() >= $maxMembers) {
+                    return response()->json(['message' => "This group has reached the maximum member limit of {$maxMembers} participants."], 422);
+                }
+
+                // Check user joined groups limit
+                $maxJoined = config('worksphere.chat.limits.max_groups_joined', 100);
+                $joinedCount = Chat::whereHas('participants', function ($q) use ($invite) {
+                    $q->where('user_id', $invite->invitee_id);
+                })->where('type', 'group')->count();
+
+                if ($joinedCount >= $maxJoined) {
+                    return response()->json(['message' => "You have reached the maximum limit of joined group chats ({$maxJoined})."], 422);
+                }
+
                 // Use syncWithoutDetaching on allParticipants ensures we include soft-deleted (left) members
                 // This updates existing rows if found, or inserts if not.
                 $chat->allParticipants()->syncWithoutDetaching([
@@ -1551,6 +1567,14 @@ class ChatApiController extends Controller
             'name' => ['nullable', 'string', 'max:80'],
         ]);
 
+        // Check ownership limit
+        $ownedGroupsCount = Chat::where('created_by', $userId)
+            ->where('type', 'group')
+            ->count();
+        $maxOwned = config('worksphere.chat.limits.max_groups_owned', 20);
+
+        abort_if($ownedGroupsCount >= $maxOwned, 422, "You have reached the maximum limit of owned group chats ({$maxOwned}).");
+
         $chat = Chat::create([
             'public_id' => (string) Str::ulid(),
             'name' => $validated['name'] ?? 'New group chat',
@@ -1631,6 +1655,12 @@ class ChatApiController extends Controller
         $already = $chat->participants()->where('user_id', $user->id)->exists();
         abort_if($already, 422, 'User is already a member.');
 
+        // Check group member limit
+        $memberCount = $chat->participants()->count();
+        $maxMembers = config('worksphere.chat.limits.max_group_members', 50);
+
+        abort_if($memberCount >= $maxMembers, 422, "This group has reached the maximum member limit of {$maxMembers} participants.");
+
         $pendingInvite = ChatInvite::pending()
             ->forChat($chat->id)
             ->where('invitee_id', $user->id)
@@ -1648,6 +1678,19 @@ class ChatApiController extends Controller
             'status' => ChatInvite::STATUS_PENDING,
             'expires_at' => now()->addDays(7),
         ]);
+
+        broadcast(new \App\Events\Chat\InviteSent([
+            'id' => $invite->public_id,
+            'inviter_name' => Auth::user()->name,
+            'inviter_public_id' => Auth::user()->public_id,
+            'avatar_url' => $chat->avatar_url,
+            'sent_at' => 'just now',
+            'type' => 'group',
+            'chat_name' => $chat->name,
+            'chat_public_id' => $chat->public_id,
+            'invitee_id' => $user->id,
+            'invitee_public_id' => $user->public_id,
+        ]));
 
         return response()->json([
             'message' => 'Invite sent successfully.',

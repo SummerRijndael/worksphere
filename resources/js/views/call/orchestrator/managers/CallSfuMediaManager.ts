@@ -678,6 +678,7 @@ export class CallSfuMediaManager {
         remoteAudioMid?: string,
         remoteVideoMid?: string,
         pullGeneration?: number,
+        mediaType: "audio" | "video" | "all" = "all",
     ): Promise<void> {
         const sfuPc = this.options.getPeerConnection();
         const sfuSessionId = this.options.getSessionId();
@@ -786,18 +787,27 @@ export class CallSfuMediaManager {
         }
 
         const trackReqs: any[] = [];
-        const hasExplicitAudioMid = actualAudioMid !== undefined && actualAudioMid !== null && actualAudioMid !== "";
-        const hasExplicitVideoMid = actualVideoMid !== undefined && actualVideoMid !== null && actualVideoMid !== "";
+        const hasExplicitAudioMid =
+            actualAudioMid !== undefined &&
+            actualAudioMid !== null &&
+            actualAudioMid !== "";
+        const hasExplicitVideoMid =
+            actualVideoMid !== undefined &&
+            actualVideoMid !== null &&
+            actualVideoMid !== "";
         const hasAnyKnownMid = hasExplicitAudioMid || hasExplicitVideoMid;
-        
-        if (hasExplicitAudioMid) {
+
+        const shouldPullAudio = mediaType === "all" || mediaType === "audio";
+        const shouldPullVideo = mediaType === "all" || mediaType === "video";
+
+        if (hasExplicitAudioMid && shouldPullAudio) {
             trackReqs.push({
                 location: "remote",
                 sessionId: targetSessionId,
                 trackName: "audio",
             });
         }
-        if (hasExplicitVideoMid) {
+        if (hasExplicitVideoMid && shouldPullVideo) {
             trackReqs.push({
                 location: "remote",
                 sessionId: targetSessionId,
@@ -805,18 +815,20 @@ export class CallSfuMediaManager {
             });
         }
         if (!hasAnyKnownMid && currentAttempts <= 3) {
-            trackReqs.push(
-                {
+            if (shouldPullAudio) {
+                trackReqs.push({
                     location: "remote",
                     sessionId: targetSessionId,
                     trackName: "audio",
-                },
-                {
+                });
+            }
+            if (shouldPullVideo) {
+                trackReqs.push({
                     location: "remote",
                     sessionId: targetSessionId,
                     trackName: "video",
-                },
-            );
+                });
+            }
         }
 
         if (trackReqs.length === 0) {
@@ -1467,5 +1479,75 @@ export class CallSfuMediaManager {
                 type: "sfu-screen-share-stopped",
             })
             .catch(() => {});
+    }
+
+    /**
+     * Video on Demand: Sync remote video visibility based on the provided set of visible participant IDs.
+     * Participants NOT in the set will have their video transceivers set to 'inactive' to save bandwidth.
+     */
+    async syncRemoteVideoVisibility(visibleIds: Set<string>): Promise<void> {
+        await this.runInQueue(async () => {
+            const pc = this.options.getPeerConnection();
+            const sessionId = this.options.getSessionId();
+            const callData = this.options.getCallData();
+            if (!pc || !sessionId || !callData) return;
+
+            let hasChanges = false;
+            const transceivers = pc.getTransceivers();
+
+            for (const transceiver of transceivers) {
+                const assoc =
+                    this.options.sfuSessionManager.getTransceiverAssociation(
+                        transceiver,
+                    );
+                if (!assoc || assoc.participantId === "self" || assoc.trackName !== "video") {
+                    continue;
+                }
+
+                const isVisible = visibleIds.has(assoc.participantId.toLowerCase());
+                const targetDirection: RTCRtpTransceiverDirection = isVisible ? "recvonly" : "inactive";
+
+                if (transceiver.direction !== targetDirection) {
+                    console.log(
+                        `[SFU][VOD] Updating visibility for ${assoc.participantId}: ${transceiver.direction} -> ${targetDirection}`,
+                    );
+                    transceiver.direction = targetDirection;
+                    hasChanges = true;
+
+                    // If we just made it visible but it's currently hollow (no track),
+                    // we should trigger a pull immediately if we have the MIDs.
+                    if (isVisible && transceiver.receiver.track.readyState === "ended") {
+                        const remoteMids = this.options.getRemoteSfuTracks().get(assoc.participantId);
+                        if (remoteMids?.videoMid) {
+                            console.log(`[SFU][VOD] Triggering immediate video pull for newly visible participant ${assoc.participantId}`);
+                            // We don't await here to avoid blocking the queue for visibility sync
+                            this.pullParticipantTracks(assoc.participantId, undefined, undefined, remoteMids.videoMid, undefined, "video");
+                        }
+                    }
+                }
+            }
+
+            if (hasChanges) {
+                try {
+                    console.log("[SFU][VOD] Visibility changed, renegotiating...");
+                    const answer = await pc.createAnswer();
+                    await pc.setLocalDescription(answer);
+
+                    await videoCallService.sfuSessionRenegotiate(
+                        callData.chatId,
+                        sessionId,
+                        this.options.mungeSdp(answer.sdp!),
+                        "answer",
+                        "PUT",
+                    );
+                    console.log("[SFU][VOD] Visibility renegotiation successful");
+                } catch (e: any) {
+                    console.warn("[SFU][VOD] Visibility renegotiation failed", e);
+                    if (e.response?.status === 406) {
+                        await this.options.onHandle406Rescue();
+                    }
+                }
+            }
+        });
     }
 }

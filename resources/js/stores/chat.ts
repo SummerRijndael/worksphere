@@ -308,7 +308,7 @@ export const useChatStore = defineStore('chat', () => {
     return chatService.getMessageHistory(chatId, messageId);
   }
 
-  function addMessage(chatId: string, message: Message) {
+  function addMessage(chatId: string, message: Message): boolean {
     console.log('[ChatStore] addMessage called', {
       chatId,
       activeChatPublicId: activeChatPublicId.value,
@@ -326,7 +326,7 @@ export const useChatStore = defineStore('chat', () => {
     
     if (isDuplicate) {
       console.log('[ChatStore] Duplicate message, skipping', message.id);
-      return;
+      return false;
     }
 
     // Create new array for reactivity
@@ -348,6 +348,7 @@ export const useChatStore = defineStore('chat', () => {
       };
       chat.updated_at = message.created_at;
     }
+    return true;
   }
 
   function replaceMessage(chatId: string, tempId: string, message: Message) {

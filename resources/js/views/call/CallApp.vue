@@ -107,6 +107,8 @@ onUnmounted(() => {
 });
 
 const error = ref<string | null>(null);
+const finalReason = ref<string | null>(null);
+const ringingRemoteUser = ref<any>(null);
 const store = useVideoCallStore();
 const chatStore = useChatStore();
 const authStore = useAuthStore();
@@ -139,10 +141,13 @@ const {
 // Auto-Close Logic
 watch(callState, (newState) => {
     if (newState === "ended") {
-        console.log("[CallApp] Call ended. Closing window in 2s...");
+        const reason = finalReason.value ?? "hangup";
+        const delay = ["no_answer", "timeout", "busy"].includes(reason) ? 5000 : 2000;
+        
+        console.log(`[CallApp] Call ended (${reason}). Closing window in ${delay}ms...`);
         setTimeout(() => {
             window.close();
-        }, 2000);
+        }, delay);
     }
 });
 
@@ -832,15 +837,30 @@ sfuSyncManager = new CallSfuSyncManager({
     getParticipantMids: (participantId) =>
         participantTransceivers.get(participantId),
     getRemoteMainStream: (participantId) => store.remoteStreams.get(participantId),
+    getRemoteScreenStream: (participantId) =>
+        store.remoteScreenStreams.get(participantId),
     requestRemoteMediaInfo: (participantId, force) =>
         sfuSignalManager?.requestRemoteMediaInfo(participantId, force),
-    pullParticipantTracks: (participantId, remoteSessionId, audioMid, videoMid) =>
+    pullParticipantTracks: (
+        participantId,
+        remoteSessionId,
+        audioMid,
+        videoMid,
+        screenMid,
+        mediaType,
+    ) =>
         pullParticipantTracks(
             participantId,
             remoteSessionId,
             audioMid,
             videoMid,
+            screenMid,
+            mediaType,
         ),
+    pullRemoteScreen: (participantId, screenMid, remoteSessionId) =>
+        pullRemoteScreen(participantId, screenMid, remoteSessionId),
+    isVisible: (participantId) =>
+        visibleParticipants.value.has(participantId.toLowerCase()),
     getRemoteMediaState: (participantId) => remoteMediaState.get(participantId),
     setRemoteMediaState: (participantId, state) =>
         remoteMediaState.set(participantId, state),
@@ -1082,6 +1102,20 @@ const totalPages = computed(() => Math.ceil(filmstripParticipants.value.length /
 
 const paginatedNonSelfParticipants = computed(() => {
     return paginatedParticipants.value.filter((p) => !p.isSelf);
+});
+
+const visibleParticipants = computed(() => {
+    const ids = new Set<string>();
+    paginatedParticipants.value.forEach((p) => {
+        ids.add(p.publicId.toLowerCase());
+    });
+    return ids;
+});
+
+watch(visibleParticipants, (newIds) => {
+    if (callMode.value === "sfu" && isTransportReady.value) {
+        sfuMediaManager.syncRemoteVideoVisibility(newIds);
+    }
 });
 
 // Reset page if it goes out of bounds
@@ -1480,6 +1514,7 @@ async function joinCall() {
 
         if (callData.value.direction === "outgoing" && others.length === 0) {
             callState.value = "ringing";
+            ringingRemoteUser.value = callData.value.remoteUser;
             console.log(
                 "[Call] Outgoing call started: maintaining ringing state",
             );
@@ -1623,11 +1658,14 @@ async function handleSignal(event: any) {
                 requestRemoteMediaInfo(senderId, true);
             }
             if (remoteSessionId && (remoteMids?.audioMid || remoteMids?.videoMid)) {
+                const isVisible = visibleParticipants.value.has(pid);
                 pullParticipantTracks(
                     senderId,
                     remoteSessionId,
                     remoteMids?.audioMid,
                     remoteMids?.videoMid,
+                    undefined, // screenMid
+                    isVisible ? "all" : "audio",
                 );
             }
         }
@@ -1750,11 +1788,16 @@ async function handleSignal(event: any) {
             (signalVideoMid !== undefined && signalVideoMid !== "");
 
         if (hasAnyRemoteMid) {
+            const isVisible = visibleParticipants.value.has(
+                senderId.toLowerCase(),
+            );
             pullParticipantTracks(
                 senderId,
                 signal.sessionId,
                 signalAudioMid,
                 signalVideoMid,
+                undefined, // screenMid
+                isVisible ? "all" : "audio",
             );
         } else {
             trace(
@@ -2585,12 +2628,28 @@ async function pullParticipantTracks(
     remoteSessionId?: string,
     remoteAudioMid?: string,
     remoteVideoMid?: string,
+    remoteScreenMid?: string,
+    mediaType: "audio" | "video" | "all" = "all",
 ) {
     return sfuMediaManager.pullParticipantTracks(
         participantPublicId,
         remoteSessionId,
         remoteAudioMid,
         remoteVideoMid,
+        undefined, // generation
+        mediaType,
+    );
+}
+
+async function pullRemoteScreen(
+    participantPublicId: string,
+    screenMid: string,
+    remoteSessionId: string,
+) {
+    return sfuMediaManager.pullRemoteScreen(
+        participantPublicId,
+        screenMid,
+        remoteSessionId,
     );
 }
 
@@ -2605,6 +2664,7 @@ function stopSFUScreenShare() {
 }
 
 async function endCall(reason = "hangup") {
+    finalReason.value = reason;
     if (callData.value && callState.value !== "ended") {
         videoCallService
             .endCall(
@@ -2614,6 +2674,7 @@ async function endCall(reason = "hangup") {
             )
             .catch(() => {});
     }
+    
     callState.value = "ended";
     postToParent({ type: "state", state: "ended", reason });
     cleanup();
@@ -2909,15 +2970,83 @@ onBeforeUnmount(() => cleanup());
         </div>
 
         <!-- ENDED STATE -->
-        <div v-else-if="callState === 'ended'" class="call-center-content">
-            <div class="state-icon ended">
-                <Icon name="PhoneOff" size="48" />
+        <template v-else-if="callState === 'ended' || (callState === 'idle' && finalReason)">
+            <div class="calling-screen ended-screen">
+                <!-- Dynamic background -->
+                <div v-if="ringingRemoteUser?.avatar" class="calling-bg" :style="{ backgroundImage: `url(${ringingRemoteUser.avatar})` }"></div>
+                <div class="calling-overlay"></div>
+
+                <div class="calling-card glass-card animate-in fade-in zoom-in duration-500">
+                    <div class="calling-avatar-container">
+                        <template v-if="ringingRemoteUser?.avatar">
+                            <img :src="ringingRemoteUser.avatar" class="calling-avatar grayscale opacity-50" />
+                        </template>
+                        <template v-else>
+                            <div class="calling-avatar-placeholder grayscale opacity-50">
+                                {{ ringingRemoteUser?.name?.charAt(0) || '?' }}
+                            </div>
+                        </template>
+                    </div>
+
+                    <div class="calling-info">
+                        <h2 class="calling-name">{{ ringingRemoteUser?.name || 'User' }}</h2>
+                        <p class="calling-status" :class="{
+                            'text-amber-400': finalReason === 'busy',
+                            'text-red-400': finalReason === 'no_answer' || finalReason === 'timeout',
+                            'text-zinc-400': finalReason === 'declined' || finalReason === 'ended'
+                        }">
+                            <span v-if="finalReason === 'busy'">User is busy</span>
+                            <span v-else-if="finalReason === 'no_answer' || finalReason === 'timeout'">No answer</span>
+                            <span v-else-if="finalReason === 'declined'">Call declined</span>
+                            <span v-else>Call ended</span>
+                        </p>
+                    </div>
+
+                    <div class="calling-actions">
+                        <button @click="closeWindow" class="btn-close-mini">
+                            Close
+                        </button>
+                    </div>
+                </div>
             </div>
-            <p class="state-text">Call ended</p>
-            <button class="btn-secondary" @click="closeWindow">
-                Close Window
-            </button>
-        </div>
+        </template>
+
+        <!-- RINGING STATE -->
+        <template v-else-if="callState === 'ringing'">
+            <div class="calling-screen">
+                <!-- Dynamic background -->
+                <div v-if="ringingRemoteUser?.avatar" class="calling-bg" :style="{ backgroundImage: `url(${ringingRemoteUser.avatar})` }"></div>
+                <div class="calling-overlay"></div>
+
+                <div class="calling-card glass-card animate-in fade-in zoom-in duration-700">
+                    <div class="calling-avatar-container">
+                        <!-- Multi-layered ripples -->
+                        <div class="ripple ripple-outer"></div>
+                        <div class="ripple ripple-inner"></div>
+                        
+                        <template v-if="ringingRemoteUser?.avatar">
+                            <img :src="ringingRemoteUser.avatar" class="calling-avatar" />
+                        </template>
+                        <template v-else>
+                            <div class="calling-avatar-placeholder">
+                                {{ ringingRemoteUser?.name?.charAt(0) || '?' }}
+                            </div>
+                        </template>
+                    </div>
+
+                    <div class="calling-info">
+                        <h2 class="calling-name">{{ ringingRemoteUser?.name || 'Calling...' }}</h2>
+                        <p class="calling-status animate-pulse">Waiting for answer...</p>
+                    </div>
+
+                    <div class="calling-actions">
+                        <button @click="endCall" class="btn-hangup-large">
+                            <Icon name="PhoneOff" size="28" />
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </template>
 
         <!-- PERMISSION RECOVERY -->
         <div v-else-if="permissionBlocked" class="lobby-minimalist">
@@ -3590,6 +3719,7 @@ onBeforeUnmount(() => cleanup());
                                     :sending="isSending"
                                     :is-mobile="false"
                                     compact
+                                    hide-audio
                                     class="shrink-0 z-10"
                                     @send="
                                         () => {
@@ -4715,6 +4845,189 @@ onBeforeUnmount(() => cleanup());
         width: 100%; /* Take full width on mobile */
         border-left: none; /* Remove border when full width */
     }
+}
+
+/* --- CALLING SCREEN PREMUM UI --- */
+.calling-screen {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #09090b;
+    z-index: 1000;
+    overflow: hidden;
+}
+
+.calling-bg {
+    position: absolute;
+    inset: -20px;
+    background-size: cover;
+    background-position: center;
+    filter: blur(60px) brightness(0.3);
+    z-index: 1;
+    transform: scale(1.1);
+}
+
+.calling-overlay {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at center, transparent 0%, rgba(0,0,0,0.4) 100%);
+    z-index: 2;
+}
+
+.glass-card {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 32px 64px -12px rgba(0, 0, 0, 0.5);
+}
+
+.calling-card {
+    position: relative;
+    z-index: 10;
+    width: 320px;
+    padding: 48px 32px;
+    border-radius: 48px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+.calling-avatar-container {
+    position: relative;
+    width: 140px;
+    height: 140px;
+    margin-bottom: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.calling-avatar {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 4px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.3);
+    position: relative;
+    z-index: 5;
+}
+
+.calling-avatar-placeholder {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+    color: white;
+    font-size: 48px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 4px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.3);
+    position: relative;
+    z-index: 5;
+}
+
+.ripple {
+    position: absolute;
+    border-radius: 50%;
+    background: rgba(59, 130, 246, 0.15);
+    z-index: 1;
+    animation: calling-ripple 3s infinite cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ripple-outer {
+    width: 200%;
+    height: 200%;
+}
+
+.ripple-inner {
+    width: 140%;
+    height: 140%;
+    animation-delay: 1s;
+}
+
+@keyframes calling-ripple {
+    0% {
+        transform: scale(0.5);
+        opacity: 0;
+    }
+    50% {
+        opacity: 0.5;
+    }
+    100% {
+        transform: scale(1.2);
+        opacity: 0;
+    }
+}
+
+.calling-info {
+    margin-bottom: 48px;
+}
+
+.calling-name {
+    font-size: 24px;
+    font-weight: 700;
+    color: white;
+    margin-bottom: 8px;
+    letter-spacing: -0.01em;
+}
+
+.calling-status {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.5);
+    font-weight: 500;
+}
+
+.btn-hangup-large {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: #ef4444;
+    color: white;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    box-shadow: 0 16px 32px rgba(239, 68, 68, 0.3);
+}
+
+.btn-hangup-large:hover {
+    transform: scale(1.15);
+    background: #dc2626;
+    box-shadow: 0 20px 40px rgba(239, 68, 68, 0.4);
+}
+
+.btn-close-mini {
+    padding: 10px 24px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: white;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-close-mini:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.ended-screen .calling-avatar-container {
+    filter: grayscale(1);
 }
 
 @keyframes breathing {
