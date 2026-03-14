@@ -312,4 +312,54 @@ class GroupChatService
             return $chat;
         });
     }
+
+    /**
+     * Transfer ownership of a group chat.
+     */
+    public function transferOwnership(Chat $chat, User $currentOwner, User $newOwner): void
+    {
+        if (! $chat->isOwner($currentOwner)) {
+            throw ValidationException::withMessages(['message' => 'Only the owner can transfer ownership.']);
+        }
+
+        if (! $chat->participants->contains('id', $newOwner->id)) {
+            throw ValidationException::withMessages(['message' => 'New owner must be a participant of the group.']);
+        }
+
+        if ($currentOwner->id === $newOwner->id) {
+            throw ValidationException::withMessages(['message' => 'You are already the owner.']);
+        }
+
+        DB::transaction(function () use ($chat, $currentOwner, $newOwner) {
+            // 1. Update pivot roles
+            $chat->participants()->updateExistingPivot($currentOwner->id, ['role' => 'admin']);
+            $chat->participants()->updateExistingPivot($newOwner->id, ['role' => 'owner']);
+
+            // 2. Update Chat created_by (for limit tracking)
+            $chat->update(['created_by' => $newOwner->id]);
+
+            // 3. Create system message
+            $this->chatEngine->createSystemMessage(
+                $chat,
+                "{$currentOwner->name} transferred group ownership to {$newOwner->name}.",
+                $currentOwner->id
+            );
+
+            // 4. Log audit
+            $this->auditService->log(
+                AuditAction::ChatOwnershipTransferred,
+                AuditCategory::Communication,
+                $chat,
+                $currentOwner,
+                null,
+                [
+                    'old_owner_id' => $currentOwner->id,
+                    'new_owner_id' => $newOwner->id,
+                ]
+            );
+
+            // 5. Broadcast event
+            broadcast(new \App\Events\Chat\ChatOwnershipTransferred($chat, $newOwner, $currentOwner));
+        });
+    }
 }

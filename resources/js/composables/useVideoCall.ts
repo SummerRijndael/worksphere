@@ -110,8 +110,10 @@ export function useVideoCall() {
             if (msg.reason === 'declined') {
               const remoteName = store.currentCall?.remoteUser?.name || 'User';
               toast.info(`${remoteName} declined the call`);
-            } else if (msg.reason === 'timeout') {
-              toast.info('Call was not answered');
+            } else if (msg.reason === 'timeout' || msg.reason === 'no_answer') {
+              toast.info('User did not answer');
+            } else if (msg.reason === 'busy') {
+              toast.error('User is busy');
             } else {
               toast.info('Call ended');
             }
@@ -419,8 +421,8 @@ export function useVideoCall() {
       if (isTarget) {
           console.log(`[VideoCall] Target participant left: ${pId}, reason: ${data.reason}`);
           if (data.reason === 'busy') toast.error("User is busy");
-          else if (data.reason === 'declined') toast.info("Call declined");
-          else if (data.reason === 'no_answer' || data.reason === 'timeout') toast.info("Call was not answered");
+          else if (data.reason === 'declined') toast.info("User declined the call");
+          else if (data.reason === 'no_answer' || data.reason === 'timeout') toast.info("User did not answer");
           
           if (!callPopup || callPopup.closed) {
               // Notify backend that we are also ending the session
@@ -464,11 +466,11 @@ export function useVideoCall() {
     if (callPopup && !callPopup.closed) return;
 
     if (data.reason === 'declined') {
-        toast.info('Call declined');
+        toast.info('User declined the call');
     } else if (data.reason === 'no_answer' || data.reason === 'timeout') {
-        toast.info('Call was not answered');
+        toast.info('User did not answer');
     } else if (data.reason === 'busy') {
-        toast.info('User is busy');
+        toast.error('User is busy');
     } else {
         toast.info('Call ended');
     }

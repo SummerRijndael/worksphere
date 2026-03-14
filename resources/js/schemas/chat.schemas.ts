@@ -33,6 +33,7 @@ export const chatSchema = z.object({
   updated_at: z.string(),
   participants: z.array(chatParticipantSchema),
   last_message: lastMessageSchema.nullable(),
+  unread_count: z.number().optional(),
   team_owner_id: z.number().nullable(),
   marked_for_deletion_at: z.string().nullable().optional(),
 });

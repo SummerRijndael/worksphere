@@ -19,6 +19,7 @@ use App\Services\EmailAdapters\AdapterFactory;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Bus;
 
 class EmailSyncService implements EmailSyncServiceContract
 {
@@ -51,18 +52,26 @@ class EmailSyncService implements EmailSyncServiceContract
             ],
         ]);
 
-        // Dispatch forward crawler immediately (fetches newest emails first)
-        FetchLatestEmailsJob::dispatch($account->id);
+        // Initialize the batch for tracking
+        $batch = Bus::batch([
+            new FetchLatestEmailsJob($account->id),
+            (new BackfillEmailsJob($account->id))->delay(now()->addSeconds(10)),
+        ])->name('EmailSync:'.$account->email)
+          ->finally(function ($batch) use ($account) {
+              Log::info('[EmailSync] Initial sync batch finished', ['account_id' => $account->id]);
+          })->dispatch();
 
-        // Dispatch backfill crawler with slight delay (for historical emails)
-        BackfillEmailsJob::dispatch($account->id)->delay(now()->addSeconds(10));
+        $account->update(['last_checkpoint_id' => $batch->id]);
 
         SyncStatusChanged::dispatch(
             $account,
             EmailSyncStatus::Syncing->value
         );
 
-        Log::info('[EmailSync] Started dual-crawler sync', ['account_id' => $account->id]);
+        Log::info('[EmailSync] Started batched dual-crawler sync', [
+            'account_id' => $account->id,
+            'batch_id' => $batch->id
+        ]);
     }
 
     /**

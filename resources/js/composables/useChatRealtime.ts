@@ -14,26 +14,62 @@ const connectionState = ref<'connected' | 'connecting' | 'disconnected'>('discon
 const typingTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 const initializationPending = ref(false);
 const callSignalCounters = new Map<string, { count: number; windowStart: number }>();
+const recentReadReceipts = new Map<string, number>();
+
+function shouldProcessReadReceipt(event: {
+  chat_id: string;
+  last_read_message_id: string;
+  reader_public_id?: string;
+}): boolean {
+  const now = Date.now();
+  const key = [
+    event.chat_id || '',
+    event.last_read_message_id || '',
+    event.reader_public_id || '',
+  ].join(':');
+
+  const last = recentReadReceipts.get(key);
+  if (last && now - last < 1500) {
+    return false;
+  }
+
+  recentReadReceipts.set(key, now);
+
+  // Lightweight GC for the dedupe cache.
+  if (recentReadReceipts.size > 250) {
+    for (const [k, ts] of recentReadReceipts) {
+      if (now - ts > 15000) {
+        recentReadReceipts.delete(k);
+      }
+    }
+  }
+
+  return true;
+}
 
 function logCallSignalSample(channelName: string, event: any): void {
+  const signalType = String(event.signal_data?.type ?? event.signal_type ?? '').toLowerCase();
+  const isCandidateSignal = signalType === 'candidate' || signalType === 'ice-candidate';
   const now = Date.now();
   const counter = callSignalCounters.get(channelName);
   if (!counter || now - counter.windowStart > 5000) {
     callSignalCounters.set(channelName, { count: 1, windowStart: now });
-    console.log(
-      `[ChatRealtime] 📡 .CallSignal on ${channelName} (sample)`,
-      {
-        callId: event.call_id ?? event.callId ?? null,
-        signalType: event.signal_data?.type ?? event.signal_type ?? null,
-        sender: event.sender_public_id ?? event.senderPublicId ?? null,
-        target: event.target_public_id ?? event.targetPublicId ?? null,
-      },
-    );
+    if (!isCandidateSignal) {
+      console.log(
+        `[ChatRealtime] 📡 .CallSignal on ${channelName} (sample)`,
+        {
+          callId: event.call_id ?? event.callId ?? null,
+          signalType: signalType || null,
+          sender: event.sender_public_id ?? event.senderPublicId ?? null,
+          target: event.target_public_id ?? event.targetPublicId ?? null,
+        },
+      );
+    }
     return;
   }
 
   counter.count += 1;
-  if (counter.count % 25 === 0) {
+  if (counter.count % 100 === 0) {
     console.log(`[ChatRealtime] 📡 .CallSignal on ${channelName}: ${counter.count} events in current 5s window`);
   }
 }
@@ -189,12 +225,16 @@ export function useChatRealtime() {
 
     echo
       .private(channelName)
-      .listen('.MessageRead', (event: { chat_id: string; last_read_message_id: string }) => {
+      .listen('.MessageRead', (event: { chat_id: string; last_read_message_id: string; reader_public_id?: string }) => {
+        if (!shouldProcessReadReceipt(event)) {
+          return;
+        }
         console.log(`[ChatRealtime] 👁️ RECEIVED .MessageRead on ${channelName}`, JSON.stringify(event, null, 2));
         chatStore.updateMessageSeen(event.chat_id, event.last_read_message_id);
       })
       .listen('.ChatBadgeUpdated', (event: { unread_count: number }) => {
         console.log(`[ChatRealtime] 🔢 RECEIVED .ChatBadgeUpdated on ${channelName}`, event);
+        chatStore.totalUnreadCount = event.unread_count;
       })
       .listen('.invite.sent', (event: any) => {
         console.log(`[ChatRealtime] 📨 RECEIVED .invite.sent on ${channelName}`, event);
@@ -253,13 +293,13 @@ export function useChatRealtime() {
       return;
     }
 
+    const added = chatStore.addMessage(chatId, message);
+    if (!added) return;
+
     // Play sound for incoming message
     chatSound.play().catch((e) => {
       console.warn('[ChatRealtime] Failed to play chat sound:', e);
     });
-
-    console.log(`[ChatRealtime] ✅ Adding message to store for chat: ${chatId}`);
-    chatStore.addMessage(chatId, message);
 
     // If this is the active chat, mark as read immediately
     // This triggers the "Seen" indicator for the sender
@@ -268,7 +308,7 @@ export function useChatRealtime() {
       chatStore.markAsRead(chatId);
     } else {
       // Increment unread count if not the active chat
-      const chat = chatStore.chats.find((c) => c.id === chatId);
+      const chat = chatStore.chats.find((c) => c.public_id === chatId);
       if (chat) {
         chatStore.updateChatUnreadCount(chatId, (chat.unread_count ?? 0) + 1);
       }

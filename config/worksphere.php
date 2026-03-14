@@ -22,4 +22,11 @@ return [
             'max_meetings_per_user' => env('MEETING_MAX_PER_USER', 15),
         ],
     ],
+    'chat' => [
+        'limits' => [
+            'max_group_members' => env('CHAT_MAX_GROUP_MEMBERS', 50),
+            'max_groups_owned' => env('CHAT_MAX_GROUPS_OWNED', 20),
+            'max_groups_joined' => env('CHAT_MAX_GROUPS_JOINED', 100),
+        ],
+    ],
 ];

@@ -171,7 +171,7 @@ return [
     |
     */
 
-    'fast_termination' => false,
+    'fast_termination' => true,
 
     /*
     |--------------------------------------------------------------------------
@@ -299,7 +299,7 @@ return [
                 'queue' => ['default', 'meetings', 'notifications', 'maintenance'],
                 'balance' => 'auto',
                 'minProcesses' => 1,
-                'maxProcesses' => 3, // Reduced from 10
+                'maxProcesses' => 10,
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
                 'tries' => 5,

@@ -99,18 +99,11 @@ class ProcessChatMessage implements ShouldQueue
             // Invalidate message cache for this chat (so new fetch gets latest)
             ChatCache::flushMessages($chat->id);
 
-            // Calculate unread count
-            $unreadCount = ChatEngine::unreadFor($participant);
+            // Offload unread count calculation and broadcasting to a dedicated job
+            \App\Jobs\UpdateUserBadgeJob::dispatch($participant->id);
 
-            // Update unread cache
-            ChatCache::put($participant->id, $unreadCount);
-
-            // Broadcast badge update
-            ChatEvents::unreadBadge($participant, $unreadCount);
-
-            Log::debug('[ProcessChatMessage] Badge updated for recipient', [
+            Log::debug('[ProcessChatMessage] Badge update queued for recipient', [
                 'recipient_id' => $participant->id,
-                'unread_count' => $unreadCount,
             ]);
         }
     }

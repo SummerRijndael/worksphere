@@ -71,6 +71,7 @@ enum AuditAction: string
     case ChatDeleted = 'chat_deleted';
     case ChatMarkedForDeletion = 'chat_marked_for_deletion';
     case ChatDeletionCancelled = 'chat_deletion_cancelled';
+    case ChatOwnershipTransferred = 'chat_ownership_transferred';
 
     // Session management
     case SessionRevoked = 'session_revoked';
@@ -174,6 +175,7 @@ enum AuditAction: string
             self::ChatDeleted => 'Chat Deleted',
             self::ChatMarkedForDeletion => 'Chat Marked for Deletion',
             self::ChatDeletionCancelled => 'Chat Deletion Cancelled',
+            self::ChatOwnershipTransferred => 'Chat Ownership Transferred',
             self::RedisFlushed => 'Redis Data Flushed',
             self::QueueRestarted => 'Queue Workers Restarted',
             self::HorizonRestarted => 'Horizon Restarted',
@@ -241,6 +243,7 @@ enum AuditAction: string
             self::ChatDeleted => 'trash-2',
             self::ChatMarkedForDeletion => 'alert-triangle',
             self::ChatDeletionCancelled => 'rotate-ccw',
+            self::ChatOwnershipTransferred => 'user-check',
             self::RedisFlushed => 'database-zap',
             self::QueueRestarted => 'refresh-cw',
             self::HorizonRestarted => 'activity',

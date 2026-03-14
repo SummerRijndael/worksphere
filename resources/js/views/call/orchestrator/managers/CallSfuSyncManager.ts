@@ -31,12 +31,15 @@ export interface CallSfuSyncManagerOptions {
         remoteSessionId?: string,
         audioMid?: string,
         videoMid?: string,
+        screenMid?: string,
+        mediaType?: "audio" | "video" | "all",
     ) => void | Promise<void>;
     pullRemoteScreen: (
         participantId: string,
         screenMid: string,
-        remoteSessionId?: string,
+        remoteSessionId: string,
     ) => void | Promise<void>;
+    isVisible?: (participantId: string) => boolean;
     getRemoteMediaState: (participantId: string) => RemoteMediaState | undefined;
     setRemoteMediaState: (
         participantId: string,
@@ -44,8 +47,6 @@ export interface CallSfuSyncManagerOptions {
     ) => void;
     upsertMainStream: (participantId: string, stream: MediaStream) => void;
     removeMainStream: (participantId: string) => void;
-    upsertScreenStream: (participantId: string, stream: MediaStream) => void;
-    removeScreenStream: (participantId: string) => void;
     stopAudioAnalysis: (participantId: string) => void;
     intervalMs?: number;
     log?: (message: string) => void;
@@ -79,11 +80,7 @@ export class CallSfuSyncManager {
         participantId: string,
         track: MediaStreamTrack,
     ): void {
-        const normalizedId = participantId.toLowerCase();
-        const isScreenTrack = normalizedId.endsWith(":screen");
-        const streamKey = isScreenTrack
-            ? normalizedId.replace(":screen", "")
-            : normalizedId;
+        const streamKey = participantId.toLowerCase();
 
         const currentState = this.options.getRemoteMediaState(streamKey) || {
             muted: false,
@@ -105,20 +102,6 @@ export class CallSfuSyncManager {
         // `onmute` can be transient (network jitter/track starvation) and must not
         // hard-remove streams, otherwise we trigger unnecessary repulls/transceiver churn.
         if (track.readyState !== "ended") {
-            return;
-        }
-
-        if (isScreenTrack) {
-            const screenStream = this.options.getRemoteScreenStream(streamKey);
-            const removed = this.pruneRemoteTrackFromStream(screenStream, track);
-            if (!removed || !screenStream) return;
-
-            if (screenStream.getTracks().length === 0) {
-                this.options.removeScreenStream(streamKey);
-            } else {
-                // Re-set map entry to ensure UI observes track-level mutation.
-                this.options.upsertScreenStream(streamKey, screenStream);
-            }
             return;
         }
 
@@ -163,17 +146,25 @@ export class CallSfuSyncManager {
             const hasLiveAudio = this.hasLiveTrack(mainStream, "audio");
             const hasLiveVideo = this.hasLiveTrack(mainStream, "video");
             const expectsAudio = !remoteState?.muted || !!mids?.audioMid;
-            const expectsVideo = !remoteState?.cameraOff || !!mids?.videoMid;
+            const isVisible = this.options.isVisible?.(participantId) ?? true;
+            const expectsVideo = isVisible && (!remoteState?.cameraOff || !!mids?.videoMid);
             const streamBroken = this.isRemoteStreamBroken(mainStream);
             const expectedMediaMissing =
                 (expectsAudio && !hasLiveAudio) || (expectsVideo && !hasLiveVideo);
 
             if (streamBroken || expectedMediaMissing) {
+                // Determine what exactly is missing to perform a selective pull
+                let mediaToPull: "audio" | "video" | "all" = "all";
+                if (hasLiveAudio && !hasLiveVideo && expectsVideo) mediaToPull = "video";
+                else if (!hasLiveAudio && hasLiveVideo) mediaToPull = "audio";
+
                 void this.options.pullParticipantTracks(
                     participantId,
                     sessionId,
                     mids?.audioMid,
                     mids?.videoMid,
+                    undefined,
+                    mediaToPull,
                 );
                 if (expectsVideo && !mids?.videoMid) {
                     this.options.requestRemoteMediaInfo(participantId, true);

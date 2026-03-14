@@ -114,6 +114,13 @@ Schedule::command('meetings:prune')
     ->withoutOverlapping()
     ->onOneServer();
 
+// Cleanup inactive group chats daily at 4:00 AM
+Schedule::command('chat:cleanup-inactive')
+    ->dailyAt('04:00')
+    ->name('cleanup-inactive-chats')
+    ->withoutOverlapping()
+    ->onOneServer();
+
 // Prune audit logs daily at 2:30 AM
 Schedule::command('audit:prune --days=30')
     ->dailyAt('02:30')
