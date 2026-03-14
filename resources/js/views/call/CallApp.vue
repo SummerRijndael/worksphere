@@ -9,7 +9,7 @@ import {
     ref,
     computed,
     onMounted,
-    
+    onUnmounted,
     onBeforeUnmount,
     watch,
     reactive,
@@ -17,7 +17,8 @@ import {
 } from "vue";
 import Peer from "simple-peer";
 import { videoCallService } from "@/services/videocall.service";
-import { useVideoCallStore } from "@/stores/videocall";
+import CallDevSimulationTool from "./components/CallDevSimulationTool.vue";
+import { useVideoCallStore, type Participant } from "@/stores/videocall";
 import { toast } from "vue-sonner";
 import { useChatStore } from "@/stores/chat";
 import { useAuthStore } from "@/stores/auth";
@@ -34,7 +35,7 @@ import MediaViewer from "@/components/tools/MediaViewer.vue";
 import { CallOrchestrator } from "./orchestrator/CallOrchestrator";
 import { CallSignalingManager } from "./orchestrator/managers/CallSignalingManager";
 import {
-    acquireLocalMedia,
+    acquireMicrophoneTrack,
     acquireCameraTrack,
     applyOutputDevice as applyOutputDeviceThroughManager,
 } from "./orchestrator/managers/CallMediaDeviceManager";
@@ -83,11 +84,26 @@ const hasJoined = ref(false);
 const isJoining = ref(false);
 const permissionBlocked = ref(false);
 const permissionErrorMessage = ref<string | null>(null);
-const MIC_PERMISSION_PROMPT_DELAY_MS = 350;
+const windowWidth = ref(window.innerWidth);
 const isMobile = computed(() => {
-    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+    const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
         navigator.userAgent,
     );
+    return isMobileUA || windowWidth.value <= 768;
+});
+
+const handleResize = () => {
+    windowWidth.value = window.innerWidth;
+};
+
+onMounted(() => {
+    window.addEventListener("resize", handleResize);
+    window.addEventListener('keydown', handleGlobalKeydown);
+});
+
+onUnmounted(() => {
+    window.removeEventListener("resize", handleResize);
+    window.removeEventListener('keydown', handleGlobalKeydown);
 });
 
 const error = ref<string | null>(null);
@@ -145,6 +161,18 @@ watch(
     },
 );
 
+// Media Operation Queue to prevent race conditions during track swaps
+let mediaQueue = Promise.resolve();
+async function runInQueue<T>(op: () => Promise<T>): Promise<T> {
+    const next = mediaQueue.then(op);
+    mediaQueue = next.then(() => {}, () => {}); // Catch both success and failure
+    return next;
+}
+
+const isGroupCall = computed(() => {
+    return activeChat.value?.type === "group" || participants.value.length > 2;
+});
+
 const handleMessageReply = (message: any) => {
     setReplyTo(message);
 };
@@ -166,16 +194,12 @@ const toggleSidebar = (tab?: "people" | "chat") => {
 const localStream = ref<MediaStream | null>(null);
 const isMuted = ref(true); // Default to Mic Off as requested
 const isCameraOff = ref(true); // Default to Video Off as requested
-const videoFallback = ref(false);
 const isAudioOnly = computed(() => callData.value?.callType === "audio");
 
 // Background Blur
 const backgroundBlur = useBackgroundBlur();
 const originalVideoTrack = ref<MediaStreamTrack | null>(null);
 
-// Screen Sharing
-const isScreenSharing = ref(false);
-const screenStream = ref<MediaStream | null>(null);
 
 // Network Stats
 const networkStats = reactive({
@@ -258,6 +282,13 @@ let meshManager: CallMeshManager | null = null;
 const signalRuntimeManager = new CallSignalRuntimeManager();
 let outgoingNoAnswerTimer: ReturnType<typeof setTimeout> | null = null;
 const OUTGOING_NO_ANSWER_MS = 45000;
+const meshRecoveryAttempts = reactive(
+    new Map<string, { count: number; windowStartAt: number }>(),
+);
+const meshRecoveryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const MESH_RECOVERY_MAX_ATTEMPTS = 4;
+const MESH_RECOVERY_WINDOW_MS = 30000;
+const MESH_RECOVERY_BASE_DELAY_MS = 300;
 
 watch(callState, () => {
     callOrchestrator.syncHeartbeat();
@@ -313,6 +344,144 @@ const participantTransceivers = new Map<
     string,
     { audioMid?: string; videoMid?: string; screenMid?: string }
 >();
+
+function updateRemoteMediaStateFromStream(
+    participantId: string,
+    stream: MediaStream,
+) {
+    const pid = participantId.toLowerCase();
+    const currentState = remoteMediaState.get(pid) || {
+        muted: false,
+        cameraOff: true,
+    };
+
+    const hasAudioTrack = stream.getAudioTracks().length > 0;
+    const hasLiveAudio = stream
+        .getAudioTracks()
+        .some((track) => track.readyState === "live" && !track.muted);
+    const hasVideoTrack =
+        stream.getVideoTracks().length > 0 &&
+        stream.getVideoTracks().some((track) => track.readyState === "live");
+
+    const prevCameraOff = !!currentState.cameraOff;
+    const nextCameraOff = hasVideoTrack ? false : currentState.cameraOff;
+
+    remoteMediaState.set(pid, {
+        muted: hasAudioTrack ? (hasLiveAudio ? false : currentState.muted) : true,
+        cameraOff: nextCameraOff,
+    });
+
+    if (prevCameraOff !== nextCameraOff) {
+        console.log(`[Call] Media state transition for ${pid}: cameraOff=${prevCameraOff} -> ${nextCameraOff}`);
+        remoteCameraLoadingState.set(pid, true);
+        setTimeout(() => {
+            remoteCameraLoadingState.set(pid, false);
+        }, 900);
+    }
+}
+
+function bindRemoteTrackLifecycle(participantId: string, stream: MediaStream) {
+    const pid = participantId.toLowerCase();
+    const sync = () => updateRemoteMediaStateFromStream(pid, stream);
+
+    stream.getVideoTracks().forEach((track) => {
+        track.onunmute = () => {
+            console.log(`[Call] Remote video track from ${pid} UNMUTED`);
+            sync();
+        };
+        track.onended = () => {
+            console.log(`[Call] Remote video track from ${pid} ENDED`);
+            sync();
+        };
+    });
+
+    stream.getAudioTracks().forEach((track) => {
+        track.onunmute = () => sync();
+        track.onended = () => sync();
+    });
+}
+
+function clearMeshRecovery(participantId: string) {
+    const pid = participantId.toLowerCase();
+    const timer = meshRecoveryTimers.get(pid);
+    if (timer) {
+        clearTimeout(timer);
+        meshRecoveryTimers.delete(pid);
+    }
+    meshRecoveryAttempts.delete(pid);
+}
+
+function canRecoverMeshPeer(participantId: string): boolean {
+    const pid = participantId.toLowerCase();
+    const selfId = (callData.value?.selfPublicId || "").toLowerCase();
+    if (!pid || pid === selfId) return false;
+    if (callMode.value !== "mesh") return false;
+    if (!hasJoined.value || !isTransportReady.value) return false;
+    if (
+        callState.value === "initializing" ||
+        callState.value === "ended" ||
+        callState.value === "error"
+    ) {
+        return false;
+    }
+
+    return participants.value.some((p) => p.publicId.toLowerCase() === pid);
+}
+
+function scheduleMeshPeerRecovery(
+    participantId: string,
+    reason = "peer-closed",
+) {
+    const pid = participantId.toLowerCase();
+    if (!canRecoverMeshPeer(pid)) return;
+    if (peers.has(pid)) return;
+
+    const existingTimer = meshRecoveryTimers.get(pid);
+    if (existingTimer) {
+        clearTimeout(existingTimer);
+        meshRecoveryTimers.delete(pid);
+    }
+
+    const now = Date.now();
+    const existingAttempt = meshRecoveryAttempts.get(pid);
+    const attempt =
+        !existingAttempt ||
+        now - existingAttempt.windowStartAt > MESH_RECOVERY_WINDOW_MS
+            ? { count: 0, windowStartAt: now }
+            : existingAttempt;
+
+    if (attempt.count >= MESH_RECOVERY_MAX_ATTEMPTS) {
+        console.warn(
+            `[Call] Mesh recovery capped for ${pid} (${attempt.count}/${MESH_RECOVERY_MAX_ATTEMPTS})`,
+        );
+        return;
+    }
+
+    attempt.count += 1;
+    meshRecoveryAttempts.set(pid, attempt);
+    const delay = Math.min(1500, MESH_RECOVERY_BASE_DELAY_MS * attempt.count);
+
+    const timer = setTimeout(() => {
+        meshRecoveryTimers.delete(pid);
+        if (!canRecoverMeshPeer(pid) || peers.has(pid)) {
+            return;
+        }
+
+        const selfId = (callData.value?.selfPublicId || "").toLowerCase();
+        const isInitiator = selfId > pid;
+        console.log(
+            `[Call] Recovering peer ${pid} (reason: ${reason}, attempt ${attempt.count}/${MESH_RECOVERY_MAX_ATTEMPTS}, initiator: ${isInitiator})`,
+        );
+        meshManager?.createPeer(
+            pid,
+            isInitiator,
+            getMeshPeerSeedStream(),
+        );
+    }, delay);
+
+    meshRecoveryTimers.set(pid, timer);
+}
+
 const sfuMediaManager = new CallSfuMediaManager({
     getPeerConnection: () => sfuPc,
     setPeerConnection: (peerConnection) => {
@@ -337,33 +506,8 @@ const sfuMediaManager = new CallSfuMediaManager({
     onRemoteMainStream: (participantId, stream) => {
         store.addRemoteStream(participantId, stream);
         startAudioAnalysis(participantId, stream);
-        const pid = participantId.toLowerCase();
-        const currentState = remoteMediaState.get(pid) || {
-            muted: false,
-            cameraOff: false,
-        };
-        const hasLiveAudio = stream
-            .getAudioTracks()
-            .some((t) => t.readyState === "live" && !t.muted);
-        const hasLiveVideo = stream
-            .getVideoTracks()
-            .some((t) => t.readyState === "live" && !t.muted);
-        
-        const prevState = currentState.cameraOff;
-        const newState = hasLiveVideo ? false : currentState.cameraOff;
-
-        remoteMediaState.set(pid, {
-            muted: hasLiveAudio ? false : currentState.muted,
-            cameraOff: newState,
-        });
-
-        if (prevState !== newState) {
-            remoteCameraLoadingState.set(pid, true);
-            setTimeout(() => {
-                remoteCameraLoadingState.set(pid, false);
-            }, 900);
-        }
-        
+        bindRemoteTrackLifecycle(participantId, stream);
+        updateRemoteMediaStateFromStream(participantId, stream);
         markCallConnected();
     },
     onRemoteScreenStream: (participantId, stream) => {
@@ -674,8 +818,6 @@ sfuSignalManager = new CallSfuSignalManager({
             : null,
     getPeerConnection: () => sfuPc,
     getSessionId: () => sfuSessionId.value,
-    isScreenSharing: () => isScreenSharing.value,
-    getScreenMid: () => sfuScreenMid.value,
     mediaInfoThrottleMs: 10000,
     midRetryDelayMs: 2000,
     maxMidRetries: 3,
@@ -690,8 +832,6 @@ sfuSyncManager = new CallSfuSyncManager({
     getParticipantMids: (participantId) =>
         participantTransceivers.get(participantId),
     getRemoteMainStream: (participantId) => store.remoteStreams.get(participantId),
-    getRemoteScreenStream: (participantId) =>
-        store.remoteScreenStreams.get(participantId),
     requestRemoteMediaInfo: (participantId, force) =>
         sfuSignalManager?.requestRemoteMediaInfo(participantId, force),
     pullParticipantTracks: (participantId, remoteSessionId, audioMid, videoMid) =>
@@ -701,8 +841,6 @@ sfuSyncManager = new CallSfuSyncManager({
             audioMid,
             videoMid,
         ),
-    pullRemoteScreen: (participantId, screenMid, remoteSessionId) =>
-        pullSFURemoteScreen(participantId, screenMid, remoteSessionId),
     getRemoteMediaState: (participantId) => remoteMediaState.get(participantId),
     setRemoteMediaState: (participantId, state) =>
         remoteMediaState.set(participantId, state),
@@ -725,14 +863,14 @@ meshManager = new CallMeshManager({
             ? { chatId: callData.value.chatId, callId: callData.value.callId }
             : null,
     getIceServers: () => iceServers.value,
+    shouldReserveVideoMLine: () => true,
     mungeSdp,
     onMainStream: (participantId, stream) => {
+        clearMeshRecovery(participantId);
         store.addRemoteStream(participantId, stream);
         startAudioAnalysis(participantId, stream);
-        remoteMediaState.set(participantId, {
-            muted: stream.getAudioTracks().length === 0,
-            cameraOff: stream.getVideoTracks().length === 0,
-        });
+        bindRemoteTrackLifecycle(participantId, stream);
+        updateRemoteMediaStateFromStream(participantId, stream);
         markCallConnected();
     },
     onScreenStream: (participantId, stream) => {
@@ -741,110 +879,17 @@ meshManager = new CallMeshManager({
     onPeerClosed: (participantId) => {
         store.removeRemoteStream(participantId);
         store.removeRemoteScreenStream(participantId);
+        remoteCameraLoadingState.delete(participantId.toLowerCase());
+        remoteMediaState.delete(participantId.toLowerCase());
+        scheduleMeshPeerRecovery(participantId);
     },
 });
 
 // Voice Activity Detection
 const talkingParticipants = reactive(new Set<string>());
-const handRaised = reactive(new Set<string>());
 const isControlsCollapsed = ref(false);
 
-// Draggable Controls Logic
-const controlsPosition = reactive({ x: 0, y: 0 });
-const isDragging = ref(false);
-const dragOffset = reactive({ x: 0, y: 0 });
-const hasMoved = ref(false); // To prevent click triggering when dragging
 
-const startDrag = (event: MouseEvent | TouchEvent) => {
-    // Only allow dragging if not clicking a button directly (unless it's the container background)
-    // Actually, users might click anywhere on the bar. Let's filter out if they click a button.
-    const target = event.target as HTMLElement;
-    if (target.closest("button")) return;
-
-    isDragging.value = true;
-    hasMoved.value = false;
-
-    const clientX =
-        "touches" in event ? event.touches[0].clientX : event.clientX;
-    const clientY =
-        "touches" in event ? event.touches[0].clientY : event.clientY;
-
-    // Calculate offset from the element's top-left corner
-    const controlsEl = document.querySelector(".controls-bar") as HTMLElement;
-    if (controlsEl) {
-        const rect = controlsEl.getBoundingClientRect();
-        dragOffset.x = clientX - rect.left;
-        dragOffset.y = clientY - rect.top;
-    }
-
-    window.addEventListener("mousemove", onDrag);
-    window.addEventListener("mouseup", stopDrag);
-    window.addEventListener("touchmove", onDrag);
-    window.addEventListener("touchend", stopDrag);
-};
-
-const onDrag = (event: MouseEvent | TouchEvent) => {
-    if (!isDragging.value) return;
-
-    const clientX =
-        "touches" in event
-            ? event.touches[0].clientX
-            : (event as MouseEvent).clientX;
-    const clientY =
-        "touches" in event
-            ? event.touches[0].clientY
-            : (event as MouseEvent).clientY;
-
-    // Update position
-    let newX = clientX - dragOffset.x;
-    let newY = clientY - dragOffset.y;
-
-    // Bounds checking (keep within viewport with 16px margin)
-    const controlsEl = document.querySelector(".controls-bar") as HTMLElement;
-    if (controlsEl) {
-        const rect = controlsEl.getBoundingClientRect();
-        const maxX = window.innerWidth - rect.width - 16;
-        const maxY = window.innerHeight - rect.height - 16;
-
-        newX = Math.max(16, Math.min(newX, maxX));
-        newY = Math.max(16, Math.min(newY, maxY));
-    }
-
-    controlsPosition.x = newX;
-    controlsPosition.y = newY;
-
-    hasMoved.value = true;
-};
-
-const stopDrag = () => {
-    isDragging.value = false;
-    window.removeEventListener("mousemove", onDrag);
-    window.removeEventListener("mouseup", stopDrag);
-    window.removeEventListener("touchmove", onDrag);
-    window.removeEventListener("touchend", stopDrag);
-};
-
-const clampControlsPosition = () => {
-    // Ensure controls stay within window
-    const isMobile = window.innerWidth <= 768;
-
-    // On mobile, we often want to lock it or restrict it heavily
-    if (isMobile && !hasMoved.value) {
-        controlsPosition.x = 0;
-        controlsPosition.y = 0;
-        return;
-    }
-
-    const maxX = window.innerWidth / 2 - (isMobile ? 100 : 150);
-    const minX = -window.innerWidth / 2 + (isMobile ? 100 : 150);
-    const maxY = 20;
-    const minY = -window.innerHeight + (isMobile ? 150 : 100);
-
-    controlsPosition.x = Math.max(minX, Math.min(maxX, controlsPosition.x));
-    controlsPosition.y = Math.max(minY, Math.min(maxY, controlsPosition.y));
-};
-
-window.addEventListener("resize", clampControlsPosition);
 const audioAnalysers = new Map<
     string,
     {
@@ -857,13 +902,50 @@ const audioAnalysers = new Map<
 
 // Directive for srcObject property (Vue doesn't bind to .srcObject property by default)
 const vSrcObject = {
-    updated: (el: any, binding: any) => {
-        if (el.srcObject !== binding.value) el.srcObject = binding.value;
+    updated: (el: HTMLMediaElement, binding: any) => {
+        if (el.srcObject !== binding.value) {
+            el.srcObject = binding.value;
+            if (binding.value instanceof MediaStream) {
+                setupStreamListeners(el, binding.value);
+            }
+        }
     },
-    mounted: (el: any, binding: any) => {
+    mounted: (el: HTMLMediaElement, binding: any) => {
         el.srcObject = binding.value;
+        if (binding.value instanceof MediaStream) {
+            setupStreamListeners(el, binding.value);
+        }
     },
 };
+
+function setupStreamListeners(el: HTMLMediaElement, stream: MediaStream) {
+    let timeout: any = null;
+    const refresh = () => {
+        if (timeout) clearTimeout(timeout);
+        timeout = setTimeout(() => {
+            if (el.srcObject === stream) {
+                const tracks = stream.getTracks();
+                const liveTracks = tracks.filter(t => t.readyState === 'live');
+                console.log(`[Call][UI] Refreshing media for stream ${stream.id} (tracks: ${tracks.length}, live: ${liveTracks.length})`);
+                
+                // Only "brute force" if we have tracks but no playback
+                if (liveTracks.length > 0) {
+                    // Try play first
+                    el.play().catch(() => {
+                        // If play fails, force a re-bind
+                        el.srcObject = null;
+                        el.srcObject = stream;
+                        el.play().catch(() => {});
+                    });
+                }
+            }
+            timeout = null;
+        }, 100);
+    };
+    stream.onaddtrack = refresh;
+    stream.onremovetrack = refresh;
+    stream.addEventListener("tracks-updated", refresh);
+}
 
 // Helper: Apply Output Device (setSinkId) to all media elements
 // This is critical for "Speaker Control" (sc) to work.
@@ -966,62 +1048,63 @@ const formattedDuration = computed(() => {
 });
 
 // UI Polish: Dynamic Layout Mode
+// UI Polish: Dynamic Layout Mode
 const layoutMode = computed(() => {
-    // Debug logging for mobile screenshare issue
-    if (store.remoteScreenStreams.size > 0) {
-        console.log(
-            "[CallApp] Layout check: Remote screen streams detected:",
-            store.remoteScreenStreams.size,
-        );
-        store.remoteScreenStreams.forEach((stream, id) => {
-            const tracks = stream.getVideoTracks();
-            console.log(`[CallApp] Stream ${id}:`, {
-                id: stream.id,
-                active: stream.active,
-                tracks: tracks.length,
-                kind: tracks[0]?.kind,
-                label: tracks[0]?.label,
-            });
-        });
+    // 1. 1:1 Mode: Exactly 2 participants
+    if (!isGroupCall.value) {
+        return "one-to-one";
     }
 
-    // If anyone (local or remote) is sharing screen -> Spotlight Mode
-    if (isScreenSharing.value || store.remoteScreenStreams.size > 0) {
-        return "spotlight";
-    }
+    // 2. Grid Mode: Group calls (3+ participants)
     return "grid";
+});
+
+const filmstripParticipants = computed(() => {
+    const mocks = Array.from(store.mockParticipants.values());
+    const real = participants.value;
+    return [...real, ...mocks];
+});
+
+// Pagination Logic
+const currentPage = ref(0);
+const pageSize = computed(() => (isMobile.value ? 9 : 12));
+
+const paginatedParticipants = computed(() => {
+    const all = filmstripParticipants.value;
+    // For 1:1 or 2 participants, we don't paginate (PiP handles it)
+    if (all.length <= 2) return all;
+    
+    const start = currentPage.value * pageSize.value;
+    return all.slice(start, start + pageSize.value);
+});
+
+const totalPages = computed(() => Math.ceil(filmstripParticipants.value.length / pageSize.value));
+
+const paginatedNonSelfParticipants = computed(() => {
+    return paginatedParticipants.value.filter((p) => !p.isSelf);
+});
+
+// Reset page if it goes out of bounds
+watch(totalPages, (newTotal) => {
+    if (currentPage.value >= newTotal && newTotal > 0) {
+        currentPage.value = newTotal - 1;
+    }
 });
 
 const gridClass = computed(() => {
     if (layoutMode.value === "spotlight") return "layout-spotlight";
+    if (layoutMode.value === "one-to-one") return "layout-1-1";
 
     // Standard Grid Logic
-    const count = participants.value.length;
+    const count = paginatedParticipants.value.length;
+    
     if (count <= 1) return "grid-1-1";
     if (count === 2) return "grid-1-1"; // PiP logic handles this
     if (count <= 4) return "grid-2-2";
-    return "grid-3-3";
+    if (count <= 9) return "grid-3-3";
+    return "grid-4-3"; // 4 cols, 3 rows for 12 participants
 });
 
-function toggleHand() {
-    const selfId = callData.value?.selfPublicId?.toLowerCase();
-    if (!selfId) return;
-
-    if (handRaised.has(selfId)) {
-        handRaised.delete(selfId);
-    } else {
-        handRaised.add(selfId);
-        // Auto-lower hand after 120 seconds
-        setTimeout(() => {
-            if (handRaised.has(selfId)) {
-                handRaised.delete(selfId);
-                sendSignal("hand-toggle", { raised: false });
-            }
-        }, 120000);
-    }
-
-    sendSignal("hand-toggle", { raised: handRaised.has(selfId) });
-}
 
 function sendSignal(type: string, payload: any) {
     callSignalingManager.sendAppSignal(type, payload || {});
@@ -1242,125 +1325,6 @@ watch(
 
 // Local stream handling is now unified via v-src-object directive or ref in template
 
-function waitFor(ms: number): Promise<void> {
-    return new Promise((resolve) => {
-        window.setTimeout(resolve, ms);
-    });
-}
-
-function mapMicrophonePermissionError(error: unknown): string {
-    const name = (error as { name?: string })?.name || "";
-    if (name === "NotAllowedError" || name === "SecurityError") {
-        return "Microphone access is blocked. Allow microphone permission and try again.";
-    }
-    if (name === "NotFoundError") {
-        return "No microphone device found. Connect a microphone and try again.";
-    }
-    if (name === "NotReadableError" || name === "AbortError") {
-        return "Microphone is currently unavailable. Close other apps using it and retry.";
-    }
-
-    return "Unable to access microphone. Check permission settings and try again.";
-}
-
-async function queryMicrophonePermissionState(): Promise<PermissionState | "unsupported"> {
-    if (!("permissions" in navigator) || !navigator.permissions?.query) {
-        return "unsupported";
-    }
-
-    try {
-        const status = await navigator.permissions.query({
-            name: "microphone" as PermissionName,
-        });
-        return status.state;
-    } catch {
-        return "unsupported";
-    }
-}
-
-async function ensureMicrophonePermission(
-    delayMs = MIC_PERMISSION_PROMPT_DELAY_MS,
-): Promise<boolean> {
-    permissionBlocked.value = false;
-    permissionErrorMessage.value = null;
-
-    if (delayMs > 0) {
-        await waitFor(delayMs);
-    }
-
-    const micPermission = await queryMicrophonePermissionState();
-    if (micPermission === "denied") {
-        permissionBlocked.value = true;
-        permissionErrorMessage.value =
-            "Microphone access is blocked for this site. Allow it in browser settings, then retry.";
-        return false;
-    }
-
-    if (!navigator.mediaDevices?.getUserMedia) {
-        permissionBlocked.value = true;
-        permissionErrorMessage.value =
-            "This browser does not support microphone capture for calls.";
-        return false;
-    }
-
-    if (micPermission === "granted") {
-        return true;
-    }
-
-    try {
-        const probeStream = await navigator.mediaDevices.getUserMedia({
-            audio: true,
-            video: false,
-        });
-        probeStream.getTracks().forEach((track) => track.stop());
-        return true;
-    } catch (err) {
-        permissionBlocked.value = true;
-        permissionErrorMessage.value = mapMicrophonePermissionError(err);
-        return false;
-    }
-}
-
-async function acquireMedia(): Promise<MediaStream | null> {
-    if (!callData.value) return null;
-    const result = await acquireLocalMedia({
-        callType: callData.value.callType,
-        defaultCameraOff: isCameraOff.value,
-        defaultMicOff: isMuted.value,
-        videoEffect: store.videoEffect,
-        selectedVideoDeviceId: store.selectedVideoDeviceId,
-        backgroundImage: store.backgroundImage,
-        startVideoEffect: (track, effect, backgroundImage) =>
-            backgroundBlur.startVideoEffect(track, effect, backgroundImage),
-    });
-
-    videoFallback.value = result.videoFallback;
-    originalVideoTrack.value = result.originalVideoTrack;
-    localStream.value = result.stream;
-
-    if (result.videoFallback) {
-        isCameraOff.value = true;
-    }
-
-    if (!result.stream) {
-        if (result.errorMessage) {
-            error.value = result.errorMessage;
-            if (
-                result.errorMessage.toLowerCase().includes("microphone access denied")
-            ) {
-                permissionBlocked.value = true;
-                permissionErrorMessage.value = result.errorMessage;
-                callState.value = "initializing";
-                return null;
-            }
-        }
-        callState.value = "error";
-        return null;
-    }
-
-    return result.stream;
-}
-
 // ============================================================================
 // SDP Munging
 // ============================================================================
@@ -1396,24 +1360,18 @@ function trace(area: string, message: string, data?: any) {
 // WebRTC (Mesh)
 // ============================================================================
 
-async function joinCall(permissionDelayMs = MIC_PERMISSION_PROMPT_DELAY_MS) {
+async function joinCall() {
     if (isJoining.value || hasJoined.value) return;
     isJoining.value = true;
     console.log("[Call] Starting call session");
 
     try {
         callState.value = "initializing";
-        const micPermissionGranted =
-            await ensureMicrophonePermission(permissionDelayMs);
-        if (!micPermissionGranted) {
-            return;
-        }
-
-        const stream = await acquireMedia();
-        if (!stream) return;
+        permissionBlocked.value = false;
+        permissionErrorMessage.value = null;
+        const outboundStream = ensureLocalStreamContainer();
 
         callState.value = "connecting";
-        hasJoined.value = true;
 
         if (!callData.value) return;
 
@@ -1498,13 +1456,17 @@ async function joinCall(permissionDelayMs = MIC_PERMISSION_PROMPT_DELAY_MS) {
                 // DETERMINISTIC: Only the user with the "Higher" string ID initiates.
                 // This prevents "Glare" where both sides send an offer at the same time.
                 const isInitiator = selfId > p.publicId;
-                meshManager?.createPeer(p.publicId, isInitiator, stream);
+                meshManager?.createPeer(
+                    p.publicId,
+                    isInitiator,
+                    getMeshPeerSeedStream(),
+                );
             }
             isTransportReady.value = true;
             sfuSyncManager?.stopHealthCheck();
         } else {
             console.log("[Call] Initializing SFU mode via Cloudflare");
-            await joinSFU(stream);
+            await joinSFU(outboundStream);
             isTransportReady.value = true;
             sfuSyncManager?.startHealthCheck();
         }
@@ -1552,8 +1514,17 @@ async function joinCall(permissionDelayMs = MIC_PERMISSION_PROMPT_DELAY_MS) {
         }
 
         // 6. Start local audio analysis for "talking indicator"
-        if (localStream.value) {
+        if (localStream.value && localStream.value.getAudioTracks().length > 0) {
             startAudioAnalysis(selfId, localStream.value);
+        }
+
+        // Lazy media model:
+        // transport joins first; physical devices are only requested when their toggles are ON.
+        if (!isMuted.value) {
+            await ensureLocalAudioTrack();
+        }
+        if (!isAudioOnly.value && !isCameraOff.value) {
+            await enableCameraTrack();
         }
     } catch (err) {
         console.error("[Call] Join failed:", err);
@@ -1568,7 +1539,7 @@ async function retryPermissionAndJoin() {
     error.value = null;
     permissionBlocked.value = false;
     permissionErrorMessage.value = null;
-    await joinCall(0);
+    await joinCall();
 }
 
 // ============================================================================
@@ -1620,20 +1591,6 @@ async function handleSignal(event: any) {
         return;
     }
 
-    // Hand Raise Signaling - Process early as it's UI only and doesn't depend on media transport
-    if (
-        signalType === "hand-toggle" ||
-        event.signal_data?.type === "hand-toggle"
-    ) {
-        const hSignal = event.signal_data;
-        const pid = senderId.toLowerCase();
-        if (hSignal.raised) {
-            handRaised.add(pid);
-        } else {
-            handRaised.delete(pid);
-        }
-        return;
-    }
 
     // Media State Signaling - Process early, cross-browser mute/camera state
     if (signalType === "media-state") {
@@ -1645,7 +1602,7 @@ async function handleSignal(event: any) {
         remoteMediaState.set(pid, {
             muted: !!ms.muted,
             cameraOff: newState,
-        });
+        } as any);
 
         if (prevState !== undefined && prevState !== newState) {
             remoteCameraLoadingState.set(pid, true);
@@ -1665,7 +1622,7 @@ async function handleSignal(event: any) {
             if (!remoteSessionId || (!remoteMids?.audioMid && !remoteMids?.videoMid)) {
                 requestRemoteMediaInfo(senderId, true);
             }
-            if (remoteSessionId) {
+            if (remoteSessionId && (remoteMids?.audioMid || remoteMids?.videoMid)) {
                 pullParticipantTracks(
                     senderId,
                     remoteSessionId,
@@ -1685,13 +1642,33 @@ async function handleSignal(event: any) {
         return;
     }
 
-    // WAIT for media and transport readiness (PC + Session ID)
-    if (!isTransportReady.value || !hasJoined.value || !localStream.value) {
-        trace(
-            "SIGNAL",
-            `Buffering signal from ${senderId} - joining or transport not ready`,
-        );
+    // WAIT for transport/session readiness.
+    // Mesh can process signaling even before local media is attached (late track sync will catch up).
+    const waitingForTransport = !isTransportReady.value || !hasJoined.value;
+    const shouldBufferSignal = waitingForTransport;
+
+    if (shouldBufferSignal) {
+        const isCandidateSignal =
+            signalType === "candidate" || signalType === "ice-candidate";
         signalRuntimeManager.enqueuePendingSignal(event);
+        if (isCandidateSignal) {
+            const pendingCount = signalRuntimeManager.getPendingCount();
+            if (pendingCount % 25 === 0) {
+                trace(
+                    "SIGNAL",
+                    `Buffering candidate burst from ${senderId} while transport is not ready (pending=${pendingCount})`,
+                );
+            }
+        } else {
+            trace(
+                "SIGNAL",
+                `Buffering ${signalType || "signal"} from ${senderId} - ${
+                    waitingForTransport
+                        ? "joining or transport not ready"
+                        : "not ready"
+                }`,
+            );
+        }
         return;
     }
 
@@ -1767,36 +1744,29 @@ async function handleSignal(event: any) {
             });
         }
 
-        pullParticipantTracks(
-            senderId,
-            signal.sessionId,
-            signalAudioMid,
-            signalVideoMid,
-        );
+        // Only pull if the remote actually has tracks published
+        const hasAnyRemoteMid = 
+            (signalAudioMid !== undefined && signalAudioMid !== "") ||
+            (signalVideoMid !== undefined && signalVideoMid !== "");
+
+        if (hasAnyRemoteMid) {
+            pullParticipantTracks(
+                senderId,
+                signal.sessionId,
+                signalAudioMid,
+                signalVideoMid,
+            );
+        } else {
+            trace(
+                "SIGNAL",
+                `Remote ${senderId} has no tracks yet (hollow session), deferring pull until they publish`,
+            );
+            // Request their media info so they re-signal when ready
+            requestRemoteMediaInfo(senderId, true);
+        }
         return;
     }
 
-    // SFU Screen Share Signaling
-    if (signal.type === "sfu-screen-share-started") {
-        trace(
-            "SIGNAL",
-            `Received screen-share-started from ${senderId}`,
-            signal,
-        );
-        pullSFURemoteScreen(senderId, signal.mid, signal.sessionId);
-        return;
-    }
-
-    // Hand Raise Signaling - (Moved up to process early)
-    if (signal.type === "hand-toggle") {
-        return;
-    }
-
-    if (signal.type === "sfu-screen-share-stopped") {
-        trace("SIGNAL", `Received screen-share-stopped from ${senderId}`);
-        store.removeRemoteScreenStream(senderId);
-        return;
-    }
 
     // Get or Create Peer (MESH ONLY)
     if (callMode.value === "mesh") {
@@ -1804,7 +1774,7 @@ async function handleSignal(event: any) {
             senderId,
             selfId,
             signal,
-            localStream: localStream.value!,
+            localStream: localStream.value,
         });
     } else {
         trace(
@@ -1812,19 +1782,6 @@ async function handleSignal(event: any) {
             `Ignoring MESH signal ${signal.type} from ${senderId} (currently in SFU mode)`,
         );
     }
-}
-
-async function pullSFURemoteScreen(
-    participantPublicId: string,
-    mid: string,
-    remoteSessionId?: string,
-) {
-    if (callMode.value !== "sfu") return;
-    return sfuMediaManager.pullRemoteScreen(
-        participantPublicId,
-        mid,
-        remoteSessionId,
-    );
 }
 
 // Modify handleParticipantJoined to support SFU pulling
@@ -1872,13 +1829,24 @@ function handleParticipantJoined(event: any) {
 
     // MESH: Negotiate with the new person
     if (callMode.value === "mesh") {
+        if (!hasJoined.value || !isTransportReady.value) {
+            trace(
+                "MESH",
+                `Deferring peer init for ${publicId} until join/transport is ready`,
+            );
+            return;
+        }
         const isInitiator = selfId > publicId;
         if (!peers.has(publicId)) {
             trace(
                 "MESH",
                 `Initiating mesh peer for ${publicId} (initiator: ${isInitiator})`,
             );
-            meshManager?.createPeer(publicId, isInitiator, localStream.value!);
+            meshManager?.createPeer(
+                publicId,
+                isInitiator,
+                getMeshPeerSeedStream(),
+            );
         }
     } else {
         trace(
@@ -1912,8 +1880,8 @@ function handleParticipantLeft(event: any) {
     participants.value = participants.value.filter(
         (p) => p.publicId.toLowerCase() !== publicId,
     );
+    clearMeshRecovery(publicId);
     remoteCameraLoadingState.delete(publicId.toLowerCase());
-    handRaised.delete(publicId.toLowerCase());
     remoteMediaState.delete(publicId);
     remoteSfuSessions.delete(publicId);
     remoteSfuTracks.delete(publicId);
@@ -2003,20 +1971,53 @@ function setupEcho() {
 // ============================================================================
 
 const isCameraTogglePending = ref(false);
+const isMicTogglePending = ref(false);
 
-function findMeshVideoSender(
+function ensureLocalStreamContainer(): MediaStream {
+    if (!localStream.value) {
+        localStream.value = new MediaStream();
+    }
+    return localStream.value;
+}
+
+function getMeshPeerSeedStream(): MediaStream | null {
+    const combined = new MediaStream();
+    
+    // Add primary camera/mic tracks
+    if (localStream.value) {
+        localStream.value.getTracks().forEach(t => {
+            if (t.readyState === "live") combined.addTrack(t);
+        });
+    }
+
+
+
+    return combined.getTracks().length > 0 ? combined : null;
+}
+
+function findMeshAudioSender(
     pc: RTCPeerConnection,
 ): RTCRtpSender | undefined {
     return pc.getSenders().find((sender) => {
-        if (sender.track?.kind === "video") return true;
+        if (sender.track?.kind === "audio") return true;
         return pc
             .getTransceivers()
             .some(
                 (transceiver) =>
                     transceiver.sender === sender &&
-                    transceiver.receiver.track.kind === "video",
+                    transceiver.receiver.track.kind === "audio",
             );
     });
+}
+
+function findMeshVideoSender(
+    pc: RTCPeerConnection,
+    slotIndex: number = 0, // 0 for camera, 1 for screen
+): RTCRtpSender | undefined {
+    const videoTransceivers = pc
+        .getTransceivers()
+        .filter((t) => t.receiver.track.kind === "video");
+    return videoTransceivers[slotIndex]?.sender;
 }
 
 async function publishLocalCameraTrack(track: MediaStreamTrack) {
@@ -2024,25 +2025,83 @@ async function publishLocalCameraTrack(track: MediaStreamTrack) {
         return sfuMediaManager.replaceLocalTrack("video", track);
     }
 
-    // In mesh mode, screen share reuses the primary video sender.
-    // Do not overwrite active screen sharing track with camera.
-    if (isScreenSharing.value) return true;
 
     const replaceOps: Promise<void>[] = [];
     peers.forEach((peer) => {
         const pc = (peer as any)?._pc as RTCPeerConnection | undefined;
         if (!pc) return;
 
-        const sender = findMeshVideoSender(pc);
+        const sender = findMeshVideoSender(pc, 0);
         if (sender) {
             replaceOps.push(
-                sender.replaceTrack(track).catch(() => {}) as Promise<void>,
+                runInQueue(async () => {
+                    try {
+                        await sender.replaceTrack(track);
+                        console.log(`[Call][MESH] Swap TRACK to LIVE success (Camera) id=${track.id} label=${track.label}`);
+                    } catch (err) {
+                        console.error("[Call][MESH] Swap TRACK to LIVE failed (Camera):", err);
+                    }
+                })
             );
             return;
         }
 
         if (localStream.value) {
-            peer.addTrack(track, localStream.value);
+            try {
+                peer.addTrack(track, localStream.value);
+            } catch (error) {
+                const fallbackSender = findMeshVideoSender(pc, 0);
+                if (fallbackSender) {
+                    replaceOps.push(
+                        fallbackSender
+                            .replaceTrack(track)
+                            .catch(() => {}) as Promise<void>,
+                    );
+                } else {
+                    console.warn(
+                        "[Call] Failed to add camera track to mesh peer",
+                        error,
+                    );
+                }
+            }
+        }
+    });
+
+    if (replaceOps.length > 0) {
+        await Promise.allSettled(replaceOps);
+    }
+
+    return true;
+}
+
+async function publishLocalAudioTrack(track: MediaStreamTrack) {
+    if (callMode.value === "sfu") {
+        return sfuMediaManager.replaceLocalTrack("audio", track);
+    }
+
+    const replaceOps: Promise<void>[] = [];
+    peers.forEach((peer) => {
+        const pc = (peer as any)?._pc as RTCPeerConnection | undefined;
+        if (!pc) return;
+
+        const sender = findMeshAudioSender(pc);
+        if (sender) {
+            replaceOps.push(
+                runInQueue(async () => {
+                    try {
+                        await sender.replaceTrack(track);
+                        console.log(`[Call][MESH] Swap TRACK to LIVE success (Audio) id=${track.id}`);
+                    } catch (err) {
+                        console.error("[Call][MESH] Swap TRACK to LIVE failed (Audio):", err);
+                    }
+                })
+            );
+        } else if (localStream.value) {
+            try {
+                peer.addTrack(track, localStream.value);
+            } catch (error) {
+                console.warn("[Call] Failed to add microphone track to mesh peer", error);
+            }
         }
     });
 
@@ -2058,19 +2117,24 @@ async function unpublishLocalCameraTrack() {
         return sfuMediaManager.replaceLocalTrack("video", null);
     }
 
-    // Keep active screen share untouched.
-    if (isScreenSharing.value) return true;
-
     const replaceOps: Promise<void>[] = [];
     peers.forEach((peer) => {
         const pc = (peer as any)?._pc as RTCPeerConnection | undefined;
         if (!pc) return;
 
-        const sender = findMeshVideoSender(pc);
-        if (!sender) return;
-        replaceOps.push(
-            sender.replaceTrack(null).catch(() => {}) as Promise<void>,
-        );
+        const sender = findMeshVideoSender(pc, 0);
+        if (sender) {
+            replaceOps.push(
+                runInQueue(async () => {
+                    try {
+                        await sender.replaceTrack(null);
+                        console.log("[Call][MESH] Swap TRACK to NULL success (Camera)");
+                    } catch (err) {
+                        console.error("[Call][MESH] Swap TRACK to NULL failed (Camera):", err);
+                    }
+                })
+            );
+        }
     });
 
     if (replaceOps.length > 0) {
@@ -2080,17 +2144,173 @@ async function unpublishLocalCameraTrack() {
     return true;
 }
 
-function toggleMute() {
-    isMuted.value = !isMuted.value;
-    localStream.value
-        ?.getAudioTracks()
-        .forEach((t) => (t.enabled = !isMuted.value));
-    if (hasJoined.value) {
-        // Broadcast state to all peers for cross-browser compatibility
-        sendSignal("media-state", {
-            muted: isMuted.value,
-            cameraOff: isCameraOff.value,
+async function ensureLocalAudioTrack(): Promise<boolean> {
+    const stream = ensureLocalStreamContainer();
+    let audioTrack = stream
+        .getAudioTracks()
+        .find((track) => track.readyState === "live");
+
+    if (!audioTrack) {
+        const acquired = await acquireMicrophoneTrack();
+        if (!acquired.track) {
+            permissionBlocked.value = false;
+            permissionErrorMessage.value = acquired.errorMessage || null;
+            toast.error(acquired.errorMessage || "Could not access microphone.");
+            return false;
+        }
+
+        stream.getAudioTracks().forEach((track) => {
+            stream.removeTrack(track);
+            try {
+                track.stop();
+            } catch {}
         });
+        stream.addTrack(acquired.track);
+        audioTrack = acquired.track;
+        triggerRef(localStream);
+    }
+
+    audioTrack.enabled = !isMuted.value;
+
+    if (hasJoined.value && isTransportReady.value) {
+        const published = await publishLocalAudioTrack(audioTrack);
+        if (!published) {
+            toast.error("Could not publish microphone stream. Please try again.");
+            return false;
+        }
+    }
+
+    return true;
+}
+
+async function enableCameraTrack(): Promise<boolean> {
+    if (isAudioOnly.value) return true;
+
+    const stream = ensureLocalStreamContainer();
+    const existingTrack = stream
+        .getVideoTracks()
+        .find((track) => track.readyState === "live");
+
+    if (existingTrack) {
+        existingTrack.enabled = true;
+        if (hasJoined.value && isTransportReady.value) {
+            const republished = await publishLocalCameraTrack(existingTrack);
+            if (!republished) {
+                toast.error("Could not start camera stream. Please try again.");
+                return false;
+            }
+        }
+        isCameraOff.value = false;
+        return true;
+    }
+
+    const acquired = await acquireCameraTrack({
+        videoEffect: store.videoEffect,
+        selectedVideoDeviceId: store.selectedVideoDeviceId,
+        backgroundImage: store.backgroundImage,
+        startVideoEffect: (track, effect, backgroundImage) =>
+            backgroundBlur.startVideoEffect(track, effect, backgroundImage),
+    });
+
+    if (!acquired.track) {
+        toast.error(acquired.errorMessage || "Could not access camera.");
+        return false;
+    }
+
+    stream.getVideoTracks().forEach((track) => {
+        stream.removeTrack(track);
+        try {
+            track.stop();
+        } catch {}
+    });
+
+    stream.addTrack(acquired.track);
+    triggerRef(localStream); // Force Vue reactivity for localHasVideo
+    originalVideoTrack.value = acquired.originalTrack;
+
+    if (hasJoined.value && isTransportReady.value) {
+        const published = await publishLocalCameraTrack(acquired.track);
+        if (!published) {
+            stream.removeTrack(acquired.track);
+            triggerRef(localStream);
+            try {
+                acquired.track.stop();
+            } catch {}
+
+            if (acquired.originalTrack && acquired.originalTrack !== acquired.track) {
+                try {
+                    acquired.originalTrack.stop();
+                } catch {}
+            }
+
+            originalVideoTrack.value = null;
+            isCameraOff.value = true;
+            toast.error("Could not start camera stream. Please try again.");
+            return false;
+        }
+    }
+
+    isCameraOff.value = false;
+    return true;
+}
+
+async function disableCameraTrack() {
+    isCameraOff.value = true;
+
+    if (hasJoined.value && isTransportReady.value) {
+        const unpublished = await unpublishLocalCameraTrack();
+        if (!unpublished) {
+            toast.error("Could not stop camera stream cleanly.");
+        }
+    }
+
+    localStream.value?.getVideoTracks().forEach((track) => {
+        localStream.value?.removeTrack(track);
+        try {
+            track.stop();
+        } catch {}
+    });
+    if (localStream.value) triggerRef(localStream);
+
+    if (originalVideoTrack.value) {
+        try {
+            originalVideoTrack.value.stop();
+        } catch {}
+        originalVideoTrack.value = null;
+    }
+    backgroundBlur.stopProcessing();
+}
+
+async function toggleMute() {
+    if (isMicTogglePending.value) return;
+    isMicTogglePending.value = true;
+
+    try {
+        if (isMuted.value) {
+            permissionBlocked.value = false;
+            permissionErrorMessage.value = null;
+            isMuted.value = false;
+            const acquired = await ensureLocalAudioTrack();
+            if (!acquired) {
+                isMuted.value = true;
+                return;
+            }
+        } else {
+            isMuted.value = true;
+            localStream.value?.getAudioTracks().forEach((track) => {
+                track.enabled = false;
+            });
+        }
+
+        if (hasJoined.value) {
+            // Broadcast state to all peers for cross-browser compatibility
+            sendSignal("media-state", {
+                muted: isMuted.value,
+                cameraOff: isCameraOff.value,
+            });
+        }
+    } finally {
+        isMicTogglePending.value = false;
     }
 }
 
@@ -2099,79 +2319,13 @@ async function toggleCamera() {
     isCameraTogglePending.value = true;
 
     try {
+        permissionBlocked.value = false;
+        permissionErrorMessage.value = null;
+
         if (isCameraOff.value) {
-            const acquired = await acquireCameraTrack({
-                videoEffect: store.videoEffect,
-                selectedVideoDeviceId: store.selectedVideoDeviceId,
-                backgroundImage: store.backgroundImage,
-                startVideoEffect: (track, effect, backgroundImage) =>
-                    backgroundBlur.startVideoEffect(track, effect, backgroundImage),
-            });
-
-            if (!acquired.track) {
-                toast.error(acquired.errorMessage || "Could not access camera.");
-                return;
-            }
-
-            if (!localStream.value) {
-                localStream.value = new MediaStream();
-            }
-
-            localStream.value.getVideoTracks().forEach((track) => {
-                localStream.value?.removeTrack(track);
-                try {
-                    track.stop();
-                } catch {}
-            });
-
-            localStream.value.addTrack(acquired.track);
-            triggerRef(localStream); // Force Vue reactivity for localHasVideo
-            originalVideoTrack.value = acquired.originalTrack;
-
-            const published = await publishLocalCameraTrack(acquired.track);
-            if (!published) {
-                localStream.value.removeTrack(acquired.track);
-                triggerRef(localStream);
-                try {
-                    acquired.track.stop();
-                } catch {}
-
-                if (acquired.originalTrack && acquired.originalTrack !== acquired.track) {
-                    try {
-                        acquired.originalTrack.stop();
-                    } catch {}
-                }
-
-                originalVideoTrack.value = null;
-                isCameraOff.value = true;
-                toast.error("Could not start camera stream. Please try again.");
-                return;
-            }
-
-            isCameraOff.value = false;
+            await enableCameraTrack();
         } else {
-            isCameraOff.value = true;
-
-            const unpublished = await unpublishLocalCameraTrack();
-            if (!unpublished) {
-                toast.error("Could not stop camera stream cleanly.");
-            }
-
-            localStream.value?.getVideoTracks().forEach((track) => {
-                localStream.value?.removeTrack(track);
-                try {
-                    track.stop();
-                } catch {}
-            });
-            if (localStream.value) triggerRef(localStream);
-
-            if (originalVideoTrack.value) {
-                try {
-                    originalVideoTrack.value.stop();
-                } catch {}
-                originalVideoTrack.value = null;
-            }
-            backgroundBlur.stopProcessing();
+            await disableCameraTrack();
         }
 
         if (hasJoined.value) {
@@ -2186,125 +2340,26 @@ async function toggleCamera() {
 }
 
 function remoteHasVideo(participantId: string): boolean {
+    const pid = participantId.toLowerCase();
     const stream = store.remoteStreams.get(participantId);
+    
+    // 1. Check authoritative signaling state first.
+    // If the remote participant signaled their camera is OFF, we MUST NOT show video,
+    // even if a stale track is still technically "live" in the stream container.
+    const state = remoteMediaState.get(pid);
+    if (state && state.cameraOff) return false;
+
     if (!stream) return false;
     const tracks = stream.getVideoTracks();
     if (tracks.length === 0) return false;
 
-    // Use signaling state first (cross-browser reliable)
-    const state = remoteMediaState.get(participantId.toLowerCase());
-    if (state) return !state.cameraOff;
-    
-    // Fallback to track check if no signal received yet
+    const hasLiveVideoTrack = tracks.some((track) => track.readyState === "live");
+    if (hasLiveVideoTrack) return true;
+
+    // 2. Final fallback if no signal has arrived yet.
     return tracks[0].enabled && !tracks[0].muted;
 }
 
-async function toggleScreenShare() {
-    if (isScreenSharing.value) {
-        stopScreenShare();
-        return;
-    }
-
-    try {
-        console.log("[Call] Requesting screen share...");
-        const stream = await (navigator.mediaDevices as any).getDisplayMedia({
-            video: { cursor: "always" },
-            audio: false,
-        });
-
-        isScreenSharing.value = true;
-        screenStream.value = stream;
-
-        // Listen for user clicking "Stop Sharing" in browser UI
-        stream.getVideoTracks()[0].onended = () => {
-            console.log("[Call] Screen share ended by user via browser UI");
-            stopScreenShare();
-        };
-
-        if (callMode.value === "mesh") {
-            // Replace tracks for all peers
-            const videoTrack = stream.getVideoTracks()[0];
-            peers.forEach((peer) => {
-                // @ts-ignore
-                const pc = peer._pc as RTCPeerConnection;
-                const senders = pc.getSenders();
-                const videoSender = senders.find(
-                    (s: any) => s.track?.kind === "video",
-                );
-
-                if (videoSender) {
-                    console.log(
-                        "[Call] Mesh: Replacing existing video track with screen track",
-                    );
-                    videoSender.replaceTrack(videoTrack);
-                } else {
-                    console.log(
-                        "[Call] Mesh: Adding new screen track (initially audio-only)",
-                    );
-                    peer.addTrack(videoTrack, stream); // Mesh: Use separate stream object to avoid ID collisions
-                }
-            });
-        } else {
-            // SFU: Add screen track
-            await publishSFUScreenTrack(stream);
-        }
-    } catch (err) {
-        console.error("[Call] Screen share failed:", err);
-    }
-}
-
-function stopScreenShare() {
-    if (!isScreenSharing.value) return;
-
-    console.log("[Call] Stopping screen share...");
-    screenStream.value?.getTracks().forEach((t) => t.stop());
-    screenStream.value = null;
-    isScreenSharing.value = false;
-
-    if (callMode.value === "sfu") {
-        stopSFUScreenShare();
-    }
-
-    // Restore camera track
-    if (callMode.value === "mesh") {
-        peers.forEach((peer) => {
-            // @ts-ignore
-            const pc = peer._pc as RTCPeerConnection;
-            const senders = pc.getSenders();
-            const videoSender = senders.find(
-                (s: any) => s.track?.kind === "video",
-            );
-
-            if (videoSender) {
-                const cameraTrack = localStream.value?.getVideoTracks()[0];
-                if (cameraTrack) {
-                    console.log("[Call] Mesh: Restoring camera track");
-                    videoSender.replaceTrack(cameraTrack);
-                } else {
-                    console.log(
-                        "[Call] Mesh: Removing screen track (no camera fallback)",
-                    );
-                    peer.removeTrack(videoSender.track!, localStream.value!);
-                }
-            }
-        });
-    } else {
-        // SFU Handle restore
-        if (sfuPc && sfuSessionId.value) {
-            const cameraTrack = localStream.value?.getVideoTracks()[0];
-            if (cameraTrack) {
-                const transceivers = sfuPc.getTransceivers();
-                const videoTransceiver = transceivers.find(
-                    (t) => t.sender.track?.kind === "video",
-                );
-                if (videoTransceiver) {
-                    console.log("[SFU] Restoring camera track");
-                    videoTransceiver.sender.replaceTrack(cameraTrack);
-                }
-            }
-        }
-    }
-}
 
 // ============================================================================
 // Cloudflare SFU Logic
@@ -2382,10 +2437,7 @@ async function resetSFUSession() {
             await joinSFU(localStream.value);
         }
 
-        // 5. Re-publish screen if needed
-        if (isScreenSharing.value && screenStream.value) {
-            await publishSFUScreenTrack(screenStream.value);
-        }
+
 
         console.log(
             "[SFU] Session reset complete. New Session ID:",
@@ -2583,6 +2635,19 @@ function startDurationTimer() {
     durationTimer = setInterval(() => callDuration.value++, 1000);
 }
 
+const showDevSim = ref(false);
+
+const handleGlobalKeydown = (e: KeyboardEvent) => {
+    // Ctrl + Shift + D
+    if (e.ctrlKey && e.shiftKey && e.code === 'KeyD') {
+        e.preventDefault();
+        console.log('[DevSim] Toggling simulation tool...');
+        showDevSim.value = !showDevSim.value;
+    }
+};
+
+
+
 function postToParent(msg: any) {
     broadcastChannel?.postMessage({ ...msg, callId: callData.value?.callId });
 }
@@ -2600,12 +2665,11 @@ function cleanup() {
         localStream.value.getTracks().forEach((t) => t.stop());
         localStream.value = null;
     }
-    if (screenStream.value) {
-        screenStream.value.getTracks().forEach((t) => t.stop());
-        screenStream.value = null;
-    }
     peers.forEach((p) => p.destroy());
     peers.clear();
+    meshRecoveryTimers.forEach((timer) => clearTimeout(timer));
+    meshRecoveryTimers.clear();
+    meshRecoveryAttempts.clear();
 
     // Reset store
     store.reset();
@@ -2749,39 +2813,10 @@ onMounted(async () => {
         await authStore.fetchUser();
     }
 
-    // 2. Initialize orchestration (Chat, etc) if available
-    if (authStore.user) {
-        console.log("[CallApp] User found, initializing chat...");
-
-        // Get chatId from sessionStorage (since CallApp is standalone without router)
-        let chatId: string | undefined;
-        try {
-            const stored = sessionStorage.getItem("callData");
-            if (stored) {
-                const data = JSON.parse(stored);
-                chatId = data.chatId;
-                console.log(
-                    "[CallApp] Retrieved chatId from sessionStorage:",
-                    chatId,
-                );
-            }
-        } catch (e) {
-            console.error("[CallApp] Failed to parse callData", e);
-        }
-
-        if (!chatId) {
-            console.warn("[CallApp] No chatId found, chat will not warn");
-        } else {
-            console.log("[CallApp] Initializing chat with ID:", chatId);
-            // Use the top-level useChat instance
-            await selectChat(chatId);
-        }
-    }
-
-    // 3. Initialize Call Logic
+    // 2. Initialize Call Logic (includes chat initialization from callData)
     await initializeCall();
 
-    // 4. Runtime workers (heartbeat + network polling)
+    // 3. Runtime workers (heartbeat + network polling)
     callOrchestrator.start();
 });
 
@@ -2813,18 +2848,9 @@ onBeforeUnmount(() => cleanup());
             />
         </div>
 
-        <!-- HEADER / INFO -->
-        <div class="call-header">
-            <div class="header-info">
-                <span class="status-dot" :class="callState"></span>
-                <span class="status-text">{{ stateLabel }}</span>
-                <NetworkHealthIndicator
-                    v-if="callState === 'connected'"
-                    v-bind="networkStats"
-                    class="ml-2"
-                />
-            </div>
-        </div>
+        <!-- TOP VIGNETTE -->
+        <div class="top-vignette" v-if="callState === 'connected'"></div>
+
 
         <!-- POOR CONNECTION ALERT -->
         <transition
@@ -2986,100 +3012,15 @@ onBeforeUnmount(() => cleanup());
                     'layout-spotlight': layoutMode === 'spotlight',
                 }"
             >
+
+
                 <!-- MAIN STAGE -->
                 <div class="main-stage">
-                    <!-- SPOTLIGHT LAYOUT (Presentation Mode) -->
-                    <div
-                        v-if="layoutMode === 'spotlight'"
-                        class="spotlight-wrapper"
-                    >
-                        <!-- Main Stage: Screen Share -->
-                        <div class="spotlight-stage">
-                            <template v-if="isScreenSharing && !!screenStream">
-                                <video
-                                    v-src-object="screenStream"
-                                    v-sink-id
-                                    autoplay
-                                    muted
-                                    playsinline
-                                    class="video-element screen-share-video mirror-off"
-                                />
-                                <div class="participant-info">
-                                    <div class="participant-header">
-                                        <Icon name="Monitor" size="14" />
-                                        <span class="participant-name"
-                                            >You are presenting</span
-                                        >
-                                    </div>
-                                    <div class="status-row">
-                                        <NetworkHealthIndicator
-                                            v-bind="networkStats"
-                                            compact
-                                        />
-                                    </div>
-                                </div>
-                            </template>
-                            <template
-                                v-else-if="store.remoteScreenStreams.size > 0"
-                            >
-                                <div
-                                    v-for="[
-                                        publicId,
-                                        stream,
-                                    ] in store.remoteScreenStreams"
-                                    :key="publicId + '-screen-spotlight'"
-                                    class="spotlight-content"
-                                >
-                                    <video
-                                        v-src-object="stream"
-                                        v-sink-id
-                                        autoplay
-                                        playsinline
-                                        class="video-element screen-share-video"
-                                        :data-stream-id="stream.id"
-                                        :data-track-kind="
-                                            stream.getVideoTracks()[0]?.kind
-                                        "
-                                    />
-                                    <div class="participant-info">
-                                        <div class="participant-header">
-                                            <Icon name="Monitor" size="14" />
-                                            <span class="participant-name"
-                                                >{{
-                                                    participants.find(
-                                                        (p) =>
-                                                            p.publicId ===
-                                                            publicId,
-                                                    )?.name || "Someone"
-                                                }}'s Screen</span
-                                            >
-                                        </div>
-                                        <div class="status-row">
-                                            <NetworkHealthIndicator
-                                                v-if="
-                                                    participantStats.has(
-                                                        publicId.toLowerCase(),
-                                                    )
-                                                "
-                                                v-bind="
-                                                    participantStats.get(
-                                                        publicId.toLowerCase(),
-                                                    )
-                                                "
-                                                compact
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            </template>
-                        </div>
-
-                        <!-- Side/Bottom Filmstrip: Participants -->
-                        <div class="filmstrip">
+                    <!-- FILMSTRIP LAYOUT (Spotlight Mode) -->
+                    <div v-if="layoutMode === 'spotlight'" class="filmstrip-layout">
+                        <div class="filmstrip-container">
                             <div
-                                v-for="p in participants.filter(
-                                    (p) => !p.isSelf || !isScreenSharing,
-                                )"
+                                v-for="p in filmstripParticipants"
                                 :key="p.publicId"
                                 class="video-cell filmstrip-cell"
                                 :class="{
@@ -3133,25 +3074,14 @@ onBeforeUnmount(() => cleanup());
                                     <span class="text-white text-xs font-medium tracking-wide">Updating video...</span>
                                 </div>
 
-                                <div class="participant-info small">
-                                    <div class="participant-header">
-                                        <span class="participant-name">{{
-                                            p.isSelf ? "You" : p.name
-                                        }}</span>
-                                        <Icon
-                                            v-if="
-                                                handRaised.has(
-                                                    p.publicId.toLowerCase(),
-                                                )
-                                            "
-                                            name="Hand"
-                                            size="12"
-                                            class="status-icon-yellow"
-                                        />
-                                    </div>
+                                <div class="participant-info compact-pill">
+                                    <span class="participant-name">{{
+                                        p.isSelf ? "You" : p.name
+                                    }}</span>
 
-                                    <!-- Status Row (Always show for others, show Mute/Video for self) -->
-                                    <div class="status-row">
+                                    <div class="toolbox-divider-vertical"></div>
+
+                                    <div class="status-row-compact">
                                         <NetworkHealthIndicator
                                             v-if="
                                                 !p.isSelf &&
@@ -3177,7 +3107,7 @@ onBeforeUnmount(() => cleanup());
                                                 "
                                                 name="MicOff"
                                                 size="12"
-                                                class="status-icon-red"
+                                                class="text-red-500"
                                             />
                                             <Icon
                                                 v-if="
@@ -3189,24 +3119,24 @@ onBeforeUnmount(() => cleanup());
                                                 "
                                                 name="VideoOff"
                                                 size="12"
-                                                class="status-icon-red"
+                                                class="text-red-500 ml-1"
                                             />
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
+                        <div class="spotlight-container">
+                            <!-- In spotlight mode, the spotlight content would go here.
+                                 Since screen sharing is removed, this might be simpler now. -->
+                        </div>
                     </div>
 
-                    <!-- STANDARD GRID LAYOUT -->
-                    <div v-else class="grid-wrapper">
-                        <!-- Remote Participants -->
+                    <!-- STANDARD GRID / 1:1 LAYOUT -->
+                    <div v-else class="grid-wrapper" :class="gridClass">
+                        <!-- Remote & Mock Participants -->
                         <div
-                            v-for="p in participants.filter(
-                                (p) =>
-                                    !p.isSelf &&
-                                    p.publicId !== callData?.selfPublicId,
-                            )"
+                            v-for="p in paginatedNonSelfParticipants"
                             :key="p.publicId"
                             class="video-cell remote"
                             :class="{
@@ -3234,8 +3164,8 @@ onBeforeUnmount(() => cleanup());
                                 <Avatar
                                     :src="p.avatar"
                                     :alt="p.name"
-                                    :size="120"
-                                    class="absolute z-0 w-32 h-32 text-4xl font-bold rounded-full overflow-hidden shrink-0 pointer-events-none ring-4 ring-black/10 shadow-2xl"
+                                    :size="isMobile ? 64 : 120"
+                                    class="avatar-image-element absolute z-0 text-4xl font-bold rounded-full overflow-hidden shrink-0 pointer-events-none ring-4 ring-black/10 shadow-2xl"
                                 />
                                 <div class="audio-indicator">
                                     <Icon name="Mic" size="16" />
@@ -3248,25 +3178,16 @@ onBeforeUnmount(() => cleanup());
                                 <span class="text-white text-sm font-medium tracking-wide">Updating video...</span>
                             </div>
 
-                            <div class="participant-info">
-                                <div class="participant-header">
-                                    <span class="participant-name">{{
-                                        p.name
-                                    }}</span>
-                                    <Icon
-                                        v-if="
-                                            handRaised.has(
-                                                p.publicId.toLowerCase(),
-                                            )
-                                        "
-                                        name="Hand"
-                                        size="14"
-                                        class="status-icon-yellow"
-                                    />
-                                </div>
+                            <div class="participant-info compact-pill">
+                                <span class="participant-name">{{
+                                    p.name
+                                }}</span>
+                                <div
+                                    v-if="participantStats.has(p.publicId.toLowerCase()) || !remoteHasAudio(p.publicId) || !remoteHasVideo(p.publicId)"
+                                    class="toolbox-divider-vertical"
+                                ></div>
 
-                                <!-- Status Row -->
-                                <div class="status-row">
+                                <div class="status-row-compact">
                                     <NetworkHealthIndicator
                                         v-if="
                                             participantStats.has(
@@ -3284,13 +3205,13 @@ onBeforeUnmount(() => cleanup());
                                         <Icon
                                             v-if="!remoteHasAudio(p.publicId)"
                                             name="MicOff"
-                                            size="14"
+                                            size="12"
                                             class="status-icon-red"
                                         />
                                         <Icon
                                             v-if="!remoteHasVideo(p.publicId)"
                                             name="VideoOff"
-                                            size="14"
+                                            size="12"
                                             class="status-icon-red"
                                         />
                                     </div>
@@ -3343,312 +3264,181 @@ onBeforeUnmount(() => cleanup());
                             </div>
                         </div>
 
-                        <!-- 1b. Remote Screen Shares (SFU Mode) -->
-                        <div
-                            v-for="[
-                                publicId,
-                                screenStream,
-                            ] in store.remoteScreenStreams"
-                            :key="publicId + '-screen'"
-                            class="video-cell remote screen-share"
-                            :class="{
-                                expanded: store.remoteScreenStreams.size === 1,
-                            }"
-                        >
-                            <video
-                                v-src-object="screenStream"
-                                v-volume="publicId"
-                                v-sink-id
-                                autoplay
-                                playsinline
-                                class="video-element"
-                            />
-                            <div class="participant-info">
-                                <div class="participant-header">
-                                    <Icon name="Monitor" size="14" />
-                                    <span class="participant-name"
-                                        >{{
-                                            participants.find(
-                                                (p) =>
-                                                    p.publicId.toLowerCase() ===
-                                                    publicId.toLowerCase(),
-                                            )?.name || "Someone"
-                                        }}'s Screen</span
-                                    >
-                                    <Icon
-                                        v-if="
-                                            handRaised.has(
-                                                publicId.toLowerCase(),
-                                            )
-                                        "
-                                        name="Hand"
-                                        size="14"
-                                        class="status-icon-yellow"
-                                    />
-                                </div>
-                                <div class="status-row">
-                                    <NetworkHealthIndicator
-                                        v-if="
-                                            participantStats.has(
-                                                publicId.toLowerCase(),
-                                            )
-                                        "
-                                        v-bind="
-                                            participantStats.get(
-                                                publicId.toLowerCase(),
-                                            )
-                                        "
-                                        compact
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
                         <!-- Local Participant (Me) -->
                         <div
                             class="video-cell local"
                             :class="{
                                 'pip-mode': participants.length >= 2,
-                                'audio-mode': isAudioOnly && !isScreenSharing,
+                                'audio-mode': isAudioOnly,
                                 'is-talking': talkingParticipants.has(
                                     callData?.selfPublicId?.toLowerCase() || '',
                                 ),
                             }"
                         >
                             <video
-                                v-if="
-                                    isScreenSharing
-                                        ? !!screenStream
-                                        : localHasVideo && !isCameraOff
-                                "
-                                v-src-object="
-                                    isScreenSharing ? screenStream : localStream
-                                "
+                                v-if="localHasVideo && !isCameraOff"
+                                v-src-object="localStream"
                                 v-sink-id
                                 autoplay
                                 muted
                                 playsinline
                                 class="video-element"
-                                :class="{ 'mirror-off': isScreenSharing }"
                             />
-                            <div v-else class="avatar-fallback">
-                                <div
-                                    class="avatar-placeholder local"
-                                    :style="{
-                                        background: getAvatarColor('Me'),
-                                    }"
-                                >
-                                    <span class="initials-text">Me</span>
-                                </div>
+                            <div v-else class="avatar-fallback flex items-center justify-center h-full w-full bg-zinc-900">
+                                <Avatar
+                                    :src="authStore.user?.avatar_url"
+                                    :name="authStore.user?.name || 'Me'"
+                                    size="lg"
+                                    class="ring-4 ring-zinc-800/50 shadow-2xl scale-125"
+                                />
                             </div>
-                            <div class="participant-info">
-                                <div class="participant-header">
-                                    <span class="participant-name">You</span>
-                                    <Icon
-                                        v-if="
-                                            handRaised.has(
-                                                callData?.selfPublicId?.toLowerCase() ||
-                                                    '',
-                                            )
-                                        "
-                                        name="Hand"
-                                        size="14"
-                                        class="status-icon-yellow"
-                                    />
-                                </div>
-                                <div class="status-row">
-                                    <div class="status-icons">
-                                        <Icon
-                                            v-if="isMuted"
-                                            name="MicOff"
-                                            size="14"
-                                            class="status-icon-red"
-                                        />
-                                        <Icon
-                                            v-if="isCameraOff"
-                                            name="VideoOff"
-                                            size="14"
-                                            class="status-icon-red"
-                                        />
-                                    </div>
-                                </div>
+                            <div class="participant-info compact-pill">
+                                <span class="participant-name">You</span>
                             </div>
                         </div>
                     </div>
 
-                    <!-- CONTROLS -->
+                    <!-- PAGINATION NAVIGATION -->
                     <div
-                        class="controls-bar"
-                        :class="{
-                            collapsed: isControlsCollapsed,
-                            'is-dragging': isDragging,
-                        }"
-                        :style="
-                            hasMoved
-                                ? {
-                                      left: `${controlsPosition.x}px`,
-                                      top: `${controlsPosition.y}px`,
-                                      transform: 'none',
-                                      bottom: 'auto',
-                                      right: 'auto',
-                                  }
-                                : {}
-                        "
-                        @mousedown="startDrag"
-                        @touchstart="startDrag"
+                        v-if="totalPages > 1"
+                        class="pagination-nav"
                     >
-                        <!-- Drag Handle -->
-                        <div class="drag-handle" title="Drag to move">
-                            <Icon
-                                name="GripVertical"
-                                size="20"
-                                class="text-white/50"
-                            />
+                        <button
+                            class="pagination-btn"
+                            :disabled="currentPage === 0"
+                            @click="currentPage--"
+                            title="Previous Page"
+                        >
+                            <Icon name="ChevronLeft" size="18" />
+                        </button>
+                        
+                        <div class="pagination-dots">
+                            <button
+                                v-for="i in totalPages"
+                                :key="i"
+                                class="pagination-dot"
+                                :class="{ active: currentPage === i - 1 }"
+                                @click="currentPage = i - 1"
+                                :title="`Page ${i}`"
+                            ></button>
                         </div>
 
-                        <!-- Collapse Toggle -->
                         <button
-                            class="control-btn collapse-toggle"
-                            @click="isControlsCollapsed = !isControlsCollapsed"
-                            :title="
-                                isControlsCollapsed
-                                    ? 'Expand Controls'
-                                    : 'Collapse Controls'
-                            "
+                            class="pagination-btn"
+                            :disabled="currentPage === totalPages - 1"
+                            @click="currentPage++"
+                            title="Next Page"
+                        >
+                            <Icon name="ChevronRight" size="18" />
+                        </button>
+                                    </div>
+                <!-- Close Main Stage -->
+
+                <!-- REDESIGNED BOTTOM BAR (Meeting Style) -->
+                <footer class="app-bottom-bar">
+                    <!-- Left: Info -->
+                    <!-- Left: Info -->
+                    <div class="bar-section bar-section--left">
+                        <div class="call-info-pill">
+                            <span class="info-time">{{ formattedDuration }}</span>
+                            <div class="toolbox-divider-vertical mx-3"></div>
+                            <div class="flex items-center gap-2">
+                                <NetworkHealthIndicator
+                                    v-if="callState === 'connected'"
+                                    v-bind="networkStats"
+                                    compact
+                                />
+                                <span class="info-label text-[10px] font-bold uppercase tracking-wider opacity-60">Connected</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Center: Controls -->
+                    <div class="bar-section bar-section--center">
+                        <button
+                            class="ctrl-btn"
+                            :class="{ 'ctrl-btn--off': isMuted }"
+                            @click="toggleMute"
+                            title="Toggle Mute"
                         >
                             <Icon
-                                :name="
-                                    isControlsCollapsed
-                                        ? 'ChevronRight'
-                                        : 'ChevronLeft'
-                                "
+                                :name="isMuted ? 'MicOff' : 'Mic'"
                                 size="20"
                             />
                         </button>
 
-                        <!-- Main Controls (Hidden when collapsed) -->
-                        <div
-                            class="main-controls"
-                            v-show="!isControlsCollapsed"
-                        >
-                            <button
-                                class="control-btn"
-                                :class="{ off: isMuted }"
-                                @click="toggleMute"
-                                title="Toggle Mute"
-                            >
-                                <Icon
-                                    :name="isMuted ? 'MicOff' : 'Mic'"
-                                    size="24"
-                                />
-                            </button>
-
-                            <button
-                                v-if="!isAudioOnly"
-                                class="control-btn transition-colors relative"
-                                :class="{ off: isCameraOff, 'opacity-50 cursor-not-allowed': isCameraTogglePending }"
-                                @click="toggleCamera"
-                                :disabled="isCameraTogglePending"
-                                title="Toggle Camera"
-                            >
-                                <Icon
-                                    v-if="isCameraTogglePending"
-                                    name="Loader"
-                                    size="24"
-                                    class="animate-spin relative z-1"
-                                />
-                                <Icon
-                                    v-else
-                                    :name="isCameraOff ? 'VideoOff' : 'Video'"
-                                    size="24"
-                                    class="relative z-1"
-                                />
-                            </button>
-                            <Tooltip
-                                v-if="!isMobile"
-                                :content="
-                                    isScreenSharing
-                                        ? 'Stop Sharing'
-                                        : 'Share Screen'
-                                "
-                            >
-                                <button
-                                    class="control-btn"
-                                    :class="{ off: !isScreenSharing }"
-                                    @click="toggleScreenShare"
-                                >
-                                    <Icon name="Monitor" size="24" />
-                                </button>
-                            </Tooltip>
-
-                            <button
-                                class="control-btn"
-                                :class="{
-                                    active: handRaised.has(
-                                        store.selfPublicId?.toLowerCase() || '',
-                                    ),
-                                }"
-                                @click="toggleHand"
-                                title="Raise Hand"
-                            >
-                                <Icon name="Hand" size="24" />
-                            </button>
-
-                            <button
-                                class="control-btn"
-                                @click="showSettings = true"
-                                title="Settings"
-                            >
-                                <Icon name="Settings" size="24" />
-                            </button>
-
-                            <button
-                                class="control-btn"
-                                :class="{
-                                    active:
-                                        showSidebar && sidebarTab === 'chat',
-                                }"
-                                @click="toggleSidebar('chat')"
-                                title="Chat"
-                            >
-                                <Icon name="MessageSquare" size="24" />
-                            </button>
-
-                            <button
-                                class="control-btn hangup"
-                                @click="endCall('hangup')"
-                                title="End Call"
-                            >
-                                <Icon name="PhoneOff" size="24" />
-                            </button>
-                        </div>
-
-                        <!-- Collapsed State Icons (Minimal Status) -->
-                        <div
-                            class="collapsed-status"
-                            v-show="isControlsCollapsed"
+                        <button
+                            v-if="!isAudioOnly"
+                            class="ctrl-btn"
+                            :class="{ 'ctrl-btn--off': isCameraOff, 'opacity-50': isCameraTogglePending }"
+                            @click="toggleCamera"
+                            :disabled="isCameraTogglePending"
+                            title="Toggle Camera"
                         >
                             <Icon
-                                :name="isMuted ? 'MicOff' : 'Mic'"
-                                size="16"
-                                :class="{ 'text-red-500': isMuted }"
+                                v-if="isCameraTogglePending"
+                                name="Loader"
+                                size="20"
+                                class="animate-spin"
                             />
                             <Icon
-                                v-if="!isAudioOnly"
+                                v-else
                                 :name="isCameraOff ? 'VideoOff' : 'Video'"
-                                size="16"
-                                :class="{ 'text-red-500': isCameraOff }"
+                                size="20"
                             />
-                            <button
-                                class="control-btn hangup small"
-                                @click="endCall('hangup')"
-                            >
-                                <Icon name="PhoneOff" size="16" />
-                            </button>
-                        </div>
+                        </button>
+
+                        <button
+                            class="ctrl-btn"
+                            @click="showSettings = true"
+                            title="Settings"
+                        >
+                            <Icon name="Settings" size="20" />
+                        </button>
+
+                        <button
+                            class="ctrl-btn"
+                            :class="{
+                                'ctrl-btn--active':
+                                    showSidebar && sidebarTab === 'chat',
+                            }"
+                            @click="toggleSidebar('chat')"
+                            title="Chat"
+                        >
+                            <Icon name="MessageSquare" size="20" />
+                        </button>
+
+                        <button
+                            class="ctrl-btn ctrl-btn--hangup"
+                            @click="endCall('hangup')"
+                            title="End Call"
+                        >
+                            <Icon name="PhoneOff" size="20" />
+                        </button>
                     </div>
-                </div>
-                <!-- Close Main Stage -->
+
+                    <!-- Right: Utility -->
+                    <div class="bar-section bar-section--right">
+                        <button
+                            class="ctrl-btn"
+                            :class="{ 'ctrl-btn--active': showSidebar && sidebarTab === 'people' }"
+                            @click="toggleSidebar('people')"
+                            title="Participants"
+                        >
+                            <Icon name="Users" size="20" />
+                        </button>
+                        <button
+                            v-if="isMobile"
+                            class="ctrl-btn"
+                            @click="showDevSim = true"
+                            title="Simulation"
+                        >
+                            <Icon name="FlaskConical" size="20" />
+                        </button>
+                    </div>
+                </footer>
+            </div>
+            <!-- Close Main Stage -->
 
                 <!-- CALL SIDEBAR -->
                 <div class="call-sidebar" :class="{ open: showSidebar }">
@@ -3703,16 +3493,7 @@ onBeforeUnmount(() => cleanup());
                                         align-items: center;
                                     "
                                 >
-                                    <Icon
-                                        v-if="
-                                            handRaised.has(
-                                                p.publicId.toLowerCase(),
-                                            )
-                                        "
-                                        name="Hand"
-                                        size="14"
-                                        class="status-icon-yellow"
-                                    />
+
                                     <Icon
                                         v-if="
                                             p.isSelf
@@ -3850,6 +3631,9 @@ onBeforeUnmount(() => cleanup());
             />
         </template>
 
+        <!-- DEV SIM TOOL -->
+        <CallDevSimulationTool v-model:show="showDevSim" />
+
         <MediaViewer />
     </div>
 </template>
@@ -3900,32 +3684,18 @@ onBeforeUnmount(() => cleanup());
     pointer-events: none;
 }
 
-/* Header */
-.call-header {
+/* Top Vignette */
+.top-vignette {
     position: absolute;
-    top: env(safe-area-inset-top, 0);
+    top: 0;
     left: 0;
     right: 0;
-    padding: 20px;
-    z-index: 100;
-    display: flex;
-    justify-content: center;
+    height: 180px;
+    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.6) 0%, transparent 100%);
     pointer-events: none;
+    z-index: 50;
 }
 
-.header-info {
-    background: rgba(20, 20, 25, 0.6);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    padding: 8px 16px;
-    border-radius: 24px;
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    border: 1px solid var(--glass-border);
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
-    pointer-events: auto; /* Re-enable pointer events for the indicator hover */
-}
 
 .status-dot {
     width: 10px;
@@ -4195,6 +3965,76 @@ onBeforeUnmount(() => cleanup());
     grid-template-columns: repeat(3, 1fr);
     grid-auto-rows: 1fr;
 }
+.grid-4-3 .grid-wrapper {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-auto-rows: 1fr;
+}
+
+/* Pagination Nav */
+.pagination-nav {
+    position: absolute;
+    bottom: 112px; /* Raised further to avoid overlap */
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(15, 15, 20, 0.6);
+    backdrop-filter: blur(16px);
+    padding: 8px 20px;
+    border-radius: 100px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    z-index: 100;
+    pointer-events: auto;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.pagination-btn {
+    background: none;
+    border: none;
+    color: white;
+    padding: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.7;
+    transition: all 0.2s;
+}
+
+.pagination-btn:hover:not(:disabled) {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 50%;
+}
+
+.pagination-btn:disabled {
+    opacity: 0.2;
+    cursor: not-allowed;
+}
+
+.pagination-dots {
+    display: flex;
+    gap: 6px;
+}
+
+.pagination-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.3);
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.pagination-dot.active {
+    background: white;
+    width: 14px;
+    border-radius: 10px;
+}
 
 /* --- SPOTLIGHT LAYOUT --- */
 /* --- SPOTLIGHT LAYOUT --- */
@@ -4366,44 +4206,266 @@ onBeforeUnmount(() => cleanup());
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
 }
 
-.participant-info {
+/* Unified Header Toolbox */
+.call-header-toolbox {
+    position: absolute;
+    top: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(20, 20, 25, 0.75);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 24px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    z-index: 100;
+    pointer-events: auto;
+    white-space: nowrap;
+}
+
+.toolbox-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: white;
+}
+
+.toolbox-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(255, 255, 255, 0.1);
+    margin: 0 16px;
+}
+
+.local-status-pill {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.pill-label {
+    text-transform: uppercase;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.pill-icons {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.timer {
+    font-variant-numeric: tabular-nums;
+}
+
+/* Redesigned Bottom Bar (Meeting Style) */
+.app-bottom-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 80px;
+    background: rgba(9, 9, 11, 0.85);
+    backdrop-filter: blur(24px);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    z-index: 500;
+}
+
+.bar-section {
+    flex: 1;
+    display: flex;
+    align-items: center;
+}
+
+.bar-section--left {
+    justify-content: flex-start;
+}
+
+.bar-section--center {
+    justify-content: center;
+    gap: 12px;
+}
+
+.bar-section--right {
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+.call-info-pill {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 10px 18px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.info-time {
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: -0.01em;
+}
+
+.ctrl-btn {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ctrl-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    transform: translateY(-2px);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.ctrl-btn--off {
+    background: white;
+    color: #09090b;
+}
+
+.ctrl-btn--off:hover {
+    background: rgba(255, 255, 255, 0.9);
+}
+
+.ctrl-btn--active {
+    background: #10b981;
+    color: white;
+    border-color: rgba(16, 185, 129, 0.4);
+}
+
+.ctrl-btn--hangup {
+    background: #ef4444;
+    border-color: rgba(239, 68, 68, 0.2);
+}
+
+.ctrl-btn--hangup:hover {
+    background: #dc2626;
+    box-shadow: 0 8px 20px rgba(220, 38, 38, 0.3);
+}
+
+/* Mobile Responsiveness */
+@media (max-width: 768px) {
+    .call-header-toolbox {
+        top: 16px;
+        padding: 0 12px;
+        height: 40px;
+        max-width: 90vw;
+    }
+
+    .toolbox-divider {
+        margin: 0 10px;
+    }
+
+    .toolbox-item {
+        font-size: 12px;
+    }
+
+    .pill-label {
+        display: none; /* Hide label on very small screens to save space */
+    }
+
+    .main-stage {
+        padding: 8px;
+    }
+
+    /* Prevent PIP overlap on mobile */
+    .video-cell.local {
+        bottom: 84px !important;
+        right: 12px !important;
+        width: 120px !important;
+        height: 160px !important;
+    }
+
+    .video-cell {
+        border-radius: 12px !important;
+    }
+
+    .participant-info.compact-pill {
+        bottom: 6px !important;
+        left: 6px !important;
+        padding: 3px 8px !important;
+        font-size: 10px !important;
+        gap: 6px !important;
+    }
+
+    .toolbox-divider-vertical {
+        height: 10px !important;
+        margin: 0 !important;
+    }
+
+    .status-row-compact {
+        gap: 4px !important;
+    }
+}
+
+.participant-info.compact-pill {
     position: absolute;
     bottom: 12px;
     left: 12px;
     background: rgba(9, 9, 11, 0.75);
-    backdrop-filter: blur(12px);
-    padding: 8px 12px;
+    backdrop-filter: blur(16px);
+    padding: 5px 10px;
     border-radius: 12px;
     display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 6px;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
     color: white;
-    font-size: 13px;
+    font-size: 11px;
     font-weight: 600;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
     pointer-events: auto;
+    max-width: calc(100% - 24px);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.participant-header {
+.participant-info.compact-pill:hover {
+    background: rgba(9, 9, 11, 0.9);
+    transform: translateY(-2px);
+}
+
+.toolbox-divider-vertical {
+    width: 1px;
+    height: 14px;
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.status-row-compact {
     display: flex;
     align-items: center;
     gap: 8px;
-    width: 100%;
 }
 
-.status-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    width: 100%;
+.participant-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 120px;
 }
 
 .status-icons {
     display: flex;
     align-items: center;
-    gap: 6px;
 }
 
 .status-icon-red {
@@ -4452,93 +4514,6 @@ onBeforeUnmount(() => cleanup());
     bottom: calc(20px + env(safe-area-inset-bottom, 0));
 }
 
-.collapse-toggle {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.05);
-    border: none;
-    color: #a1a1aa;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-.collapse-toggle:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: white;
-}
-
-.main-controls {
-    display: flex;
-    gap: 20px;
-}
-
-.collapsed-status {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.control-btn {
-    width: 48px;
-    height: 48px;
-    border-radius: 24px;
-    border: none;
-    background: rgba(255, 255, 255, 0.1);
-    color: white;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
-    position: relative;
-    overflow: hidden;
-}
-
-.control-btn.small {
-    width: 32px;
-    height: 32px;
-}
-
-.control-btn:hover {
-    background: rgba(255, 255, 255, 0.2);
-    transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
-}
-
-.control-btn.active {
-    background: #10b981; /* Green for active/toggled state */
-    color: white;
-    box-shadow: 0 0 20px rgba(16, 185, 129, 0.4);
-}
-
-.hand-indicator {
-    position: absolute;
-    top: 16px;
-    right: 16px;
-    background: #eab308;
-    color: black;
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 30;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    animation: pop-in 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-}
-
-@keyframes pop-in {
-    0% {
-        transform: scale(0);
-    }
-    100% {
-        transform: scale(1);
-    }
-}
 
 .call-stage-container {
     display: flex;
@@ -4675,145 +4650,60 @@ onBeforeUnmount(() => cleanup());
     box-shadow: none;
 }
 
-/* Vertical Sidebar Mode for Spotlight - Default Start Position (Can be dragged) */
-.layout-spotlight .controls-bar {
-    /* Maintained horizontal layout as requested */
-    flex-direction: row !important;
-    padding: 14px 28px;
-    gap: 12px;
-    border-radius: 40px;
-    width: auto;
-    height: auto;
-    max-height: none;
-    z-index: 500;
 
-    /* We set initial position via CSS, but check if we need to override with inline styles when dragging */
-    left: 50%;
-    top: auto;
-    bottom: 32px;
-    transform: translateX(-50%);
-    right: auto;
-}
-
-.layout-spotlight .control-btn {
-    /* Standard size */
-    width: auto;
-    height: auto;
-    margin: 0;
-}
-
-.control-btn {
-    width: 44px; /* Standard size */
-    height: 44px;
-    border-radius: 50%;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    background: rgba(255, 255, 255, 0.08);
-    color: white;
-    font-size: 24px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s;
-}
-
-.layout-spotlight .control-btn {
-    width: 38px; /* Significantly smaller */
-    height: 38px;
-    font-size: 18px; /* Smaller icon context */
-}
-
-/* Target the SVG icon inside */
-.layout-spotlight .control-btn :deep(svg) {
-    width: 18px;
-    height: 18px;
-}
-
-.control-btn:hover {
-    background: rgba(255, 255, 255, 0.15);
-    transform: scale(1.1);
-}
-.control-btn.off {
-    background: #fafafa;
-    color: #09090b;
-}
-.control-btn.hangup {
-    background: #ef4444;
-    border-color: rgba(255, 255, 255, 0.1);
-}
-.control-btn.hangup:hover {
-    background: #dc2626;
-}
 
 @media (max-width: 768px) {
-    .controls-bar {
-        bottom: calc(12px + env(safe-area-inset-bottom, 0));
-        width: min(
-            calc(100% - 16px),
-            400px
-        ); /* Increased from 280px to prevent clipping */
-        padding: 6px 10px; /* Refined padding */
-        gap: 6px; /* Slightly more space than 4px */
-        justify-content: center;
-        scale: 1;
-        border-radius: 24px;
-        flex-wrap: nowrap; /* Prevent wrapping */
+    .app-bottom-bar {
+        height: 72px;
+        padding: 0 12px;
     }
 
-    .control-btn {
-        width: 36px; /* Slightly larger targets for better UX on mobile */
-        height: 36px;
-        font-size: 16px;
-        flex-shrink: 0; /* Prevent squishing */
+    .bar-section--left {
+        display: none; /* Hide call info on mobile footer, it's in header */
     }
 
-    .main-controls {
-        gap: 8px; /* Reduce gap between buttons on mobile */
+    .bar-section--center {
+        gap: 8px;
     }
 
-    .spotlight-wrapper {
-        flex-direction: column;
-        padding: 0;
-    }
-    .spotlight-stage {
-        border-radius: 0;
-        border: none;
-        flex: 1;
-        width: 100%;
-        height: 100%;
-    }
-    .filmstrip {
-        width: 100%;
-        height: 100px;
-        flex-direction: row;
-        overflow-x: auto;
-        overflow-y: hidden;
-        padding: 8px;
-        background: rgba(9, 9, 11, 0.8);
-        backdrop-filter: blur(12px);
-        border-bottom: 1px solid var(--glass-border);
-        border-top: none;
-        position: absolute;
-        top: env(
-            safe-area-inset-top,
-            0
-        ); /* Move to top to avoid covering presentation content */
-        bottom: auto;
-        z-index: 400;
-    }
-    .filmstrip-cell.video-cell {
-        width: 140px; /* Slightly smaller for mobile filmstrip */
-        height: 100%;
-        aspect-ratio: 16/9;
+    .ctrl-btn {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
     }
 
     .grid-wrapper {
-        padding: 12px;
-        padding-bottom: 100px; /* Reduced from 120px */
+        padding: 8px;
+        gap: 6px; /* Even tighter gap */
+        padding-bottom: 80px;
     }
-    .grid-2-2 .grid-wrapper,
-    .grid-3-3 .grid-wrapper {
-        grid-template-columns: 1fr;
+
+    .participant-info.compact-pill {
+        bottom: 4px !important;
+        left: 4px !important;
+        padding: 2px 6px !important; /* Smaller vertical padding */
+        font-size: 9px !important; /* Smaller font */
+        gap: 4px !important;
+        border-radius: 14px !important;
+    }
+
+    .avatar-image-element {
+        width: 52px !important;
+        height: 52px !important;
+        font-size: 20px !important;
+    }
+
+    .avatar-fallback Avatar {
+        scale: 0.7;
+    }
+    
+    .pagination-nav {
+        bottom: 96px; /* Raised further for mobile footer */
+        scale: 0.8;
+    }
+
+    .video-cell.local.pip-mode {
+        bottom: 160px !important; /* Adjusted for footer */
     }
 
     /* Mobile Sidebar Overrides */

@@ -110,7 +110,7 @@ export function usePresence(options: UsePresenceOptions = {}) {
     // WHISPER & ACTIVITY LOGIC
     // -------------------------------------------------------------------------
     const WHISPER_THROTTLE_MS = 30000; // Only whisper once every 30s
-    const AWAY_TIMEOUT_MS = 300000;    // Mark away after 5 minutes locally
+    const AWAY_TIMEOUT_MS = 180000;    // Mark away after 3 minutes locally
     const SLOW_SYNC_MS = 540000;       // Send HTTP heartbeat every 9 minutes (Active persistence)
 
     let lastActivitySent = 0;
@@ -168,7 +168,7 @@ export function usePresence(options: UsePresenceOptions = {}) {
             const timeSince = now - (user.lastSeen || 0);
             console.log(`[Presence GC] Checking user ${user.name || publicId}: ${timeSince}ms idle`);
 
-            // If silent for > 1 min -> Mark Away
+            // If silent longer than threshold -> Mark Away
             if (timeSince > AWAY_TIMEOUT_MS && user.status !== 'away' && user.status !== 'busy') {
                 console.log(`[Presence GC] Marking user ${user.name || publicId} as AWAY`);
                 updateUserPresence(user, 'away');
@@ -259,11 +259,11 @@ export function usePresence(options: UsePresenceOptions = {}) {
              runGarbageCollector();
         }, 10000); // Check every 10s
 
-        // 4. Attach Activity Listeners (Mouse/Keyboard)
-        window.addEventListener('mousemove', broadcastActivity);
+        // 4. Attach Activity Listeners
+        // Use intentful interactions only; mousemove/scroll are too noisy and keep users "online" indefinitely.
+        window.addEventListener('pointerdown', broadcastActivity);
         window.addEventListener('keydown', broadcastActivity);
-        window.addEventListener('click', broadcastActivity);
-        window.addEventListener('scroll', broadcastActivity);
+        window.addEventListener('touchstart', broadcastActivity);
     }
 
     function stopHeartbeat(): void {
@@ -277,10 +277,9 @@ export function usePresence(options: UsePresenceOptions = {}) {
         }
         
         // Remove Activity Listeners
-        window.removeEventListener('mousemove', broadcastActivity);
+        window.removeEventListener('pointerdown', broadcastActivity);
         window.removeEventListener('keydown', broadcastActivity);
-        window.removeEventListener('click', broadcastActivity);
-        window.removeEventListener('scroll', broadcastActivity);
+        window.removeEventListener('touchstart', broadcastActivity);
     }
 
     /**

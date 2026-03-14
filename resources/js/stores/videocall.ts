@@ -33,7 +33,6 @@ export const useVideoCallStore = defineStore('videoCall', () => {
   
   // Maps publicId -> Stream
   const remoteStreams = reactive(new Map<string, MediaStream>());
-  const remoteScreenStreams = reactive(new Map<string, MediaStream>());
   
   const isMuted = ref(false);
   const isCameraOff = ref(false);
@@ -41,6 +40,7 @@ export const useVideoCallStore = defineStore('videoCall', () => {
   const error = ref<string | null>(null);
   const activeCallId = ref<string | null>(null); // For "Call in progress" indicator in chat
   const selfPublicId = ref<string | null>(null);
+  const mockParticipants = reactive(new Map<string, Participant>());
 
   // Maps publicId -> Volume (0-100)
   const remoteVolumes = reactive(new Map<string, number>());
@@ -141,7 +141,6 @@ export const useVideoCallStore = defineStore('videoCall', () => {
         currentCall.value.participants.delete(publicId);
     }
     remoteStreams.delete(publicId);
-    remoteScreenStreams.delete(publicId);
   }
 
   function setState(state: CallState) {
@@ -182,24 +181,6 @@ export const useVideoCallStore = defineStore('videoCall', () => {
   function removeRemoteStream(publicId: string) {
     remoteStreams.delete(publicId);
     remoteVolumes.delete(publicId);
-  }
-
-  function addRemoteScreenStream(publicId: string, stream: MediaStream) {
-    const active = remoteScreenStreams.get(publicId);
-    if (active) {
-      stream.getTracks().forEach((track) => {
-        if (!active.getTracks().find((t) => t.id === track.id)) {
-          active.addTrack(track);
-        }
-      });
-      remoteScreenStreams.set(publicId, active);
-    } else {
-      remoteScreenStreams.set(publicId, stream);
-    }
-  }
-
-  function removeRemoteScreenStream(publicId: string) {
-    remoteScreenStreams.delete(publicId);
   }
 
   function toggleMute() {
@@ -250,15 +231,67 @@ export const useVideoCallStore = defineStore('videoCall', () => {
     currentCall.value = null;
     localStream.value = null;
     remoteStreams.clear(); 
-    remoteScreenStreams.clear();
+
     remoteVolumes.clear();
     isMuted.value = false;
     isCameraOff.value = false;
     callDuration.value = 0;
     error.value = null;
-    activeCallId.value = null;
     selfPublicId.value = null;
+    mockParticipants.clear();
     stopDurationTimer();
+  }
+
+  function addMockParticipant() {
+      const id = `mock-${Math.random().toString(36).substring(2, 9)}`;
+      const names = ['Alice', 'Bob', 'Charlie', 'David', 'Eve', 'Frank', 'Grace'];
+      const name = names[Math.floor(Math.random() * names.length)] + ' (Mock)';
+      
+      const participant: Participant = {
+          publicId: id,
+          name: name,
+          avatar: null,
+          isSelf: false
+      };
+      
+      mockParticipants.set(id, participant);
+      
+      // Generate a dummy video stream (canvas)
+      const canvas = document.createElement("canvas");
+      canvas.width = 640;
+      canvas.height = 480;
+      const ctx = canvas.getContext("2d")!;
+      
+      let hue = Math.floor(Math.random() * 360);
+      const draw = () => {
+          if (!mockParticipants.has(id)) return;
+          
+          ctx.fillStyle = `hsl(${hue}, 70%, 20%)`;
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          
+          ctx.fillStyle = "white";
+          ctx.font = "bold 40px sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText(name, canvas.width / 2, canvas.height / 2);
+          
+          ctx.font = "20px sans-serif";
+          ctx.fillText(new Date().toLocaleTimeString(), canvas.width / 2, canvas.height / 2 + 50);
+          
+          requestAnimationFrame(draw);
+      };
+      draw();
+      
+      const stream = (canvas as any).captureStream(15);
+      remoteStreams.set(id, stream);
+  }
+
+  function removeMockParticipant() {
+      const keys = Array.from(mockParticipants.keys());
+      if (keys.length > 0) {
+          const lastId = keys[keys.length - 1];
+          mockParticipants.delete(lastId);
+          remoteStreams.delete(lastId);
+      }
   }
 
   return {
@@ -267,7 +300,6 @@ export const useVideoCallStore = defineStore('videoCall', () => {
     currentCall,
     localStream,
     remoteStreams,
-    remoteScreenStreams,
     isMuted,
     isCameraOff,
     callDuration,
@@ -294,8 +326,6 @@ export const useVideoCallStore = defineStore('videoCall', () => {
     setLocalStream,
     addRemoteStream,
     removeRemoteStream,
-    addRemoteScreenStream,
-    removeRemoteScreenStream,
     toggleMute,
     toggleCamera,
     setError,
@@ -340,6 +370,9 @@ export const useVideoCallStore = defineStore('videoCall', () => {
     },
     setGreenScreenThreshold: (threshold: number) => {
         greenScreenThreshold.value = threshold;
-    }
+    },
+    mockParticipants,
+    addMockParticipant,
+    removeMockParticipant
   };
 });

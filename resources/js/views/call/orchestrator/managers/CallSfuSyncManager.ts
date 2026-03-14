@@ -7,8 +7,8 @@ interface ParticipantLike {
 
 interface ParticipantMids {
     audioMid?: string;
+    audioMid?: string;
     videoMid?: string;
-    screenMid?: string;
 }
 
 interface RemoteMediaState {
@@ -24,18 +24,13 @@ export interface CallSfuSyncManagerOptions {
     getRemoteSessionId: (participantId: string) => string | undefined;
     getParticipantMids: (participantId: string) => ParticipantMids | undefined;
     getRemoteMainStream: (participantId: string) => MediaStream | undefined;
-    getRemoteScreenStream: (participantId: string) => MediaStream | undefined;
     requestRemoteMediaInfo: (participantId: string, force?: boolean) => void;
     pullParticipantTracks: (
         participantId: string,
         remoteSessionId?: string,
         audioMid?: string,
         videoMid?: string,
-    ) => void | Promise<void>;
-    pullRemoteScreen: (
-        participantId: string,
-        screenMid: string,
-        remoteSessionId?: string,
+        videoMid?: string,
     ) => void | Promise<void>;
     getRemoteMediaState: (participantId: string) => RemoteMediaState | undefined;
     setRemoteMediaState: (
@@ -44,8 +39,6 @@ export interface CallSfuSyncManagerOptions {
     ) => void;
     upsertMainStream: (participantId: string, stream: MediaStream) => void;
     removeMainStream: (participantId: string) => void;
-    upsertScreenStream: (participantId: string, stream: MediaStream) => void;
-    removeScreenStream: (participantId: string) => void;
     stopAudioAnalysis: (participantId: string) => void;
     intervalMs?: number;
     log?: (message: string) => void;
@@ -79,11 +72,7 @@ export class CallSfuSyncManager {
         participantId: string,
         track: MediaStreamTrack,
     ): void {
-        const normalizedId = participantId.toLowerCase();
-        const isScreenTrack = normalizedId.endsWith(":screen");
-        const streamKey = isScreenTrack
-            ? normalizedId.replace(":screen", "")
-            : normalizedId;
+        const streamKey = participantId.toLowerCase();
 
         const currentState = this.options.getRemoteMediaState(streamKey) || {
             muted: false,
@@ -105,20 +94,6 @@ export class CallSfuSyncManager {
         // `onmute` can be transient (network jitter/track starvation) and must not
         // hard-remove streams, otherwise we trigger unnecessary repulls/transceiver churn.
         if (track.readyState !== "ended") {
-            return;
-        }
-
-        if (isScreenTrack) {
-            const screenStream = this.options.getRemoteScreenStream(streamKey);
-            const removed = this.pruneRemoteTrackFromStream(screenStream, track);
-            if (!removed || !screenStream) return;
-
-            if (screenStream.getTracks().length === 0) {
-                this.options.removeScreenStream(streamKey);
-            } else {
-                // Re-set map entry to ensure UI observes track-level mutation.
-                this.options.upsertScreenStream(streamKey, screenStream);
-            }
             return;
         }
 

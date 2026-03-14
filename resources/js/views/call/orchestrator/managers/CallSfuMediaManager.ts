@@ -46,7 +46,9 @@ export interface CallSfuMediaManagerOptions {
 export class CallSfuMediaManager {
     private readonly participantPullGeneration = new Map<string, number>();
     private readonly screenPullInFlight = new Map<string, string>();
+    private readonly participantRemoteMids = new Map<string, { audioMid?: string; videoMid?: string }>();
     private readonly participantLastPullFingerprint = new Map<string, string>();
+    private readonly registeredMids = new Set<string>();
 
     constructor(private readonly options: CallSfuMediaManagerOptions) {}
 
@@ -90,9 +92,10 @@ export class CallSfuMediaManager {
         pc: RTCPeerConnection,
         callData: CallSfuMediaManagerCallData,
         sessionId: string,
+        retryCount = 0
     ): void {
-        const trackObjects = pc
-            .getTransceivers()
+        const transceivers = pc.getTransceivers();
+        const trackObjects = transceivers
             .filter(
                 (transceiver) =>
                     transceiver.mid !== null &&
@@ -112,9 +115,24 @@ export class CallSfuMediaManager {
             (track) => track.trackName === "video",
         )?.mid;
 
+        const shouldHaveAudio = transceivers.some(t => t.sender.track?.kind === 'audio');
+        const shouldHaveVideo = transceivers.some(t => t.sender.track?.kind === 'video');
+
+        const isMissingReadyMid = (shouldHaveAudio && !audioMid) || (shouldHaveVideo && !videoMid);
+
+        if (isMissingReadyMid && retryCount < 5) {
+            console.log(`[SFU] Waiting for stable MIDs to broadcast media-ready (attempt ${retryCount + 1}/5)...`);
+            setTimeout(() => this.broadcastLocalMediaReady(pc, callData, sessionId, retryCount + 1), 500);
+            return;
+        }
+
         const otherParticipants = this.options
             .getParticipants()
             .filter((participant) => !participant.isSelf);
+
+        console.log(
+            `[SFU] Signaling sfu-media-ready to ${otherParticipants.length} participant(s): audio=${audioMid}, video=${videoMid}`,
+        );
 
         for (const participant of otherParticipants) {
             videoCallService
@@ -265,47 +283,72 @@ export class CallSfuMediaManager {
                 )
                 .map((t) => ({
                     location: "local",
-                    mid: t.mid,
+                    mid: t.mid!,
                     trackName: t.sender.track!.kind,
                 }));
 
-            console.log("[SFU] Creating new session via backend proxy...", trackObjects);
-            const sessionRes = await videoCallService.sfuSessionNew(
-                callData.chatId,
-                this.options.mungeSdp(sfuPc.localDescription!.sdp!),
-                trackObjects,
-            );
-
-            if (sessionRes.sessionDescription) {
-                await sfuPc.setRemoteDescription(
-                    new RTCSessionDescription(sessionRes.sessionDescription),
+            if (trackObjects.length > 0) {
+                console.log("[SFU] Creating new session via backend proxy...", trackObjects);
+                const sessionRes = await videoCallService.sfuSessionNew(
+                    callData.chatId,
+                    this.options.mungeSdp(sfuPc.localDescription!.sdp!),
+                    trackObjects,
                 );
-            }
 
-            if (sessionRes.sessionId) {
-                this.options.setSessionId(sessionRes.sessionId);
-                console.log("[SFU] Session established:", sessionRes.sessionId);
-                console.log(
-                    "[SFU] Explicitly registering tracks via sfuSessionTracks (Double Tap)...",
-                );
-                try {
-                    const tracksRes = await videoCallService.sfuSessionTracks(
-                        callData.chatId,
-                        sessionRes.sessionId,
-                        trackObjects,
-                        undefined,
+                if (sessionRes.sessionDescription) {
+                    await sfuPc.setRemoteDescription(
+                        new RTCSessionDescription(sessionRes.sessionDescription),
                     );
-                    if (tracksRes.sessionDescription) {
-                        console.log("[SFU] Applying Double Tap SDP Answer");
-                        await sfuPc.setRemoteDescription(
-                            new RTCSessionDescription(tracksRes.sessionDescription),
+                }
+
+                if (sessionRes.sessionId) {
+                    this.options.setSessionId(sessionRes.sessionId);
+                    console.log("[SFU] Session established:", sessionRes.sessionId);
+                    
+                    // Mark these MIDs as registered
+                    trackObjects.forEach(obj => this.registeredMids.add(obj.mid));
+
+                    console.log(
+                        "[SFU] Explicitly registering tracks via sfuSessionTracks (Double Tap)...",
+                    );
+                    try {
+                        const tracksRes = await videoCallService.sfuSessionTracks(
+                            callData.chatId,
+                            sessionRes.sessionId,
+                            trackObjects,
+                            undefined,
                         );
+                        if (tracksRes.sessionDescription) {
+                            console.log("[SFU] Applying Double Tap SDP Answer");
+                            await sfuPc.setRemoteDescription(
+                                new RTCSessionDescription(tracksRes.sessionDescription),
+                            );
+                        }
+                    } catch (e) {
+                        console.warn("[SFU] Double Tap track registration warning:", e);
                     }
-                } catch (e) {
-                    console.warn("[SFU] Double Tap track registration warning:", e);
+                } else {
+                    this.options.setSessionId(null);
                 }
             } else {
-                this.options.setSessionId(null);
+                // Hollow Join: Create session with NO tracks
+                console.log("[SFU] Creating hollow session (no initial tracks)...");
+                const sessionRes = await videoCallService.sfuSessionNew(
+                    callData.chatId,
+                    this.options.mungeSdp(sfuPc.localDescription!.sdp!),
+                    [],
+                );
+                if (sessionRes.sessionDescription) {
+                    await sfuPc.setRemoteDescription(
+                        new RTCSessionDescription(sessionRes.sessionDescription),
+                    );
+                }
+                if (sessionRes.sessionId) {
+                    this.options.setSessionId(sessionRes.sessionId);
+                    console.log("[SFU] Hollow session established:", sessionRes.sessionId);
+                } else {
+                    this.options.setSessionId(null);
+                }
             }
 
             console.log("[SFU] Waiting for ICE connection...");
@@ -440,6 +483,14 @@ export class CallSfuMediaManager {
                 }
             };
 
+            sfuPc.onconnectionstatechange = () => {
+                console.log(`[SFU] Connection state: ${sfuPc.connectionState}`);
+                if (sfuPc.connectionState === "failed") {
+                    console.warn("[Call][SFU] SFU connection FAILED. Attempting recovery...");
+                    this.attemptIceRestart();
+                }
+            };
+
             sfuPc.oniceconnectionstatechange = () => {
                 const state = sfuPc.iceConnectionState;
                 console.log(`[SFU] ICE connection state: ${state}`);
@@ -519,49 +570,44 @@ export class CallSfuMediaManager {
             try {
                 await transceiver.sender.replaceTrack(newTrack);
 
-                // Cloudflare needs track registration for newly-published camera track.
-                if (kind === "video" && newTrack) {
+                // Cloudflare needs track registration for newly-published tracks.
+                if (newTrack) {
                     await queuePc.setLocalDescription(await queuePc.createOffer());
                     if (!transceiver.mid) {
                         throw new Error(
-                            "[SFU] Local video transceiver has no MID after offer.",
+                            `[SFU] Local ${kind} transceiver has no MID after offer.`,
                         );
                     }
 
-                    const registerRes = await videoCallService.sfuSessionTracks(
-                        callData.chatId,
-                        queueSessionId,
-                        [
-                            {
-                                location: "local",
-                                mid: transceiver.mid,
-                                trackName: "video",
-                            },
-                        ],
-                        this.options.mungeSdp(queuePc.localDescription!.sdp!),
-                    );
-
-                    const registeredVideo = Array.isArray(registerRes.tracks)
-                        ? registerRes.tracks.find(
-                              (track: any) =>
-                                  track.trackName === "video" &&
-                                  !!track.mid &&
-                                  !track.errorCode,
-                          )
-                        : null;
-
-                    if (!registeredVideo) {
-                        throw new Error(
-                            "[SFU] Local video track registration returned no valid video track.",
-                        );
+                    // Set content hint for better quality/stability
+                    if (kind === "video" && "contentHint" in newTrack) {
+                        (newTrack as any).contentHint = "motion";
                     }
 
-                    if (registerRes.sessionDescription) {
-                        await queuePc.setRemoteDescription(
-                            new RTCSessionDescription(
-                                registerRes.sessionDescription,
-                            ),
+                    if (this.registeredMids.has(transceiver.mid)) {
+                        console.log(`[SFU] Track on mid ${transceiver.mid} already registered, skip tracks/new`);
+                    } else {
+                        const registerRes = await videoCallService.sfuSessionTracks(
+                            callData.chatId,
+                            queueSessionId,
+                            [
+                                {
+                                    location: "local",
+                                    mid: transceiver.mid,
+                                    trackName: kind,
+                                },
+                            ],
+                            this.options.mungeSdp(queuePc.localDescription!.sdp!),
                         );
+
+                        if (registerRes.sessionDescription) {
+                            await queuePc.setRemoteDescription(
+                                new RTCSessionDescription(
+                                    registerRes.sessionDescription,
+                                ),
+                            );
+                        }
+                        this.registeredMids.add(transceiver.mid);
                     }
                 }
 
@@ -582,7 +628,7 @@ export class CallSfuMediaManager {
                 }
             }
 
-            if (kind === "video" && replaceSucceeded) {
+            if (replaceSucceeded) {
                 this.broadcastLocalMediaReady(queuePc, callData, queueSessionId);
             }
         });
@@ -653,6 +699,16 @@ export class CallSfuMediaManager {
             return;
         }
 
+        // Early exit: if the remote has no tracks yet (hollow session), don't waste pull attempts
+        const hasExplicitAudioMidEarly = actualAudioMid !== undefined && actualAudioMid !== null && actualAudioMid !== "";
+        const hasExplicitVideoMidEarly = actualVideoMid !== undefined && actualVideoMid !== null && actualVideoMid !== "";
+        if (!hasExplicitAudioMidEarly && !hasExplicitVideoMidEarly) {
+            console.log(
+                `[SFU] Remote ${participantPublicId} has no published tracks yet (hollow), deferring pull`,
+            );
+            return;
+        }
+
         const requestFingerprint = [
             targetSessionId || "",
             actualAudioMid || "",
@@ -692,18 +748,18 @@ export class CallSfuMediaManager {
             }
         }
         
-        const existingParticipantMids =
-            this.options.participantTransceivers.get(participantPublicId);
+        const existingRemoteMids = this.participantRemoteMids.get(participantPublicId);
         const alreadyHasRequestedMids =
-            !!existingParticipantMids &&
-            (!actualAudioMid ||
-                existingParticipantMids.audioMid === actualAudioMid) &&
-            (!actualVideoMid ||
-                existingParticipantMids.videoMid === actualVideoMid) &&
-            !!(actualAudioMid || actualVideoMid);
+            !!existingRemoteMids &&
+            (actualAudioMid === undefined || actualAudioMid === null || actualAudioMid === "" ||
+                existingRemoteMids.audioMid === actualAudioMid) &&
+            (actualVideoMid === undefined || actualVideoMid === null || actualVideoMid === "" ||
+                existingRemoteMids.videoMid === actualVideoMid) &&
+            (actualAudioMid !== undefined || actualVideoMid !== undefined);
+
         if (alreadyHasRequestedMids) {
             console.log(
-                `[SFU] Already synchronized mids for ${participantPublicId}, skipping redundant pull`,
+                `[SFU] Already synchronized remote mids for ${participantPublicId}, skipping redundant pull`,
             );
             return;
         }
@@ -748,7 +804,7 @@ export class CallSfuMediaManager {
                 trackName: "video",
             });
         }
-        if (!hasAnyKnownMid && currentAttempts === 1) {
+        if (!hasAnyKnownMid && currentAttempts <= 3) {
             trackReqs.push(
                 {
                     location: "remote",
@@ -777,18 +833,15 @@ export class CallSfuMediaManager {
                 const callData = this.options.getCallData();
                 if (!queuePc || !queueSessionId || !callData) return;
 
-                const queuedExistingParticipantMids =
-                    this.options.participantTransceivers.get(
-                        participantPublicId,
-                    );
+                const queuedExistingRemoteMids =
+                    this.participantRemoteMids.get(participantPublicId);
                 const queuedAlreadyHasRequestedMids =
-                    !!queuedExistingParticipantMids &&
+                    !!queuedExistingRemoteMids &&
                     (actualAudioMid === undefined || actualAudioMid === null || actualAudioMid === "" ||
-                        queuedExistingParticipantMids.audioMid === actualAudioMid) &&
+                        queuedExistingRemoteMids.audioMid === actualAudioMid) &&
                     (actualVideoMid === undefined || actualVideoMid === null || actualVideoMid === "" ||
-                        queuedExistingParticipantMids.videoMid === actualVideoMid) &&
-                    ((actualAudioMid !== undefined && actualAudioMid !== null && actualAudioMid !== "") || 
-                     (actualVideoMid !== undefined && actualVideoMid !== null && actualVideoMid !== ""));
+                        queuedExistingRemoteMids.videoMid === actualVideoMid) &&
+                    (actualAudioMid !== undefined || actualVideoMid !== undefined);
                 if (queuedAlreadyHasRequestedMids) {
                     console.log(
                         `[SFU] Participant ${participantPublicId} already synchronized while queued, skipping`,
@@ -867,18 +920,13 @@ export class CallSfuMediaManager {
                         }
                     }
 
+                    // CRITICAL: Cloudflare expects `mid` to be our LOCAL transceiver MID
+                    // (where the remote track will land), NOT the remote participant's MID.
+                    // This matches the legacy StreamManager.ts pattern.
                     const trackReqsWithMid = trackReqs.map((req) => {
-                        if (req.trackName === "audio") {
-                            return {
-                                ...req,
-                                mid: audioTransceiver?.mid || undefined,
-                            };
-                        }
-                        if (req.trackName === "video") {
-                            return {
-                                ...req,
-                                mid: videoTransceiver?.mid || undefined,
-                            };
+                        const tr = req.trackName === "audio" ? audioTransceiver : videoTransceiver;
+                        if (tr?.mid) {
+                            return { ...req, mid: tr.mid };
                         }
                         return req;
                     });
@@ -921,8 +969,13 @@ export class CallSfuMediaManager {
                     );
 
                     if (res.sessionDescription && Array.isArray(res.tracks)) {
+                        const remoteMids = { ...this.participantRemoteMids.get(participantPublicId) };
                         res.tracks.forEach((track: any) => {
                             if (!track.mid) return;
+
+                            if (track.trackName === "audio") remoteMids.audioMid = track.mid;
+                            if (track.trackName === "video") remoteMids.videoMid = track.mid;
+
                             this.options.sfuSessionManager.mapMid(
                                 track.mid,
                                 participantPublicId,
@@ -941,6 +994,7 @@ export class CallSfuMediaManager {
                                 );
                             }
                         });
+                        this.participantRemoteMids.set(participantPublicId, remoteMids);
 
                         this.options.flushPendingTracks();
 
@@ -961,25 +1015,6 @@ export class CallSfuMediaManager {
                             this.options.mungeSdp(answer.sdp!),
                             "answer",
                             "PUT",
-                        );
-
-                        const existingState =
-                            this.options.participantTransceivers.get(
-                                participantPublicId,
-                            ) || {};
-                        this.options.participantTransceivers.set(
-                            participantPublicId,
-                            {
-                                ...existingState,
-                                audioMid:
-                                    res.tracks?.find(
-                                        (t: any) => t.trackName === "audio",
-                                    )?.mid || existingState.audioMid || "",
-                                videoMid:
-                                    res.tracks?.find(
-                                        (t: any) => t.trackName === "video",
-                                    )?.mid || existingState.videoMid || "",
-                            },
                         );
                     }
                 } catch (e: any) {
@@ -1120,10 +1155,21 @@ export class CallSfuMediaManager {
                     );
                 }
 
+                // Build track request WITH local transceiver MID
+                // (Cloudflare expects `mid` to be our LOCAL transceiver MID)
+                const screenTrackReq: any = {
+                    location: "remote",
+                    sessionId: targetSessionId,
+                    trackName: "screen",
+                };
+                if (transceiver.mid) {
+                    screenTrackReq.mid = transceiver.mid;
+                }
+
                 const tracksRes = await videoCallService.sfuSessionTracks(
                     callData.chatId,
                     queueSessionId,
-                    trackReqs,
+                    [screenTrackReq],
                     undefined,
                 );
 

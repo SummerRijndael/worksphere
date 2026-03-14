@@ -471,11 +471,9 @@ class VideoCallController extends Controller
         $metadata = $this->getCallMetadata($chat->public_id, $callId);
         $metadata = $this->maybeMarkCallAnswered($chat, $callId, $metadata, $user);
 
-        // HYBRID LOGIC: Force SFU for group chats OR if total participants > 2.
-        // This ensures group conversations start on Cloudflare immediately,
-        // preventing Mesh-to-SFU transition edge cases for existing participants.
-        // 1:1 calls (where count is 2) should consistently use "mesh" mode.
-        $mode = ($chat->type === 'group' || count($participants) > 2) ? 'sfu' : 'mesh';
+        // FORCE SFU LOGIC: All calls (both 1:1 and group) now use Cloudflare SFU.
+        // This removes the legacy 1:1 P2P mesh logic.
+        $mode = 'sfu';
 
         return response()->json([
             'status' => 'ok',

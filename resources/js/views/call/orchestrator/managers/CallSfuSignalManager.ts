@@ -17,8 +17,6 @@ export interface CallSfuSignalManagerOptions {
     getCallData: () => CallDataLike | null;
     getPeerConnection: () => RTCPeerConnection | null;
     getSessionId: () => string | null;
-    isScreenSharing: () => boolean;
-    getScreenMid: () => string | null;
     mediaInfoThrottleMs?: number;
     midRetryDelayMs?: number;
     maxMidRetries?: number;
@@ -67,14 +65,21 @@ export class CallSfuSignalManager {
         }
 
         const { audioMid, videoMid } = this.getLocalSfuMids();
-        const maxRetries = this.options.maxMidRetries ?? 3;
-        const retryDelayMs = this.options.midRetryDelayMs ?? 2000;
+        const maxRetries = this.options.maxMidRetries ?? 5;
+        const retryDelayMs = this.options.midRetryDelayMs ?? 1000;
+
         const hasAudioMid = audioMid !== undefined && audioMid !== null && audioMid !== "";
         const hasVideoMid = videoMid !== undefined && videoMid !== null && videoMid !== "";
 
-        if (!hasAudioMid && !hasVideoMid && retryCount < maxRetries) {
+        // Determine if we *should* have these tracks based on transceivers
+        const shouldHaveAudio = sfuPc.getTransceivers().some(t => t.sender.track?.kind === 'audio');
+        const shouldHaveVideo = sfuPc.getTransceivers().some(t => t.sender.track?.kind === 'video');
+
+        const isMissingReadyMid = (shouldHaveAudio && !hasAudioMid) || (shouldHaveVideo && !hasVideoMid);
+
+        if (isMissingReadyMid && retryCount < maxRetries) {
             console.log(
-                `[SFU] No local MIDs ready for ${joinerPublicId} yet (attempt ${retryCount + 1}/${maxRetries}), retrying...`,
+                `[SFU] Waiting for stable MIDs for ${joinerPublicId} (attempt ${retryCount + 1}/${maxRetries}), retrying...`,
             );
             setTimeout(
                 () => this.rebroadcastSfuMediaToJoiner(joinerPublicId, retryCount + 1),
@@ -95,20 +100,6 @@ export class CallSfuSignalManager {
             },
             joinerPublicId,
         );
-
-        if (this.options.isScreenSharing()) {
-            const screenMid = this.options.getScreenMid();
-            if (screenMid) {
-                this.sendTargetedSignal(
-                    "sfu-screen-share-started",
-                    {
-                        mid: screenMid,
-                        sessionId: sfuSessionId,
-                    },
-                    joinerPublicId,
-                );
-            }
-        }
     }
 
     requestRemoteMediaInfo(participantPublicId: string, force = false): void {
