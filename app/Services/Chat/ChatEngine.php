@@ -355,7 +355,7 @@ class ChatEngine
      *
      * @return \Illuminate\Database\Eloquent\Builder<ChatMessage>
      */
-    protected function queryMessages()
+    public function queryMessages()
     {
         $query = ChatMessage::with([
             'user:id,public_id,name',

@@ -253,9 +253,22 @@ class ChatMessage extends Model implements HasMedia
     /**
      * Determine if the model should be searchable.
      */
-    public function shouldBeSearchable(): bool
+    /**
+     * Scope a query to only include messages visible to a specific user.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<static>  $query
+     */
+    public function scopeVisibleTo($query, User $user): void
     {
-        // Only index messages with content
-        return ! empty($this->content);
+        $viewerPublicId = strtolower(trim((string) $user->public_id));
+        if ($viewerPublicId === '') {
+            return;
+        }
+
+        $query->where(function ($visibility) use ($viewerPublicId) {
+            $visibility->whereNull('metadata')
+                ->orWhereNull('metadata->hidden_for_user_public_ids')
+                ->orWhereJsonDoesntContain('metadata->hidden_for_user_public_ids', $viewerPublicId);
+        });
     }
 }

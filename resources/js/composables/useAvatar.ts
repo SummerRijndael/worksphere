@@ -43,7 +43,7 @@ const AVATAR_COLORS = [
 ];
 
 const DEFAULT_FALLBACK = '/static/images/avatar/blank.png';
-const GROUP_FALLBACK = '/static/images/avatar/group.png';
+const GROUP_FALLBACK = '/static/images/avatar/blank.png'; // Reverting to blank.png as group.png is missing
 
 /**
  * Composable for avatar resolution and utilities.

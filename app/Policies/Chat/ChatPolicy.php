@@ -75,6 +75,32 @@ class ChatPolicy
     }
 
     /**
+     * Determine whether the user can leave the chat.
+     */
+    public function leave(User $user, Chat $chat): bool
+    {
+        return $this->isParticipant($user, $chat);
+    }
+
+    /**
+     * Determine whether the user can kick a member from the chat.
+     */
+    public function kick(User $user, Chat $chat): bool
+    {
+        return $this->manageMembers($user, $chat);
+    }
+
+    /**
+     * Determine whether the user can rejoin the chat.
+     */
+    public function rejoin(User $user, Chat $chat): bool
+    {
+        return $chat->allParticipants()
+            ->where('user_id', $user->id)
+            ->exists();
+    }
+
+    /**
      * Check if user is a participant of the chat.
      */
     protected function isParticipant(User $user, Chat $chat): bool

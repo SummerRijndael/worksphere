@@ -159,7 +159,7 @@ const declineInvitation = async (notificationId) => {
             <div v-if="(data.type === 'team_invitation' || notification.type === 'App\\Notifications\\TeamInvitationNotification') && !isRead" class="mt-2.5 flex items-center gap-2">
                 <Button
                     size="xs"
-                    variant="default"
+                    variant="primary"
                     class="h-7 px-3 gap-1.5 bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-800 text-white border-transparent"
                     @click.stop="acceptInvitation(notification.id)"
                 >

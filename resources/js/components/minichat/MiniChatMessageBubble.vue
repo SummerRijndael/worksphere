@@ -296,19 +296,9 @@ const isCallerSideMissedEvent = computed(
         isCallerSideCallEvent.value,
 );
 
-const isPinned = computed(
-    () => !!(props.message.is_pinned || props.message.metadata?.is_pinned),
-);
-const isDeleted = computed(
-    () =>
-        Boolean(props.message.is_deleted) ||
-        Boolean(props.message.metadata?.is_deleted),
-);
-const isEdited = computed(
-    () =>
-        Boolean(props.message.is_edited) ||
-        Boolean(props.message.metadata?.is_edited),
-);
+const isPinned = computed(() => !!props.message.is_pinned);
+const isDeleted = computed(() => !!props.message.is_deleted);
+const isEdited = computed(() => !!props.message.is_edited);
 const editHistory = computed(() => {
     const raw = props.message.metadata?.edit_history;
     return Array.isArray(raw)
@@ -331,45 +321,15 @@ const canHideForMe = computed(
     () => !props.message.pending && !props.message.failed,
 );
 
-const reactionBuckets = computed<Record<string, string[]>>(() => {
-    const source =
-        props.message.reactions && typeof props.message.reactions === "object"
-            ? props.message.reactions
-            : props.message.metadata?.reactions;
-
-    if (!source || typeof source !== "object") return {};
-
-    const normalized: Record<string, string[]> = {};
-    Object.entries(source).forEach(([rawKey, ids]) => {
-        if (!Array.isArray(ids)) return;
-        const key = rawKey === "100" ? "hundred" : String(rawKey).toLowerCase();
-        const values = Array.from(
-            new Set(
-                ids
-                    .map((id) => String(id || "").toLowerCase())
-                    .filter(Boolean),
-            ),
-        );
-        if (!values.length) return;
-        normalized[key] = Array.from(
-            new Set([...(normalized[key] || []), ...values]),
-        );
-    });
-
-    return normalized;
-});
-
 const visibleReactions = computed(() => {
-    if (isDeleted.value) return [];
+    if (isDeleted.value || !props.message.reactions) return [];
 
     return REACTION_OPTIONS.map((option) => {
-        const bucket = reactionBuckets.value[option.key] || [];
+        const bucket = props.message.reactions![option.key] || [];
         return {
             ...option,
             count: bucket.length,
-            active:
-                myPublicId.value !== "" &&
-                bucket.includes(myPublicId.value),
+            active: myPublicId.value !== "" && bucket.includes(myPublicId.value),
         };
     }).filter((item) => item.count > 0);
 });
