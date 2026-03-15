@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
+import api from '@/lib/api';
 import { useChatWip } from '@/packages/chat/composables/useChatWip';
-import axios from 'axios';
 
 const activeChatId = ref<string | null>(localStorage.getItem('lab_chat_id'));
 const { messageInput, sendMessage, messages, isLoading, isSending, fetchMessages } = useChatWip(activeChatId.value || '');
@@ -10,7 +10,7 @@ const joinIdInput = ref('');
 
 async function seedLab() {
   try {
-    const response = await axios.get('/api/pkg/chat/seed-lab');
+    const response = await api.get('/api/pkg/chat/seed-lab');
     const newChatId = response.data.data.public_id;
     activeChatId.value = newChatId;
     localStorage.setItem('lab_chat_id', newChatId);
@@ -24,7 +24,7 @@ async function seedLab() {
 async function joinLab() {
   if (!joinIdInput.value.trim()) return;
   try {
-    const response = await axios.post(`/api/pkg/chat/${joinIdInput.value.trim()}/join`);
+    const response = await api.post(`/api/pkg/chat/${joinIdInput.value.trim()}/join`);
     const newChatId = response.data.data.id;
     activeChatId.value = newChatId;
     localStorage.setItem('lab_chat_id', newChatId);

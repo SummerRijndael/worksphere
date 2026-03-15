@@ -330,6 +330,17 @@ const isOwner = computed(() => {
     return team.value?.can?.update || team.value?.can?.delete;
 });
 
+/**
+ * True when the team is awaiting admin approval AND the current user
+ * is not a super-admin (admins should still see/manage pending teams).
+ */
+const isPending = computed(() => {
+    if (!team.value) return false;
+    if (team.value.status !== 'pending') return false;
+    // Admins bypass the lock — they need to be able to approve
+    return !authStore.hasRole('administrator');
+});
+
 // Invite
 const showInviteModal = ref(false);
 const inviteEmail = ref("");
@@ -942,6 +953,36 @@ const canRemoveMember = (member) => {
         </div>
 
         <div v-else class="min-h-screen bg-[var(--surface-primary)] pb-12">
+
+            <!-- Pending Approval Banner -->
+            <div
+                v-if="isPending"
+                class="bg-amber-500/10 border-b border-amber-500/30"
+            >
+                <div class="w-full px-4 sm:px-6 lg:px-8 py-4">
+                    <div class="flex items-start gap-3">
+                        <div class="shrink-0 mt-0.5">
+                            <div class="h-8 w-8 rounded-full bg-amber-500/20 flex items-center justify-center">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                                    <line x1="12" y1="9" x2="12" y2="13"/>
+                                    <line x1="12" y1="17" x2="12.01" y2="17"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <div>
+                            <p class="text-sm font-semibold text-amber-700 dark:text-amber-400">
+                                Pending Admin Approval
+                            </p>
+                            <p class="text-sm text-amber-600/80 dark:text-amber-500/80 mt-0.5">
+                                This team is awaiting admin approval before it can be fully used.
+                                You can view its details, but creating projects, inviting members, and other actions are disabled until approved.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Header -->
             <div
                 class="bg-[var(--surface-elevated)] border-b border-[var(--border-default)]"

@@ -6,6 +6,7 @@ import LinkPreview from "@/components/LinkPreview.vue";
 import AudioMessagePlayer from "@/components/chat/AudioMessagePlayer.vue";
 import { useVideoCallStore } from "@/stores/videocall";
 import { useAuthStore } from "@/stores/auth";
+import { useChatStore } from "@/stores/chat";
 
 interface Props {
     message: Message;
@@ -31,6 +32,7 @@ const emit = defineEmits<{
 
 const videoCallStore = useVideoCallStore();
 const authStore = useAuthStore();
+const chatStore = useChatStore();
 const showReactionMenu = ref(false);
 const showMoreMenu = ref(false);
 const showHistory = ref(false);
@@ -49,6 +51,11 @@ const REACTION_OPTIONS = [
     { key: "love", emoji: "❤️", label: "Love" },
 ] as const;
 const QUICK_REACTION_KEYS = ["love", "laugh", "scared", "sad", "angry", "like"] as const;
+
+const uploadProgress = computed(() => {
+    if (!props.message.tempId) return 0;
+    return chatStore.uploadingProgress.get(props.message.tempId) || 0;
+});
 
 const formattedTime = computed(() => {
     return new Date(props.message.created_at).toLocaleTimeString([], {
@@ -938,9 +945,12 @@ onUnmounted(() => {
                             <Icon name="AlertCircle" size="12" /> Failed • Retry
                             <Icon name="RefreshCw" size="10" />
                         </span>
-                        <span v-else-if="message.pending" class="opacity-60"
-                            >⏳</span
-                        >
+                        <div v-else-if="message.pending" class="flex items-center gap-2">
+                            <span v-if="uploadProgress > 0" class="text-[10px] font-medium opacity-80">
+                                {{ uploadProgress }}%
+                            </span>
+                            <span v-else class="opacity-60">⏳</span>
+                        </div>
                         <span
                             v-else-if="isSeen"
                             class="flex items-center text-blue-200"
@@ -956,6 +966,16 @@ onUnmounted(() => {
                             <Icon name="Check" size="14" />
                         </span>
                     </template>
+                </div>
+                
+                <!-- Progress Bar -->
+                <div v-if="message.pending && uploadProgress > 0" class="mt-2 w-full">
+                    <div class="h-1 w-full overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
+                        <div 
+                            class="h-full bg-white transition-all duration-300 ease-out shadow-[0_0_8px_rgba(255,255,255,0.5)]"
+                            :style="{ width: `${uploadProgress}%` }"
+                        />
+                    </div>
                 </div>
             </div>
 

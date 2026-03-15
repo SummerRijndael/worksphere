@@ -254,9 +254,9 @@ class EmailService implements EmailServiceContract
         // Invalidate body cache
         app(CacheService::class)->forget("email_body:{$email->id}");
 
-        // If already in trash, permanently delete
+        // If already in trash, permanently delete (hard prune)
         if ($email->folder === EmailFolderType::Trash->value) {
-            $email->forceDelete();
+            $email->prune(forceDelete: true);
         } else {
             // Move to trash first
             $email->moveToTrash();

@@ -975,8 +975,15 @@ class ProjectController extends Controller
     protected function authorizeTeamPermission(Team $team, string $permission): void
     {
         $user = request()->user();
+        $isSuperAdmin = $user->hasRole(config('roles.super_admin_role', 'administrator'))
+            || $user->hasPermissionTo('user_manage');
 
-        if (! $this->permissionService->hasTeamPermission($user, $team, $permission)) {
+        // Block all actions on pending teams for non-admins
+        if ($team->status === 'pending' && ! $isSuperAdmin) {
+            abort(403, 'This team is pending approval and cannot be used yet.');
+        }
+
+        if (! $isSuperAdmin && ! $this->permissionService->hasTeamPermission($user, $team, $permission)) {
             abort(403, 'You do not have permission to perform this action.');
         }
     }

@@ -42,6 +42,7 @@ const PRESET_COLORS = [
 const defaultFolders: EmailFolder[] = [
     { id: "inbox", name: "Inbox", icon: InboxIcon, type: "system", count: 0 },
     { id: "starred", name: "Starred", icon: StarIcon, type: "system" },
+    { id: "important", name: "Important", icon: AlertOctagonIcon, type: "system" },
     { id: "sent", name: "Sent", icon: SendIcon, type: "system" },
     {
         id: "drafts",

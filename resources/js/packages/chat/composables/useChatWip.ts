@@ -1,5 +1,5 @@
 import { ref, onMounted } from 'vue';
-import axios from 'axios';
+import api from '@/lib/api';
 
 /**
  * Headless core composable for WIP chat.
@@ -16,7 +16,7 @@ export function useChatWip(chatPublicId: string) {
     
     isLoading.value = true;
     try {
-      const response = await axios.get(`/api/pkg/chat/${chatPublicId}`);
+      const response = await api.get(`/api/pkg/chat/${chatPublicId}`);
       // The show method currently returns the chat object with messages
       messages.value = response.data.data.messages || [];
       console.log(`[ChatWip] Fetched ${messages.value.length} messages`);
@@ -33,7 +33,7 @@ export function useChatWip(chatPublicId: string) {
     const content = messageInput.value;
     isSending.value = true;
     try {
-      const response = await axios.post(`/api/pkg/chat/${chatPublicId}/send`, {
+      const response = await api.post(`/api/pkg/chat/${chatPublicId}/send`, {
         content: content
       });
       

@@ -212,10 +212,11 @@ class EmailAccountController extends Controller
     {
         $this->authorize('delete', $emailAccount);
 
-        $emailAccount->delete();
+        // Dispatch hard prune job (which will also delete the account record after cleanup)
+        \App\Jobs\HardPruneEmailAccountJob::dispatch($emailAccount->id);
 
         return response()->json([
-            'message' => 'Email account deleted successfully.',
+            'message' => 'Email account deletion started. This may take a few minutes for large accounts.',
         ]);
     }
 

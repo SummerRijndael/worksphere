@@ -1181,7 +1181,7 @@ onMounted(async () => {
                                 </label>
                                 <p class="text-xs text-[var(--text-muted)]">
                                     The image displayed when sharing links on
-                                    social media.
+                                    social media. Recommended: 1200x630px (Max 1MB).
                                 </p>
                             </div>
                             <div

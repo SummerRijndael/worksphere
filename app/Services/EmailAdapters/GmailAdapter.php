@@ -42,6 +42,28 @@ class GmailAdapter extends BaseEmailAdapter
         return parent::createClient($account, $fetchBody);
     }
 
+    /**
+     * Get logical folder type from Gmail label ID.
+     */
+    protected function getFolderTypeFromLabel(string $labelId): string
+    {
+        return match ($labelId) {
+            'INBOX' => EmailFolderType::Inbox->value,
+            'SENT' => EmailFolderType::Sent->value,
+            'DRAFT' => EmailFolderType::Drafts->value,
+            'TRASH' => EmailFolderType::Trash->value,
+            'SPAM' => EmailFolderType::Spam->value,
+            'STARRED' => EmailFolderType::Starred->value,
+            'IMPORTANT' => EmailFolderType::Important->value,
+            'CATEGORY_PERSONAL' => EmailFolderType::Inbox->value,
+            'CATEGORY_SOCIAL' => EmailFolderType::Inbox->value,
+            'CATEGORY_PROMOTIONS' => EmailFolderType::Inbox->value,
+            'CATEGORY_UPDATES' => EmailFolderType::Inbox->value,
+            'CATEGORY_FORUMS' => EmailFolderType::Inbox->value,
+            default => strtolower($labelId),
+        };
+    }
+
     public function getFolderName(string $folderType): string
     {
         return match ($folderType) {
@@ -170,13 +192,31 @@ class GmailAdapter extends BaseEmailAdapter
             $newMessages = collect();
 
             if (! empty($result['history'])) {
+                $disabledFolders = $account->disabled_folders ?? [];
+
                 foreach ($result['history'] as $historyRecord) {
                     $messagesAdded = $historyRecord->getMessagesAdded();
                     if ($messagesAdded) {
                         foreach ($messagesAdded as $msgAdded) {
                             $msg = $msgAdded->getMessage();
                             $fullMsg = $this->apiService->getMessage($account, $msg->getId(), $format);
-                            $newMessages->push($this->parseGmailMessage($fullMsg, true, $account, $fetchBody));
+
+                            // Check if message belongs to any enabled folder
+                            $labelIds = $fullMsg->getLabelIds() ?? [];
+                            $shouldSync = false;
+
+                            foreach ($labelIds as $labelId) {
+                                // Map Gmail label back to logical folder type
+                                $folderType = $this->getFolderTypeFromLabel($labelId);
+                                if (! in_array($folderType, $disabledFolders)) {
+                                    $shouldSync = true;
+                                    break;
+                                }
+                            }
+
+                            if ($shouldSync) {
+                                $newMessages->push($this->parseGmailMessage($fullMsg, true, $account, $fetchBody));
+                            }
                         }
                     }
                 }

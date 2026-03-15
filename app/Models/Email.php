@@ -131,6 +131,11 @@ class Email extends Model implements HasMedia
         return $query->where('folder', $folder);
     }
 
+    public function scopeImportant($query)
+    {
+        return $query->where('is_important', true);
+    }
+
     public function scopeInbox($query)
     {
         return $query->where('folder', EmailFolderType::Inbox->value);
@@ -248,6 +253,28 @@ class Email extends Model implements HasMedia
         $this->update(['folder' => $folder]);
 
         return $this;
+    }
+
+    /**
+     * Hard-prune the email content (bodies and files).
+     */
+    public function prune(bool $forceDelete = false): void
+    {
+        // Delete all media associated with this email
+        $this->clearMediaCollection('attachments');
+
+        // Clear body data
+        $this->update([
+            'body_html' => null,
+            'body_plain' => null,
+            'body_raw' => null,
+            'has_attachments' => false,
+            'attachment_placeholders' => null,
+        ]);
+
+        if ($forceDelete) {
+            $this->forceDelete();
+        }
     }
 
     /**

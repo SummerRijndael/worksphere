@@ -198,10 +198,16 @@ class TeamController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:1000'],
             'owner_id' => ['required', 'exists:users,public_id'],
-            'status' => ['required', 'in:active,inactive'],
+            'status' => ['required', 'in:active,inactive,pending'],
         ]);
 
         $owner = \App\Models\User::where('public_id', $validated['owner_id'])->first();
+
+        // Enforce approval for non-admins if required
+        $requiresApproval = app(\App\Services\AppSettingsService::class)->get('teams.require_approval', false);
+        if ($requiresApproval && !$request->user()->hasRole('administrator')) {
+            $validated['status'] = 'pending';
+        }
 
         // Check team creation limit
         $teamActivityService = app(\App\Services\TeamActivityService::class);
@@ -253,7 +259,7 @@ class TeamController extends Controller
             'name' => ['sometimes', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:1000'],
             'owner_id' => ['sometimes', 'exists:users,public_id'],
-            'status' => ['sometimes', 'in:active,inactive'],
+            'status' => ['sometimes', 'in:active,inactive,pending'],
         ]);
 
         // Update logic: Handle owner change if needed
@@ -264,6 +270,9 @@ class TeamController extends Controller
             $team->description = $validated['description'];
         }
         if (isset($validated['status'])) {
+            if ($validated['status'] !== $team->status && !$request->user()->hasRole('administrator')) {
+                return response()->json(['message' => 'Only administrators can change the team status.'], 403);
+            }
             $team->status = $validated['status'];
         }
 
@@ -942,6 +951,11 @@ class TeamController extends Controller
             abort(403, 'Only team admins can create events.');
         }
 
+        // Block pending teams for non-super-admins
+        if ($team->status === 'pending' && !auth()->user()->hasRole(config('roles.super_admin_role', 'administrator'))) {
+            abort(403, 'Action disabled until team is approved.');
+        }
+
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
@@ -997,6 +1011,11 @@ class TeamController extends Controller
             auth()->id() !== $event->user_id &&
             ! $team->members()->where('user_id', auth()->id())->wherePivot('role', 'admin')->exists()) {
             abort(403, 'Unauthorized action.');
+        }
+
+        // Block pending teams for non-super-admins
+        if ($team->status === 'pending' && !auth()->user()->hasRole(config('roles.super_admin_role', 'administrator'))) {
+            abort(403, 'Action disabled until team is approved.');
         }
 
         $validated = $request->validate([
@@ -1062,6 +1081,11 @@ class TeamController extends Controller
             abort(403, 'Unauthorized action.');
         }
 
+        // Block pending teams for non-super-admins
+        if ($team->status === 'pending' && !auth()->user()->hasRole(config('roles.super_admin_role', 'administrator'))) {
+            abort(403, 'Action disabled until team is approved.');
+        }
+
         $event->delete();
 
         return response()->json(['message' => 'Event deleted successfully']);
@@ -1082,6 +1106,11 @@ class TeamController extends Controller
             auth()->id() !== $event->user_id &&
             ! $team->members()->where('user_id', auth()->id())->wherePivot('role', 'admin')->exists()) {
             abort(403, 'Unauthorized action.');
+        }
+
+        // Block pending teams for non-super-admins
+        if ($team->status === 'pending' && !auth()->user()->hasRole(config('roles.super_admin_role', 'administrator'))) {
+            abort(403, 'Action disabled until team is approved.');
         }
 
         $event->load(['creator', 'participants', 'team']);

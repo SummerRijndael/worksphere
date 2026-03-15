@@ -335,7 +335,7 @@ class SettingsController extends Controller
     public function uploadOpengraph(Request $request): JsonResponse
     {
         $request->validate([
-            'opengraph' => ['required', 'file', 'mimes:png,jpg,jpeg,webp', 'max:4096'],
+            'opengraph' => ['required', 'file', 'mimes:png,jpg,jpeg,webp', 'max:1024', 'dimensions:min_width=600,min_height=315'],
         ]);
 
         $file = $request->file('opengraph');

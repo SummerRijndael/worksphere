@@ -208,6 +208,7 @@ class ChatService extends BaseService {
     content?: string,
     replyTo?: string | number,
     mediaMetadata?: Array<{ duration_seconds?: number | null }>,
+    onProgress?: (progress: number) => void,
   ): Promise<Message> {
     try {
       const formData = new FormData();
@@ -223,6 +224,12 @@ class ChatService extends BaseService {
         formData,
         {
           headers: { 'Content-Type': 'multipart/form-data' },
+          onUploadProgress: (progressEvent) => {
+            if (onProgress && progressEvent.total) {
+              const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+              onProgress(percentCompleted);
+            }
+          },
         },
       );
       const validated = sendMessageResponseSchema.parse(response.data);

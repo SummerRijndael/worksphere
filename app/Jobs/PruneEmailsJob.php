@@ -38,8 +38,8 @@ class PruneEmailsJob implements ShouldQueue
         $count = 0;
         // Use received_at for age determination
         foreach (Email::whereIn('folder', $folders)->where('received_at', '<', $cutoff)->cursor() as $email) {
-            // Spatie Media Library handles deletion of files on model force delete
-            $email->forceDelete();
+            // Use standardized prune and force delete
+            $email->prune(forceDelete: true);
             $count++;
         }
 
@@ -70,16 +70,8 @@ class PruneEmailsJob implements ShouldQueue
         $count = 0;
         foreach ($query->cursor() as $email) {
             try {
-                // Clear media/attachments
-                $email->clearMediaCollection('attachments');
-
-                // Clear body
-                $email->update([
-                    'body_html' => null,
-                    'body_plain' => null,
-                    'body_raw' => null,
-                    // We keep headers and other metadata so search still works
-                ]);
+                // Use the standardized prune method
+                $email->prune();
                 $count++;
             } catch (\Throwable $e) {
                 Log::error("Failed to prune content for email {$email->id}: ".$e->getMessage());

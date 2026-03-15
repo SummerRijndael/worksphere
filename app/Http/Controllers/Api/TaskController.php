@@ -1245,6 +1245,11 @@ class TaskController extends Controller
     {
         $user = request()->user();
 
+        // Block pending teams for non-super-admins
+        if ($team->status === 'pending' && ! $user->hasRole(config('roles.super_admin_role', 'administrator')) && ! $user->hasPermissionTo('user_manage')) {
+            abort(403, 'Action disabled until team is approved.');
+        }
+
         if (! $this->permissionService->hasTeamPermission($user, $team, $permission)) {
             abort(403, 'You do not have permission to perform this action.');
         }

@@ -11,6 +11,8 @@ enum EmailFolderType: string
     case Spam = 'spam';
     case Archive = 'archive';
     case Scheduled = 'scheduled';
+    case Starred = 'starred';
+    case Important = 'important';
 
     /**
      * Get priority for sync ordering.
@@ -26,6 +28,8 @@ enum EmailFolderType: string
             self::Archive => 5,
             self::Scheduled => 6,
             self::Spam => 7,
+            self::Starred => 8,
+            self::Important => 9,
         };
     }
 
@@ -42,6 +46,8 @@ enum EmailFolderType: string
             self::Spam => 'Spam',
             self::Archive => 'Archive',
             self::Scheduled => 'Scheduled',
+            self::Starred => 'Starred',
+            self::Important => 'Important',
         };
     }
 

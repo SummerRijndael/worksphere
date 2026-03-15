@@ -893,18 +893,20 @@ onUnmounted(() => {
                         pendingFiles.length === 0 &&
                         !hasAudioDraft) ||
                     isRecorderActive ||
-                    isRecorderBusy
+                    isRecorderBusy ||
+                    sending
                 "
                 class="flex items-center justify-center rounded-full transition-all duration-200 transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                 :class="[
-                    isValidMessage || pendingFiles.length > 0 || hasAudioDraft
+                    isValidMessage || pendingFiles.length > 0 || hasAudioDraft || sending
                         ? 'bg-(--interactive-primary) text-white shadow-md hover:bg-(--interactive-primary-hover)'
                         : 'bg-(--surface-tertiary) text-(--text-tertiary)',
                     compact ? 'w-9 h-9' : 'w-9 h-9',
                     !compact ? 'mb-1 pr-0' : '',
                 ]"
             >
-                <Icon name="Send" :size="compact ? 16 : 16" />
+                <Icon v-if="sending" name="Loader2" :size="16" class="animate-spin" />
+                <Icon v-else name="Send" :size="compact ? 16 : 16" />
             </button>
         </div>
 

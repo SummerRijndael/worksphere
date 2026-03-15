@@ -105,4 +105,41 @@ class EmailBackendTest extends TestCase
             'is_default' => true,
         ]);
     }
+
+    public function test_can_filter_by_virtual_folders()
+    {
+        // 1. Test Starred
+        Email::factory()->create([
+            'user_id' => $this->user->id,
+            'email_account_id' => $this->emailAccount->id,
+            'is_starred' => true,
+            'folder' => 'inbox',
+        ]);
+        Email::factory()->create([
+            'user_id' => $this->user->id,
+            'email_account_id' => $this->emailAccount->id,
+            'is_starred' => false,
+            'folder' => 'inbox',
+        ]);
+
+        $response = $this->actingAs($this->user)
+            ->getJson('/api/emails?folder=starred');
+
+        $response->assertOk()
+            ->assertJsonCount(1, 'data');
+
+        // 2. Test Important
+        Email::factory()->create([
+            'user_id' => $this->user->id,
+            'email_account_id' => $this->emailAccount->id,
+            'is_important' => true,
+            'folder' => 'inbox',
+        ]);
+
+        $response = $this->actingAs($this->user)
+            ->getJson('/api/emails?folder=important');
+
+        $response->assertOk()
+            ->assertJsonCount(1, 'data');
+    }
 }

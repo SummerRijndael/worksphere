@@ -51,7 +51,11 @@ class EmailController extends Controller
         } else {
             // Filter by Folder (default to 'inbox')
             $folder = $request->input('folder', 'inbox');
-            if ($folder !== 'all') {
+            if ($folder === 'starred') {
+                $query->starred();
+            } elseif ($folder === 'important') {
+                $query->important();
+            } elseif ($folder !== 'all') {
                 $query->where('folder', $folder);
             }
         }

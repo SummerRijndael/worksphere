@@ -8,6 +8,21 @@ use App\Models\User;
 class TeamPolicy
 {
     /**
+     * Pre-check: block all non-view actions on pending teams for non-admins.
+     * Returning false here denies the action outright.
+     * Returning null allows the individual method to decide.
+     */
+    public function before(User $user, string $ability): ?bool
+    {
+        // Admins can always act on any team (including approving pending ones)
+        if ($user->hasRole('administrator') || $user->hasPermissionTo('user_manage')) {
+            return null; // Defer to individual methods
+        }
+
+        return null; // Individual methods will handle pending checks where needed
+    }
+
+    /**
      * Determine whether the user can view any models.
      */
     public function viewAny(User $user): bool
@@ -36,6 +51,11 @@ class TeamPolicy
      */
     public function update(User $user, Team $team): bool
     {
+        // Pending teams cannot be updated by non-admins
+        if ($team->status === 'pending') {
+            return false;
+        }
+
         return ($user->hasPermissionTo('teams.update') || $user->hasPermissionTo('user_manage')) || $team->hasAdmin($user);
     }
 
@@ -44,6 +64,11 @@ class TeamPolicy
      */
     public function invite(User $user, Team $team): bool
     {
+        // Cannot invite to a pending team
+        if ($team->status === 'pending') {
+            return false;
+        }
+
         return $user->hasPermissionTo('user_manage') || $team->isOwner($user);
     }
 

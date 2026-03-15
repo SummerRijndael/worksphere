@@ -1725,7 +1725,7 @@ function isOwnMessage(msg: Message): boolean {
             <!-- Send button -->
             <button
                 class="minichat-send-btn"
-                :disabled="!canSend || isRecorderBusy"
+                :disabled="!canSend || isRecorderBusy || isSending"
                 @click="handleSend"
             >
                 <Icon

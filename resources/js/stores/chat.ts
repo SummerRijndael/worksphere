@@ -42,6 +42,9 @@ export const useChatStore = defineStore('chat', () => {
   const replyingToMessage = ref<Message | null>(null);
   const pendingFiles = ref<any[]>([]);
 
+  // Upload progress (tempId -> progress percentage)
+  const uploadingProgress = ref<Map<string, number>>(new Map());
+
   // ============================================================================
   // Computed
   // ============================================================================
@@ -197,6 +200,43 @@ export const useChatStore = defineStore('chat', () => {
     replyTo?: string | number,
     mediaMetadata?: Array<{ duration_seconds?: number | null }>,
   ) {
+    // Get current user from auth store
+    const { useAuthStore } = await import('@/stores/auth');
+    const authStore = useAuthStore();
+    const currentUserPublicId = authStore.user?.public_id || null;
+
+    // Create a temporary ID for the message
+    const tempId = `temp-upload-${Date.now()}`;
+    
+    // Create optimistic message
+    const optimisticMessage: Message = {
+      id: tempId,
+      type: 'user',
+      user_public_id: currentUserPublicId,
+      user_name: authStore.user?.name || 'You',
+      user_avatar: authStore.avatarUrl || null,
+      content: content || '',
+      created_at: new Date().toISOString(),
+      is_seen: false,
+      seen: false,
+      seen_at: null,
+      reply_to: replyTo ? findMessageById(chatId, replyTo) as any : null,
+      attachments: files.map(f => ({
+        id: Math.random(), // Temporary ID for attachment
+        file_name: f.name,
+        file_size: f.size,
+        file_type: f.type,
+        file_url: f.type.startsWith('image/') ? URL.createObjectURL(f) : '',
+        mime_type: f.type,
+      })) as any,
+      pending: true,
+      tempId,
+    };
+
+    // Add optimistic message and initialize progress
+    addMessage(chatId, optimisticMessage);
+    uploadingProgress.value.set(tempId, 0);
+
     try {
       const message = await chatService.uploadMessage(
         chatId,
@@ -204,12 +244,34 @@ export const useChatStore = defineStore('chat', () => {
         content,
         replyTo,
         mediaMetadata,
+        (progress) => {
+          uploadingProgress.value.set(tempId, progress);
+        }
       );
-      addMessage(chatId, message);
+
+      // Clean up object URLs created for optimistic UI
+      optimisticMessage.attachments.forEach(att => {
+        if (att.file_url && att.file_url.startsWith('blob:')) {
+          URL.revokeObjectURL(att.file_url);
+        }
+      });
+
+      // Replace optimistic message with real one
+      replaceMessage(chatId, tempId, message);
+      uploadingProgress.value.delete(tempId);
+      
       replyingToMessage.value = null;
-      clearPendingFiles(); // Clear and revoke URLs
+      clearPendingFiles();
       return message;
     } catch (error) {
+      // Clean up on failure
+      optimisticMessage.attachments.forEach(att => {
+        if (att.file_url && att.file_url.startsWith('blob:')) {
+          URL.revokeObjectURL(att.file_url);
+        }
+      });
+      markMessageFailed(chatId, tempId);
+      uploadingProgress.value.delete(tempId);
       throw error;
     }
   }
@@ -684,6 +746,7 @@ export const useChatStore = defineStore('chat', () => {
     typingUsers.value = new Map();
     replyingToMessage.value = null;
     pendingFiles.value = [];
+    uploadingProgress.value = new Map();
   }
 
   return {
@@ -701,6 +764,7 @@ export const useChatStore = defineStore('chat', () => {
     typingUsers,
     replyingToMessage,
     pendingFiles,
+    uploadingProgress,
 
     // Computed
     activeChat,

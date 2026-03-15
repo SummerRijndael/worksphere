@@ -235,6 +235,10 @@ class GroupChatService
         foreach ($chats as $chat) {
             // System delete - no password needed
             broadcast(new ChatDeleted($chat));
+
+            // Async media cleanup before DB record is gone
+            \App\Jobs\CleanChatMediaJob::dispatch($chat->id);
+
             $chat->delete();
             $count++;
         }

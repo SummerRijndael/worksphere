@@ -599,13 +599,13 @@ onMounted(() => {
                                 <td class="px-6 py-4">
                                     <div
                                         class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
-                                        :class="
-                                            team.status === 'active'
-                                                ? 'bg-emerald-500/10 text-emerald-700'
-                                                : 'bg-gray-500/10 text-gray-700'
-                                        "
+                                        :class="{
+                                            'bg-emerald-500/10 text-emerald-700': team.status === 'active',
+                                            'bg-amber-500/10 text-amber-700': team.status === 'pending',
+                                            'bg-gray-500/10 text-gray-700': !['active', 'pending'].includes(team.status)
+                                        }"
                                     >
-                                        {{ team.status }}
+                                        {{ team.status === 'pending' ? 'Pending Approval' : team.status }}
                                     </div>
                                 </td>
                                 <td class="px-6 py-4 text-right">
@@ -613,16 +613,16 @@ onMounted(() => {
                                         class="flex items-center justify-end gap-2"
                                     >
                                         <button
+                                            :disabled="team.status === 'pending'"
                                             @click="
-                                                router.push({
+                                                team.status !== 'pending' && router.push({
                                                     name: 'team-profile',
                                                     params: {
-                                                        identifier:
-                                                            team.slug ||
-                                                            team.public_id,
+                                                        identifier: team.slug || team.public_id,
                                                     },
                                                 })
                                             "
+                                            :class="{'opacity-50 cursor-not-allowed': team.status === 'pending'}"
                                         >
                                             <LayoutGrid class="w-4 h-4" />
                                         </button>
@@ -691,13 +691,13 @@ onMounted(() => {
                                 </div>
                                 <div
                                     class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider"
-                                    :class="
-                                        team.status === 'active'
-                                            ? 'bg-emerald-500/10 text-emerald-600'
-                                            : 'bg-gray-500/10 text-gray-600'
-                                    "
+                                    :class="{
+                                        'bg-emerald-500/10 text-emerald-600': team.status === 'active',
+                                        'bg-amber-500/10 text-amber-600': team.status === 'pending',
+                                        'bg-gray-500/10 text-gray-600': !['active', 'pending'].includes(team.status)
+                                    }"
                                 >
-                                    {{ team.status }}
+                                    {{ team.status === 'pending' ? 'Pending Approval' : team.status }}
                                 </div>
                             </div>
                             <div
@@ -723,16 +723,17 @@ onMounted(() => {
                             </div>
                             <div class="flex items-center gap-2 pt-2">
                                 <button
+                                    :disabled="team.status === 'pending'"
                                     @click="
-                                        router.push({
+                                        team.status !== 'pending' && router.push({
                                             name: 'team-profile',
                                             params: {
-                                                identifier:
-                                                    team.slug || team.public_id,
+                                                identifier: team.slug || team.public_id,
                                             },
                                         })
                                     "
                                     class="btn btn-secondary flex-1 py-1 px-2 text-xs h-9"
+                                    :class="{'opacity-50 cursor-not-allowed': team.status === 'pending'}"
                                 >
                                     <LayoutGrid class="w-3.5 h-3.5 mr-1" />
                                     Dashboard
@@ -867,19 +868,21 @@ onMounted(() => {
                                             :class="{
                                                 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20':
                                                     team.status === 'active',
+                                                'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20':
+                                                    team.status === 'pending',
                                                 'bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20':
-                                                    team.status === 'inactive',
+                                                    !['active', 'pending'].includes(team.status),
                                             }"
                                         >
                                             <span
                                                 class="w-1.5 h-1.5 rounded-full"
-                                                :class="
-                                                    team.status === 'active'
-                                                        ? 'bg-emerald-500'
-                                                        : 'bg-gray-500'
-                                                "
-                                            ></span
-                                            >{{ team.status }}
+                                                :class="{
+                                                    'bg-emerald-500': team.status === 'active',
+                                                    'bg-amber-500': team.status === 'pending',
+                                                    'bg-gray-500': !['active', 'pending'].includes(team.status)
+                                                }"
+                                            ></span>
+                                            {{ team.status === 'pending' ? 'Pending Approval' : team.status }}
                                         </div>
                                     </div>
                                     <div
@@ -993,19 +996,21 @@ onMounted(() => {
                                             :class="{
                                                 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20':
                                                     team.status === 'active',
+                                                'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20':
+                                                    team.status === 'pending',
                                                 'bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20':
-                                                    team.status === 'inactive',
+                                                    !['active', 'pending'].includes(team.status),
                                             }"
                                         >
                                             <span
                                                 class="w-1.5 h-1.5 rounded-full"
-                                                :class="
-                                                    team.status === 'active'
-                                                        ? 'bg-emerald-500'
-                                                        : 'bg-gray-500'
-                                                "
-                                            ></span
-                                            >{{ team.status }}
+                                                :class="{
+                                                    'bg-emerald-500': team.status === 'active',
+                                                    'bg-amber-500': team.status === 'pending',
+                                                    'bg-gray-500': !['active', 'pending'].includes(team.status)
+                                                }"
+                                            ></span>
+                                            {{ team.status === 'pending' ? 'Pending Approval' : team.status }}
                                         </div>
                                     </div>
                                     <div
@@ -1119,19 +1124,21 @@ onMounted(() => {
                                     :class="{
                                         'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20':
                                             team.status === 'active',
+                                        'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20':
+                                            team.status === 'pending',
                                         'bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20':
-                                            team.status === 'inactive',
+                                            !['active', 'pending'].includes(team.status),
                                     }"
                                 >
                                     <span
                                         class="w-1.5 h-1.5 rounded-full"
-                                        :class="
-                                            team.status === 'active'
-                                                ? 'bg-emerald-500'
-                                                : 'bg-gray-500'
-                                        "
+                                        :class="{
+                                            'bg-emerald-500': team.status === 'active',
+                                            'bg-amber-500': team.status === 'pending',
+                                            'bg-gray-500': !['active', 'pending'].includes(team.status)
+                                        }"
                                     ></span>
-                                    {{ team.status }}
+                                    {{ team.status === 'pending' ? 'Pending Approval' : team.status }}
                                 </div>
                             </div>
 
@@ -1278,6 +1285,7 @@ onMounted(() => {
                         </p>
                     </div>
                     <div
+                        v-if="authStore.hasRole('administrator')"
                         :class="
                             authStore.hasRole('administrator')
                                 ? 'space-y-1.5'
@@ -1293,6 +1301,7 @@ onMounted(() => {
                             class="input w-full focus:ring-2 focus:ring-purple-500/20"
                         >
                             <option value="active">Active</option>
+                            <option value="pending">Pending Approval</option>
                             <option value="inactive">Inactive</option>
                         </select>
                     </div>
@@ -1375,7 +1384,7 @@ onMounted(() => {
                             {{ errors.owner_id[0] }}
                         </p>
                     </div>
-                    <div class="space-y-1.5">
+                    <div v-if="authStore.hasRole('administrator')" class="space-y-1.5">
                         <label
                             class="text-sm font-semibold text-[var(--text-secondary)]"
                             >Status</label
@@ -1385,6 +1394,7 @@ onMounted(() => {
                             class="input w-full focus:ring-2 focus:ring-purple-500/20"
                         >
                             <option value="active">Active</option>
+                            <option value="pending">Pending Approval</option>
                             <option value="inactive">Inactive</option>
                         </select>
                     </div>

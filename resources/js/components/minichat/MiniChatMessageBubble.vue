@@ -6,8 +6,10 @@ import LinkPreview from "@/components/LinkPreview.vue";
 import AudioMessagePlayer from "@/components/chat/AudioMessagePlayer.vue";
 import { useVideoCallStore } from "@/stores/videocall";
 import { useAuthStore } from "@/stores/auth";
+import { useChatStore } from "@/stores/chat";
 
 const videoCallStore = useVideoCallStore();
+const chatStore = useChatStore();
 
 interface Props {
     message: Message;
@@ -59,6 +61,11 @@ const formatTime = (dateStr: string): string => {
         minute: "2-digit",
     });
 };
+
+const uploadProgress = computed(() => {
+    if (!props.message.tempId) return 0;
+    return chatStore.uploadingProgress.get(props.message.tempId) || 0;
+});
 
 const isImage = (attachment: MessageAttachment) => {
     if (attachment.media_kind) {
@@ -849,13 +856,18 @@ onUnmounted(() => {
                     }}</span>
 
                     <!-- Status Indicators (Own Message Only) -->
-                    <div v-if="isMine" class="flex items-center">
-                        <Icon
-                            v-if="message.pending"
-                            name="Loader2"
-                            :size="10"
-                            class="animate-spin text-(--text-muted)"
-                        />
+                    <div v-if="isMine" class="flex items-center gap-1">
+                        <div v-if="message.pending" class="flex items-center gap-1">
+                            <span v-if="uploadProgress > 0" class="text-[9px] font-medium text-white/80">
+                                {{ uploadProgress }}%
+                            </span>
+                            <Icon
+                                v-else
+                                name="Loader2"
+                                :size="10"
+                                class="animate-spin text-(--text-muted)"
+                            />
+                        </div>
                         <Icon
                             v-else-if="message.failed"
                             name="AlertCircle"
@@ -873,6 +885,16 @@ onUnmounted(() => {
                             name="Check"
                             :size="10"
                             class="text-white/70"
+                        />
+                    </div>
+                </div>
+
+                <!-- Progress Bar -->
+                <div v-if="message.pending && uploadProgress > 0" class="mt-1.5 w-full">
+                    <div class="h-0.5 w-full overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
+                        <div 
+                            class="h-full bg-white transition-all duration-300 ease-out shadow-[0_0_4px_rgba(255,255,255,0.4)]"
+                            :style="{ width: `${uploadProgress}%` }"
                         />
                     </div>
                 </div>
