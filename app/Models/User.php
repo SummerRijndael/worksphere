@@ -18,11 +18,12 @@ use Laravel\Sanctum\HasApiTokens;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 use Spatie\Permission\Traits\HasRoles;
+use WorkSphere\Chat\Traits\InteractsWithChat as PackageInteractsWithChat;
 
 class User extends Authenticatable implements HasMedia, MustVerifyEmail, WebAuthnAuthenticatable
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use Auditable, HasApiTokens, HasFactory, HasRoles, InteractsWithMedia, Notifiable, TwoFactorAuthenticatable, WebAuthnAuthentication;
+    use Auditable, HasApiTokens, HasFactory, HasRoles, InteractsWithMedia, Notifiable, TwoFactorAuthenticatable, WebAuthnAuthentication, PackageInteractsWithChat;
 
     public function registerMediaCollections(): void
     {

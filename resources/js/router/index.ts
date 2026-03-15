@@ -654,6 +654,16 @@ const routes: RouteRecordRaw[] = [
                 },
             },
             {
+                path: "dev/labs/chat",
+                name: "chat-lab",
+                component: () => import("@/views/dev/ChatLab.vue"),
+                meta: {
+                    title: "Chat Lab (WIP)",
+                    breadcrumb: "Chat Lab",
+                    transition: "slide-fade",
+                },
+            },
+            {
                 path: "tickets/:id",
                 name: "ticket-detail",
                 component: TicketDetailView,
