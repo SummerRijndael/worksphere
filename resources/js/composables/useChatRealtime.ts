@@ -234,7 +234,8 @@ export function useChatRealtime() {
       })
       .listen('.ChatBadgeUpdated', (event: { unread_count: number }) => {
         console.log(`[ChatRealtime] 🔢 RECEIVED .ChatBadgeUpdated on ${channelName}`, event);
-        chatStore.totalUnreadCount = event.unread_count;
+        // totalUnreadCount is a computed property in the store, so it cannot be set directly.
+        // The unread counts are updated via individual chat objects or by refreshing the chat list.
       })
       .listen('.invite.sent', (event: any) => {
         console.log(`[ChatRealtime] 📨 RECEIVED .invite.sent on ${channelName}`, event);

@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Auth;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 
@@ -97,6 +98,19 @@ class Chat extends Model implements HasMedia
     public function latestMessage(): HasOne
     {
         return $this->hasOne(ChatMessage::class)->latestOfMany();
+    }
+
+    /**
+     * Get the latest message visible to the current authenticated user.
+     */
+    public function latestVisibleMessage(): HasOne
+    {
+        return $this->hasOne(ChatMessage::class)
+            ->ofMany(['id' => 'max'], function ($query) {
+                if ($user = Auth::user()) {
+                    $query->visibleTo($user);
+                }
+            });
     }
 
     /**

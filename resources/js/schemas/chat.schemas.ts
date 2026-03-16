@@ -20,7 +20,7 @@ export const lastMessageSchema = z.object({
   content: z.string().nullable(),
   created_at: z.string(),
   has_media: z.boolean(),
-  preview: z.string().optional(),
+  preview: z.string().nullable().optional(),
 });
 
 export const chatSchema = z.object({
@@ -36,6 +36,7 @@ export const chatSchema = z.object({
   unread_count: z.number().optional(),
   team_owner_id: z.number().nullable(),
   marked_for_deletion_at: z.string().nullable().optional(),
+  participant_role: z.enum(['owner', 'admin', 'member']).nullable().optional(),
 });
 
 export const attachmentSchema = z.object({
