@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import type { Message, MessageAttachment } from "@/types/models/chat";
+import type { Message, MessageAttachment, ChatParticipant } from "@/types/models/chat";
 import { Icon, Avatar } from "@/components/ui";
 import LinkPreview from "@/components/LinkPreview.vue";
 import AudioMessagePlayer from "@/components/chat/AudioMessagePlayer.vue";
@@ -13,6 +13,7 @@ interface Props {
     message: Message;
     isMine: boolean;
     showJoinButton?: boolean;
+    participants?: ChatParticipant[];
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -326,10 +327,22 @@ const visibleReactions = computed(() => {
 
     return REACTION_OPTIONS.map((option) => {
         const bucket = props.message.reactions![option.key] || [];
+        
+        const names = bucket.map(id => {
+            const searchId = String(id).toLowerCase();
+            if (searchId === myPublicId.value) return "You";
+            const p = props.participants?.find(part => 
+                String(part.public_id).toLowerCase() === searchId || 
+                String(part.id).toLowerCase() === searchId
+            );
+            return p ? p.name : "Someone";
+        });
+
         return {
             ...option,
             count: bucket.length,
             active: myPublicId.value !== "" && bucket.includes(myPublicId.value),
+            tooltip: names.length > 0 ? names.join(", ") : "",
         };
     }).filter((item) => item.count > 0);
 });
@@ -849,6 +862,7 @@ onUnmounted(() => {
                     type="button"
                     class="minichat-reaction-chip"
                     :class="{ 'is-active': reaction.active }"
+                    :title="reaction.tooltip"
                     @click="selectReaction(reaction.key)"
                 >
                     <span>{{ reaction.emoji }}</span>

@@ -342,8 +342,12 @@ const visibleReactions = computed(() => {
         const bucket = props.message.reactions![option.key] || [];
         
         const names = bucket.map(id => {
-            if (id === myPublicId.value) return "You";
-            const participant = chatStore.activeChat?.participants?.find(p => p.public_id === id);
+            const searchId = String(id).toLowerCase();
+            if (searchId === myPublicId.value) return "You";
+            const participant = chatStore.activeChat?.participants?.find(p => 
+                String(p.public_id).toLowerCase() === searchId || 
+                String(p.id).toLowerCase() === searchId
+            );
             return participant ? participant.name : "Someone";
         });
 

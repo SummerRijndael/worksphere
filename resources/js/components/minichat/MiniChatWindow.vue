@@ -1403,6 +1403,7 @@ function isOwnMessage(msg: Message): boolean {
                                     data.callType,
                                 )
                         "
+                        :participants="window.chat.participants"
                     />
                 </div>
             </TransitionGroup>
