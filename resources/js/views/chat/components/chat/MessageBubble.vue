@@ -6,6 +6,7 @@ import LinkPreview from "@/components/LinkPreview.vue";
 import AudioMessagePlayer from "@/components/chat/AudioMessagePlayer.vue";
 import { useVideoCallStore } from "@/stores/videocall";
 import { useAuthStore } from "@/stores/auth";
+import { useChatStore } from "@/stores/chat";
 
 interface Props {
     message: Message;
@@ -278,7 +279,7 @@ const firstUrl = computed(() => {
     if (isDeleted.value || !props.message.content) return null;
     const match = props.message.content.match(/(https?:\/\/[^\s]+)/);
     return match ? match[0] : null;
-});
+});const chatStore = useChatStore();
 
 const myPublicId = computed(() =>
     String(authStore.user?.public_id || "").trim().toLowerCase(),
@@ -339,10 +340,18 @@ const visibleReactions = computed(() => {
 
     return REACTION_OPTIONS.map((option) => {
         const bucket = props.message.reactions![option.key] || [];
+        
+        const names = bucket.map(id => {
+            if (id === myPublicId.value) return "You";
+            const participant = chatStore.activeChat?.participants?.find(p => p.public_id === id);
+            return participant ? participant.name : "Someone";
+        });
+
         return {
             ...option,
             count: bucket.length,
             active: myPublicId.value !== "" && bucket.includes(myPublicId.value),
+            tooltip: names.length > 0 ? names.join(", ") : "",
         };
     }).filter((item) => item.count > 0);
 });
@@ -608,11 +617,11 @@ onUnmounted(() => {
                 Edited
             </button>
             <div
-                class="relative px-3.5 py-2.5 rounded-2xl shadow-sm"
+                class="relative px-3.5 py-2.5 rounded-2xl shadow-md border border-black/5 dark:border-white/5 backdrop-blur-sm"
                 :class="[
                     isMine
                         ? 'bg-(--interactive-primary) text-white rounded-br-sm'
-                        : 'bg-(--surface-elevated) text-(--text-primary) border border-(--border-default) rounded-bl-sm',
+                        : 'bg-(--surface-elevated) text-(--text-primary) rounded-bl-sm',
                 ]"
             >
                 <!-- Attachments -->
@@ -926,12 +935,13 @@ onUnmounted(() => {
                     v-for="reaction in visibleReactions"
                     :key="`reaction-${message.id}-${reaction.key}`"
                     type="button"
-                    class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] border transition-colors"
+                    class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] border transition-colors cursor-pointer"
                     :class="
                         reaction.active
                             ? 'border-(--interactive-primary) bg-(--interactive-primary)/15 text-(--interactive-primary)'
-                            : 'border-(--border-default) bg-(--surface-tertiary) text-(--text-secondary)'
+                            : 'border-(--border-default) bg-(--surface-tertiary) text-(--text-secondary) hover:bg-(--surface-secondary)'
                     "
+                    :title="reaction.tooltip"
                     @click="selectReaction(reaction.key)"
                 >
                     <span>{{ reaction.emoji }}</span>

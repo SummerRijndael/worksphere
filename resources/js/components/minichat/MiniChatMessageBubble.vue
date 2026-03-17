@@ -164,9 +164,9 @@ const displayImages = computed(() => images.value.slice(0, 4));
 
 const gridClass = computed(() => {
     const count = images.value.length;
-    if (count === 1) return "grid-cols-1 max-w-[200px]"; // Smaller max-width for mini chat
-    if (count === 2) return "grid-cols-2 max-w-[220px]";
-    if (count >= 3) return "grid-cols-2 max-w-[220px]";
+    if (count === 1) return "grid-cols-1 max-w-[160px]"; // Reduced from 200px
+    if (count === 2) return "grid-cols-2 max-w-[180px]"; // Reduced from 220px
+    if (count >= 3) return "grid-cols-2 max-w-[180px]"; // Reduced from 220px
     return "";
 });
 

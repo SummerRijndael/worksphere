@@ -361,8 +361,13 @@ const handleDeclineInvite = (id: any) => declineInvite(Number(id));
 
         <!-- Chat Area (Center Column) -->
         <main
-            class="chat-main-area flex-1 flex flex-col min-w-0 bg-(--surface-primary)"
+            class="chat-main-area flex-1 flex flex-col min-w-0 bg-(--surface-primary) relative overflow-hidden"
         >
+            <!-- Subtle Background Grid/Gradient for Depth -->
+            <div class="absolute inset-0 pointer-events-none opacity-[0.03] dark:opacity-[0.05]" 
+                 style="background-image: radial-gradient(circle at 50% 50%, var(--text-primary) 1px, transparent 1px); background-size: 24px 24px;"
+            ></div>
+            
             <template v-if="!authStore.isImpersonating">
                 <!-- Header -->
                 <ChatHeader

@@ -410,9 +410,9 @@ class AvatarService implements AvatarContract
     protected function getGroupFallbackUrl(int $participantCount): string
     {
         if ($participantCount <= 1) {
-            return asset(config('avatar.group_chat.fallback_single', '/static/images/avatar/group-single.png'));
+            return asset(config('avatar.group_chat.fallback_single', '/static/images/avatar/blank.png'));
         }
 
-        return asset(config('avatar.group_chat.fallback_group', '/static/images/avatar/group.png'));
+        return asset(config('avatar.group_chat.fallback_group', '/static/images/avatar/blank.png'));
     }
 }

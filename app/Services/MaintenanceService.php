@@ -1874,11 +1874,11 @@ class MaintenanceService
     /**
      * Create a new backup (Queued).
      */
-    public function createBackup(string $option = 'both'): array
+    public function createBackup(string $option = 'both', ?int $userId = null): array
     {
         try {
             // Dispatch Job to Heavy Queue
-            \App\Jobs\CreateSystemBackup::dispatch($option)->onQueue('heavy');
+            \App\Jobs\CreateSystemBackup::dispatch($option, $userId)->onQueue('heavy');
 
             return ['success' => true, 'message' => 'Backup task has been queued and will start shortly.'];
         } catch (Throwable $e) {

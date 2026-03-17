@@ -424,7 +424,7 @@ class MaintenanceController extends Controller
     public function createBackup(Request $request): JsonResponse
     {
         $option = $request->input('option', 'both');
-        $result = $this->maintenanceService->createBackup($option);
+        $result = $this->maintenanceService->createBackup($option, $request->user()->id);
 
         return response()->json($result, $result['success'] ? 200 : 500);
     }

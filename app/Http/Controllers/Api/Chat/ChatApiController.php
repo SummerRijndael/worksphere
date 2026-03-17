@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Chat\SendMessageRequest;
 use App\Http\Requests\Chat\UpdateGroupRequest;
 use App\Http\Requests\Chat\UploadMediaRequest;
+use App\Http\Resources\Chat\ChatMediaResource;
 use App\Http\Resources\Chat\ChatMessageResource;
 use App\Http\Resources\Chat\ChatResource;
 use App\Models\Chat\Chat;
@@ -866,7 +867,7 @@ class ChatApiController extends Controller
         );
 
         return response()->json([
-            'data' => $paginator->items(), // Note: would be better to use a MediaResource
+            'data' => ChatMediaResource::collection($paginator->items()),
             'has_more' => $paginator->hasMorePages(),
         ]);
     }

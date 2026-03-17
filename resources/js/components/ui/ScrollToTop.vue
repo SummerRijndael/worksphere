@@ -41,7 +41,7 @@ onUnmounted(() => {
         <button
             v-if="isVisible"
             @click="scrollToTop"
-            class="fixed bottom-28 sm:bottom-20 right-4 z-50 h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-(--surface-elevated) text-(--interactive-primary) shadow-lg border border-(--border-default) hover:scale-110 active:scale-95 transition-all duration-200 flex items-center justify-center group"
+            class="fixed bottom-24 sm:bottom-28 right-6 z-50 h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-(--surface-elevated) text-(--interactive-primary) shadow-lg border border-(--border-default) hover:scale-110 active:scale-95 transition-all duration-200 flex items-center justify-center group"
             aria-label="Scroll to top"
         >
             <!-- Progress Ring -->
