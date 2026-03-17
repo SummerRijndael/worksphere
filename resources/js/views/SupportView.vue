@@ -44,10 +44,18 @@ import {
     AlertTriangle,
     RotateCw,
 } from "lucide-vue-next";
+import { useSupportChatStore } from "@/stores/supportChat";
+import { useAuthStore } from "@/stores/auth";
 
 const router = useRouter();
 const route = useRoute();
 const toast = useToast();
+const chatStore = useSupportChatStore();
+const authStore = useAuthStore();
+
+const openSupportChat = () => {
+    chatStore.openChat(authStore.isAuthenticated ? 'history' : 'intro');
+};
 
 // Loading states
 const isLoading = ref(true);
@@ -227,6 +235,10 @@ onMounted(() => {
                     </p>
                 </div>
                 <div class="flex items-center gap-3">
+                    <Button variant="outline" @click="openSupportChat">
+                        <MessageSquare class="mr-2 h-4 w-4" />
+                        Live Chat
+                    </Button>
                     <Button variant="outline" @click="fetchTickets" :disabled="isLoading">
                         <RotateCw class="mr-2 h-4 w-4" :class="{ 'animate-spin': isLoading }" />
                         Refresh
@@ -342,19 +354,19 @@ onMounted(() => {
                     <Input v-model="newTicket.title" placeholder="Brief summary of the issue" autofocus />
                 </div>
                 
-                    <div>
-                        <label class="block text-sm font-medium text-[var(--text-secondary)] mb-1">Type</label>
-                        <select
-                            v-model="newTicket.type"
-                            class="w-full rounded-md border border-[var(--border-default)] bg-[var(--surface-primary)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--interactive-primary)] text-[var(--text-primary)]"
-                        >
-                            <option value="bug">Bug Report</option>
-                            <option value="feature">Feature Request</option>
-                            <option value="question">Question</option>
-                            <option value="task">Task / Request</option>
-                            <option value="improvement">Improvement</option>
-                        </select>
-                    </div>
+                <div>
+                    <label class="block text-sm font-medium text-[var(--text-secondary)] mb-1">Type</label>
+                    <select
+                        v-model="newTicket.type"
+                        class="w-full rounded-md border border-[var(--border-default)] bg-[var(--surface-primary)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--interactive-primary)] text-[var(--text-primary)]"
+                    >
+                        <option value="bug">Bug Report</option>
+                        <option value="feature">Feature Request</option>
+                        <option value="question">Question</option>
+                        <option value="task">Task / Request</option>
+                        <option value="improvement">Improvement</option>
+                    </select>
+                </div>
 
                 <div>
                     <label class="block text-sm font-medium text-[var(--text-secondary)] mb-1">Description</label>

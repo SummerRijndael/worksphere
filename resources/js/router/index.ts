@@ -578,6 +578,18 @@ const routes: RouteRecordRaw[] = [
                 },
             },
             {
+                path: "support/inbox",
+                name: "support.inbox",
+                component: () => import("@/views/support/LiveChatInboxView.vue"),
+                meta: {
+                    title: "Live Chat Inbox",
+                    breadcrumb: "Inbox",
+                    transition: "slide-fade",
+                    layoutFullWidth: true, // Remove padding for the edge-to-edge inbox view
+                    layoutFixed: true, // Handle height within the layout
+                },
+            },
+            {
                 path: "calendar",
                 name: "calendar",
                 component: () => import("@/views/Calendar/Index.vue"),

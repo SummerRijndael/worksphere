@@ -44,8 +44,8 @@ watch(
         :theme="toasterTheme"
         position="top-right"
         :close-button="true"
-        :expand="false"
-        :duration="5000"
+        :expand="true"
+        :duration="10000"
         :toast-options="{
             classNames: {
                 toast: 'group toast group-[.toaster]:bg-[var(--surface-elevated)] group-[.toaster]:text-[var(--text-primary)] group-[.toaster]:border-[var(--border-default)] group-[.toaster]:shadow-lg',

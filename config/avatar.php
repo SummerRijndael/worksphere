@@ -80,7 +80,7 @@ return [
     */
     'group_chat' => [
         'max_visible_participants' => 3, // Show (u1)(u2)(u3)(4+)
-        'fallback_single' => '/static/images/avatar/group-single.png',
+        'fallback_single' => '/static/images/avatar/blank.png',
         'fallback_group' => '/static/images/avatar/blank.png',
     ],
 

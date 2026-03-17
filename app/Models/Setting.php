@@ -68,7 +68,7 @@ class Setting extends Model
     /**
      * Cast a string value to the appropriate type.
      */
-    protected function castValue(string $value, string $type): mixed
+    protected function castValue(string $value, ?string $type): mixed
     {
         return match ($type) {
             'boolean' => filter_var($value, FILTER_VALIDATE_BOOLEAN),

@@ -148,7 +148,7 @@ watch(
 
 <template>
     <header
-        class="flex items-center justify-between gap-3 p-3 lg:p-4 border-b border-(--border-default) bg-(--surface-elevated)"
+        class="flex items-center justify-between gap-3 p-3 lg:p-4 border-b border-(--border-default) bg-(--surface-primary)/85 backdrop-blur-md sticky top-0 z-10"
     >
         <!-- Left: Avatar & Name -->
         <div class="flex items-center gap-3 min-w-0">

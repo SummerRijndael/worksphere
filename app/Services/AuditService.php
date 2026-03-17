@@ -141,7 +141,7 @@ class AuditService
                 'auditable' => $auditable ? get_class($auditable).':'.$auditable->getKey() : 'none',
             ]);
 
-            if (config('audit.async', true) && $this->shouldQueueLog($action)) {
+            if (config('audit.async', true) && $this->shouldQueueLog($action) && ! app()->runningInConsole()) {
                 dispatch(function () use ($data, $action): void {
                     try {
                         \Illuminate\Support\Facades\Log::debug('AuditService: Attempting async log create', [
@@ -641,6 +641,7 @@ class AuditService
             AuditAction::RateLimitExceeded => AuditSeverity::Warning,
             AuditAction::AccountSuspended => AuditSeverity::Warning,
             AuditAction::AccountBanned => AuditSeverity::Critical,
+            AuditAction::BackupFailed => AuditSeverity::Error,
             default => AuditSeverity::Info,
         };
     }

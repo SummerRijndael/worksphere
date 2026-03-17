@@ -399,8 +399,8 @@ const createBackup = async (option = "both") => {
     isCreatingBackup.value = true;
     creatingBackupOption.value = option;
     try {
-        await axios.post("/api/maintenance/backups/create", { option });
-        toast.success("Backup created successfully");
+        const response = await axios.post("/api/maintenance/backups/create", { option });
+        toast.info(response.data.message || "Backup task initiated");
         await fetchBackups(1);
     } catch (error) {
         toast.error("Failed to create backup");

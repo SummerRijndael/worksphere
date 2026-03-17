@@ -749,11 +749,11 @@ onUnmounted(() => {
 
             <!-- Main Input Area -->
             <div
-                class="flex-1 min-w-0 relative rounded-2xl bg-(--surface-secondary) border transition-all duration-200"
+                class="flex-1 min-w-0 relative rounded-2xl border transition-all duration-200 shadow-xs dark:shadow-none bg-(--surface-secondary)"
                 :class="
                     isFocused
-                        ? 'border-(--interactive-primary) ring-2 ring-(--interactive-primary)/10 shadow-sm bg-(--surface-primary)'
-                        : 'border-transparent hover:border-(--border-subtle)'
+                        ? 'border-(--interactive-primary) ring-2 ring-(--interactive-primary)/15 shadow-sm bg-(--surface-primary)'
+                        : 'border-black/5 dark:border-white/10 hover:border-black/10 dark:hover:border-white/15'
                 "
             >
                 <textarea
