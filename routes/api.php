@@ -23,6 +23,11 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
+// Support realtime broadcasting auth (guest + authenticated)
+// Kept outside the guest throttle group to avoid false 429s during websocket reconnect bursts.
+Route::post('/support/chats/broadcasting/auth', [\App\Http\Controllers\Api\Support\SupportBroadcastController::class, 'authenticate'])
+    ->middleware('throttle:support-realtime-auth');
+
 // Public routes (rate limited)
 Route::middleware(['throttle:guest'])->group(function () {
     // Authentication
@@ -65,6 +70,27 @@ Route::middleware(['throttle:guest'])->group(function () {
     // Support (Public Ticket)
     Route::post('/public/tickets', [\App\Http\Controllers\Api\PublicTicketController::class, 'store'])
         ->middleware('throttle:sensitive');
+
+    // Public Live Support Chats (Widget)
+    Route::prefix('support/chats')->group(function () {
+        Route::get('/availability', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'availability']);
+        Route::post('/link/unfurl', [\App\Http\Controllers\Api\LinkUnfurlController::class, 'unfurl'])
+            ->middleware('throttle:sensitive');
+        Route::get('/resume', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'resume']);
+        Route::post('/resume/clear', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'clearResume'])
+            ->middleware('throttle:sensitive');
+        Route::post('/', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'store'])
+            ->middleware('throttle:sensitive');
+        Route::get('/{conversation}', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'show'])
+            ->whereUlid('conversation');
+        Route::get('/{conversation}/messages', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'messages'])
+            ->whereUlid('conversation');
+        Route::post('/{conversation}/typing', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'typing'])
+            ->whereUlid('conversation');
+        Route::post('/{conversation}/messages', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'storeCustomerMessage'])
+            ->middleware('throttle:sensitive')
+            ->whereUlid('conversation');
+    });
 
     // Public Announcements
     Route::get('/public/announcements', [\App\Http\Controllers\Api\AnnouncementController::class, 'public']);
@@ -219,6 +245,26 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
     Route::get('tickets/assignable-users', [\App\Http\Controllers\Api\TicketController::class, 'assignableUsers']);
     Route::post('tickets/archive', [\App\Http\Controllers\Api\TicketController::class, 'bulkArchive']); // Add bulk archive route explicitly if not present
     Route::apiResource('tickets', \App\Http\Controllers\Api\TicketController::class);
+
+    // Support Chats (Customer + Agent)
+    Route::prefix('support/chats')->group(function () {
+        Route::get('/realtime-token', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'realtimeToken']);
+        Route::get('/inbox', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'index']);
+        Route::get('/agents', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'agents']);
+        Route::post('/claim-guest', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'claimGuestConversation']);
+        Route::get('/agent/{conversation}', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'show'])
+            ->whereUlid('conversation');
+        Route::get('/agent/{conversation}/messages', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'messages'])
+            ->whereUlid('conversation');
+        Route::post('/agent/{conversation}/typing', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'typing'])
+            ->whereUlid('conversation');
+        Route::post('/{conversation}/agent-messages', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'storeAgentMessage'])
+            ->whereUlid('conversation');
+        Route::post('/{conversation}/assign', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'assign'])
+            ->whereUlid('conversation');
+        Route::post('/{conversation}/resolve', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'resolve'])
+            ->whereUlid('conversation');
+    });
 
     // Global Stats
     Route::get('teams/stats', [\App\Http\Controllers\Api\TeamController::class, 'stats']);

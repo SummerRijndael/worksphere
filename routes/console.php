@@ -140,6 +140,11 @@ Schedule::command('model:prune', [
     '--model' => [\App\Models\PageView::class],
 ])->dailyAt('05:30')->onOneServer();
 
+// Prune old support guest sessions daily
+Schedule::command('model:prune', [
+    '--model' => [\App\Models\SupportGuestSession::class],
+])->dailyAt('02:40')->onOneServer();
+
 // Monitor external services every 10 minutes
 Schedule::command('monitor:external-services')
     ->everyTenMinutes()

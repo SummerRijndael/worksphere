@@ -2,11 +2,17 @@
 
 namespace Tests\Feature;
 
+use App\Events\Chat\InviteAccepted;
+use App\Events\Chat\InviteDeclined;
+use App\Events\Chat\InviteSent;
 use App\Models\Chat\Chat;
+use App\Models\Chat\ChatInvite;
 use App\Models\Chat\ChatMessage;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 use Tests\TestCase;
@@ -153,6 +159,8 @@ class ChatApiControllerTest extends TestCase
 
     public function test_upload_persists_duration_seconds_metadata(): void
     {
+        Storage::fake('private');
+
         $chat = $this->createDmChat();
         $file = UploadedFile::fake()->image('sample.png');
 
@@ -186,6 +194,25 @@ class ChatApiControllerTest extends TestCase
 
         $response->assertOk()
             ->assertJsonStructure(['data']);
+    }
+
+    public function test_send_invite_broadcasts_invite_sent_event(): void
+    {
+        Event::fake([InviteSent::class]);
+
+        $response = $this->actingAs($this->user)
+            ->postJson('/api/chat/invites', [
+                'invitee_public_id' => $this->otherUser->public_id,
+            ]);
+
+        $response->assertStatus(201)
+            ->assertJsonPath('status', 'invite_sent');
+
+        Event::assertDispatched(InviteSent::class, function (InviteSent $event): bool {
+            return data_get($event->invite, 'invitee_public_id') === $this->otherUser->public_id
+                && data_get($event->invite, 'inviter_public_id') === $this->user->public_id
+                && data_get($event->invite, 'type') === 'dm';
+        });
     }
 
     /**
@@ -247,11 +274,14 @@ class ChatApiControllerTest extends TestCase
      */
     public function test_group_owner_can_add_member(): void
     {
+        Event::fake([InviteSent::class]);
+
         // Create a third user to add to the group
         $thirdUser = User::factory()->create();
 
         // Create a group owned by the user
         $chat = Chat::create([
+            'public_id' => (string) Str::ulid(),
             'type' => 'group',
             'name' => 'Test Group',
             'created_by' => $this->user->id,
@@ -267,6 +297,66 @@ class ChatApiControllerTest extends TestCase
         // Should create an invite (201) since it's a group invite flow
         $response->assertStatus(201);
         $response->assertJsonStructure(['message', 'invite_id']);
+
+        Event::assertDispatched(InviteSent::class, function (InviteSent $event) use ($thirdUser, $chat): bool {
+            return data_get($event->invite, 'invitee_public_id') === $thirdUser->public_id
+                && data_get($event->invite, 'inviter_public_id') === $this->user->public_id
+                && data_get($event->invite, 'type') === 'group'
+                && data_get($event->invite, 'chat_public_id') === $chat->public_id;
+        });
+    }
+
+    public function test_accept_invite_broadcasts_invite_accepted_event(): void
+    {
+        Event::fake([InviteAccepted::class]);
+
+        $invite = ChatInvite::create([
+            'public_id' => (string) Str::ulid(),
+            'inviter_id' => $this->user->id,
+            'invitee_id' => $this->otherUser->id,
+            'type' => 'dm',
+            'status' => ChatInvite::STATUS_PENDING,
+            'expires_at' => now()->addDays(7),
+        ]);
+
+        $this->actingAs($this->otherUser)
+            ->postJson("/api/chat/invites/{$invite->public_id}/accept")
+            ->assertOk();
+
+        Event::assertDispatched(InviteAccepted::class, function (InviteAccepted $event): bool {
+            return data_get($event->invite, 'inviter_public_id') === $this->user->public_id
+                && data_get($event->invite, 'invitee_public_id') === $this->otherUser->public_id
+                && filled(data_get($event->chat, 'public_id'));
+        });
+    }
+
+    public function test_decline_invite_broadcasts_invite_declined_event(): void
+    {
+        Event::fake([InviteDeclined::class]);
+
+        $invite = ChatInvite::create([
+            'public_id' => (string) Str::ulid(),
+            'inviter_id' => $this->user->id,
+            'invitee_id' => $this->otherUser->id,
+            'type' => 'dm',
+            'status' => ChatInvite::STATUS_PENDING,
+            'expires_at' => now()->addDays(7),
+        ]);
+
+        $this->actingAs($this->otherUser)
+            ->postJson("/api/chat/invites/{$invite->public_id}/decline")
+            ->assertOk();
+
+        Event::assertDispatched(InviteDeclined::class, function (InviteDeclined $event): bool {
+            $channels = collect($event->broadcastOn())
+                ->map(fn ($channel) => $channel->name)
+                ->all();
+
+            return data_get($event->invite, 'inviter_public_id') === $this->user->public_id
+                && data_get($event->invite, 'invitee_public_id') === $this->otherUser->public_id
+                && in_array("private-user.{$this->user->public_id}", $channels, true)
+                && in_array("private-user.{$this->otherUser->public_id}", $channels, true);
+        });
     }
 
     /**

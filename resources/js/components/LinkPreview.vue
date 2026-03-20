@@ -6,10 +6,12 @@ import { Icon } from "@/components/ui";
 interface Props {
     url: string;
     hideUnsafe?: boolean;
+    apiUrl?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
     hideUnsafe: false,
+    apiUrl: '/api/link/unfurl',
 });
 const emit = defineEmits<{
     unsafe: [url: string];
@@ -35,7 +37,7 @@ onMounted(() => {
             site_name: 'Internal Link'
         };
     } else {
-        fetchPreview(props.url);
+        fetchPreview(props.url, props.apiUrl);
     }
 });
 

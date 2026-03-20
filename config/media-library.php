@@ -104,6 +104,8 @@ return [
         \App\Models\Team::class => \App\Support\MediaLibrary\TeamPathGenerator::class,
         \App\Models\MeetingRecording::class => \App\Support\MediaLibrary\MeetingRecordingPathGenerator::class,
         \App\Models\Chat\ChatMessage::class => \App\Support\MediaLibrary\ChatMessagePathGenerator::class,
+        \App\Models\MeetingMessage::class => \App\Support\MediaLibrary\MeetingMessagePathGenerator::class,
+        \App\Models\SupportMessage::class => \App\Support\MediaLibrary\SupportMessagePathGenerator::class,
     ],
 
     /*

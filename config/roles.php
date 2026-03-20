@@ -77,6 +77,10 @@ return [
                 'tickets.manage',
                 'tickets.create',
                 'tickets.reports',
+                'support.chats.view',
+                'support.chats.reply',
+                'support.chats.assign',
+                'support.chats.resolve',
                 'clients.view_all',
                 'reports.view_all',
                 'notes.view',
@@ -168,6 +172,14 @@ return [
             'tickets.delete' => 'Delete tickets',
             'tickets.internal_notes' => 'View internal notes',
             'tickets.reports' => 'View ticket analytics and reports',
+        ],
+
+        // Live Support Chats
+        'support' => [
+            'support.chats.view' => 'View support chat inbox and conversation details',
+            'support.chats.reply' => 'Reply to live support conversations as a human agent',
+            'support.chats.assign' => 'Assign support conversations to agents',
+            'support.chats.resolve' => 'Resolve support conversations',
         ],
 
         // Team Management (Global context)

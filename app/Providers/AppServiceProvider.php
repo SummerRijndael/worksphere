@@ -88,6 +88,16 @@ class AppServiceProvider extends ServiceProvider
             \App\Services\AppReviewService::class
         );
 
+        $this->app->bind(
+            \App\Contracts\SupportConversationServiceContract::class,
+            \App\Services\Support\SupportConversationService::class
+        );
+
+        $this->app->bind(
+            \App\Contracts\SupportAiAdapterContract::class,
+            config('support_chat.ai_adapter', \App\Services\Support\Ai\SimulatedSupportAiAdapter::class)
+        );
+
         // Content Security Policy Service (Singleton for consistent nonce per request)
         $this->app->singleton(\App\Services\CSPService::class);
     }
@@ -97,7 +107,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        EncryptCookies::except(MeetingParticipantSession::cookieName());
+        EncryptCookies::except([
+            MeetingParticipantSession::cookieName(),
+            (string) config('support_chat.guest_resume_cookie', 'worksphere_support_guest'),
+        ]);
 
         $this->configureRateLimiting();
         $this->registerCacheObservabilityListeners();
@@ -112,6 +125,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(\Spatie\Permission\Models\Role::class, \App\Policies\RolePolicy::class);
         Gate::policy(\App\Models\Meeting::class, \App\Policies\MeetingPolicy::class);
         Gate::policy(\App\Models\AppReview::class, \App\Policies\AppReviewPolicy::class);
+        Gate::policy(\App\Models\SupportConversation::class, \App\Policies\SupportConversationPolicy::class);
 
         // Pulse authorization - allow users with system.maintenance permission
         Gate::define('viewPulse', function ($user) {
@@ -132,17 +146,23 @@ class AppServiceProvider extends ServiceProvider
 
         // Dynamic Env Builder: Override config with Database Settings
         // We use Schema check to ensure migrations run smoothly on fresh installs
-        if (\Illuminate\Support\Facades\Schema::hasTable('settings')) {
-            try {
-                // Apply settings using the service
-                // This will fetch from Cache/DB and overwrite config() in-memory
-                app(\App\Services\AppSettingsService::class)->applyToConfig();
-            } catch (\Throwable $e) {
-                // Fail silently/log during boot to prevent crashing CLI/Queues if DB/Cache is down
-                // This ensures 'php artisan' commands still work even if infrastructure is shaky
-                // We use php's error_log to avoid circular dependency with Laravel logger if it's not ready
-                error_log('Failed to apply app settings during boot: '.$e->getMessage());
+        try {
+            if (\Illuminate\Support\Facades\Schema::hasTable('settings')) {
+                try {
+                    // Apply settings using the service
+                    // This will fetch from Cache/DB and overwrite config() in-memory
+                    app(\App\Services\AppSettingsService::class)->applyToConfig();
+                } catch (\Throwable $e) {
+                    // Fail silently/log during boot to prevent crashing CLI/Queues if DB/Cache is down
+                    // This ensures 'php artisan' commands still work even if infrastructure is shaky
+                    // We use php's error_log to avoid circular dependency with Laravel logger if it's not ready
+                    error_log('Failed to apply app settings during boot: '.$e->getMessage());
+                }
             }
+        } catch (\Throwable $e) {
+            // Schema introspection can fail when DB is temporarily unavailable.
+            // Keep boot resilient so CLI commands like migrate/seed can still run.
+            error_log('Failed to inspect settings table during boot: '.$e->getMessage());
         }
 
         // Custom Password Reset URL
@@ -171,6 +191,7 @@ class AppServiceProvider extends ServiceProvider
             RateLimiter::for('api', $noLimit);
             RateLimiter::for('guest', $noLimit);
             RateLimiter::for('sensitive', $noLimit);
+            RateLimiter::for('support-realtime-auth', $noLimit);
             RateLimiter::for('password-reset', $noLimit);
             RateLimiter::for('login', $noLimit);
             RateLimiter::for('signaling', $noLimit);
@@ -193,6 +214,11 @@ class AppServiceProvider extends ServiceProvider
         // Strict rate limiter for sensitive operations
         RateLimiter::for('sensitive', function (Request $request) {
             return Limit::perMinute(10)->by('sensitive:'.($request->user()?->id ?: $request->ip()));
+        });
+
+        // Support channel auth can burst during reconnects and multi-channel subscribe flows.
+        RateLimiter::for('support-realtime-auth', function (Request $request) {
+            return Limit::perMinute(120)->by('support-realtime-auth:'.($request->user()?->id ?: $request->ip()));
         });
 
         // Rate limiter for password reset

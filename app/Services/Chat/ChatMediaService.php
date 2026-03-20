@@ -5,12 +5,12 @@ namespace App\Services\Chat;
 use App\Models\Chat\Chat;
 use App\Models\Chat\ChatMessage;
 use App\Models\User;
-use App\Services\FileSecurityValidator;
+use App\Services\Uploads\Policies\DirectChatUploadPolicy;
+use App\Services\Uploads\UploadEngine;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 use Spatie\MediaLibrary\MediaCollections\Exceptions\FileDoesNotExist;
 use Spatie\MediaLibrary\MediaCollections\Exceptions\FileIsTooBig;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
@@ -18,22 +18,23 @@ use Spatie\MediaLibrary\MediaCollections\Models\Media;
 class ChatMediaService
 {
     public function __construct(
-        protected FileSecurityValidator $fileValidator
+        protected UploadEngine $uploadEngine,
+        protected DirectChatUploadPolicy $uploadPolicy
     ) {}
 
     // File limits per request
-    public const MAX_FILES_PER_REQUEST = 10;
+    public const MAX_FILES_PER_REQUEST = DirectChatUploadPolicy::MAX_FILES_PER_REQUEST;
 
-    public const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB per file
+    public const MAX_FILE_SIZE_BYTES = DirectChatUploadPolicy::MAX_FILE_SIZE_BYTES; // 5MB per file
 
-    public const MAX_TOTAL_REQUEST_SIZE = 10 * 1024 * 1024; // 10MB total per request
+    public const MAX_TOTAL_REQUEST_SIZE = DirectChatUploadPolicy::MAX_TOTAL_REQUEST_SIZE_BYTES; // 10MB total per request
 
     // Storage quotas per chat type
-    public const QUOTA_DM = 1024 * 1024 * 1024; // 1GB for DMs
+    public const QUOTA_DM = DirectChatUploadPolicy::QUOTA_DM; // 1GB for DMs
 
-    public const QUOTA_GROUP = 1024 * 1024 * 1024; // 1GB for groups
+    public const QUOTA_GROUP = DirectChatUploadPolicy::QUOTA_GROUP; // 1GB for groups
 
-    public const QUOTA_TEAM = 1024 * 1024 * 1024; // 1GB for teams
+    public const QUOTA_TEAM = DirectChatUploadPolicy::QUOTA_TEAM; // 1GB for teams
 
     // Allowed file types
     public const ALLOWED_IMAGE_TYPES = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
@@ -51,50 +52,9 @@ class ChatMediaService
      */
     public function validateFiles(array $files, Chat $chat): void
     {
-        // Check file count
-        if (count($files) > self::MAX_FILES_PER_REQUEST) {
-            throw new \InvalidArgumentException(
-                'Too many files. Maximum '.self::MAX_FILES_PER_REQUEST.' files per upload.'
-            );
-        }
-
-        $totalSize = 0;
-
-        foreach ($files as $file) {
-            if (! $file instanceof UploadedFile) {
-                throw new \InvalidArgumentException('Invalid file upload.');
-            }
-
-            // Check individual file size
-            if ($file->getSize() > self::MAX_FILE_SIZE_BYTES) {
-                throw new \InvalidArgumentException(
-                    'File '.htmlspecialchars($file->getClientOriginalName()).' exceeds maximum size of 5MB.'
-                );
-            }
-
-            // Unified security validation (extension blocking, MIME spoofing, double extension)
-            $this->fileValidator->validate($file);
-
-            $totalSize += $file->getSize();
-        }
-
-        // Check total request size
-        if ($totalSize > self::MAX_TOTAL_REQUEST_SIZE) {
-            throw new \InvalidArgumentException(
-                'Total file size exceeds maximum of 10MB per upload.'
-            );
-        }
-
-        // Check chat storage quota
-        $currentUsage = $this->getChatStorageUsage($chat);
-        $quotaLimit = $this->getChatQuotaLimit($chat);
-
-        if ($currentUsage + $totalSize > $quotaLimit) {
-            $remainingMB = round(($quotaLimit - $currentUsage) / 1024 / 1024, 2);
-            throw new \InvalidArgumentException(
-                "File storage limit reached for this chat. {$remainingMB}MB remaining."
-            );
-        }
+        $this->uploadEngine->validateFiles($files, $this->uploadPolicy, [
+            'chat' => $chat,
+        ]);
     }
 
     /**
@@ -102,12 +62,7 @@ class ChatMediaService
      */
     public function getChatStorageUsage(Chat $chat): int
     {
-        return (int) DB::table('media')
-            ->join('chat_messages', 'media.model_id', '=', 'chat_messages.id')
-            ->where('media.model_type', ChatMessage::class)
-            ->where('chat_messages.chat_id', $chat->id)
-            ->where('media.collection_name', 'chat_attachments')
-            ->sum('media.size');
+        return $this->uploadPolicy->storageUsageForChat($chat);
     }
 
     /**
@@ -115,12 +70,7 @@ class ChatMediaService
      */
     public function getChatQuotaLimit(Chat $chat): int
     {
-        return match ($chat->type ?? 'dm') {
-            'dm' => self::QUOTA_DM,
-            'group' => self::QUOTA_GROUP,
-            'team' => self::QUOTA_TEAM,
-            default => self::QUOTA_DM,
-        };
+        return $this->uploadPolicy->quotaLimitForChat($chat);
     }
 
     /**
@@ -170,22 +120,12 @@ class ChatMediaService
      */
     public function attachFilesToMessage(ChatMessage $message, array $files, array $fileMetadata = []): array
     {
-        $mediaIds = [];
+        $customPropertiesByIndex = [];
 
         foreach ($files as $index => $file) {
             if (! $file instanceof UploadedFile) {
                 continue;
             }
-
-            // Handle empty test files
-            if ($file->getSize() <= 0 && $file->getPathname() && file_exists($file->getPathname())) {
-                file_put_contents($file->getPathname(), 'placeholder');
-            }
-
-            // Generate UUID-based filename to prevent enumeration
-            $uuid = Str::uuid()->toString();
-            $extension = $file->getClientOriginalExtension();
-            $fileName = "{$uuid}.{$extension}";
 
             $originalFilename = (string) $file->getClientOriginalName();
             $clientMimeType = strtolower((string) ($file->getClientMimeType() ?? ''));
@@ -201,26 +141,26 @@ class ChatMediaService
                 $mediaKind = 'audio';
             }
 
-            $customProperties = [
+            $customPropertiesByIndex[$index] = [
                 'original_filename' => $originalFilename,
                 'uploaded_by' => $message->user_id,
                 'media_kind' => $mediaKind,
                 'is_voice_clip' => $isVoiceClip,
             ];
             if ($durationSeconds !== null) {
-                $customProperties['duration_seconds'] = $durationSeconds;
+                $customPropertiesByIndex[$index]['duration_seconds'] = $durationSeconds;
             }
-
-            // Store original filename and media classification for rendering.
-            $media = $message->addMedia($file)
-                ->usingFileName($fileName)
-                ->withCustomProperties($customProperties)
-                ->toMediaCollection('chat_attachments');
-
-            $mediaIds[] = $media->id;
         }
 
-        return $mediaIds;
+        return $this->uploadEngine->attachFilesToModel(
+            $message,
+            $files,
+            $this->uploadPolicy,
+            [
+                'chat' => $message->chat,
+                'custom_properties_by_index' => $customPropertiesByIndex,
+            ]
+        );
     }
 
     protected function normalizeDurationSeconds(mixed $value): ?int

@@ -23,6 +23,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Support Live Chat Adapter
+    |--------------------------------------------------------------------------
+    |
+    | Allows fast rollback to legacy support message flow if needed.
+    |
+    */
+    'support_chat_adapter_enabled' => env('SUPPORT_CHAT_ADAPTER_ENABLED', true),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Support Live Chat Adapter Key
+    |--------------------------------------------------------------------------
+    */
+    'support_chat_adapter' => env('SUPPORT_CHAT_ADAPTER', 'support_live'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Meeting Chat Media Signed URL TTL (minutes)
     |--------------------------------------------------------------------------
     */
