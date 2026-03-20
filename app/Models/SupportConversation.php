@@ -41,12 +41,18 @@ class SupportConversation extends Model
         'source_url',
         'assigned_to',
         'ai_enabled',
+        'survey_opt_out',
+        'survey_opt_out_at',
         'ai_handoff_required',
         'ai_handoff_reason',
         'last_message_at',
         'first_response_at',
         'resolved_at',
         'closed_at',
+        'ended_at',
+        'ended_by_type',
+        'ended_by_user_id',
+        'ended_by_name',
         'metadata',
     ];
 
@@ -57,12 +63,15 @@ class SupportConversation extends Model
     {
         return [
             'ai_enabled' => 'boolean',
+            'survey_opt_out' => 'boolean',
             'ai_handoff_required' => 'boolean',
             'metadata' => 'array',
+            'survey_opt_out_at' => 'datetime',
             'last_message_at' => 'datetime',
             'first_response_at' => 'datetime',
             'resolved_at' => 'datetime',
             'closed_at' => 'datetime',
+            'ended_at' => 'datetime',
         ];
     }
 
@@ -99,6 +108,14 @@ class SupportConversation extends Model
     }
 
     /**
+     * @return BelongsTo<User, SupportConversation>
+     */
+    public function endedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'ended_by_user_id');
+    }
+
+    /**
      * @return HasMany<SupportMessage>
      */
     public function messages(): HasMany
@@ -120,6 +137,22 @@ class SupportConversation extends Model
     public function guestSessions(): HasMany
     {
         return $this->hasMany(SupportGuestSession::class, 'conversation_id');
+    }
+
+    /**
+     * @return HasMany<SupportSurveyInvite>
+     */
+    public function surveyInvites(): HasMany
+    {
+        return $this->hasMany(SupportSurveyInvite::class, 'conversation_id');
+    }
+
+    /**
+     * @return HasMany<SupportSurveyResponse>
+     */
+    public function surveyResponses(): HasMany
+    {
+        return $this->hasMany(SupportSurveyResponse::class, 'conversation_id');
     }
 
     public function isClosedLike(): bool

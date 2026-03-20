@@ -15,13 +15,11 @@ import {
     Monitor,
     MessageSquare,
     Zap,
-    Book,
-    Code,
-    UserPlus,
     ChevronDown,
     ChevronsDown,
     User,
     Hash,
+    FileText,
     Loader2,
 } from 'lucide-vue-next';
 import {
@@ -61,6 +59,7 @@ const activeConversation = ref(null);
 const conversationMessages = ref([]);
 const agents = ref([]);
 const selectedAgentId = ref('');
+const detailsSidebarTab = ref('overview');
 const messagesContainer = ref(null);
 const composerFileInput = ref(null);
 const selectedComposerFiles = ref([]);
@@ -87,6 +86,7 @@ const isLoadingAgents = ref(false);
 const isSending = ref(false);
 const isAssigning = ref(false);
 const isResolving = ref(false);
+const isEnding = ref(false);
 const MAX_ATTACHABLE_FILES = 10;
 
 let searchDebounceTimer = null;
@@ -210,6 +210,220 @@ const activeConversationMessages = computed(() => {
     ];
 });
 
+const conversationAttachmentItems = computed(() => {
+    const messages = Array.isArray(conversationMessages.value) ? conversationMessages.value : [];
+    const flattened = [];
+
+    messages.forEach((message) => {
+        const attachments = Array.isArray(message?.attachments) ? message.attachments : [];
+        attachments.forEach((attachment, index) => {
+            if (!attachment || (!attachment.url && !attachment.download_url)) {
+                return;
+            }
+
+            const senderName = message?.sender?.name
+                || (message?.sender_type === 'customer'
+                    ? (activeConversationDisplay.value?.name || 'Customer')
+                    : message?.sender_type === 'bot'
+                        ? 'AI Support Bot'
+                        : 'Support Agent');
+
+            flattened.push({
+                ...attachment,
+                _key: `${message?.id || 'message'}-${attachment?.id || attachment?.media_id || index}`,
+                _messageId: message?.id || null,
+                _createdAt: message?.created_at || null,
+                _senderName: senderName,
+                _senderType: message?.sender_type || 'agent',
+            });
+        });
+    });
+
+    return flattened.sort((a, b) => {
+        const timeA = new Date(a?._createdAt || 0).getTime();
+        const timeB = new Date(b?._createdAt || 0).getTime();
+        return timeB - timeA;
+    });
+});
+
+const internalNoteItems = computed(() => {
+    const messages = Array.isArray(conversationMessages.value) ? conversationMessages.value : [];
+    return messages
+        .filter((message) => message?.sender_type === 'agent' && Boolean(message?.is_private_note))
+        .map((message) => ({
+            id: message.id,
+            body: message.body || '',
+            attachments: Array.isArray(message.attachments) ? message.attachments : [],
+            created_at: message.created_at,
+            sender_name: message?.sender?.name || 'Support Agent',
+            sender_avatar_url: message?.sender?.avatar_url || message?.sender?.avatar || null,
+            sender_avatar_thumb_url: message?.sender?.avatar_thumb_url || null,
+            sender_avatar_color: message?.sender?.avatar_color || null,
+        }))
+        .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+});
+
+const detailsMediaCount = computed(() => conversationAttachmentItems.value.length);
+const detailsNotesCount = computed(() => internalNoteItems.value.length);
+const activeConversationStatus = computed(() => String(
+    activeConversationDisplay.value?.status
+    || activeConversation.value?.status
+    || 'open'
+).toLowerCase());
+const isConversationResolvedLike = computed(() => ['resolved', 'closed'].includes(activeConversationStatus.value));
+const isConversationAssigned = computed(() => {
+    const assignee = activeConversation.value?.assignee || {};
+    return Boolean(assignee.id || assignee.public_id || assignee.name);
+});
+const isAssignedToCurrentUser = computed(() => {
+    const assigneePublicId = activeConversation.value?.assignee?.public_id || null;
+    const currentUserPublicId = authStore.user?.public_id || null;
+    return Boolean(assigneePublicId && currentUserPublicId && assigneePublicId === currentUserPublicId);
+});
+const assignmentStateLabel = computed(() => {
+    const assigneeName = activeConversation.value?.assignee?.name || '';
+    if (isConversationAssigned.value && assigneeName) {
+        return `Assigned to ${assigneeName}`;
+    }
+
+    if (isConversationAssigned.value) {
+        return 'Assigned to agent';
+    }
+
+    return 'Awaiting agent';
+});
+const resolveActionLabel = computed(() => {
+    if (activeConversationStatus.value === 'closed') {
+        return 'Closed';
+    }
+    if (activeConversationStatus.value === 'resolved') {
+        return 'Resolved';
+    }
+
+    return 'Mark Resolved';
+});
+const endActionLabel = computed(() => {
+    if (activeConversationStatus.value === 'closed') {
+        return 'Already closed';
+    }
+
+    return 'End conversation';
+});
+const canResolveActiveConversation = computed(() => Boolean(activeConversationId.value) && !isConversationResolvedLike.value);
+const canAssignActiveConversation = computed(() => Boolean(activeConversationId.value) && !isConversationResolvedLike.value);
+const canEndActiveConversation = computed(() => Boolean(activeConversationId.value) && activeConversationStatus.value !== 'closed');
+const conversationStartedSummary = computed(() => {
+    const createdAt = activeConversation.value?.created_at || null;
+    return {
+        relative: formatRelativeTime(createdAt),
+        exact: formatDateTime(createdAt),
+    };
+});
+const latestSupportReplyMeta = computed(() => {
+    const messages = Array.isArray(conversationMessages.value) ? conversationMessages.value : [];
+    const isAssigned = isConversationAssigned.value;
+
+    const pickLatestByTypes = (senderTypes = []) => {
+        const normalized = new Set(senderTypes.map((type) => String(type || '').toLowerCase()));
+        let latest = null;
+        let latestTs = -1;
+
+        messages.forEach((message) => {
+            if (!message || message.is_private_note) {
+                return;
+            }
+
+            const senderType = String(message.sender_type || '').toLowerCase();
+            if (!normalized.has(senderType)) {
+                return;
+            }
+
+            const ts = new Date(message.created_at || message.updated_at || 0).getTime();
+            if (!Number.isFinite(ts) || ts < 0) {
+                return;
+            }
+
+            if (ts >= latestTs) {
+                latest = {
+                    sender_type: senderType,
+                    created_at: message.created_at || message.updated_at || null,
+                };
+                latestTs = ts;
+            }
+        });
+
+        return latest;
+    };
+
+    let latest = isAssigned
+        ? pickLatestByTypes(['agent'])
+        : pickLatestByTypes(['bot']);
+
+    if (!latest && !isAssigned) {
+        latest = pickLatestByTypes(['agent']);
+    }
+
+    if (latest) {
+        return latest;
+    }
+
+    const fallback = activeConversation.value?.latest_message || null;
+    if (!fallback || fallback.is_private_note) {
+        return null;
+    }
+
+    const fallbackType = String(fallback.sender_type || '').toLowerCase();
+    const createdAt = fallback.created_at || fallback.updated_at || activeConversation.value?.last_message_at || null;
+    if (!createdAt) {
+        return null;
+    }
+
+    if (isAssigned && fallbackType !== 'agent') {
+        return null;
+    }
+
+    if (!isAssigned && !['bot', 'agent'].includes(fallbackType)) {
+        return null;
+    }
+
+    return {
+        sender_type: fallbackType || 'agent',
+        created_at: createdAt,
+    };
+});
+const latestSupportReplySummary = computed(() => {
+    const latest = latestSupportReplyMeta.value;
+    if (!latest?.created_at) {
+        const actor = isConversationAssigned.value ? 'Agent' : 'Bot';
+        return {
+            actor,
+            relative: '',
+            text: `No ${actor.toLowerCase()} reply yet`,
+            exact: '',
+            muted: true,
+        };
+    }
+
+    const actor = latest.sender_type === 'agent'
+        ? 'Agent'
+        : latest.sender_type === 'bot'
+            ? 'Bot'
+            : 'Support';
+
+    return {
+        actor,
+        relative: formatRelativeTime(latest.created_at),
+        text: `${actor}: ${formatRelativeTime(latest.created_at)}`,
+        exact: formatDateTime(latest.created_at),
+        muted: false,
+    };
+});
+const latestSupportReplyInline = computed(() => (
+    latestSupportReplySummary.value.muted
+        ? latestSupportReplySummary.value.text
+        : `${latestSupportReplySummary.value.actor} ${latestSupportReplySummary.value.relative}`
+));
+
 const pendingMessagesForActiveConversation = computed(() => {
     const conversationId = activeConversationId.value;
     if (!conversationId) {
@@ -301,6 +515,25 @@ function formatRelativeTime(isoValue) {
     return date.toLocaleDateString();
 }
 
+function formatDateTime(isoValue) {
+    if (!isoValue) {
+        return 'N/A';
+    }
+
+    const date = new Date(isoValue);
+    if (Number.isNaN(date.getTime())) {
+        return 'N/A';
+    }
+
+    return date.toLocaleString([], {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+}
+
 function extractFirstUrl(content) {
     if (typeof content !== 'string' || content.trim() === '') {
         return null;
@@ -336,6 +569,122 @@ function messageContentForDisplay(message) {
     }
 
     return content.replace(firstUrl, '').trim();
+}
+
+function getAttachmentOpenUrl(attachment) {
+    return attachment?.download_url || attachment?.url || '';
+}
+
+function isImageAttachment(attachment) {
+    if (attachment?.media_kind) {
+        return attachment.media_kind === 'image';
+    }
+
+    if (attachment?.is_image === true) {
+        return true;
+    }
+
+    return String(attachment?.mime_type || '').toLowerCase().startsWith('image/');
+}
+
+function isAudioAttachment(attachment) {
+    if (attachment?.media_kind) {
+        return attachment.media_kind === 'audio';
+    }
+
+    if (attachment?.is_audio === true || attachment?.is_voice_clip === true) {
+        return true;
+    }
+
+    const mime = String(attachment?.mime_type || '').toLowerCase();
+    if (!mime) {
+        return false;
+    }
+
+    if (mime.startsWith('audio/')) {
+        return true;
+    }
+
+    if (mime.startsWith('video/')) {
+        const name = String(attachment?.name || '').trim().toLowerCase();
+        return name.startsWith('voice-') || name.startsWith('audio-') || name.startsWith('recording-');
+    }
+
+    return false;
+}
+
+function isVideoAttachment(attachment) {
+    if (attachment?.media_kind) {
+        return attachment.media_kind === 'video';
+    }
+
+    if (attachment?.is_video === true) {
+        return true;
+    }
+
+    const mime = String(attachment?.mime_type || '').toLowerCase();
+    return mime.startsWith('video/') && !isAudioAttachment(attachment);
+}
+
+function getAttachmentTypeLabel(attachment) {
+    if (isImageAttachment(attachment)) {
+        return 'Image';
+    }
+
+    if (isVideoAttachment(attachment)) {
+        return 'Video';
+    }
+
+    if (isAudioAttachment(attachment)) {
+        return 'Audio';
+    }
+
+    return 'File';
+}
+
+function formatAttachmentSize(bytes) {
+    const value = Number(bytes || 0);
+    if (!Number.isFinite(value) || value <= 0) {
+        return '0 B';
+    }
+    if (value < 1024) {
+        return `${value} B`;
+    }
+
+    const units = ['KB', 'MB', 'GB', 'TB'];
+    const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length);
+    return `${parseFloat((value / Math.pow(1024, index)).toFixed(1))} ${units[index - 1]}`;
+}
+
+function openAttachmentFromDetails(attachment) {
+    const targetUrl = getAttachmentOpenUrl(attachment);
+    if (!targetUrl) {
+        return;
+    }
+
+    if (isImageAttachment(attachment) || isVideoAttachment(attachment)) {
+        const media = conversationAttachmentItems.value
+            .filter((item) => isImageAttachment(item) || isVideoAttachment(item))
+            .map((item) => ({
+                src: item.url || item.download_url,
+                download: item.download_url || item.url,
+                id: item.id || item._key,
+                type: isVideoAttachment(item) ? 'video' : 'image',
+                mimeType: item.mime_type,
+            }));
+
+        const targetId = attachment.id || attachment._key;
+        const index = media.findIndex((item) => item.id === targetId);
+        window.dispatchEvent(new CustomEvent('media-viewer:open', {
+            detail: {
+                media,
+                index: index >= 0 ? index : 0,
+            },
+        }));
+        return;
+    }
+
+    window.open(targetUrl, '_blank', 'noopener,noreferrer');
 }
 
 function extractRetryAfterSeconds(error, fallbackSeconds = 30) {
@@ -1364,11 +1713,12 @@ async function assignConversation(agentPublicId = selectedAgentId.value) {
         : selectedAgentId.value;
     const normalizedAgentId = String(resolvedAgentId || '').trim();
 
-    if (!activeConversationId.value || !normalizedAgentId || isAssigning.value) {
+    if (!activeConversationId.value || !normalizedAgentId || isAssigning.value || !canAssignActiveConversation.value) {
         supportLogger.debug('conversation.assign.skip', 'Skipping assignment due to invalid state.', {
             conversation_id: activeConversationId.value,
             agent_public_id: normalizedAgentId || null,
             is_assigning: isAssigning.value,
+            can_assign: canAssignActiveConversation.value,
         });
         return;
     }
@@ -1406,12 +1756,17 @@ async function assignToCurrentUser() {
         return;
     }
 
+    if (!canAssignActiveConversation.value) {
+        toast.error('Unavailable', 'Resolved conversations cannot be reassigned.');
+        return;
+    }
+
     selectedAgentId.value = authStore.user.public_id;
     await assignConversation(authStore.user.public_id);
 }
 
 async function resolveConversation() {
-    if (!activeConversationId.value || isResolving.value) {
+    if (!activeConversationId.value || isResolving.value || !canResolveActiveConversation.value) {
         return;
     }
 
@@ -1438,6 +1793,34 @@ async function resolveConversation() {
     }
 }
 
+async function endConversation() {
+    if (!activeConversationId.value || isEnding.value || !canEndActiveConversation.value) {
+        return;
+    }
+
+    isEnding.value = true;
+
+    try {
+        supportLogger.info('conversation.end.start', 'Ending support conversation from inbox.', {
+            conversation_id: activeConversationId.value,
+        });
+        const response = await api.post(`/api/support/chats/agent/${activeConversationId.value}/end`);
+        applyRealtimeMeta(response.data?.meta);
+        toast.success('Conversation ended', 'Conversation marked as closed.');
+        await fetchConversation(activeConversationId.value);
+        await loadConversations();
+        supportLogger.info('conversation.end.success', 'Support conversation ended from inbox.', {
+            conversation_id: activeConversationId.value,
+        });
+    } catch (error) {
+        supportLogger.error('conversation.end.failure', 'Failed to end support conversation from inbox.', summarizeError(error));
+        console.error('Failed to end support conversation:', error);
+        toast.error('Error', error.response?.data?.message || 'Failed to end conversation.');
+    } finally {
+        isEnding.value = false;
+    }
+}
+
 async function refreshCurrentConversation() {
     if (!activeConversationId.value) {
         await loadConversations();
@@ -1460,6 +1843,10 @@ watch(searchQuery, () => {
     searchDebounceTimer = setTimeout(async () => {
         await loadConversations();
     }, 350);
+});
+
+watch(activeConversationId, () => {
+    detailsSidebarTab.value = 'overview';
 });
 
 onMounted(async () => {
@@ -1649,43 +2036,54 @@ onBeforeUnmount(() => {
             </div>
 
             <template v-else>
-                <div class="h-14 px-4 border-b border-[var(--border-default)] flex items-center justify-between bg-[var(--surface-primary)]/90 backdrop-blur-sm z-10 sticky top-0">
-                    <div class="flex items-center gap-2.5">
-                        <Avatar
-                            :src="activeConversationDisplay.avatarUrl"
-                            :thumb-url="activeConversationDisplay.avatarThumbUrl"
-                            alt="Conversation requester"
-                            :fallback="getConversationInitials(activeConversation || {})"
-                            :color="activeConversationDisplay.avatarColor || 'var(--surface-tertiary)'"
-                            size="sm"
-                        />
-                        <Badge :variant="statusBadgeVariant(activeConversationDisplay.status)" size="sm" class="capitalize h-6 px-2 text-[10px]">
-                            {{ getStatusLabel(activeConversationDisplay.status) }}
-                        </Badge>
-                    </div>
-                    <div class="flex items-center gap-1.5">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            class="hidden sm:flex h-8 text-xs px-2.5"
-                            :disabled="isResolving || composerDisabled"
-                            @click="resolveConversation"
-                        >
-                            <Loader2 v-if="isResolving" class="w-3.5 h-3.5 mr-1.5 animate-spin" />
-                            <CheckCircle2 v-else class="w-3.5 h-3.5 mr-1.5" />
-                            Mark Resolved
-                        </Button>
-                        <Dropdown>
-                            <template #trigger>
-                                <Button variant="ghost" size="sm" class="h-8 w-8 p-0">
-                                    <MoreVertical class="h-3.5 w-3.5 text-[var(--text-secondary)]" />
-                                </Button>
-                            </template>
-                            <DropdownItem @click="assignToCurrentUser">Assign to me</DropdownItem>
-                            <DropdownItem @click="refreshCurrentConversation">Refresh conversation</DropdownItem>
-                            <DropdownSeparator />
-                            <DropdownItem class="text-red-500" @click="resolveConversation">Resolve conversation</DropdownItem>
-                        </Dropdown>
+                <div class="px-3 py-2 border-b border-[var(--border-default)] bg-[var(--surface-primary)]/90 backdrop-blur-sm z-10 sticky top-0">
+                    <div class="flex items-start justify-between gap-2">
+                        <div class="min-w-0 flex-1">
+                            <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-[var(--text-secondary)]">
+                                <span>Started <span class="font-semibold text-[var(--text-primary)]">{{ conversationStartedSummary.relative }}</span></span>
+                                <span class="text-[var(--text-muted)]">•</span>
+                                <span>
+                                    Last support reply
+                                    <span
+                                        class="font-semibold"
+                                        :class="latestSupportReplySummary.muted ? 'text-[var(--text-primary)]' : 'text-emerald-600 dark:text-emerald-300'"
+                                    >
+                                        {{ latestSupportReplyInline }}
+                                    </span>
+                                </span>
+                            </div>
+                            <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-[var(--text-muted)]">
+                                <span class="truncate">Started: {{ conversationStartedSummary.exact }}</span>
+                                <span>•</span>
+                                <span class="truncate">Last reply: {{ latestSupportReplySummary.exact || 'Waiting for first support response' }}</span>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center gap-1.5 shrink-0">
+                            <Dropdown>
+                                <template #trigger>
+                                    <Button variant="outline" size="sm" class="h-8 text-xs px-2.5" :disabled="isResolving || isEnding">
+                                        <MoreVertical class="h-3.5 w-3.5" />
+                                        Actions
+                                    </Button>
+                                </template>
+                                <DropdownItem @select="refreshCurrentConversation">Refresh conversation</DropdownItem>
+                                <DropdownItem v-if="canAssignActiveConversation && !isAssignedToCurrentUser" :disabled="isAssigning" @select="assignToCurrentUser">
+                                    {{ isAssigning ? 'Assigning...' : 'Assign to me' }}
+                                </DropdownItem>
+                                <DropdownItem v-else-if="isAssignedToCurrentUser" disabled>Already assigned to you</DropdownItem>
+                                <DropdownItem v-else disabled>Assignment unavailable in read-only state</DropdownItem>
+                                <DropdownSeparator />
+                                <DropdownItem v-if="canEndActiveConversation" :disabled="isEnding" destructive @select="endConversation">
+                                    {{ isEnding ? 'Ending...' : 'End conversation' }}
+                                </DropdownItem>
+                                <DropdownItem v-else disabled>{{ endActionLabel }}</DropdownItem>
+                                <DropdownItem v-if="canResolveActiveConversation" :disabled="isResolving" destructive @select="resolveConversation">
+                                    {{ isResolving ? 'Resolving...' : 'Resolve conversation' }}
+                                </DropdownItem>
+                                <DropdownItem v-else disabled>{{ resolveActionLabel }}</DropdownItem>
+                            </Dropdown>
+                        </div>
                     </div>
                 </div>
 
@@ -2037,138 +2435,232 @@ onBeforeUnmount(() => {
 
             <template v-else>
                 <div class="p-3 space-y-3">
-                    <section class="rounded-xl border border-[var(--border-default)] bg-[var(--surface-primary)]/60 p-3">
-                        <div class="flex items-center gap-2.5">
-                            <Avatar
-                                :src="activeConversationDisplay.avatarUrl"
-                                :thumb-url="activeConversationDisplay.avatarThumbUrl"
-                                :alt="activeConversationDisplay.name"
-                                :fallback="getConversationInitials(activeConversation || {})"
-                                :color="activeConversationDisplay.avatarColor || 'var(--surface-tertiary)'"
-                                size="lg"
-                                class="shadow-sm"
-                            />
-                            <div class="min-w-0 flex-1">
-                                <h3 class="truncate text-sm font-semibold text-[var(--text-primary)]">{{ activeConversationDisplay.name }}</h3>
-                                <p class="truncate text-[11px] text-[var(--text-secondary)]">{{ activeConversationDisplay.email }}</p>
-                                <p class="mt-1 text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
+                    <section class="rounded-xl border border-[var(--border-default)] bg-[var(--surface-primary)]/60 p-3 space-y-2.5">
+                        <div class="rounded-lg border border-[var(--border-default)]/70 bg-[var(--surface-secondary)]/20 px-2.5 py-2.5">
+                            <div class="flex items-start gap-2.5">
+                                <Avatar
+                                    :src="activeConversationDisplay.avatarUrl"
+                                    :thumb-url="activeConversationDisplay.avatarThumbUrl"
+                                    :alt="activeConversationDisplay.name"
+                                    :fallback="getConversationInitials(activeConversation || {})"
+                                    :color="activeConversationDisplay.avatarColor || 'var(--surface-tertiary)'"
+                                    size="md"
+                                />
+                                <div class="min-w-0 flex-1">
+                                    <p class="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">Customer</p>
+                                    <h3 class="truncate text-[13px] font-semibold text-[var(--text-primary)] leading-tight mt-0.5">
+                                        {{ activeConversationDisplay.name }}
+                                    </h3>
+                                    <p class="truncate text-[11px] text-[var(--text-secondary)] mt-0.5">{{ activeConversationDisplay.email }}</p>
+                                </div>
+                            </div>
+
+                            <div class="mt-2 flex flex-wrap items-center gap-1.5">
+                                <Badge :variant="statusBadgeVariant(activeConversationDisplay.status)" size="sm" class="capitalize h-5 px-1.5 text-[10px]">
                                     {{ getStatusLabel(activeConversationDisplay.status) }}
-                                </p>
+                                </Badge>
+                                <span class="inline-flex items-center rounded-md border border-[var(--border-default)] bg-[var(--surface-primary)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">
+                                    {{ assignmentStateLabel }}
+                                </span>
+                                <span
+                                    class="inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium"
+                                    :class="isConversationResolvedLike
+                                        ? 'border-[var(--border-default)] bg-[var(--surface-primary)] text-[var(--text-muted)]'
+                                        : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300'"
+                                >
+                                    {{ isConversationResolvedLike ? 'Read-only' : 'Active thread' }}
+                                </span>
                             </div>
                         </div>
 
-                        <div class="mt-3 space-y-2">
-                            <select
-                                v-model="selectedAgentId"
-                                class="h-8 w-full rounded-lg border border-[var(--border-default)] bg-[var(--surface-primary)] px-2.5 text-[11px] text-[var(--text-primary)]"
-                                :disabled="isLoadingAgents || isAssigning"
-                            >
-                                <option value="" disabled>Select an agent</option>
-                                <option v-for="agent in agents" :key="agent.id" :value="agent.id">
-                                    {{ agent.name }} ({{ agent.email }})
-                                </option>
-                            </select>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                class="h-8 w-full text-[11px]"
-                                :disabled="!selectedAgentId || isAssigning"
-                                @click="assignConversation()"
-                            >
-                                <Loader2 v-if="isAssigning" class="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                                Assign Conversation
-                            </Button>
+                        <div class="rounded-lg border border-[var(--border-default)]/70 bg-[var(--surface-primary)] px-2.5 py-2">
+                            <p class="mb-1.5 text-[10px] uppercase tracking-wider text-[var(--text-muted)]">Assignment</p>
+                            <div class="space-y-1.5">
+                                <select
+                                    v-model="selectedAgentId"
+                                    class="h-8 w-full rounded-lg border border-[var(--border-default)] bg-[var(--surface-primary)] px-2.5 text-[11px] text-[var(--text-primary)]"
+                                    :disabled="isLoadingAgents || isAssigning || !canAssignActiveConversation"
+                                >
+                                    <option value="" disabled>Select an agent</option>
+                                    <option v-for="agent in agents" :key="agent.id" :value="agent.id">
+                                        {{ agent.name }} ({{ agent.email }})
+                                    </option>
+                                </select>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    class="h-8 w-full text-[11px]"
+                                    :disabled="!selectedAgentId || isAssigning || !canAssignActiveConversation"
+                                    @click="assignConversation()"
+                                >
+                                    <Loader2 v-if="isAssigning" class="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                                    Assign Conversation
+                                </Button>
+                                <p v-if="!canAssignActiveConversation" class="text-[10px] text-[var(--text-muted)]">
+                                    Assignment is disabled for resolved/closed conversations.
+                                </p>
+                            </div>
                         </div>
                     </section>
 
                     <section class="rounded-xl border border-[var(--border-default)] bg-[var(--surface-primary)]/50 p-3 text-sm">
-                        <h4 class="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-secondary)]">Current Session</h4>
-                        <ul class="space-y-1.5">
-                            <li class="flex items-start gap-2 rounded-lg border border-[var(--border-default)]/50 bg-[var(--surface-secondary)]/20 px-2 py-1.5">
+                        <div class="rounded-lg border border-[var(--border-default)] bg-[var(--surface-secondary)]/30 p-1">
+                            <div class="grid grid-cols-3 gap-1">
+                                <button
+                                    type="button"
+                                    class="h-7 rounded-md text-[10px] font-semibold transition-colors"
+                                    :class="detailsSidebarTab === 'overview'
+                                        ? 'bg-[var(--surface-primary)] text-[var(--text-primary)] shadow-sm'
+                                        : 'text-[var(--text-secondary)] hover:bg-[var(--surface-secondary)]'"
+                                    @click="detailsSidebarTab = 'overview'"
+                                >
+                                    Overview
+                                </button>
+                                <button
+                                    type="button"
+                                    class="h-7 rounded-md text-[10px] font-semibold transition-colors"
+                                    :class="detailsSidebarTab === 'media'
+                                        ? 'bg-[var(--surface-primary)] text-[var(--text-primary)] shadow-sm'
+                                        : 'text-[var(--text-secondary)] hover:bg-[var(--surface-secondary)]'"
+                                    @click="detailsSidebarTab = 'media'"
+                                >
+                                    Media ({{ detailsMediaCount }})
+                                </button>
+                                <button
+                                    type="button"
+                                    class="h-7 rounded-md text-[10px] font-semibold transition-colors"
+                                    :class="detailsSidebarTab === 'notes'
+                                        ? 'bg-[var(--surface-primary)] text-[var(--text-primary)] shadow-sm'
+                                        : 'text-[var(--text-secondary)] hover:bg-[var(--surface-secondary)]'"
+                                    @click="detailsSidebarTab = 'notes'"
+                                >
+                                    Notes ({{ detailsNotesCount }})
+                                </button>
+                            </div>
+                        </div>
+
+                        <div v-if="detailsSidebarTab === 'overview'" class="mt-3 space-y-1.5">
+                            <div class="flex items-start gap-2 rounded-lg border border-[var(--border-default)]/50 bg-[var(--surface-secondary)]/20 px-2 py-1.5">
                                 <MapPin class="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
                                 <div class="min-w-0">
                                     <p class="text-[10px] text-[var(--text-secondary)]">Location</p>
                                     <p class="truncate text-xs font-medium text-[var(--text-primary)]">{{ activeConversationDisplay.location }}</p>
                                 </div>
-                            </li>
-                            <li class="flex items-start gap-2 rounded-lg border border-[var(--border-default)]/50 bg-[var(--surface-secondary)]/20 px-2 py-1.5">
+                            </div>
+                            <div class="flex items-start gap-2 rounded-lg border border-[var(--border-default)]/50 bg-[var(--surface-secondary)]/20 px-2 py-1.5">
                                 <Globe class="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
                                 <div class="min-w-0">
                                     <p class="text-[10px] text-[var(--text-secondary)]">Browser & OS</p>
                                     <p class="line-clamp-2 text-xs font-medium text-[var(--text-primary)]">{{ activeConversationDisplay.browser }}</p>
                                 </div>
-                            </li>
-                            <li class="flex items-start gap-2 rounded-lg border border-[var(--border-default)]/50 bg-[var(--surface-secondary)]/20 px-2 py-1.5">
+                            </div>
+                            <div class="flex items-start gap-2 rounded-lg border border-[var(--border-default)]/50 bg-[var(--surface-secondary)]/20 px-2 py-1.5">
                                 <Hash class="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
                                 <div class="min-w-0">
                                     <p class="text-[10px] text-[var(--text-secondary)]">IP Address</p>
                                     <p class="truncate text-xs font-medium text-[var(--text-primary)]">{{ activeConversationDisplay.ip }}</p>
                                 </div>
-                            </li>
-                            <li class="flex items-start gap-2 rounded-lg border border-[var(--border-default)]/50 bg-[var(--surface-secondary)]/20 px-2 py-1.5">
+                            </div>
+                            <div class="flex items-start gap-2 rounded-lg border border-[var(--border-default)]/50 bg-[var(--surface-secondary)]/20 px-2 py-1.5">
                                 <Monitor class="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
                                 <div class="min-w-0">
                                     <p class="text-[10px] text-[var(--text-secondary)]">Source URL</p>
                                     <p class="line-clamp-2 break-all text-xs font-medium text-[var(--text-primary)]">{{ activeConversationDisplay.pageView }}</p>
                                 </div>
-                            </li>
-                        </ul>
-                    </section>
-
-                    <section class="rounded-xl border border-[var(--border-default)] bg-[var(--surface-primary)]/50 p-3">
-                        <h4 class="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-secondary)]">Quick Links</h4>
-                        <div class="grid grid-cols-1 gap-1.5">
-                            <button class="group flex w-full items-center gap-2 rounded-lg border border-[var(--border-default)] bg-[var(--surface-secondary)]/30 px-2 py-1.5 text-left transition-colors hover:bg-[var(--surface-secondary)]/60">
-                                <div class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-blue-500/10">
-                                    <Book class="h-3.5 w-3.5 text-blue-500" />
+                            </div>
+                            <div class="flex items-start gap-2 rounded-lg border border-[var(--border-default)]/50 bg-[var(--surface-secondary)]/20 px-2 py-1.5">
+                                <Clock class="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
+                                <div class="min-w-0">
+                                    <p class="text-[10px] text-[var(--text-secondary)]">Opened</p>
+                                    <p class="truncate text-xs font-medium text-[var(--text-primary)]">{{ formatRelativeTime(activeConversation?.created_at) }}</p>
                                 </div>
-                                <span class="text-[11px] font-semibold text-[var(--text-primary)]">Knowledge Base</span>
-                            </button>
-                            <button class="group flex w-full items-center gap-2 rounded-lg border border-[var(--border-default)] bg-[var(--surface-secondary)]/30 px-2 py-1.5 text-left transition-colors hover:bg-[var(--surface-secondary)]/60">
-                                <div class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-emerald-500/10">
-                                    <Code class="h-3.5 w-3.5 text-emerald-500" />
-                                </div>
-                                <span class="text-[11px] font-semibold text-[var(--text-primary)]">API Documentation</span>
-                            </button>
-                        </div>
-                    </section>
-
-                    <section class="rounded-xl border border-[var(--border-default)] bg-[var(--surface-primary)]/50 p-3 text-sm">
-                        <div class="mb-2 flex items-center justify-between">
-                            <h4 class="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-secondary)]">Recent Activity</h4>
-                            <button class="text-[10px] font-semibold text-[var(--interactive-primary)] hover:underline">View All</button>
+                            </div>
                         </div>
 
-                        <div class="space-y-1.5">
-                            <div class="flex items-center gap-2 rounded-lg border border-[var(--border-default)]/50 bg-[var(--surface-secondary)]/20 px-2 py-1.5">
-                                <div class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-500/10">
-                                    <MessageSquare class="h-3.5 w-3.5 text-blue-500" />
-                                </div>
-                                <div class="min-w-0">
-                                    <p class="truncate text-[11px] font-semibold text-[var(--text-primary)]">Conversation Opened</p>
-                                    <p class="text-[10px] text-[var(--text-muted)]">{{ formatRelativeTime(activeConversation.created_at) }}</p>
-                                </div>
+                        <div v-else-if="detailsSidebarTab === 'media'" class="mt-3 space-y-2">
+                            <div
+                                v-if="conversationAttachmentItems.length === 0"
+                                class="rounded-lg border border-dashed border-[var(--border-default)] px-3 py-4 text-center"
+                            >
+                                <ImageIcon class="mx-auto mb-1 h-4 w-4 text-[var(--text-muted)]" />
+                                <p class="text-[11px] text-[var(--text-secondary)]">No media attachments yet.</p>
                             </div>
+                            <button
+                                v-for="attachment in conversationAttachmentItems"
+                                :key="attachment._key"
+                                type="button"
+                                class="flex w-full items-center gap-2 rounded-lg border border-[var(--border-default)]/60 bg-[var(--surface-secondary)]/20 p-2 text-left transition-colors hover:bg-[var(--surface-secondary)]/45"
+                                @click="openAttachmentFromDetails(attachment)"
+                            >
+                                <div class="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md border border-[var(--border-default)] bg-[var(--surface-primary)]">
+                                    <img
+                                        v-if="isImageAttachment(attachment) || isVideoAttachment(attachment)"
+                                        :src="attachment.thumb_url || attachment.url || attachment.download_url"
+                                        :alt="attachment.name || 'Attachment preview'"
+                                        class="h-full w-full object-cover"
+                                        loading="lazy"
+                                        decoding="async"
+                                    />
+                                    <span
+                                        v-else-if="isAudioAttachment(attachment)"
+                                        class="text-[10px] font-semibold text-[var(--text-secondary)]"
+                                    >
+                                        Audio
+                                    </span>
+                                    <FileText v-else class="h-4 w-4 text-[var(--text-muted)]" />
+                                </div>
+                                <div class="min-w-0 flex-1">
+                                    <p class="truncate text-[11px] font-semibold text-[var(--text-primary)]">
+                                        {{ attachment.name || `${getAttachmentTypeLabel(attachment)} attachment` }}
+                                    </p>
+                                    <p class="truncate text-[10px] text-[var(--text-secondary)]">
+                                        {{ getAttachmentTypeLabel(attachment) }} • {{ formatAttachmentSize(attachment.size) }}
+                                    </p>
+                                    <p class="truncate text-[10px] text-[var(--text-muted)]">
+                                        {{ attachment._senderName }} • {{ formatRelativeTime(attachment._createdAt) }}
+                                    </p>
+                                </div>
+                            </button>
+                        </div>
 
-                            <div class="flex items-center gap-2 rounded-lg border border-[var(--border-default)]/50 bg-[var(--surface-secondary)]/20 px-2 py-1.5">
-                                <div class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-500/10">
-                                    <Book class="h-3.5 w-3.5 text-slate-500" />
-                                </div>
-                                <div class="min-w-0">
-                                    <p class="truncate text-[11px] font-semibold text-[var(--text-primary)]">Latest Status</p>
-                                    <p class="text-[10px] text-[var(--text-muted)]">{{ getStatusLabel(activeConversation.status) }}</p>
-                                </div>
+                        <div v-else class="mt-3 space-y-2">
+                            <div
+                                v-if="internalNoteItems.length === 0"
+                                class="rounded-lg border border-dashed border-[var(--border-default)] px-3 py-4 text-center"
+                            >
+                                <AlertCircle class="mx-auto mb-1 h-4 w-4 text-[var(--text-muted)]" />
+                                <p class="text-[11px] text-[var(--text-secondary)]">No internal notes yet.</p>
                             </div>
-
-                            <div class="flex items-center gap-2 rounded-lg border border-[var(--border-default)]/50 bg-[var(--surface-secondary)]/20 px-2 py-1.5">
-                                <div class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-500/10">
-                                    <UserPlus class="h-3.5 w-3.5 text-emerald-500" />
+                            <article
+                                v-for="note in internalNoteItems"
+                                :key="note.id"
+                                class="rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-2"
+                            >
+                                <div class="flex items-center gap-2">
+                                    <Avatar
+                                        :src="note.sender_avatar_url"
+                                        :thumb-url="note.sender_avatar_thumb_url"
+                                        :alt="note.sender_name"
+                                        :fallback="note.sender_name?.charAt(0) || 'A'"
+                                        :color="note.sender_avatar_color || 'var(--surface-tertiary)'"
+                                        size="xs"
+                                    />
+                                    <div class="min-w-0">
+                                        <p class="truncate text-[11px] font-semibold text-[var(--text-primary)]">{{ note.sender_name }}</p>
+                                        <p class="text-[10px] text-[var(--text-muted)]">{{ formatRelativeTime(note.created_at) }}</p>
+                                    </div>
                                 </div>
-                                <div class="min-w-0">
-                                    <p class="truncate text-[11px] font-semibold text-[var(--text-primary)]">Assigned To</p>
-                                    <p class="truncate text-[10px] text-[var(--text-muted)]">{{ activeConversation.assignee?.name || 'Unassigned' }}</p>
-                                </div>
-                            </div>
+                                <p class="mt-2 whitespace-pre-wrap break-words text-[11px] text-[var(--text-primary)]">
+                                    {{ note.body || 'Internal note (no text)' }}
+                                </p>
+                                <SupportMessageAttachments
+                                    v-if="Array.isArray(note.attachments) && note.attachments.length > 0"
+                                    class="mt-2"
+                                    :attachments="note.attachments"
+                                    tone="note"
+                                    compact
+                                />
+                            </article>
                         </div>
                     </section>
                 </div>

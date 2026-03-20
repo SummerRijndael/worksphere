@@ -64,6 +64,7 @@ return [
         'forgot_password' => env('RECAPTCHA_SCORE_THRESHOLD', 0.5),
         'contact' => env('RECAPTCHA_SCORE_THRESHOLD', 0.5),
         'support_ticket' => env('RECAPTCHA_SCORE_THRESHOLD', 0.5),
+        'support_chat_open' => env('RECAPTCHA_SCORE_THRESHOLD', 0.5),
     ],
 
 ];

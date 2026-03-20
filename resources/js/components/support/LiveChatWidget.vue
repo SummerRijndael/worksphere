@@ -19,9 +19,11 @@ import {
 import { Avatar, Button } from '@/components/ui';
 import LinkPreview from '@/components/LinkPreview.vue';
 import SupportMessageAttachments from '@/components/support/SupportMessageAttachments.vue';
+import RecaptchaChallengeModal from '@/components/common/RecaptchaChallengeModal.vue';
 import { useAuthStore } from '@/stores/auth';
 import { useSupportChatStore } from '@/stores/supportChat';
 import { useToast } from '@/composables/useToast.ts';
+import useRecaptcha from '@/composables/useRecaptcha';
 import api from '@/lib/api';
 import { hasSupportRealtimeToken, setSupportRealtimeToken, startEcho } from '@/echo';
 import { createSupportLogger, maskToken, summarizeError } from '@/utils/supportDebug';
@@ -39,6 +41,7 @@ const authStore = useAuthStore();
 const chatStore = useSupportChatStore();
 const toast = useToast();
 const supportLogger = createSupportLogger('Widget');
+const { executeRecaptcha, isEnabled: isRecaptchaEnabled } = useRecaptcha();
 
 const isAuthenticated = computed(() => authStore.isAuthenticated);
 const currentUser = computed(() => authStore.user);
@@ -55,6 +58,7 @@ const newMessage = ref('');
 const fileInput = ref(null);
 const selectedFiles = ref([]);
 const messagesContainer = ref(null);
+const honeypotWebsiteUrl = ref('');
 const activeConversation = ref(null);
 const conversationMessages = ref([]);
 const activeGuestToken = ref('');
@@ -83,6 +87,23 @@ const showEmojiPicker = ref(false);
 const emojiPickerRef = ref(null);
 const sendCooldownSeconds = ref(0);
 const MAX_ATTACHABLE_FILES = 10;
+const isLoadingSurvey = ref(false);
+const isSubmittingSurvey = ref(false);
+const isUpdatingSurveyPreference = ref(false);
+const isEndingConversation = ref(false);
+const showRecaptchaChallenge = ref(false);
+const pendingConversationStartMessage = ref('');
+const activeSurvey = ref({
+    state: 'none',
+    invite: null,
+    response: null,
+    bundle: null,
+});
+const surveyDraft = ref({
+    csat_score: null,
+    nps_score: null,
+    comment: '',
+});
 
 const leadForm = ref({
     name: '',
@@ -297,6 +318,77 @@ const starterHint = computed(() => {
     return 'We are here to help. Send a message to start.';
 });
 const isSendCoolingDown = computed(() => sendCooldownSeconds.value > 0);
+const surveyBundle = computed(() => activeSurvey.value?.bundle || {});
+const csatSurveyState = computed(() => surveyBundle.value?.csat || null);
+const npsSurveyState = computed(() => surveyBundle.value?.nps || null);
+const pendingCsatInvite = computed(() => csatSurveyState.value?.state === 'pending' ? csatSurveyState.value?.invite : null);
+const pendingNpsInvite = computed(() => npsSurveyState.value?.state === 'pending' ? npsSurveyState.value?.invite : null);
+const hasPendingSurvey = computed(() => Boolean(pendingCsatInvite.value || pendingNpsInvite.value));
+const hasSubmittedSurvey = computed(() => {
+    if (hasPendingSurvey.value) {
+        return false;
+    }
+
+    return [csatSurveyState.value, npsSurveyState.value].some((entry) => {
+        return entry?.state === 'responded' && !!entry?.response;
+    });
+});
+const showSurveyPanel = computed(() => {
+    return isLoadingSurvey.value
+        || hasPendingSurvey.value
+        || hasSubmittedSurvey.value
+        || (Boolean(activeConversation.value?.id) && isConversationClosed.value);
+});
+const isSurveyOptedOut = computed(() => Boolean(activeConversation.value?.survey_opt_out));
+const csatScaleValues = computed(() => {
+    const definition = pendingCsatInvite.value?.definition || {};
+    const min = Number(definition.scale_min ?? 1);
+    const max = Number(definition.scale_max ?? 5);
+    const values = [];
+    for (let value = min; value <= max; value += 1) {
+        values.push(value);
+    }
+
+    return values;
+});
+const npsScaleValues = computed(() => {
+    const definition = pendingNpsInvite.value?.definition || {};
+    const min = Number(definition.scale_min ?? 0);
+    const max = Number(definition.scale_max ?? 10);
+    const values = [];
+    for (let value = min; value <= max; value += 1) {
+        values.push(value);
+    }
+
+    return values;
+});
+const surveyCanSubmit = computed(() => {
+    if (!hasPendingSurvey.value || isSubmittingSurvey.value || isLoadingSurvey.value) {
+        return false;
+    }
+
+    const needsCsat = Boolean(pendingCsatInvite.value);
+    const needsNps = Boolean(pendingNpsInvite.value);
+    if (!needsCsat && !needsNps) {
+        return false;
+    }
+
+    if (needsCsat) {
+        const csat = Number(surveyDraft.value.csat_score);
+        if (!Number.isFinite(csat) || csat < 1 || csat > 5) {
+            return false;
+        }
+    }
+
+    if (needsNps) {
+        const nps = Number(surveyDraft.value.nps_score);
+        if (!Number.isFinite(nps) || nps < 0 || nps > 10) {
+            return false;
+        }
+    }
+
+    return true;
+});
 
 const toggleChat = () => {
     chatStore.toggleChat();
@@ -842,6 +934,179 @@ function clearSelectedFiles() {
     }
 }
 
+function resetSurveyState() {
+    activeSurvey.value = {
+        state: 'none',
+        invite: null,
+        response: null,
+        bundle: null,
+    };
+    surveyDraft.value = {
+        csat_score: null,
+        nps_score: null,
+        comment: '',
+    };
+}
+
+async function loadConversationSurvey(conversationId, token = '') {
+    if (!conversationId) {
+        resetSurveyState();
+        return;
+    }
+
+    isLoadingSurvey.value = true;
+    try {
+        const params = {};
+        if (token) {
+            params.guest_token = token;
+        }
+
+        const response = await api.get(`/api/support/chats/${conversationId}/survey`, { params });
+        const payload = response.data?.data || {};
+
+        activeSurvey.value = {
+            state: payload.state || 'none',
+            invite: payload.invite || null,
+            response: payload.response || null,
+            bundle: payload.bundle || null,
+        };
+
+        if (activeSurvey.value.state !== 'pending') {
+            surveyDraft.value = {
+                csat_score: null,
+                nps_score: null,
+                comment: '',
+            };
+        }
+    } catch (error) {
+        const status = Number(error?.response?.status || 0);
+        if (status !== 404) {
+            supportLogger.warn('survey.fetch.failure', 'Failed to load customer survey state.', summarizeError(error));
+        }
+        resetSurveyState();
+    } finally {
+        isLoadingSurvey.value = false;
+    }
+}
+
+async function submitConversationSurvey() {
+    const conversationId = activeConversation.value?.id;
+    if (!conversationId || !surveyCanSubmit.value) {
+        return;
+    }
+
+    isSubmittingSurvey.value = true;
+    try {
+        const payload = {
+            comment: (surveyDraft.value.comment || '').trim() || null,
+        };
+        if (pendingCsatInvite.value) {
+            payload.csat_score = Number(surveyDraft.value.csat_score);
+        }
+        if (pendingNpsInvite.value) {
+            payload.nps_score = Number(surveyDraft.value.nps_score);
+        }
+        if (activeGuestToken.value) {
+            payload.guest_token = activeGuestToken.value;
+        }
+
+        await api.post(`/api/support/chats/${conversationId}/survey`, payload);
+        await loadConversationSurvey(conversationId, activeGuestToken.value);
+        surveyDraft.value = {
+            csat_score: null,
+            nps_score: null,
+            comment: '',
+        };
+
+        toast.success('Thanks for your feedback', 'Your survey response was recorded.');
+    } catch (error) {
+        const status = Number(error?.response?.status || 0);
+        if (status === 409) {
+            await loadConversationSurvey(conversationId, activeGuestToken.value);
+            toast.error('Survey unavailable', error?.response?.data?.message || 'This survey is no longer available.');
+        } else if (status === 429) {
+            startSendCooldown(extractRetryAfterSeconds(error, 30));
+            toast.error('Please slow down', `You are sending too quickly. Try again in ${sendCooldownSeconds.value}s.`);
+        } else {
+            toast.error('Error', error?.response?.data?.message || 'Unable to submit survey.');
+        }
+        supportLogger.warn('survey.submit.failure', 'Failed to submit customer survey.', summarizeError(error));
+    } finally {
+        isSubmittingSurvey.value = false;
+    }
+}
+
+async function updateSurveyPreference(optOut) {
+    const conversationId = activeConversation.value?.id;
+    if (!conversationId || isUpdatingSurveyPreference.value) {
+        return;
+    }
+
+    isUpdatingSurveyPreference.value = true;
+    try {
+        const payload = {
+            opt_out: Boolean(optOut),
+        };
+        if (activeGuestToken.value) {
+            payload.guest_token = activeGuestToken.value;
+        }
+
+        const response = await api.post(`/api/support/chats/${conversationId}/survey-preference`, payload);
+        if (response.data?.data?.conversation) {
+            activeConversation.value = response.data.data.conversation;
+            syncConversationToHistory(activeConversation.value);
+        } else if (activeConversation.value) {
+            activeConversation.value = {
+                ...activeConversation.value,
+                survey_opt_out: Boolean(optOut),
+                survey_opt_out_at: Boolean(optOut) ? new Date().toISOString() : null,
+            };
+        }
+
+        await loadConversationSurvey(conversationId, activeGuestToken.value);
+        toast.success('Survey preference updated', Boolean(optOut) ? 'We will not ask for surveys in this chat.' : 'Surveys are enabled for this chat.');
+    } catch (error) {
+        toast.error('Error', error?.response?.data?.message || 'Unable to update survey preference.');
+    } finally {
+        isUpdatingSurveyPreference.value = false;
+    }
+}
+
+async function endConversation() {
+    const conversationId = activeConversation.value?.id;
+    if (!conversationId || isEndingConversation.value || isConversationClosed.value) {
+        return;
+    }
+
+    isEndingConversation.value = true;
+    showEmojiPicker.value = false;
+    try {
+        const payload = {};
+        if (activeGuestToken.value) {
+            payload.guest_token = activeGuestToken.value;
+        }
+        if (!isAuthenticated.value) {
+            payload.ended_by_name = userDisplayName();
+        }
+
+        const response = await api.post(`/api/support/chats/${conversationId}/end`, payload);
+        applyRealtimeMeta(response.data?.meta);
+        if (response.data?.data) {
+            activeConversation.value = response.data.data;
+            syncConversationToHistory(activeConversation.value);
+        }
+
+        await loadConversationMessages(conversationId, activeGuestToken.value, { mergeLatest: true, wasNearBottom: true, trackUnread: false });
+        await loadConversationSurvey(conversationId, activeGuestToken.value);
+        await loadConversationHistory();
+        toast.success('Chat ended', 'This support conversation is now closed.');
+    } catch (error) {
+        toast.error('Error', error?.response?.data?.message || 'Unable to end this support conversation.');
+    } finally {
+        isEndingConversation.value = false;
+    }
+}
+
 async function retryPendingMessage(messageId) {
     if (isSending.value) {
         return;
@@ -1012,17 +1277,44 @@ async function subscribeSupportRealtime() {
                 return;
             }
 
+            const previousStatus = String(activeConversation.value.status || '');
+            const previousAssigneeId = activeConversation.value?.assignee?.id || null;
+            const incomingAssigneeId = event?.assigned_to || null;
+
             activeConversation.value = {
                 ...activeConversation.value,
                 status: event?.status || activeConversation.value.status,
                 ai_handoff_required: Boolean(event?.ai_handoff_required),
                 last_message_at: event?.last_message_at || activeConversation.value.last_message_at,
                 updated_at: event?.updated_at || activeConversation.value.updated_at,
-                assignee: event?.assigned_to
-                    ? { ...(activeConversation.value.assignee || {}), id: event.assigned_to }
+                assignee: incomingAssigneeId
+                    ? { ...(activeConversation.value.assignee || {}), id: incomingAssigneeId }
                     : activeConversation.value.assignee,
             };
             syncConversationToHistory(activeConversation.value);
+
+            const statusChanged = previousStatus !== String(activeConversation.value.status || '');
+            const assigneeChanged = previousAssigneeId !== incomingAssigneeId;
+
+            if (statusChanged || assigneeChanged) {
+                const refreshed = await fetchConversation(activeConversation.value.id, activeGuestToken.value, {
+                    withLoading: false,
+                    applyRealtimeMeta: false,
+                    loadMessages: false,
+                });
+
+                if (refreshed) {
+                    activeConversation.value = {
+                        ...activeConversation.value,
+                        ...refreshed,
+                    };
+                    syncConversationToHistory(activeConversation.value);
+                }
+            }
+
+            if (['resolved', 'closed'].includes(String(activeConversation.value?.status || ''))) {
+                await loadConversationSurvey(activeConversation.value.id, activeGuestToken.value);
+            }
         })
         .listen('.SupportTypingUpdated', (event) => {
             if (!event?.conversation_id || event.conversation_id !== activeConversation.value?.id) {
@@ -1329,7 +1621,10 @@ async function startNewChat() {
         await clearGuestResumeSession();
     }
 
+    pendingConversationStartMessage.value = '';
+    showRecaptchaChallenge.value = false;
     activeConversation.value = null;
+    resetSurveyState();
     conversationMessages.value = [];
     hasMoreMessagesBefore.value = false;
     oldestMessageId.value = null;
@@ -1357,11 +1652,12 @@ async function selectConversation(item) {
     clearAgentTypingIndicator();
     clearUnreadMarker();
     await subscribeSupportRealtime();
+    await loadConversationSurvey(conversation.id, token);
     viewState.value = 'chat';
     await scrollToBottom(false);
 }
 
-function buildOpenPayload(initialMessage) {
+function buildOpenPayload(initialMessage, security = {}) {
     return {
         initial_message: initialMessage,
         subject: 'Live chat support request',
@@ -1369,14 +1665,16 @@ function buildOpenPayload(initialMessage) {
         source_url: window.location.href,
         guest_name: userDisplayName(),
         guest_email: userEmail(),
+        website_url: honeypotWebsiteUrl.value || '',
         metadata: {
             page: window.location.pathname,
             user_agent: navigator.userAgent,
         },
+        ...security,
     };
 }
 
-async function openConversationWithMessage(initialMessage) {
+async function openConversationWithMessage(initialMessage, options = {}) {
     isStartingConversation.value = true;
     supportLogger.info('conversation.open.start', 'Starting new support conversation.', {
         initial_message_length: initialMessage?.length || 0,
@@ -1384,7 +1682,22 @@ async function openConversationWithMessage(initialMessage) {
     });
 
     try {
-        const payload = buildOpenPayload(initialMessage);
+        const securityPayload = {};
+        if (!isAuthenticated.value) {
+            if (options.v2Token) {
+                securityPayload.recaptcha_token = 'fallback-initiated';
+                securityPayload.recaptcha_v2_token = options.v2Token;
+            } else if (isRecaptchaEnabled.value) {
+                const recaptchaToken = await executeRecaptcha('support_chat_open');
+                if (!recaptchaToken) {
+                    toast.error('Security check failed', 'Please refresh and try again.');
+                    return false;
+                }
+                securityPayload.recaptcha_token = recaptchaToken;
+            }
+        }
+
+        const payload = buildOpenPayload(initialMessage, securityPayload);
         const response = await api.post('/api/support/chats', payload);
         applyRealtimeMeta(response.data?.meta);
         const conversation = response.data?.data || null;
@@ -1395,9 +1708,11 @@ async function openConversationWithMessage(initialMessage) {
         const token = response.data?.data?.guest_token || '';
         activeConversation.value = conversation;
         activeGuestToken.value = token;
+        resetSurveyState();
         await loadConversationMessages(conversation.id, token);
         clearAgentTypingIndicator();
         await subscribeSupportRealtime();
+        await loadConversationSurvey(conversation.id, token);
 
         syncConversationToHistory({
             ...conversation,
@@ -1415,7 +1730,14 @@ async function openConversationWithMessage(initialMessage) {
         return true;
     } catch (error) {
         supportLogger.error('conversation.open.failure', 'Failed to start support conversation.', summarizeError(error));
-        if (Number(error?.response?.status || 0) === 429) {
+        const status = Number(error?.response?.status || 0);
+        if (status === 422 && Boolean(error?.response?.data?.requires_challenge) && !options.v2Token) {
+            pendingConversationStartMessage.value = initialMessage;
+            showRecaptchaChallenge.value = true;
+            return false;
+        }
+
+        if (status === 429) {
             startSendCooldown(extractRetryAfterSeconds(error, 30));
             toast.error('Please slow down', `You are sending too quickly. Try again in ${sendCooldownSeconds.value}s.`);
         } else {
@@ -1424,6 +1746,20 @@ async function openConversationWithMessage(initialMessage) {
         return false;
     } finally {
         isStartingConversation.value = false;
+    }
+}
+
+async function handleRecaptchaChallengeVerified(v2Token) {
+    showRecaptchaChallenge.value = false;
+    const message = String(pendingConversationStartMessage.value || '').trim();
+    if (message === '') {
+        return;
+    }
+
+    const started = await openConversationWithMessage(message, { v2Token });
+    if (started) {
+        newMessage.value = '';
+        pendingConversationStartMessage.value = '';
     }
 }
 
@@ -1475,10 +1811,12 @@ async function resumeGuestConversation() {
 
         activeConversation.value = conversation;
         activeGuestToken.value = conversation.guest_token || '';
+        resetSurveyState();
         await loadConversationMessages(conversation.id, activeGuestToken.value);
         clearAgentTypingIndicator();
         syncConversationToHistory(conversation);
         await subscribeSupportRealtime();
+        await loadConversationSurvey(conversation.id, activeGuestToken.value);
 
         if (chatStore.isOpen) {
             viewState.value = 'chat';
@@ -1591,6 +1929,7 @@ watch(
         clearRealtimeSubscription({ clearToken: !claimedConversation?.id });
         clearAgentTypingIndicator();
         activeConversation.value = null;
+        resetSurveyState();
         conversationMessages.value = [];
         hasMoreMessagesBefore.value = false;
         oldestMessageId.value = null;
@@ -1611,6 +1950,7 @@ watch(
             await loadConversationMessages(claimedConversation.id, '', { trackUnread: false });
             syncConversationToHistory(claimedConversation);
             await subscribeSupportRealtime();
+            await loadConversationSurvey(claimedConversation.id, '');
 
             if (chatStore.isOpen) {
                 viewState.value = 'chat';
@@ -1623,8 +1963,14 @@ watch(
 
 watch(
     () => activeConversation.value?.id,
-    async () => {
+    async (conversationId) => {
         await subscribeSupportRealtime();
+
+        if (conversationId) {
+            await loadConversationSurvey(conversationId, activeGuestToken.value);
+        } else {
+            resetSurveyState();
+        }
     },
 );
 
@@ -1764,9 +2110,20 @@ onBeforeUnmount(() => {
                                 </div>
                             </div>
                         </div>
-                        <button @click="toggleChat" class="text-white/40 hover:text-white hover:bg-white/5 rounded-full p-2 transition-all">
-                            <Minus class="w-4 h-4" />
-                        </button>
+                        <div class="flex items-center gap-1">
+                            <button
+                                v-if="viewState === 'chat' && activeConversation?.id && !isConversationClosed"
+                                type="button"
+                                class="rounded-full border border-white/15 bg-white/5 px-2 py-1 text-[10px] font-semibold text-white/85 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                                :disabled="isEndingConversation"
+                                @click="endConversation"
+                            >
+                                {{ isEndingConversation ? 'Ending...' : 'End' }}
+                            </button>
+                            <button @click="toggleChat" class="text-white/40 hover:text-white hover:bg-white/5 rounded-full p-2 transition-all">
+                                <Minus class="w-4 h-4" />
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -1816,11 +2173,27 @@ onBeforeUnmount(() => {
                                     <input v-model="leadForm.email" type="email" placeholder="john@example.com" class="bg-transparent border-none text-sm w-full focus:outline-none" />
                                 </div>
                             </div>
+                            <div style="display: none" aria-hidden="true">
+                                <input
+                                    v-model="honeypotWebsiteUrl"
+                                    type="text"
+                                    name="website_url"
+                                    tabindex="-1"
+                                    autocomplete="off"
+                                />
+                            </div>
                         </div>
                         
                         <Button @click="startChatFromForm" :disabled="!leadForm.name || !leadForm.email" class="w-full h-12 rounded-xl text-base font-semibold shadow-md mt-auto">
                             Start Chatting
                         </Button>
+                        <p class="text-[10px] text-[var(--text-muted)] leading-relaxed">
+                            Protected by reCAPTCHA. Google
+                            <a href="https://policies.google.com/privacy" class="underline" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
+                            and
+                            <a href="https://policies.google.com/terms" class="underline" target="_blank" rel="noopener noreferrer">Terms</a>
+                            apply.
+                        </p>
                     </div>
 
                     <!-- History View (For Auth Users) -->
@@ -2038,6 +2411,118 @@ onBeforeUnmount(() => {
                                 </div>
                             </div>
 
+                            <div
+                                v-if="showSurveyPanel"
+                                class="mb-3 rounded-xl border border-[var(--border-default)] bg-[var(--surface-secondary)]/60 p-3"
+                            >
+                                <div v-if="isLoadingSurvey" class="flex items-center text-xs text-[var(--text-secondary)]">
+                                    <Loader2 class="mr-2 h-3.5 w-3.5 animate-spin" />
+                                    Loading survey...
+                                </div>
+
+                                <template v-else-if="hasPendingSurvey">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-[var(--interactive-primary)]">Support Survey</p>
+                                    <div v-if="pendingCsatInvite" class="mt-2">
+                                        <p class="text-[11px] font-medium text-[var(--text-primary)]">{{ pendingCsatInvite.definition?.question || 'How satisfied are you with this support conversation?' }}</p>
+                                        <div class="mt-1.5 flex flex-wrap gap-1.5">
+                                            <button
+                                                v-for="value in csatScaleValues"
+                                                :key="`survey-csat-score-${value}`"
+                                                type="button"
+                                                class="min-w-8 rounded-md border px-2 py-1 text-xs font-semibold transition-colors"
+                                                :class="Number(surveyDraft.csat_score) === Number(value)
+                                                    ? 'border-[var(--interactive-primary)] bg-[var(--interactive-primary)] text-white'
+                                                    : 'border-[var(--border-default)] bg-[var(--surface-primary)] text-[var(--text-secondary)] hover:border-[var(--interactive-primary)]'"
+                                                @click="surveyDraft.csat_score = Number(value)"
+                                            >
+                                                {{ value }}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div v-if="pendingNpsInvite" class="mt-3">
+                                        <p class="text-[11px] font-medium text-[var(--text-primary)]">{{ pendingNpsInvite.definition?.question || 'How likely are you to recommend our support team?' }}</p>
+                                        <div class="mt-1.5 flex flex-wrap gap-1.5">
+                                            <button
+                                                v-for="value in npsScaleValues"
+                                                :key="`survey-nps-score-${value}`"
+                                                type="button"
+                                                class="min-w-8 rounded-md border px-2 py-1 text-xs font-semibold transition-colors"
+                                                :class="Number(surveyDraft.nps_score) === Number(value)
+                                                    ? 'border-[var(--interactive-primary)] bg-[var(--interactive-primary)] text-white'
+                                                    : 'border-[var(--border-default)] bg-[var(--surface-primary)] text-[var(--text-secondary)] hover:border-[var(--interactive-primary)]'"
+                                                @click="surveyDraft.nps_score = Number(value)"
+                                            >
+                                                {{ value }}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <textarea
+                                        v-model="surveyDraft.comment"
+                                        rows="2"
+                                        maxlength="1000"
+                                        class="mt-2 w-full resize-none rounded-md border border-[var(--border-default)] bg-[var(--surface-primary)] px-2.5 py-2 text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:border-[var(--interactive-primary)] focus:outline-none"
+                                        placeholder="Optional comment..."
+                                    />
+                                    <div class="mt-2 flex items-center justify-between">
+                                        <button
+                                            type="button"
+                                            class="text-[10px] text-[var(--text-muted)] underline underline-offset-2 disabled:opacity-50"
+                                            :disabled="isUpdatingSurveyPreference"
+                                            @click="updateSurveyPreference(true)"
+                                        >
+                                            {{ isUpdatingSurveyPreference ? 'Updating...' : "Don't ask again in this chat" }}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="inline-flex items-center rounded-md bg-[var(--interactive-primary)] px-2.5 py-1.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                                            :disabled="!surveyCanSubmit"
+                                            @click="submitConversationSurvey"
+                                        >
+                                            <Loader2 v-if="isSubmittingSurvey" class="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                                            Submit feedback
+                                        </button>
+                                    </div>
+                                </template>
+
+                                <template v-else-if="hasSubmittedSurvey">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-emerald-500">Survey Received</p>
+                                    <p class="mt-1 text-sm text-[var(--text-primary)]">Thank you for your feedback.</p>
+                                    <p v-if="csatSurveyState?.response?.score !== undefined" class="mt-1 text-xs text-[var(--text-secondary)]">
+                                        CSAT: <span class="font-semibold">{{ csatSurveyState.response.score }}</span>
+                                    </p>
+                                    <p v-if="npsSurveyState?.response?.score !== undefined" class="mt-1 text-xs text-[var(--text-secondary)]">
+                                        NPS: <span class="font-semibold">{{ npsSurveyState.response.score }}</span>
+                                    </p>
+                                    <p v-if="csatSurveyState?.response?.comment || npsSurveyState?.response?.comment" class="mt-1 text-xs text-[var(--text-secondary)]">
+                                        "{{ csatSurveyState?.response?.comment || npsSurveyState?.response?.comment }}"
+                                    </p>
+                                    <button
+                                        type="button"
+                                        class="mt-2 text-[10px] text-[var(--text-muted)] underline underline-offset-2 disabled:opacity-50"
+                                        :disabled="isUpdatingSurveyPreference"
+                                        @click="updateSurveyPreference(true)"
+                                    >
+                                        {{ isUpdatingSurveyPreference ? 'Updating...' : "Don't ask again in this chat" }}
+                                    </button>
+                                </template>
+
+                                <template v-else>
+                                    <div class="flex items-center justify-between gap-2">
+                                        <p class="text-xs text-[var(--text-secondary)]">
+                                            {{ isSurveyOptedOut ? 'Surveys are disabled for this conversation.' : 'No survey is currently pending.' }}
+                                        </p>
+                                        <button
+                                            type="button"
+                                            class="text-[10px] text-[var(--text-muted)] underline underline-offset-2 disabled:opacity-50"
+                                            :disabled="isUpdatingSurveyPreference"
+                                            @click="updateSurveyPreference(!isSurveyOptedOut)"
+                                        >
+                                            {{ isUpdatingSurveyPreference ? 'Updating...' : (isSurveyOptedOut ? 'Enable survey' : 'Disable survey') }}
+                                        </button>
+                                    </div>
+                                </template>
+                            </div>
+
                             <div class="relative rounded-2xl border border-[var(--border-default)] bg-[var(--surface-secondary)]/85 shadow-sm">
                                 <input
                                     ref="fileInput"
@@ -2156,6 +2641,12 @@ onBeforeUnmount(() => {
                 <div class="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 rotate-45 w-2 h-2 bg-slate-900 dark:bg-white"></div>
             </div>
         </button>
+
+        <RecaptchaChallengeModal
+            :show="showRecaptchaChallenge"
+            @close="showRecaptchaChallenge = false"
+            @verified="handleRecaptchaChallengeVerified"
+        />
     </div>
 </template>
 

@@ -31,6 +31,23 @@ interface SupportConversationServiceContract
 
     public function resolveConversation(SupportConversation $conversation, User $actor): SupportConversation;
 
+    /**
+     * @param  array<string, mixed>  $options
+     */
+    public function closeConversation(
+        SupportConversation $conversation,
+        ?User $actor = null,
+        ?string $guestToken = null,
+        array $options = []
+    ): SupportConversation;
+
+    public function updateSurveyPreference(
+        SupportConversation $conversation,
+        bool $optOut,
+        ?User $actor = null,
+        ?string $guestToken = null
+    ): SupportConversation;
+
     public function claimConversationToUser(SupportConversation $conversation, User $user): SupportConversation;
 
     public function canOperateAsAgent(User $user): bool;

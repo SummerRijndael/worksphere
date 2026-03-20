@@ -3,11 +3,17 @@
 namespace App\Services\Support;
 
 use App\Contracts\SupportConversationServiceContract;
+use App\Enums\AuditAction;
+use App\Enums\AuditCategory;
 use App\Events\Support\SupportConversationChanged;
 use App\Events\Support\SupportMessageCreated;
+use App\Jobs\BroadcastSupportConversationChanged;
+use App\Jobs\BroadcastSupportMessageCreated;
 use App\Models\SupportConversation;
 use App\Models\SupportMessage;
+use App\Models\SupportSurveyInvite;
 use App\Models\User;
+use App\Services\AuditService;
 use App\Services\Support\Pipelines\SupportHandoffPipeline;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -15,14 +21,22 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Spatie\Permission\Exceptions\PermissionDoesNotExist;
 
 class SupportConversationService implements SupportConversationServiceContract
 {
+    /**
+     * @var array<string, true>|null
+     */
+    protected ?array $supportConversationColumnMap = null;
+
     public function __construct(
         protected SupportHandoffPipeline $handoffPipeline,
-        protected SupportChatMediaService $supportChatMediaService
+        protected SupportChatMediaService $supportChatMediaService,
+        protected AuditService $auditService
     ) {}
 
     /**
@@ -65,7 +79,7 @@ class SupportConversationService implements SupportConversationServiceContract
 
         $this->broadcastConversationChanged($conversation->fresh());
 
-        return $conversation->fresh(['requester', 'assignee', 'latestMessage.sender', 'latestMessage.media', 'messages.sender', 'messages.media']);
+        return $conversation->fresh(['requester', 'assignee', 'endedBy', 'latestMessage.sender', 'latestMessage.media', 'messages.sender', 'messages.media']);
     }
 
     public function getConversationForActor(SupportConversation $conversation, ?User $actor = null, ?string $guestToken = null): SupportConversation
@@ -216,6 +230,8 @@ class SupportConversationService implements SupportConversationServiceContract
         $conversation->forceFill([
             'assigned_to' => $agent->id,
             'status' => SupportConversation::STATUS_ASSIGNED,
+            'ai_handoff_required' => false,
+            'ai_handoff_reason' => null,
         ])->save();
 
         $assignmentMessage = $this->createMessage(
@@ -229,7 +245,7 @@ class SupportConversationService implements SupportConversationServiceContract
 
         $this->broadcastConversationChanged($conversation->fresh());
 
-        return $conversation->fresh(['requester', 'assignee', 'latestMessage']);
+        return $conversation->fresh(['requester', 'assignee', 'endedBy', 'latestMessage']);
     }
 
     public function resolveConversation(SupportConversation $conversation, User $actor): SupportConversation
@@ -254,7 +270,199 @@ class SupportConversationService implements SupportConversationServiceContract
 
         $this->broadcastConversationChanged($conversation->fresh());
 
-        return $conversation->fresh(['requester', 'assignee', 'latestMessage']);
+        return $conversation->fresh(['requester', 'assignee', 'endedBy', 'latestMessage']);
+    }
+
+    /**
+     * @param  array<string, mixed>  $options
+     */
+    public function closeConversation(
+        SupportConversation $conversation,
+        ?User $actor = null,
+        ?string $guestToken = null,
+        array $options = []
+    ): SupportConversation {
+        $conversation = $this->getConversationForActor($conversation, $actor, $guestToken);
+
+        if ($conversation->status === SupportConversation::STATUS_CLOSED) {
+            return $conversation->fresh(['requester', 'assignee', 'endedBy', 'latestMessage.sender', 'latestMessage.media', 'messages.sender', 'messages.media']);
+        }
+
+        $endedByType = 'guest';
+        $endedByUserId = null;
+        $endedByName = trim((string) ($options['ended_by_name'] ?? $conversation->guest_name ?? 'Guest'));
+        if ($endedByName === '') {
+            $endedByName = 'Guest';
+        }
+
+        if ($actor) {
+            if ($this->canOperateAsAgent($actor)) {
+                $endedByType = 'agent';
+                $endedByUserId = $actor->id;
+                $endedByName = (string) $actor->name;
+            } elseif ((int) $conversation->requester_user_id === (int) $actor->id) {
+                $endedByType = 'customer';
+                $endedByUserId = $actor->id;
+                $endedByName = (string) $actor->name;
+            }
+        }
+
+        $existingColumns = $this->existingSupportConversationColumns();
+
+        $oldValues = [
+            'status' => $conversation->status,
+            'closed_at' => $conversation->closed_at?->toISOString(),
+        ];
+
+        if (isset($existingColumns['ended_at'])) {
+            $oldValues['ended_at'] = $conversation->ended_at?->toISOString();
+        }
+        if (isset($existingColumns['ended_by_type'])) {
+            $oldValues['ended_by_type'] = $conversation->ended_by_type;
+        }
+        if (isset($existingColumns['ended_by_user_id'])) {
+            $oldValues['ended_by_user_id'] = $conversation->ended_by_user_id;
+        }
+        if (isset($existingColumns['ended_by_name'])) {
+            $oldValues['ended_by_name'] = $conversation->ended_by_name;
+        }
+
+        $conversationUpdates = $this->filterExistingSupportConversationColumns([
+            'status' => SupportConversation::STATUS_CLOSED,
+            'closed_at' => now(),
+            'ended_at' => now(),
+            'ended_by_type' => $endedByType,
+            'ended_by_user_id' => $endedByUserId,
+            'ended_by_name' => $endedByName,
+            'ai_handoff_required' => false,
+        ]);
+        $conversation->forceFill($conversationUpdates)->save();
+
+        $label = $endedByType === 'agent'
+            ? "{$endedByName} (Agent)"
+            : ($endedByType === 'customer' ? "{$endedByName} (Customer)" : "{$endedByName} (Guest)");
+
+        $endingMessage = $this->createMessage(
+            conversation: $conversation,
+            senderType: SupportMessage::SENDER_SYSTEM,
+            body: "{$label} ended this support conversation.",
+            senderUserId: $endedByUserId,
+            metadata: [
+                'type' => 'conversation_closed',
+                'ended_by_type' => $endedByType,
+                'ended_by_name' => $endedByName,
+            ],
+        );
+        $this->broadcastMessageCreated($conversation->fresh(), $endingMessage->fresh('sender'));
+        $this->broadcastConversationChanged($conversation->fresh());
+
+        $this->auditService->log(
+            action: AuditAction::Updated,
+            category: AuditCategory::Communication,
+            auditable: $conversation,
+            user: $actor,
+            oldValues: $oldValues,
+            newValues: $this->buildCloseConversationAuditNewValues($conversation, $existingColumns),
+            context: [
+                'event' => 'support_chat_ended',
+                'actor_type' => $endedByType,
+                'conversation_public_id' => $conversation->public_id,
+            ]
+        );
+
+        return $conversation->fresh(['requester', 'assignee', 'endedBy', 'latestMessage.sender', 'latestMessage.media', 'messages.sender', 'messages.media']);
+    }
+
+    public function updateSurveyPreference(
+        SupportConversation $conversation,
+        bool $optOut,
+        ?User $actor = null,
+        ?string $guestToken = null
+    ): SupportConversation {
+        $conversation = $this->getConversationForActor($conversation, $actor, $guestToken);
+
+        $updates = $this->filterExistingSupportConversationColumns([
+            'survey_opt_out' => $optOut,
+            'survey_opt_out_at' => $optOut ? now() : null,
+        ]);
+        if (! empty($updates)) {
+            $conversation->forceFill($updates)->save();
+        }
+
+        if ($optOut) {
+            SupportSurveyInvite::query()
+                ->where('conversation_id', $conversation->id)
+                ->where('status', SupportSurveyInvite::STATUS_PENDING)
+                ->update([
+                    'status' => SupportSurveyInvite::STATUS_REVOKED,
+                    'updated_at' => now(),
+                ]);
+        }
+
+        $this->broadcastConversationChanged($conversation->fresh());
+
+        return $conversation->fresh(['requester', 'assignee', 'endedBy', 'latestMessage.sender', 'latestMessage.media', 'messages.sender', 'messages.media']);
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     * @return array<string, mixed>
+     */
+    protected function filterExistingSupportConversationColumns(array $attributes): array
+    {
+        $columns = $this->existingSupportConversationColumns();
+
+        return array_filter(
+            $attributes,
+            static fn (string $key): bool => isset($columns[$key]),
+            ARRAY_FILTER_USE_KEY
+        );
+    }
+
+    /**
+     * @return array<string, true>
+     */
+    protected function existingSupportConversationColumns(): array
+    {
+        if ($this->supportConversationColumnMap !== null) {
+            return $this->supportConversationColumnMap;
+        }
+
+        try {
+            $columns = Schema::getColumnListing('support_conversations');
+            $this->supportConversationColumnMap = array_fill_keys($columns, true);
+        } catch (\Throwable) {
+            $this->supportConversationColumnMap = [];
+        }
+
+        return $this->supportConversationColumnMap;
+    }
+
+    /**
+     * @param  array<string, true>  $existingColumns
+     * @return array<string, mixed>
+     */
+    protected function buildCloseConversationAuditNewValues(SupportConversation $conversation, array $existingColumns): array
+    {
+        $values = [
+            'status' => $conversation->status,
+            'closed_at' => $conversation->closed_at?->toISOString(),
+        ];
+
+        if (isset($existingColumns['ended_at'])) {
+            $values['ended_at'] = $conversation->ended_at?->toISOString();
+        }
+        if (isset($existingColumns['ended_by_type'])) {
+            $values['ended_by_type'] = $conversation->ended_by_type;
+        }
+        if (isset($existingColumns['ended_by_user_id'])) {
+            $values['ended_by_user_id'] = $conversation->ended_by_user_id;
+        }
+        if (isset($existingColumns['ended_by_name'])) {
+            $values['ended_by_name'] = $conversation->ended_by_name;
+        }
+
+        return $values;
     }
 
     public function claimConversationToUser(SupportConversation $conversation, User $user): SupportConversation
@@ -274,7 +482,7 @@ class SupportConversationService implements SupportConversationServiceContract
             $this->broadcastConversationChanged($conversation->fresh());
         }
 
-        return $conversation->fresh(['requester', 'assignee', 'latestMessage.sender', 'latestMessage.media', 'messages.sender', 'messages.media']);
+        return $conversation->fresh(['requester', 'assignee', 'endedBy', 'latestMessage.sender', 'latestMessage.media', 'messages.sender', 'messages.media']);
     }
 
     /**
@@ -294,7 +502,7 @@ class SupportConversationService implements SupportConversationServiceContract
         $safePerPage = max(1, min($maxPerPage, $perPage));
 
         $query = SupportConversation::query()
-            ->with(['requester:id,public_id,name,email', 'assignee:id,public_id,name,email', 'latestMessage.sender:id,public_id,name,email', 'latestMessage.media'])
+            ->with(['requester:id,public_id,name,email', 'assignee:id,public_id,name,email', 'endedBy:id,public_id,name,email', 'latestMessage.sender:id,public_id,name,email', 'latestMessage.media'])
             ->orderByDesc('last_message_at')
             ->orderByDesc('updated_at');
 
@@ -388,16 +596,29 @@ class SupportConversationService implements SupportConversationServiceContract
 
     protected function processAiForCustomerMessage(SupportConversation $conversation, string $incomingBody): void
     {
-        if (! $conversation->ai_enabled || ! config('support_chat.ai_enabled', true)) {
+        $conversation = SupportConversation::query()->find($conversation->id) ?? $conversation;
+
+        if ($this->shouldSkipAiAutoReply($conversation)) {
             return;
         }
 
         $decision = $this->handoffPipeline->handle($conversation, $incomingBody);
+        $botReply = trim((string) ($decision['reply'] ?? ''));
+        if ($botReply === '') {
+            return;
+        }
+
+        // Re-check state after AI pipeline to avoid race conditions:
+        // a conversation can become assigned/resolved while AI is generating a reply.
+        $conversation = $conversation->fresh() ?? $conversation;
+        if ($this->shouldSkipAiAutoReply($conversation)) {
+            return;
+        }
 
         $botMessage = $this->createMessage(
             conversation: $conversation,
             senderType: SupportMessage::SENDER_BOT,
-            body: (string) ($decision['reply'] ?? ''),
+            body: $botReply,
             metadata: [
                 'confidence' => $decision['confidence'] ?? null,
                 'escalate' => $decision['escalate'] ?? false,
@@ -436,6 +657,23 @@ class SupportConversationService implements SupportConversationServiceContract
             $conversation->status = SupportConversation::STATUS_BOT_ACTIVE;
             $conversation->save();
         }
+    }
+
+    protected function shouldSkipAiAutoReply(SupportConversation $conversation): bool
+    {
+        if (! $conversation->ai_enabled || ! config('support_chat.ai_enabled', true)) {
+            return true;
+        }
+
+        return (bool) (
+            $conversation->assigned_to
+            || in_array($conversation->status, [
+                SupportConversation::STATUS_ASSIGNED,
+                SupportConversation::STATUS_WAITING_HUMAN,
+                SupportConversation::STATUS_RESOLVED,
+                SupportConversation::STATUS_CLOSED,
+            ], true)
+        );
     }
 
     /**
@@ -506,8 +744,30 @@ class SupportConversationService implements SupportConversationServiceContract
     protected function broadcastConversationChanged(SupportConversation $conversation, bool $broadcastToCustomer = true): void
     {
         $conversation->loadMissing('assignee:id,public_id');
+        if (! (bool) config('support_chat.jobs.enabled', true)) {
+            broadcast(new SupportConversationChanged($conversation, $broadcastToCustomer));
 
-        broadcast(new SupportConversationChanged($conversation, $broadcastToCustomer));
+            return;
+        }
+
+        $this->dispatchSupportBroadcastJob(
+            syncJob: function () use ($conversation, $broadcastToCustomer): void {
+                BroadcastSupportConversationChanged::dispatchSync(
+                    $conversation->id,
+                    $broadcastToCustomer
+                );
+            },
+            queuedJob: function () use ($conversation, $broadcastToCustomer): void {
+                BroadcastSupportConversationChanged::dispatch(
+                    $conversation->id,
+                    $broadcastToCustomer
+                );
+            },
+            logContext: [
+                'type' => 'conversation_changed',
+                'conversation_id' => $conversation->public_id,
+            ],
+        );
     }
 
     protected function broadcastMessageCreated(
@@ -515,6 +775,70 @@ class SupportConversationService implements SupportConversationServiceContract
         SupportMessage $message,
         bool $broadcastToCustomer = true
     ): void {
-        broadcast(new SupportMessageCreated($conversation, $message, $broadcastToCustomer));
+        if (! (bool) config('support_chat.jobs.enabled', true)) {
+            broadcast(new SupportMessageCreated($conversation, $message, $broadcastToCustomer));
+
+            return;
+        }
+
+        $this->dispatchSupportBroadcastJob(
+            syncJob: function () use ($conversation, $message, $broadcastToCustomer): void {
+                BroadcastSupportMessageCreated::dispatchSync(
+                    $conversation->id,
+                    $message->id,
+                    $broadcastToCustomer
+                );
+            },
+            queuedJob: function () use ($conversation, $message, $broadcastToCustomer): void {
+                BroadcastSupportMessageCreated::dispatch(
+                    $conversation->id,
+                    $message->id,
+                    $broadcastToCustomer
+                );
+            },
+            logContext: [
+                'type' => 'message_created',
+                'conversation_id' => $conversation->public_id,
+                'message_id' => $message->public_id,
+            ],
+        );
+    }
+
+    /**
+     * @param  callable():void  $syncJob
+     * @param  callable():void  $queuedJob
+     * @param  array<string, mixed>  $logContext
+     */
+    protected function dispatchSupportBroadcastJob(callable $syncJob, callable $queuedJob, array $logContext = []): void
+    {
+        $mode = (string) config('support_chat.jobs.broadcast_mode', 'sync_first');
+        $isQueueFirst = strtolower($mode) === 'queue_first';
+
+        if ($isQueueFirst) {
+            try {
+                $queuedJob();
+
+                return;
+            } catch (\Throwable $exception) {
+                Log::warning('[SupportChat] Queue-first broadcast dispatch failed, falling back to sync.', array_merge($logContext, [
+                    'mode' => 'queue_first',
+                    'error' => $exception->getMessage(),
+                ]));
+            }
+
+            $syncJob();
+
+            return;
+        }
+
+        try {
+            $syncJob();
+        } catch (\Throwable $exception) {
+            Log::warning('[SupportChat] Sync-first broadcast dispatch failed, falling back to queue.', array_merge($logContext, [
+                'mode' => 'sync_first',
+                'error' => $exception->getMessage(),
+            ]));
+            $queuedJob();
+        }
     }
 }
