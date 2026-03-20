@@ -798,12 +798,12 @@ function formatChangeValue(value: any) {
 }
 
 function goBack() {
-    // If the user can manage tickets, go to the admin list
+    // Support workspace ticket list
     if (can("tickets.manage")) {
-        router.push({ name: "tickets" });
+        router.push({ name: "support.tickets" });
     } else {
-        // Otherwise go to the user support portal
-        router.push({ name: "support" });
+        // User-facing ticket portal
+        router.push({ name: "helpdesk" });
     }
 }
 
@@ -955,7 +955,7 @@ async function confirmDelete() {
             data: { reason: deleteReason.value },
         });
         toast.success("Ticket Deleted");
-        router.push({ name: "tickets" });
+        router.push({ name: "support.tickets" });
     } catch (e: any) {
         toast.error(e.response?.data?.message || "Failed to delete ticket");
     } finally {
@@ -1154,7 +1154,7 @@ async function submitArchive() {
         });
         toast.success("Ticket archived successfully");
         showArchiveModal.value = false;
-        router.push("/tickets"); // Redirect to list or refresh?
+        router.push("/support/tickets");
         // Logic says "archived tickets locked". Maybe stay and show locked state.
         await fetchTicket();
     } catch (error: any) {
@@ -2267,7 +2267,7 @@ function isVisualMedia(att: Attachment) {
                                 <a
                                     v-for="t in reporterTickets"
                                     :key="t.id"
-                                    :href="`/tickets/${t.id}`"
+                                    :href="`/support/tickets/${t.id}`"
                                     target="_blank"
                                     class="flex items-center justify-between p-3 rounded-lg border border-[var(--border-default)] hover:bg-[var(--surface-secondary)] transition-colors group"
                                 >
@@ -2645,7 +2645,7 @@ function isVisualMedia(att: Attachment) {
                                     <a
                                         v-for="rTicket in reporterTickets"
                                         :key="rTicket.id"
-                                        :href="`/tickets/${rTicket.id}`"
+                                        :href="`/support/tickets/${rTicket.id}`"
                                         target="_blank"
                                         class="block p-2 rounded-lg bg-[var(--surface-secondary)] hover:bg-[var(--surface-tertiary)] transition-colors"
                                     >
@@ -2686,7 +2686,7 @@ function isVisualMedia(att: Attachment) {
                                         ticket.reporter &&
                                         reporterTickets.length > 0
                                     "
-                                    :href="`/tickets?reporter_id=${ticket.reporter.public_id}`"
+                                    :href="`/support/tickets?reporter_id=${ticket.reporter.public_id}`"
                                     target="_blank"
                                     class="text-xs text-[var(--interactive-primary)] hover:underline mt-2 inline-block"
                                 >
@@ -2714,7 +2714,7 @@ function isVisualMedia(att: Attachment) {
                                         Parent Ticket
                                     </div>
                                     <router-link
-                                        :to="`/tickets/${ticket.parent.id}`"
+                                        :to="`/support/tickets/${ticket.parent.id}`"
                                         class="block font-medium text-sm text-[var(--text-primary)] hover:text-[var(--interactive-primary)] truncate"
                                     >
                                         #{{ ticket.parent.id.substr(0, 8) }}
@@ -2772,7 +2772,7 @@ function isVisualMedia(att: Attachment) {
                                         class="bg-[var(--surface-secondary)] rounded-md p-2"
                                     >
                                         <router-link
-                                            :to="`/tickets/${child.public_id}`"
+                                            :to="`/support/tickets/${child.public_id}`"
                                             class="block font-medium text-sm text-[var(--text-primary)] hover:text-[var(--interactive-primary)] truncate"
                                         >
                                             #{{ child.public_id.substr(0, 8) }}

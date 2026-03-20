@@ -192,7 +192,7 @@ const getPriorityVariant = (priority: any) => {
                             @change.stop="toggleTicket(ticket.id)"
                             class="mt-0.5 w-4 h-4 rounded border-[var(--border-default)] text-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/20"
                         />
-                        <div class="flex items-start justify-between gap-3 flex-1 cursor-pointer" @click="$router.push(`/tickets/${ticket.id}`)">
+                        <div class="flex items-start justify-between gap-3 flex-1 cursor-pointer" @click="$router.push(`/support/tickets/${ticket.id}`)">
                             <div class="min-w-0 flex-1">
                                 <div class="flex items-center gap-2 mb-1">
                                     <span class="font-mono text-xs text-[var(--text-secondary)] font-medium">{{ ticket.number || ticket.display_id }}</span>
@@ -233,7 +233,7 @@ const getPriorityVariant = (priority: any) => {
                         @change.stop="toggleTicket(ticket.id)"
                         class="absolute top-2 left-2 w-4 h-4 rounded border-[var(--border-default)] text-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/20 z-10"
                     />
-                    <div class="cursor-pointer" @click="$router.push(`/tickets/${ticket.id}`)">
+                    <div class="cursor-pointer" @click="$router.push(`/support/tickets/${ticket.id}`)">
                         <div class="flex items-center justify-between pl-6">
                              <span class="font-mono text-xs text-[var(--text-secondary)] font-medium">{{ ticket.number || ticket.display_id }}</span>
                              <Badge :variant="getPriorityVariant(ticket.priority)" size="sm">{{ ticket.priority.label || ticket.priority }}</Badge>

@@ -6,11 +6,11 @@ export function useLinkPreview() {
     const preview = ref<LinkPreviewData | null>(null);
     const error = ref<string | null>(null);
 
-    const fetchPreview = async (url: string) => {
+    const fetchPreview = async (url: string, endpoint?: string) => {
         loading.value = true;
         error.value = null;
         try {
-            preview.value = await LinkUnfurlService.unfurl(url);
+            preview.value = await LinkUnfurlService.unfurl(url, endpoint);
         } catch (err: any) {
             console.error("Failed to fetch link preview", err);
             error.value = "Failed to load preview";

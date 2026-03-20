@@ -824,7 +824,7 @@ function getTrendIcon(trend: string) {
                         <Button
                             variant="outline"
                             class="mt-4"
-                            @click="$router.push('/tickets')"
+                            @click="$router.push(authStore.hasPermission('tickets.manage') ? '/support/tickets' : '/helpdesk')"
                         >
                             Go to Tickets
                         </Button>

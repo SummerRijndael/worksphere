@@ -15,6 +15,7 @@ use App\Models\Chat\ChatMessage;
 use App\Models\User;
 use App\Services\Chat\ChatConnectionManager;
 use App\Services\Chat\ChatEngine;
+use App\Services\Chat\ChatEvents;
 use App\Services\Chat\ChatMediaService;
 use App\Services\Chat\ChatTransport;
 use App\Services\Chat\PresenceService;
@@ -671,6 +672,9 @@ class ChatApiController extends Controller
             'expires_at' => now()->addDays(7),
         ]);
 
+        $invite->loadMissing(['inviter', 'invitee', 'chat']);
+        ChatEvents::inviteSent($this->formatInviteEventData($invite));
+
         return response()->json([
             'status' => 'invite_sent',
             'invite_id' => $invite->public_id,
@@ -708,6 +712,16 @@ class ChatApiController extends Controller
             return $chat;
         });
 
+        $invite->loadMissing(['inviter', 'invitee', 'chat']);
+        ChatEvents::inviteAccepted(
+            $this->formatInviteEventData($invite),
+            [
+                'public_id' => $chat->public_id,
+                'type' => $chat->type,
+                'name' => $chat->name,
+            ],
+        );
+
         return response()->json([
             'status' => 'ok',
             'chat_public_id' => $chat->public_id,
@@ -726,6 +740,8 @@ class ChatApiController extends Controller
             ->firstOrFail();
 
         $invite->markRejected();
+        $invite->loadMissing(['inviter', 'invitee', 'chat']);
+        ChatEvents::inviteDeclined($this->formatInviteEventData($invite));
 
         return response()->json(['status' => 'ok']);
     }
@@ -818,6 +834,9 @@ class ChatApiController extends Controller
             'expires_at' => now()->addDays(7),
             'public_id' => (string) Str::ulid(),
         ]);
+
+        $invite->loadMissing(['inviter', 'invitee', 'chat']);
+        ChatEvents::inviteSent($this->formatInviteEventData($invite));
 
         return response()->json([
             'message' => 'Invite sent successfully.',
@@ -958,6 +977,30 @@ class ChatApiController extends Controller
         $this->groupChatService->rejoinGroup($chat, Auth::user());
 
         return new ChatResource($chat);
+    }
+
+    /**
+     * Normalize invite payload for realtime events.
+     *
+     * @return array<string, mixed>
+     */
+    protected function formatInviteEventData(ChatInvite $invite): array
+    {
+        $inviteType = $invite->chat_id ? 'group' : 'dm';
+
+        return [
+            'id' => $invite->public_id,
+            'public_id' => $invite->public_id,
+            'inviter_name' => $invite->inviter?->name,
+            'inviter_public_id' => $invite->inviter?->public_id,
+            'invitee_name' => $invite->invitee?->name,
+            'invitee_public_id' => $invite->invitee?->public_id,
+            'avatar_url' => $invite->inviter?->avatar_url,
+            'sent_at' => $invite->created_at?->diffForHumans(),
+            'type' => $inviteType,
+            'chat_name' => $invite->chat?->name,
+            'chat_public_id' => $invite->chat?->public_id,
+        ];
     }
 
     protected function enforceRateLimit(int $userId): void

@@ -4,6 +4,7 @@ namespace App\Services\Chat;
 
 use App\Events\Chat\ChatBadgeUpdated;
 use App\Events\Chat\InviteAccepted;
+use App\Events\Chat\InviteDeclined;
 use App\Events\Chat\InviteSent;
 use App\Events\Chat\MessageConfirmed;
 use App\Events\Chat\MessageCreated;
@@ -80,5 +81,13 @@ class ChatEvents
     public static function inviteAccepted(array $inviteData, array $chatData): void
     {
         broadcast(new InviteAccepted($inviteData, $chatData));
+    }
+
+    /**
+     * Broadcast invite declined.
+     */
+    public static function inviteDeclined(array $inviteData): void
+    {
+        broadcast(new InviteDeclined($inviteData));
     }
 }

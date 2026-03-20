@@ -533,24 +533,37 @@ const routes: RouteRecordRaw[] = [
                 },
             },
             {
-                path: "tickets",
-                name: "tickets",
-                component: TicketsView,
+                path: "support",
+                name: "support",
+                component: () => import("@/views/support/SupportOverviewView.vue"),
                 meta: {
-                    title: "Tickets",
-                    breadcrumb: "Tickets",
+                    title: "Support",
+                    breadcrumb: "Support",
                     transition: "slide-fade",
-                    permission: "tickets.view",
+                    permission: ["tickets.view_own", "tickets.view", "tickets.manage", "support.chats.view", "support.chats.reply"],
                 },
             },
             {
-                path: "support",
-                name: "support",
+                path: "support/tickets",
+                name: "support.tickets",
+                component: TicketsView,
+                meta: {
+                    title: "Support Tickets",
+                    breadcrumb: "Ticket Dashboard",
+                    breadcrumbParent: { name: "support", label: "Support" },
+                    transition: "slide-fade",
+                    permission: "tickets.manage",
+                },
+            },
+            {
+                path: "helpdesk",
+                name: "helpdesk",
                 component: () => import("@/views/SupportView.vue"),
                 meta: {
                     title: "Help Desk",
                     breadcrumb: "Help Desk",
                     transition: "slide-fade",
+                    permission: ["tickets.view_own", "tickets.view", "tickets.manage"],
                 },
             },
             {
@@ -584,9 +597,23 @@ const routes: RouteRecordRaw[] = [
                 meta: {
                     title: "Live Chat Inbox",
                     breadcrumb: "Inbox",
+                    breadcrumbParent: { name: "support", label: "Support" },
                     transition: "slide-fade",
                     layoutFullWidth: true, // Remove padding for the edge-to-edge inbox view
                     layoutFixed: true, // Handle height within the layout
+                    permission: ["support.chats.view", "support.chats.reply", "tickets.manage"],
+                },
+            },
+            {
+                path: "support/chats/dashboard",
+                name: "support.chats.dashboard",
+                component: () => import("@/views/support/SupportChatsDashboardView.vue"),
+                meta: {
+                    title: "Live Chat Dashboard",
+                    breadcrumb: "Live Chat Dashboard",
+                    breadcrumbParent: { name: "support", label: "Support" },
+                    transition: "slide-fade",
+                    permission: ["support.chats.view", "support.chats.reply", "tickets.manage"],
                 },
             },
             {
@@ -666,13 +693,13 @@ const routes: RouteRecordRaw[] = [
                 },
             },
             {
-                path: "tickets/:id",
+                path: "support/tickets/:id",
                 name: "ticket-detail",
                 component: TicketDetailView,
                 meta: {
                     title: "Ticket Details",
                     breadcrumb: "Ticket Details",
-                    breadcrumbParent: { name: "tickets", label: "Tickets" },
+                    breadcrumbParent: { name: "support.tickets", label: "Ticket Dashboard" },
                     transition: "slide-fade",
                 },
             },

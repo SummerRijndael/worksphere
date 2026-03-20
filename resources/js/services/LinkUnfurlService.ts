@@ -11,9 +11,9 @@ export interface LinkPreviewData {
 }
 
 export class LinkUnfurlService {
-    static async unfurl(url: string): Promise<LinkPreviewData> {
+    static async unfurl(url: string, endpoint = "/api/link/unfurl"): Promise<LinkPreviewData> {
         try {
-            const response = await axios.post<LinkPreviewData>("/api/link/unfurl", { url });
+            const response = await axios.post<LinkPreviewData>(endpoint, { url });
             return response.data;
         } catch (error: any) {
             if (error.response?.data?.error === 'unsafe_content_blocked') {

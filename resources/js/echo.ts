@@ -2,6 +2,7 @@ import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';
 import { ref, readonly, type Ref, type DeepReadonly } from 'vue';
 import api from '@/lib/api';
+import { createSupportLogger, maskToken, summarizeError } from '@/utils/supportDebug';
 
 // Type declarations
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting' | 'unavailable' | 'failed' | 'error';
@@ -44,6 +45,11 @@ const GLOBAL_EVENTS = {
 
 // Echo instance (may be null if configuration is missing)
 let echo: EchoInstance | null = null;
+const supportRealtimeTokens: { customer: string | null; agent: string | null } = {
+    customer: null,
+    agent: null,
+};
+const supportEchoLogger = createSupportLogger('EchoAuth');
 
 /**
  * Check if Reverb configuration is available.
@@ -132,17 +138,65 @@ function initializeEcho(): EchoInstance | null {
             authorizer: ((channel: any, _options: any) => {
                 return {
                     authorize: (socketId: string, callback: (error: boolean, data?: any) => void) => {
-                        const isMeetingChannel = channel.name.startsWith('meeting.') || channel.name.startsWith('presence-meeting.');
-                        const authEndpoint = isMeetingChannel ? '/api/meetings/broadcasting/auth' : '/api/broadcasting/auth';
+                        const rawChannelName = String(channel.name ?? '');
+                        const normalizedChannelName = rawChannelName
+                            .replace(/^private-/, '')
+                            .replace(/^presence-/, '');
 
-                        api.post(authEndpoint, {
+                        const isMeetingChannel = normalizedChannelName.startsWith('meeting.');
+                        const isSupportChannel = normalizedChannelName.startsWith('support.');
+                        const authEndpoint = isMeetingChannel
+                            ? '/api/meetings/broadcasting/auth'
+                            : (isSupportChannel ? '/api/support/chats/broadcasting/auth' : '/api/broadcasting/auth');
+
+                        const payload: Record<string, unknown> = {
                             socket_id: socketId,
                             channel_name: channel.name
-                        })
+                        };
+
+                        if (isSupportChannel) {
+                            const supportTokenScope = normalizedChannelName.startsWith('support.agent.')
+                                ? 'agent'
+                                : 'customer';
+                            const supportToken = supportRealtimeTokens[supportTokenScope];
+                            supportEchoLogger.debug('authorizer.prepare', 'Preparing support channel auth payload.', {
+                                channel: normalizedChannelName,
+                                scope: supportTokenScope,
+                                has_token: Boolean(supportToken),
+                                token_preview: maskToken(supportToken),
+                                endpoint: authEndpoint,
+                            });
+                            if (!supportToken) {
+                                const missingTokenError = new Error(`Missing support realtime token for ${supportTokenScope} scope.`);
+                                supportEchoLogger.warn('authorizer.skip.missing_token', 'Skipping support channel auth request because token is missing.', {
+                                    channel: normalizedChannelName,
+                                    scope: supportTokenScope,
+                                    endpoint: authEndpoint,
+                                });
+                                callback(true, missingTokenError);
+                                return;
+                            }
+                            payload.support_realtime_token = supportToken;
+                        }
+
+                        api.post(authEndpoint, payload)
                         .then(response => {
+                            if (isSupportChannel) {
+                                supportEchoLogger.info('authorizer.success', 'Support channel auth succeeded.', {
+                                    channel: normalizedChannelName,
+                                    status: response?.status,
+                                });
+                            }
                             callback(false, response.data);
                         })
                         .catch(error => {
+                            if (isSupportChannel) {
+                                supportEchoLogger.error('authorizer.failure', 'Support channel auth failed.', {
+                                    channel: normalizedChannelName,
+                                    endpoint: authEndpoint,
+                                    ...summarizeError(error),
+                                });
+                            }
                             callback(true, error);
                         });
                     }
@@ -272,6 +326,22 @@ export function startEcho(): EchoInstance | null {
     return instance;
 }
 
+export function setSupportRealtimeToken(token: string | null, scope: 'customer' | 'agent' = 'customer'): void
+{
+    const normalized = typeof token === 'string' ? token.trim() : '';
+    supportRealtimeTokens[scope] = normalized !== '' ? normalized : null;
+    supportEchoLogger.debug('token.set', 'Updated support realtime token.', {
+        scope,
+        has_token: Boolean(supportRealtimeTokens[scope]),
+        token_preview: maskToken(supportRealtimeTokens[scope]),
+    });
+}
+
+export function hasSupportRealtimeToken(scope: 'customer' | 'agent' = 'customer'): boolean
+{
+    return typeof supportRealtimeTokens[scope] === 'string' && supportRealtimeTokens[scope] !== null;
+}
+
 
 /**
  * Stop Echo connection and cleanup.
@@ -367,4 +437,3 @@ const echoProxy = new Proxy({} as EchoInstance, {
 });
 
 export default echoProxy;
-

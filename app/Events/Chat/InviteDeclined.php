@@ -20,10 +20,18 @@ class InviteDeclined implements ShouldBroadcastNow
     {
         // Broadcast to the INVITER, because the invitee declined it.
         // Also broadcast to the invitee's other devices to remove it from their list.
-        return [
-            new PrivateChannel('user.'.$this->invite['inviter_id']),
-            new PrivateChannel('user.'.$this->invite['invitee_id']),
-        ];
+        $inviterPublicId = $this->invite['inviter_public_id'] ?? $this->invite['inviter_id'] ?? null;
+        $inviteePublicId = $this->invite['invitee_public_id'] ?? $this->invite['invitee_id'] ?? null;
+
+        $channels = [];
+        if ($inviterPublicId) {
+            $channels[] = new PrivateChannel('user.'.$inviterPublicId);
+        }
+        if ($inviteePublicId) {
+            $channels[] = new PrivateChannel('user.'.$inviteePublicId);
+        }
+
+        return $channels;
     }
 
     public function broadcastAs(): string

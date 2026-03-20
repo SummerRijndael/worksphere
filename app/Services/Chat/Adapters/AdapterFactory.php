@@ -14,6 +14,7 @@ class AdapterFactory
         'chat' => ExistingChatAdapter::class,
         'meeting' => MeetingChatAdapter::class,
         'ai_support' => AiSupportChatAdapter::class,
+        'support_live' => SupportLiveChatAdapter::class,
     ];
 
     public function make(string $key): ChatChannelAdapterContract

@@ -161,20 +161,6 @@ export const useNavigationStore = defineStore('navigation', () => {
             ],
         },
         {
-            id: 'tickets',
-            label: 'Tickets',
-            icon: 'ticket',
-            route: '/tickets',
-            pinned: true,
-            pinnable: true,
-            badge_key: 'open_tickets_count',
-            children: [
-                { id: 'tickets-all', label: 'All Tickets', route: '/tickets' },
-                { id: 'tickets-my', label: 'My Tickets', route: '/tickets/my' },
-                { id: 'tickets-assigned', label: 'Assigned to Me', route: '/tickets/assigned' },
-            ],
-        },
-        {
             id: 'notifications',
             label: 'Notifications',
             icon: 'bell',

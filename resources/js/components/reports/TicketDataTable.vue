@@ -373,13 +373,13 @@ const getStatusVariant = (status: any) => {
                         </td>
                         <td
                             class="px-6 py-4 font-mono text-sm text-[var(--text-secondary)] font-medium cursor-pointer"
-                            @click="$router.push(`/tickets/${ticket.id}`)"
+                            @click="$router.push(`/support/tickets/${ticket.id}`)"
                         >
                             {{ ticket.number || ticket.display_id }}
                         </td>
                         <td
                             class="px-6 py-4 font-semibold text-[var(--text-primary)] cursor-pointer"
-                            @click="$router.push(`/tickets/${ticket.id}`)"
+                            @click="$router.push(`/support/tickets/${ticket.id}`)"
                         >
                             {{ ticket.title }}
                         </td>

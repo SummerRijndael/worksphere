@@ -165,7 +165,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
                             label: 'View',
                             onClick: () => {
                                 import('@/router').then(({ default: router }) => {
-                                    router.push(`/tickets/${event.public_id}`);
+                                    router.push(`/support/tickets/${event.public_id}`);
                                 });
                             }
                         }
@@ -179,7 +179,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
                             label: 'View',
                             onClick: () => {
                                 import('@/router').then(({ default: router }) => {
-                                    router.push(`/tickets/${event.public_id}`);
+                                    router.push(`/support/tickets/${event.public_id}`);
                                 });
                             }
                         }
@@ -193,7 +193,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
                             label: 'View',
                             onClick: () => {
                                 import('@/router').then(({ default: router }) => {
-                                    router.push(`/tickets/${event.public_id}`);
+                                    router.push(`/support/tickets/${event.public_id}`);
                                 });
                             }
                         }
@@ -225,7 +225,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
             // Ticket notifications
             if (notificationType.includes('TicketNotification') || notificationType.startsWith('ticket_')) {
                 const ticketId = notification.data?.metadata?.ticket_id || notification.data?.action_url?.split('/').pop();
-                return ticketId ? `/tickets/${ticketId}` : '/tickets';
+                return ticketId ? `/support/tickets/${ticketId}` : '/support/tickets';
             }
             // Event notifications
             if (notificationType.includes('EventReminder') || notificationType === 'event_reminder') {
