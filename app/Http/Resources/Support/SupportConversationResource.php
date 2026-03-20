@@ -34,6 +34,8 @@ class SupportConversationResource extends JsonResource
             'subject' => $this->subject,
             'source_url' => $this->source_url,
             'ai_enabled' => (bool) $this->ai_enabled,
+            'survey_opt_out' => (bool) $this->survey_opt_out,
+            'survey_opt_out_at' => $this->survey_opt_out_at?->toISOString(),
             'ai_handoff_required' => (bool) $this->ai_handoff_required,
             'ai_handoff_reason' => $this->ai_handoff_reason,
             'guest_name' => $this->guest_name,
@@ -41,6 +43,14 @@ class SupportConversationResource extends JsonResource
             'guest_token' => $this->when($this->exposeGuestToken, $this->guest_token),
             'requester' => $this->whenLoaded('requester', fn () => $this->serializeUser($this->requester)),
             'assignee' => $this->whenLoaded('assignee', fn () => $this->serializeUser($this->assignee)),
+            'ended_by' => $this->when(
+                $this->ended_by_type || $this->ended_by_user_id || $this->ended_by_name,
+                fn () => [
+                    'type' => $this->ended_by_type,
+                    'name' => $this->ended_by_name ?: $this->whenLoaded('endedBy', fn () => $this->endedBy?->name),
+                    'user' => $this->whenLoaded('endedBy', fn () => $this->serializeUser($this->endedBy)),
+                ]
+            ),
             'latest_message' => $latestMessage ? new SupportMessageResource($latestMessage) : null,
             'messages' => $this->whenLoaded('messages', function () {
                 $messages = $this->messages;
@@ -59,6 +69,7 @@ class SupportConversationResource extends JsonResource
             'first_response_at' => $this->first_response_at?->toISOString(),
             'resolved_at' => $this->resolved_at?->toISOString(),
             'closed_at' => $this->closed_at?->toISOString(),
+            'ended_at' => $this->ended_at?->toISOString(),
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),
         ];

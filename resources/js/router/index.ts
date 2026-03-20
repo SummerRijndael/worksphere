@@ -591,6 +591,18 @@ const routes: RouteRecordRaw[] = [
                 },
             },
             {
+                path: "reports/surveys",
+                name: "reports.surveys",
+                component: () =>
+                    import("@/views/reports/SupportSurveyReportsView.vue"),
+                meta: {
+                    title: "Survey Reports",
+                    breadcrumb: "Reports",
+                    transition: "slide-fade",
+                    permission: ["support.chats.view", "support.chats.reply", "tickets.manage"],
+                },
+            },
+            {
                 path: "support/inbox",
                 name: "support.inbox",
                 component: () => import("@/views/support/LiveChatInboxView.vue"),

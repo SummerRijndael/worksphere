@@ -169,7 +169,7 @@ return [
             'label' => 'Reports',
             'icon' => 'file-text', // Check Lucide icon name. 'file-text' is valid.
             'route' => '/reports',
-            'permission' => ['reports.view', 'reports.view_all'],
+            'permission' => ['reports.view', 'reports.view_all', 'tickets.reports', 'support.chats.view', 'support.chats.reply', 'tickets.manage'],
             'pinnable' => true,
             'pinned_default' => false,
             'children' => [
@@ -190,6 +190,12 @@ return [
                     'label' => 'Ticket Reports',
                     'route' => '/reports/tickets',
                     'permission' => 'tickets.reports',
+                ],
+                [
+                    'id' => 'reports-surveys',
+                    'label' => 'Survey Reports',
+                    'route' => '/reports/surveys',
+                    'permission' => ['support.chats.view', 'support.chats.reply', 'tickets.manage'],
                 ],
             ],
         ],

@@ -3,12 +3,16 @@
 namespace App\Http\Controllers\Api\Support;
 
 use App\Contracts\SupportConversationServiceContract;
+use App\Contracts\SupportSurveyServiceContract;
 use App\Events\Support\SupportTypingUpdated;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Support\SupportConversationResource;
+use App\Http\Resources\Support\SupportSurveyInviteResource;
 use App\Http\Resources\Support\SupportMessageResource;
 use App\Models\SupportConversation;
+use App\Models\SupportSurveyInvite;
 use App\Models\User;
+use App\Services\RecaptchaService;
 use App\Services\Chat\ChatPipeline;
 use App\Services\Support\SupportGuestSessionService;
 use App\Services\Support\SupportRealtimeService;
@@ -23,6 +27,8 @@ class SupportChatController extends Controller
 {
     public function __construct(
         protected SupportConversationServiceContract $supportService,
+        protected SupportSurveyServiceContract $supportSurveyService,
+        protected RecaptchaService $recaptcha,
         protected ChatPipeline $chatPipeline,
         protected SupportRealtimeService $supportRealtimeService,
         protected SupportGuestSessionService $guestSessionService
@@ -49,14 +55,26 @@ class SupportChatController extends Controller
             'metadata' => ['nullable', 'array'],
             'guest_name' => ['nullable', 'string', 'max:120'],
             'guest_email' => ['nullable', 'email', 'max:255'],
+            'website_url' => ['nullable', 'string', 'max:0'],
+            'recaptcha_token' => ['nullable', 'string'],
+            'recaptcha_v2_token' => ['nullable', 'string'],
         ];
 
         if (! $actor) {
             $rules['guest_name'][] = 'required';
             $rules['guest_email'][] = 'required';
+            if ((bool) config('recaptcha.enabled', false)) {
+                $rules['recaptcha_token'][] = 'required_without:recaptcha_v2_token';
+            }
         }
 
         $validated = $request->validate($rules);
+
+        if (! $actor) {
+            if ($securityFailure = $this->verifyGuestRecaptcha($validated, $request, 'support_chat_open')) {
+                return $securityFailure;
+            }
+        }
 
         try {
             $conversation = $this->supportService->openConversation($validated, $actor);
@@ -118,6 +136,75 @@ class SupportChatController extends Controller
                     $actor,
                     ! $actor ? $guestToken : null
                 ),
+            ],
+        ]);
+
+        if ($isGuestSessionAuthorized) {
+            $cookie = $this->guestSessionService->refreshCookieFromRequest($request);
+            if ($cookie) {
+                $response->withCookie($cookie);
+            }
+        }
+
+        return $response;
+    }
+
+    public function endConversation(Request $request, SupportConversation $conversation): JsonResponse
+    {
+        $actor = $this->resolveActor($request);
+        $guestToken = (string) ($request->input('guest_token') ?? $request->header('X-Support-Guest-Token', ''));
+        $isGuestSessionAuthorized = ! $actor && $this->guestSessionService->hasConversationAccess($request, $conversation);
+        if ($isGuestSessionAuthorized) {
+            $guestToken = (string) $conversation->guest_token;
+        }
+
+        try {
+            $conversation = $this->supportService->closeConversation(
+                $conversation,
+                $actor,
+                $guestToken,
+                ['ended_by_name' => (string) ($request->input('ended_by_name') ?? '')]
+            );
+        } catch (AuthorizationException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 403);
+        } catch (\InvalidArgumentException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+
+        $surveyBundle = [
+            SupportSurveyInvite::TYPE_CSAT => null,
+            SupportSurveyInvite::TYPE_NPS => null,
+        ];
+        try {
+            $surveyBundle = $this->supportSurveyService->issuePostResolutionSurveyBundle(
+                $conversation,
+                $actor && $this->supportService->canOperateAsAgent($actor) ? $actor : null
+            );
+        } catch (\Throwable $exception) {
+            Log::warning('[SupportChat] Failed to issue post-close survey bundle.', [
+                'conversation' => $conversation->public_id,
+                'error' => $exception->getMessage(),
+            ]);
+        }
+
+        $includePrivateNotes = $actor ? $this->supportService->canOperateAsAgent($actor) : false;
+        $conversation = $this->hydrateConversation($conversation, $includePrivateNotes);
+
+        $response = response()->json([
+            'message' => 'Conversation ended successfully.',
+            'data' => new SupportConversationResource(
+                $conversation,
+                includePrivateNotes: $includePrivateNotes,
+                exposeGuestToken: ! $actor && ! empty($conversation->guest_token)
+            ),
+            'meta' => [
+                'availability' => $this->supportService->availability(),
+                'realtime' => $this->supportRealtimeService->conversationRealtimeMeta(
+                    $conversation,
+                    $actor,
+                    ! $actor ? $guestToken : null
+                ),
+                'survey_invite_bundle' => $this->serializeSurveyInviteBundle($surveyBundle, $request),
             ],
         ]);
 
@@ -533,11 +620,35 @@ class SupportChatController extends Controller
         return $request->user() ?: $request->user('sanctum');
     }
 
+    /**
+     * @param  array<string, SupportSurveyInvite|null>  $bundle
+     * @return array<string, mixed>
+     */
+    protected function serializeSurveyInviteBundle(array $bundle, Request $request): array
+    {
+        $serialized = [
+            SupportSurveyInvite::TYPE_CSAT => null,
+            SupportSurveyInvite::TYPE_NPS => null,
+        ];
+
+        foreach ([SupportSurveyInvite::TYPE_CSAT, SupportSurveyInvite::TYPE_NPS] as $type) {
+            $invite = $bundle[$type] ?? null;
+            if (! $invite instanceof SupportSurveyInvite) {
+                continue;
+            }
+
+            $serialized[$type] = (new SupportSurveyInviteResource($invite, includeDefinition: true))->toArray($request);
+        }
+
+        return $serialized;
+    }
+
     protected function hydrateConversation(SupportConversation $conversation, bool $includePrivateNotes): SupportConversation
     {
         return $conversation->load([
             'requester:id,public_id,name,email',
             'assignee:id,public_id,name,email',
+            'endedBy:id,public_id,name,email',
             'latestMessage.sender:id,public_id,name,email',
             'latestMessage.media',
             'messages' => function ($query) use ($includePrivateNotes): void {
@@ -619,5 +730,47 @@ class SupportChatController extends Controller
         }
 
         return array_values(array_filter($files, fn ($file): bool => $file instanceof UploadedFile));
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     */
+    protected function verifyGuestRecaptcha(array $validated, Request $request, string $action): ?JsonResponse
+    {
+        if (! (bool) config('recaptcha.enabled', false)) {
+            return null;
+        }
+
+        if (! empty($validated['recaptcha_v2_token'])) {
+            $v2Verification = $this->recaptcha->verifyV2((string) $validated['recaptcha_v2_token'], $request->ip());
+            if (! $v2Verification['success']) {
+                return response()->json([
+                    'message' => $v2Verification['error'] ?? 'Security challenge failed.',
+                ], 422);
+            }
+
+            return null;
+        }
+
+        $verification = $this->recaptcha->verify(
+            (string) ($validated['recaptcha_token'] ?? ''),
+            $action,
+            $request->ip()
+        );
+
+        if ($verification['success']) {
+            return null;
+        }
+
+        if (isset($verification['score']) && $verification['score'] !== null && $verification['score'] < config('recaptcha.score_threshold', 0.5)) {
+            return response()->json([
+                'message' => 'Security check required.',
+                'requires_challenge' => true,
+            ], 422);
+        }
+
+        return response()->json([
+            'message' => $verification['error'] ?? 'Security check failed.',
+        ], 422);
     }
 }

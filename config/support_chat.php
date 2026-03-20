@@ -93,10 +93,44 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Broadcast Jobs
+    |--------------------------------------------------------------------------
+    |
+    | sync_first: dispatch job synchronously and fallback to queue if sync fails.
+    | queue_first: dispatch to queue and fallback to sync if queue push fails.
+    |
+    */
+    'jobs' => [
+        'enabled' => env('SUPPORT_CHAT_JOBS_ENABLED', true),
+        'queue' => env('SUPPORT_CHAT_JOBS_QUEUE', 'chats'),
+        'broadcast_mode' => env('SUPPORT_CHAT_BROADCAST_MODE', 'sync_first'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Guest Resume Session
     |--------------------------------------------------------------------------
     */
     'guest_resume_cookie' => env('SUPPORT_GUEST_RESUME_COOKIE', 'worksphere_support_guest'),
     'guest_resume_ttl_minutes' => env('SUPPORT_GUEST_RESUME_TTL_MINUTES', 4320),
     'guest_session_prune_days' => env('SUPPORT_GUEST_SESSION_PRUNE_DAYS', 30),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Survey Tracking (CSAT / NPS)
+    |--------------------------------------------------------------------------
+    */
+    'surveys' => [
+        'enabled' => env('SUPPORT_SURVEYS_ENABLED', true),
+        'comment_max_length' => env('SUPPORT_SURVEY_COMMENT_MAX_LENGTH', 1000),
+        'csat' => [
+            'enabled' => env('SUPPORT_CSAT_ENABLED', true),
+            'ttl_hours' => env('SUPPORT_CSAT_TTL_HOURS', 168),
+        ],
+        'nps' => [
+            'enabled' => env('SUPPORT_NPS_ENABLED', true),
+            'ttl_hours' => env('SUPPORT_NPS_TTL_HOURS', 720),
+            'cooldown_days' => env('SUPPORT_NPS_COOLDOWN_DAYS', 90),
+        ],
+    ],
 ];

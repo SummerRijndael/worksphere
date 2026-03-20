@@ -3,11 +3,14 @@
 namespace App\Http\Controllers\Api\Support;
 
 use App\Contracts\SupportConversationServiceContract;
+use App\Contracts\SupportSurveyServiceContract;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Support\SupportConversationResource;
+use App\Http\Resources\Support\SupportSurveyInviteResource;
 use App\Http\Resources\Support\SupportMessageResource;
 use App\Models\SupportConversation;
 use App\Models\SupportMessage;
+use App\Models\SupportSurveyInvite;
 use App\Models\User;
 use App\Events\Support\SupportTypingUpdated;
 use App\Services\Chat\ChatPipeline;
@@ -25,7 +28,8 @@ class SupportInboxController extends Controller
     public function __construct(
         protected SupportConversationServiceContract $supportService,
         protected ChatPipeline $chatPipeline,
-        protected SupportRealtimeService $supportRealtimeService
+        protected SupportRealtimeService $supportRealtimeService,
+        protected SupportSurveyServiceContract $supportSurveyService
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -289,6 +293,7 @@ class SupportInboxController extends Controller
         $conversation = $conversation->fresh()->load([
             'requester:id,public_id,name,email',
             'assignee:id,public_id,name,email',
+            'endedBy:id,public_id,name,email',
             'latestMessage.sender:id,public_id,name,email',
             'latestMessage.media',
             'messages.sender:id,public_id,name,email',
@@ -324,6 +329,7 @@ class SupportInboxController extends Controller
         $conversation->load([
             'requester:id,public_id,name,email',
             'assignee:id,public_id,name,email',
+            'endedBy:id,public_id,name,email',
             'latestMessage.sender:id,public_id,name,email',
             'latestMessage.media',
             'messages.sender:id,public_id,name,email',
@@ -344,9 +350,23 @@ class SupportInboxController extends Controller
         $this->authorize('resolve', $conversation);
 
         $conversation = $this->supportService->resolveConversation($conversation, $request->user());
+        $surveyBundle = [
+            SupportSurveyInvite::TYPE_CSAT => null,
+            SupportSurveyInvite::TYPE_NPS => null,
+        ];
+        try {
+            $surveyBundle = $this->supportSurveyService->issuePostResolutionSurveyBundle($conversation, $request->user());
+        } catch (\Throwable $exception) {
+            Log::warning('[SupportInbox] Failed to issue post-resolution survey bundle.', [
+                'conversation' => $conversation->public_id,
+                'error' => $exception->getMessage(),
+            ]);
+        }
+
         $conversation->load([
             'requester:id,public_id,name,email',
             'assignee:id,public_id,name,email',
+            'endedBy:id,public_id,name,email',
             'latestMessage.sender:id,public_id,name,email',
             'latestMessage.media',
             'messages.sender:id,public_id,name,email',
@@ -358,6 +378,57 @@ class SupportInboxController extends Controller
             'data' => new SupportConversationResource($conversation, includePrivateNotes: true),
             'meta' => [
                 'realtime' => $this->supportRealtimeService->agentRealtimeMeta($request->user(), $conversation->public_id),
+                'survey_invite_bundle' => $this->serializeSurveyInviteBundle($surveyBundle, $request),
+            ],
+        ]);
+    }
+
+    public function endConversation(Request $request, SupportConversation $conversation): JsonResponse
+    {
+        $this->authorize('resolve', $conversation);
+
+        try {
+            $conversation = $this->supportService->closeConversation(
+                $conversation,
+                $request->user(),
+                null,
+                ['ended_by_name' => (string) ($request->input('ended_by_name') ?? '')]
+            );
+        } catch (AuthorizationException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 403);
+        } catch (\InvalidArgumentException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+
+        $surveyBundle = [
+            SupportSurveyInvite::TYPE_CSAT => null,
+            SupportSurveyInvite::TYPE_NPS => null,
+        ];
+        try {
+            $surveyBundle = $this->supportSurveyService->issuePostResolutionSurveyBundle($conversation, $request->user());
+        } catch (\Throwable $exception) {
+            Log::warning('[SupportInbox] Failed to issue post-close survey bundle.', [
+                'conversation' => $conversation->public_id,
+                'error' => $exception->getMessage(),
+            ]);
+        }
+
+        $conversation->load([
+            'requester:id,public_id,name,email',
+            'assignee:id,public_id,name,email',
+            'endedBy:id,public_id,name,email',
+            'latestMessage.sender:id,public_id,name,email',
+            'latestMessage.media',
+            'messages.sender:id,public_id,name,email',
+            'messages.media',
+        ]);
+
+        return response()->json([
+            'message' => 'Conversation ended successfully.',
+            'data' => new SupportConversationResource($conversation, includePrivateNotes: true),
+            'meta' => [
+                'realtime' => $this->supportRealtimeService->agentRealtimeMeta($request->user(), $conversation->public_id),
+                'survey_invite_bundle' => $this->serializeSurveyInviteBundle($surveyBundle, $request),
             ],
         ]);
     }
@@ -412,6 +483,7 @@ class SupportInboxController extends Controller
         return $conversation->load([
             'requester:id,public_id,name,email',
             'assignee:id,public_id,name,email',
+            'endedBy:id,public_id,name,email',
             'latestMessage.sender:id,public_id,name,email',
             'latestMessage.media',
             'messages' => function ($query) use ($includePrivateNotes): void {
@@ -486,5 +558,28 @@ class SupportInboxController extends Controller
         }
 
         return array_values(array_filter($files, fn ($file): bool => $file instanceof UploadedFile));
+    }
+
+    /**
+     * @param  array<string, SupportSurveyInvite|null>  $bundle
+     * @return array<string, mixed>
+     */
+    protected function serializeSurveyInviteBundle(array $bundle, Request $request): array
+    {
+        $serialized = [
+            SupportSurveyInvite::TYPE_CSAT => null,
+            SupportSurveyInvite::TYPE_NPS => null,
+        ];
+
+        foreach ([SupportSurveyInvite::TYPE_CSAT, SupportSurveyInvite::TYPE_NPS] as $type) {
+            $invite = $bundle[$type] ?? null;
+            if (! $invite instanceof SupportSurveyInvite) {
+                continue;
+            }
+
+            $serialized[$type] = (new SupportSurveyInviteResource($invite, includeDefinition: true))->toArray($request);
+        }
+
+        return $serialized;
     }
 }

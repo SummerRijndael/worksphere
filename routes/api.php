@@ -76,6 +76,19 @@ Route::middleware(['throttle:guest'])->group(function () {
         Route::get('/availability', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'availability']);
         Route::post('/link/unfurl', [\App\Http\Controllers\Api\LinkUnfurlController::class, 'unfurl'])
             ->middleware('throttle:sensitive');
+        Route::get('/surveys/{token}', [\App\Http\Controllers\Api\Support\SupportSurveyController::class, 'showByToken'])
+            ->where('token', '[A-Za-z0-9]{40,128}');
+        Route::post('/surveys/{token}', [\App\Http\Controllers\Api\Support\SupportSurveyController::class, 'submitByToken'])
+            ->middleware('throttle:sensitive')
+            ->where('token', '[A-Za-z0-9]{40,128}');
+        Route::get('/{conversation}/survey', [\App\Http\Controllers\Api\Support\SupportSurveyController::class, 'showForConversation'])
+            ->whereUlid('conversation');
+        Route::post('/{conversation}/survey', [\App\Http\Controllers\Api\Support\SupportSurveyController::class, 'submitForConversation'])
+            ->middleware('throttle:sensitive')
+            ->whereUlid('conversation');
+        Route::post('/{conversation}/survey-preference', [\App\Http\Controllers\Api\Support\SupportSurveyController::class, 'updatePreference'])
+            ->middleware('throttle:sensitive')
+            ->whereUlid('conversation');
         Route::get('/resume', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'resume']);
         Route::post('/resume/clear', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'clearResume'])
             ->middleware('throttle:sensitive');
@@ -86,6 +99,9 @@ Route::middleware(['throttle:guest'])->group(function () {
         Route::get('/{conversation}/messages', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'messages'])
             ->whereUlid('conversation');
         Route::post('/{conversation}/typing', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'typing'])
+            ->whereUlid('conversation');
+        Route::post('/{conversation}/end', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'endConversation'])
+            ->middleware('throttle:sensitive')
             ->whereUlid('conversation');
         Route::post('/{conversation}/messages', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'storeCustomerMessage'])
             ->middleware('throttle:sensitive')
@@ -251,6 +267,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
         Route::get('/realtime-token', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'realtimeToken']);
         Route::get('/inbox', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'index']);
         Route::get('/agents', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'agents']);
+        Route::get('/surveys/metrics', [\App\Http\Controllers\Api\Support\SupportSurveyController::class, 'metrics']);
         Route::post('/claim-guest', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'claimGuestConversation']);
         Route::get('/agent/{conversation}', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'show'])
             ->whereUlid('conversation');
@@ -258,11 +275,15 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
             ->whereUlid('conversation');
         Route::post('/agent/{conversation}/typing', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'typing'])
             ->whereUlid('conversation');
+        Route::post('/agent/{conversation}/end', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'endConversation'])
+            ->whereUlid('conversation');
         Route::post('/{conversation}/agent-messages', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'storeAgentMessage'])
             ->whereUlid('conversation');
         Route::post('/{conversation}/assign', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'assign'])
             ->whereUlid('conversation');
         Route::post('/{conversation}/resolve', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'resolve'])
+            ->whereUlid('conversation');
+        Route::post('/{conversation}/surveys/invite', [\App\Http\Controllers\Api\Support\SupportSurveyController::class, 'createInvite'])
             ->whereUlid('conversation');
     });
 
