@@ -263,6 +263,12 @@ return [
                     'permission' => 'user_manage',
                 ],
                 [
+                    'id' => 'internal-teams',
+                    'label' => 'Internal Teams',
+                    'route' => '/admin/internal-teams',
+                    'permission' => 'user_manage',
+                ],
+                [
                     'id' => 'teams',
                     'label' => 'Teams',
                     'route' => '/admin/teams',

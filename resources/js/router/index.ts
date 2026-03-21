@@ -870,6 +870,29 @@ const routes: RouteRecordRaw[] = [
                 },
             },
             {
+                path: "/admin/internal-teams",
+                name: "admin-internal-teams",
+                component: () => import("@/views/admin/InternalTeamsView.vue"),
+                meta: {
+                    title: "Internal Teams",
+                    breadcrumb: "Internal Teams",
+                    transition: "slide-fade",
+                    permission: "user_manage",
+                },
+            },
+            {
+                path: "/admin/internal-teams/:id",
+                name: "admin-internal-team-details",
+                component: () => import("@/views/admin/InternalTeamDetailsView.vue"),
+                meta: {
+                    title: "Internal Team Details",
+                    breadcrumb: "Team Details",
+                    breadcrumbParent: { name: "admin-internal-teams", label: "Internal Teams" },
+                    transition: "slide-fade",
+                    permission: "user_manage",
+                },
+            },
+            {
                 path: "/teams",
                 name: "teams",
                 component: () => import("@/views/admin/TeamsView.vue"),
