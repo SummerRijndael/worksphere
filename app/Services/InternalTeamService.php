@@ -125,4 +125,17 @@ class InternalTeamService implements InternalTeamServiceContract
             context: ['member_id' => $user->id, 'new_role' => $role]
         );
     }
+
+    public function syncSupportSkills(InternalTeam $team, array $skillIds, User $actor): void
+    {
+        $team->supportSkills()->sync($skillIds);
+
+        $this->auditService->log(
+            action: AuditAction::Updated,
+            category: AuditCategory::System,
+            auditable: $team,
+            user: $actor,
+            context: ['synced_skills' => $skillIds]
+        );
+    }
 }

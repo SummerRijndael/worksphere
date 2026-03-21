@@ -16,16 +16,13 @@ class MaintenanceServiceTest extends TestCase
         $presenceService = Mockery::mock(PresenceService::class);
 
         $admin = Mockery::mock(User::class);
-        $admin->shouldReceive('hasRole')->with('administrator')->andReturn(true);
-        $admin->shouldReceive('hasRole')->with('it_support')->andReturn(false);
+        $admin->shouldReceive('getAttribute')->with('internalTeams')->andReturn(collect([]));
 
         $support = Mockery::mock(User::class);
-        $support->shouldReceive('hasRole')->with('administrator')->andReturn(false);
-        $support->shouldReceive('hasRole')->with('it_support')->andReturn(true);
+        $support->shouldReceive('getAttribute')->with('internalTeams')->andReturn(collect(['dummy_team']));
 
         $user = Mockery::mock(User::class);
-        $user->shouldReceive('hasRole')->with('administrator')->andReturn(false);
-        $user->shouldReceive('hasRole')->with('it_support')->andReturn(false);
+        $user->shouldReceive('getAttribute')->with('internalTeams')->andReturn(collect([]));
 
         $activeUsers = collect([$admin, $support, $user]);
 
@@ -38,8 +35,7 @@ class MaintenanceServiceTest extends TestCase
 
         // Assert
         $this->assertEquals(3, $stats['total']);
-        $this->assertEquals(1, $stats['administrators']);
-        $this->assertEquals(1, $stats['it_support']);
+        $this->assertEquals(1, $stats['support_staff']);
     }
 
     public function test_get_online_user_stats_handles_empty_list()
@@ -55,7 +51,6 @@ class MaintenanceServiceTest extends TestCase
 
         // Assert
         $this->assertEquals(0, $stats['total']);
-        $this->assertEquals(0, $stats['administrators']);
-        $this->assertEquals(0, $stats['it_support']);
+        $this->assertEquals(0, $stats['support_staff']);
     }
 }

@@ -48,4 +48,11 @@ interface InternalTeamServiceContract
      * Update a member's role.
      */
     public function updateMemberRole(InternalTeam $team, User $user, string $role, User $actor): void;
+
+    /**
+     * Sync support skills for a team.
+     *
+     * @param array<int> $skillIds
+     */
+    public function syncSupportSkills(InternalTeam $team, array $skillIds, User $actor): void;
 }
