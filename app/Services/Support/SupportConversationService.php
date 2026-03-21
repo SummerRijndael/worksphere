@@ -42,7 +42,8 @@ class SupportConversationService implements SupportConversationServiceContract
         protected SupportHandoffPipeline $handoffPipeline,
         protected SupportChatMediaService $supportChatMediaService,
         protected AuditService $auditService,
-        protected SupportAccessAdapterResolver $supportAccessAdapterResolver
+        protected SupportAccessAdapterResolver $supportAccessAdapterResolver,
+        protected SupportRoutingService $supportRoutingService
     ) {}
 
     /**
@@ -92,6 +93,10 @@ class SupportConversationService implements SupportConversationServiceContract
         });
 
         $this->processAiForCustomerMessage($conversation->fresh(), $initialMessage);
+        $this->supportRoutingService->enqueueConversation(
+            $conversation->fresh(),
+            reason: 'conversation_opened'
+        );
 
         $this->broadcastConversationChanged($conversation->fresh());
 
@@ -168,6 +173,10 @@ class SupportConversationService implements SupportConversationServiceContract
         if ($body !== '') {
             $this->processAiForCustomerMessage($conversation->fresh(), $body);
         }
+        $this->supportRoutingService->enqueueConversation(
+            $conversation->fresh(),
+            reason: 'customer_message'
+        );
 
         $this->broadcastConversationChanged($conversation->fresh());
 
@@ -233,6 +242,11 @@ class SupportConversationService implements SupportConversationServiceContract
             ])
         )->save();
 
+        $this->supportRoutingService->markConversationAssigned(
+            $conversation->fresh(),
+            $agent->id,
+            reason: 'agent_message'
+        );
         $this->broadcastConversationChanged($conversation->fresh(), ! $isPrivateNote);
 
         return $message->fresh(['sender', 'media']);
@@ -263,6 +277,12 @@ class SupportConversationService implements SupportConversationServiceContract
             ])
         )->save();
 
+        $this->supportRoutingService->markConversationAssigned(
+            $conversation->fresh(),
+            $agent->id,
+            reason: 'manual_assignment'
+        );
+
         $assignmentMessage = $this->createMessage(
             conversation: $conversation,
             senderType: SupportMessage::SENDER_SYSTEM,
@@ -291,6 +311,11 @@ class SupportConversationService implements SupportConversationServiceContract
                 'resolution_marker' => SupportConversation::RESOLUTION_MARKER_RESOLVED,
             ])
         )->save();
+
+        $this->supportRoutingService->cancelConversationQueue(
+            $conversation->fresh(),
+            reason: 'resolved'
+        );
 
         $resolutionMessage = $this->createMessage(
             conversation: $conversation,
@@ -396,6 +421,10 @@ class SupportConversationService implements SupportConversationServiceContract
             'ai_handoff_required' => false,
         ]);
         $conversation->forceFill($conversationUpdates)->save();
+        $this->supportRoutingService->cancelConversationQueue(
+            $conversation->fresh(),
+            reason: 'conversation_closed'
+        );
 
         $label = $endedByType === 'agent'
             ? "{$endedByName} (Agent)"

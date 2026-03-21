@@ -318,6 +318,15 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
     Route::get('/projects/{project}/files', [\App\Http\Controllers\Api\ProjectController::class, 'filesGlobal']);
     Route::get('/projects/{project}/members', [\App\Http\Controllers\Api\ProjectController::class, 'membersGlobal']);
 
+    // Internal Teams Management
+    Route::apiResource('internal-teams', \App\Http\Controllers\Api\InternalTeamController::class);
+    Route::prefix('internal-teams/{internal_team}')->group(function () {
+        Route::get('/members', [\App\Http\Controllers\Api\InternalTeamController::class, 'members']);
+        Route::post('/members', [\App\Http\Controllers\Api\InternalTeamController::class, 'addMember']);
+        Route::put('/members/{user}/role', [\App\Http\Controllers\Api\InternalTeamController::class, 'updateMemberRole']);
+        Route::delete('/members/{user}', [\App\Http\Controllers\Api\InternalTeamController::class, 'removeMember']);
+    });
+
     // User Management
     Route::apiResource('teams', \App\Http\Controllers\Api\TeamController::class);
     Route::get('teams-ownership-summary', [\App\Http\Controllers\Api\TeamController::class, 'ownershipSummary']);

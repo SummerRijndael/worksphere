@@ -151,7 +151,7 @@ class CreateSystemBackup implements ShouldQueue
      */
     protected function notifyAdmins(string $title, string $message, string $type, ?string $actionUrl = null): void
     {
-        $admins = \App\Models\User::role(['administrator', 'it_support'])->get();
+        $admins = \App\Models\User::role(['administrator'])->get();
 
         foreach ($admins as $admin) {
             $admin->notify(new \App\Notifications\SystemNotification(

@@ -80,6 +80,15 @@ class SupportSkill extends Model
     }
 
     /**
+     * @return BelongsToMany<InternalTeam>
+     */
+    public function internalTeams(): BelongsToMany
+    {
+        return $this->belongsToMany(InternalTeam::class, 'support_skill_internal_team', 'support_skill_id', 'internal_team_id')
+            ->withTimestamps();
+    }
+
+    /**
      * @return HasMany<SupportConversation>
      */
     public function conversations(): HasMany

@@ -646,6 +646,18 @@ const routes: RouteRecordRaw[] = [
                 },
             },
             {
+                path: "support/skills",
+                name: "support.skills",
+                component: () => import("@/views/support/SupportRoutingSkillsView.vue"),
+                meta: {
+                    title: "Support Skills",
+                    breadcrumb: "Routing & Skills",
+                    breadcrumbParent: { name: "support", label: "Support" },
+                    transition: "slide-fade",
+                    permission: ["support.chats.view", "support.chats.assign", "tickets.manage"],
+                },
+            },
+            {
                 path: "calendar",
                 name: "calendar",
                 component: () => import("@/views/Calendar/Index.vue"),

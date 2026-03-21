@@ -663,6 +663,18 @@ class User extends Authenticatable implements HasMedia, MustVerifyEmail, WebAuth
     }
 
     /**
+     * Get the internal teams that the user belongs to.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsToMany<\App\Models\InternalTeam>
+     */
+    public function internalTeams(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(\App\Models\InternalTeam::class, 'internal_team_user')
+            ->withPivot(['role', 'joined_at'])
+            ->withTimestamps();
+    }
+
+    /**
      * Get the teams that the user owns.
      *
      * @return \Illuminate\Database\Eloquent\Relations\HasMany<Team>

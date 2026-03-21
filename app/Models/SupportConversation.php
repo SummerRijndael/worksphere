@@ -197,6 +197,14 @@ class SupportConversation extends Model
         return $this->hasMany(SupportSurveyResponse::class, 'conversation_id');
     }
 
+    /**
+     * @return HasOne<SupportRoutingQueueEntry>
+     */
+    public function routingQueueEntry(): HasOne
+    {
+        return $this->hasOne(SupportRoutingQueueEntry::class, 'conversation_id');
+    }
+
     public function isClosedLike(): bool
     {
         if ($this->chat_state === self::CHAT_STATE_ENDED) {

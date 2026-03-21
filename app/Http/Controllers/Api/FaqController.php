@@ -19,8 +19,8 @@ class FaqController extends Controller
             return false;
         }
 
-        $agentRoles = (array) config('support_chat.agent_roles', ['administrator', 'it_support', 'support']);
-        if ($user->hasAnyRole($agentRoles) || $user->hasRole('administrator')) {
+        $agentRoles = (array) config('support_chat.agent_roles', ['administrator']);
+        if ($user->hasAnyRole($agentRoles) || $user->hasRole('administrator') || $user->internalTeams()->exists()) {
             return true;
         }
 

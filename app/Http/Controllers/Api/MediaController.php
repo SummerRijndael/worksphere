@@ -25,7 +25,8 @@ class MediaController extends Controller
         }
 
         return $user->hasRole('administrator')
-            || $user->hasAnyRole((array) config('support_chat.agent_roles', ['administrator', 'it_support', 'support']));
+            || $user->internalTeams()->exists()
+            || $user->hasAnyRole((array) config('support_chat.agent_roles', ['administrator']));
     }
 
     /**

@@ -1,7 +1,7 @@
 <script setup>
 import { computed } from "vue";
 import { Card, Button, Badge } from "@/components/ui";
-import { LifeBuoy, Ticket, Inbox, MessageSquare, ArrowRight, Archive } from "lucide-vue-next";
+import { LifeBuoy, Ticket, Inbox, MessageSquare, ArrowRight, Archive, Cog } from "lucide-vue-next";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { preferredSupportWorkspaceRoute } from "@/utils/supportWorkspace";
@@ -39,7 +39,7 @@ const goTo = (path) => router.push(path);
             <p class="text-[var(--text-secondary)]">Manage live chat and ticket operations from a single workspace.</p>
         </div>
 
-        <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
             <Card class="p-5 space-y-3">
                 <div class="flex items-center justify-between">
                     <Ticket class="h-5 w-5 text-[var(--interactive-primary)]" />
@@ -91,6 +91,19 @@ const goTo = (path) => router.push(path);
                 <h2 class="font-semibold text-[var(--text-primary)]">Helpdesk</h2>
                 <p class="text-sm text-[var(--text-secondary)]">Open the helpdesk ticket page directly.</p>
                 <Button variant="outline" class="w-full" @click="goTo('/helpdesk')">
+                    Open
+                    <ArrowRight class="ml-2 h-4 w-4" />
+                </Button>
+            </Card>
+
+            <Card class="p-5 space-y-3">
+                <div class="flex items-center justify-between">
+                    <Cog class="h-5 w-5 text-[var(--interactive-primary)]" />
+                    <Badge variant="secondary" size="sm">Routing</Badge>
+                </div>
+                <h2 class="font-semibold text-[var(--text-primary)]">Routing & Skills</h2>
+                <p class="text-sm text-[var(--text-secondary)]">Manage departments, skill queues, and agent role scopes.</p>
+                <Button variant="outline" class="w-full" @click="goTo('/support/skills')">
                     Open
                     <ArrowRight class="ml-2 h-4 w-4" />
                 </Button>

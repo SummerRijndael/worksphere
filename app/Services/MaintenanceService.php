@@ -128,16 +128,14 @@ class MaintenanceService
 
             return [
                 'total' => $activeUsers->count(),
-                'administrators' => $activeUsers->filter(fn ($user) => $user->hasRole('administrator'))->count(),
-                'it_support' => $activeUsers->filter(fn ($user) => $user->hasRole('it_support'))->count(),
+                'support_staff' => $activeUsers->filter(fn ($user) => $user->internalTeams->isNotEmpty())->count(),
             ];
         } catch (Throwable $e) {
             Log::warning('Failed to get online user stats', ['error' => $e->getMessage()]);
 
             return [
                 'total' => 0,
-                'administrators' => 0,
-                'it_support' => 0,
+                'support_staff' => 0,
             ];
         }
     }

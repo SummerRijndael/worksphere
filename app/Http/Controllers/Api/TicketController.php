@@ -117,8 +117,9 @@ class TicketController extends Controller
             ->where('status', 'active')
             ->where(function ($query) {
                 $query->whereHas('roles', function ($q) {
-                    $q->whereIn('name', ['administrator', 'it_support']);
+                    $q->where('name', 'administrator');
                 })
+                    ->orWhereHas('internalTeams')
                     ->orWhereHas('permissions', function ($q) {
                         $q->whereIn('name', ['tickets.assign', 'tickets.manage']);
                     });

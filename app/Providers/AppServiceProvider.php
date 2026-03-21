@@ -99,6 +99,11 @@ class AppServiceProvider extends ServiceProvider
         );
 
         $this->app->bind(
+            \App\Contracts\InternalTeamServiceContract::class,
+            \App\Services\InternalTeamService::class
+        );
+
+        $this->app->bind(
             \App\Contracts\SupportAiAdapterContract::class,
             config('support_chat.ai_adapter', \App\Services\Support\Ai\SimulatedSupportAiAdapter::class)
         );
