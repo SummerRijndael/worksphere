@@ -34,6 +34,7 @@ export const faqArticleSchema = z.object({
     .min(20, 'Content must be at least 20 characters'),
   category_id: z.string().uuid('Invalid category ID'),
   is_published: z.boolean().default(false),
+  is_internal: z.boolean().default(false),
   tags: z.array(z.string()).optional().default([]),
 });
 
@@ -85,6 +86,7 @@ export interface FaqArticle {
   unhelpful_count: number;
   comments_count: number;
   is_published: boolean;
+  is_internal: boolean;
   category: {
     id: string;
     name: string;
@@ -101,6 +103,7 @@ export interface FaqArticle {
 
 export interface FaqStats {
   total_articles: number;
+  internal_articles?: number;
   total_views: number;
   total_votes: number;
   most_viewed: Array<{
@@ -124,4 +127,5 @@ export interface FaqFilters {
   date_from?: string;
   date_to?: string;
   status?: 'published' | 'draft' | 'public' | 'private' | '';
+  visibility?: 'internal' | 'public' | '';
 }

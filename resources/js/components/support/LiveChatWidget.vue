@@ -15,6 +15,7 @@ import {
     History,
     Loader2,
     ChevronsDown,
+    Headset,
 } from 'lucide-vue-next';
 import { Avatar, Button } from '@/components/ui';
 import LinkPreview from '@/components/LinkPreview.vue';
@@ -29,6 +30,7 @@ import { hasSupportRealtimeToken, setSupportRealtimeToken, startEcho } from '@/e
 import { createSupportLogger, maskToken, summarizeError } from '@/utils/supportDebug';
 import { playSupportMessageSound } from '@/utils/supportSound';
 import { PROFESSIONAL_SUPPORT_EMOJIS } from '@/constants/supportEmojis';
+import { renderSupportRichText } from '@/utils/supportRichText';
 
 const props = defineProps({
     hideLauncher: {
@@ -56,6 +58,7 @@ const viewState = computed({
 
 const newMessage = ref('');
 const fileInput = ref(null);
+const composerInputRef = ref(null);
 const selectedFiles = ref([]);
 const messagesContainer = ref(null);
 const honeypotWebsiteUrl = ref('');
@@ -119,6 +122,28 @@ let typingDebounceTimer = null;
 let lastTypingSentAt = 0;
 let supportRealtimeRetryAttempts = 0;
 let sendCooldownTimer = null;
+
+async function focusComposerInput() {
+    if (!chatStore.isOpen || viewState.value !== 'chat') {
+        return;
+    }
+
+    await nextTick();
+    const input = composerInputRef.value;
+    if (!input || input.disabled) {
+        return;
+    }
+
+    input.focus({ preventScroll: true });
+    if (typeof input.setSelectionRange === 'function') {
+        const len = String(newMessage.value || '').length;
+        try {
+            input.setSelectionRange(len, len);
+        } catch {
+            // Ignore browsers/input modes that block selection APIs.
+        }
+    }
+}
 
 function scheduleSupportRealtimeRetry() {
     if (realtimeSubscriptionRetryTimer) {
@@ -237,23 +262,6 @@ const isConversationClosed = computed(() => ['resolved', 'closed'].includes(conv
 const showConversationHeaderMeta = computed(() => {
     return viewState.value === 'chat' && Boolean(activeConversation.value?.id);
 });
-const headerPillLabel = computed(() => {
-    if (showConversationHeaderMeta.value && isConversationClosed.value) {
-        return 'Resolved';
-    }
-
-    return availability.value.available ? 'Live' : 'Offline';
-});
-
-const headerPillClass = computed(() => {
-    if (showConversationHeaderMeta.value && isConversationClosed.value) {
-        return 'bg-slate-500/10 border-slate-500/20 text-slate-400';
-    }
-
-    return availability.value.available
-        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-        : 'bg-amber-500/10 border-amber-500/20 text-amber-400';
-});
 
 const activeAssigneeName = computed(() => {
     const value = activeConversation.value?.assignee?.name;
@@ -282,28 +290,6 @@ const talkingToLabel = computed(() => {
     }
 
     return 'Talking to: Support Bot';
-});
-
-const conversationShortId = computed(() => {
-    const id = String(activeConversation.value?.id || '').trim();
-    if (id === '') {
-        return '';
-    }
-
-    return `#${id.slice(-6)}`;
-});
-
-const conversationSourceHost = computed(() => {
-    const sourceUrl = String(activeConversation.value?.source_url || '').trim();
-    if (sourceUrl === '') {
-        return '';
-    }
-
-    try {
-        return new URL(sourceUrl).host || '';
-    } catch {
-        return sourceUrl.replace(/^https?:\/\//i, '').split('/')[0] || '';
-    }
 });
 
 const starterHint = computed(() => {
@@ -543,6 +529,14 @@ function messageContentForDisplay(message) {
     return content.replace(firstUrl, '').trim();
 }
 
+function messageContentHtml(message) {
+    return renderSupportRichText(messageContentForDisplay(message));
+}
+
+function pendingMessageContentHtml(pending) {
+    return renderSupportRichText(String(pending?.body || ''));
+}
+
 function extractRetryAfterSeconds(error, fallbackSeconds = 30) {
     const fromMeta = Number(error?.response?.data?.meta?.retry_after);
     if (Number.isFinite(fromMeta) && fromMeta > 0) {
@@ -757,6 +751,15 @@ async function jumpToFirstUnread() {
         behavior: 'smooth',
         block: 'center',
     });
+}
+
+async function handleJumpToLatestClick() {
+    if (unreadMessageCount.value > 0) {
+        await jumpToFirstUnread();
+        return;
+    }
+
+    jumpToLatest();
 }
 
 function queuePendingMessage(body) {
@@ -1635,6 +1638,7 @@ async function startNewChat() {
     newMessage.value = '';
     viewState.value = 'chat';
     await scrollToBottom(false);
+    await focusComposerInput();
 }
 
 async function selectConversation(item) {
@@ -1655,6 +1659,7 @@ async function selectConversation(item) {
     await loadConversationSurvey(conversation.id, token);
     viewState.value = 'chat';
     await scrollToBottom(false);
+    await focusComposerInput();
 }
 
 function buildOpenPayload(initialMessage, security = {}) {
@@ -1722,6 +1727,7 @@ async function openConversationWithMessage(initialMessage, options = {}) {
         await loadConversationHistory();
         viewState.value = 'chat';
         await scrollToBottom(false);
+        await focusComposerInput();
         supportLogger.info('conversation.open.success', 'Support conversation started successfully.', {
             conversation_id: conversation.id,
             status: conversation.status,
@@ -1821,6 +1827,7 @@ async function resumeGuestConversation() {
         if (chatStore.isOpen) {
             viewState.value = 'chat';
             await scrollToBottom(false);
+            await focusComposerInput();
         }
         supportLogger.info('conversation.resume.success', 'Resumed guest support conversation.', {
             conversation_id: conversation.id,
@@ -1867,6 +1874,7 @@ async function sendMessage() {
         const started = await openConversationWithMessage(body);
         if (started) {
             newMessage.value = '';
+            await focusComposerInput();
         }
         return;
     }
@@ -1887,6 +1895,7 @@ async function sendMessage() {
 
         newMessage.value = '';
         clearSelectedFiles();
+        await focusComposerInput();
 
         if (shouldStickToBottom) {
             await scrollToBottom(false);
@@ -1898,6 +1907,7 @@ async function sendMessage() {
         toast.error('Error', 'Unable to queue message.');
     } finally {
         isSending.value = false;
+        await focusComposerInput();
     }
 }
 
@@ -2076,52 +2086,58 @@ onBeforeUnmount(() => {
         >
             <div 
                 v-if="isOpen" 
-                class="absolute bottom-0 right-0 w-[360px] h-[580px] max-h-[calc(100vh-120px)] bg-[var(--surface-primary)] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-[var(--border-default)] flex-shrink-0"
+                class="absolute bottom-0 right-0 w-[min(320px,calc(100vw-24px))] h-[520px] max-h-[calc(100vh-96px)] bg-[var(--surface-primary)] rounded-xl shadow-2xl flex flex-col overflow-hidden border border-[var(--border-default)] flex-shrink-0"
             >
                 <!-- Support Desk Header -->
-                <div class="bg-gradient-to-r from-[#0f172a] via-[#111827] to-[#0b1220] text-white px-4 py-3.5 shrink-0 relative border-b border-white/10 shadow-lg">
-                    <div class="flex items-start justify-between gap-3">
-                        <div class="flex items-start gap-2.5 min-w-0">
-                            <button v-if="viewState !== 'intro'" @click="goBack" class="mt-0.5 p-1 hover:bg-white/10 rounded-full transition-all duration-200">
-                            <ChevronLeft class="w-5 h-5 text-white/70" />
-                        </button>
-                            <div class="flex flex-col min-w-0">
-                                <h2 class="font-semibold text-base tracking-tight flex items-center gap-2.5 !text-white">
-                                    Support
-                                    <span class="flex items-center gap-1.5 px-2 py-0.5 rounded-full border" :class="headerPillClass">
-                                        <span class="w-1.5 h-1.5 rounded-full animate-pulse" :class="isConversationClosed ? 'bg-slate-400' : (availability.available ? 'bg-emerald-400' : 'bg-amber-400')"></span>
-                                        <span class="text-[9px] uppercase font-bold tracking-widest">{{ headerPillLabel }}</span>
-                                    </span>
-                                </h2>
-                                <p v-if="showConversationHeaderMeta" class="text-[11px] text-white/70 mt-0.5 truncate">{{ talkingToLabel }}</p>
-                                <div v-if="showConversationHeaderMeta" class="mt-1 flex items-center gap-1.5 flex-wrap">
-                                    <span
-                                        v-if="conversationShortId"
-                                        class="rounded-md border border-white/15 bg-white/5 px-1.5 py-0.5 text-[10px] text-white/70"
-                                    >
-                                        {{ conversationShortId }}
-                                    </span>
-                                    <span
-                                        v-if="conversationSourceHost"
-                                        class="rounded-md border border-white/15 bg-white/5 px-1.5 py-0.5 text-[10px] text-white/65 max-w-[180px] truncate"
-                                    >
-                                        Source: {{ conversationSourceHost }}
-                                    </span>
-                                </div>
+                <div class="shrink-0 border-b border-[var(--border-default)] bg-[var(--surface-secondary)] px-2.5 py-2">
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="flex min-w-0 items-center gap-1.5">
+                            <button
+                                v-if="viewState !== 'intro'"
+                                @click="goBack"
+                                class="rounded-md p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-tertiary)] hover:text-[var(--text-primary)]"
+                            >
+                                <ChevronLeft class="h-3.5 w-3.5" />
+                            </button>
+                            <div class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-[var(--interactive-primary)]/25 bg-[var(--interactive-primary)]/12">
+                                <svg
+                                    class="h-3.5 w-3.5 text-[var(--interactive-primary)]"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                    stroke-width="2.5"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        d="M13 10V3L4 14h7v7l9-11h-7z"
+                                    />
+                                </svg>
+                            </div>
+                            <div
+                                v-if="showConversationHeaderMeta"
+                                class="min-w-0"
+                            >
+                                <p class="truncate text-[9.5px] leading-[1.2] text-[var(--text-secondary)]">
+                                    {{ talkingToLabel }}
+                                </p>
                             </div>
                         </div>
                         <div class="flex items-center gap-1">
                             <button
                                 v-if="viewState === 'chat' && activeConversation?.id && !isConversationClosed"
                                 type="button"
-                                class="rounded-full border border-white/15 bg-white/5 px-2 py-1 text-[10px] font-semibold text-white/85 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                                class="rounded-md border border-[var(--border-default)] bg-[var(--surface-primary)] px-2 py-1 text-[10px] font-semibold text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-tertiary)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
                                 :disabled="isEndingConversation"
                                 @click="endConversation"
                             >
                                 {{ isEndingConversation ? 'Ending...' : 'End' }}
                             </button>
-                            <button @click="toggleChat" class="text-white/40 hover:text-white hover:bg-white/5 rounded-full p-2 transition-all">
-                                <Minus class="w-4 h-4" />
+                            <button
+                                @click="toggleChat"
+                                class="rounded-md p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-tertiary)] hover:text-[var(--text-primary)]"
+                            >
+                                <Minus class="h-3.5 w-3.5" />
                             </button>
                         </div>
                     </div>
@@ -2131,20 +2147,20 @@ onBeforeUnmount(() => {
                 <div class="flex-1 overflow-hidden flex flex-col bg-[var(--surface-primary)] relative">
                     
                     <!-- Intro View -->
-                    <div v-if="viewState === 'intro'" class="flex-1 flex flex-col p-6 items-center justify-center text-center space-y-6 bg-[var(--surface-primary)]">
-                        <div class="w-20 h-20 bg-blue-50 dark:bg-blue-900/20 rounded-full flex items-center justify-center mb-2">
-                             <MessageSquare class="w-10 h-10 text-[var(--interactive-primary)]" />
+                    <div v-if="viewState === 'intro'" class="flex-1 flex flex-col p-4 items-center justify-center text-center space-y-4 bg-[var(--surface-primary)]">
+                        <div class="w-16 h-16 bg-blue-50 dark:bg-blue-900/20 rounded-full flex items-center justify-center mb-1">
+                             <MessageSquare class="w-8 h-8 text-[var(--interactive-primary)]" />
                         </div>
                         <div>
-                            <h2 class="text-xl font-bold text-[var(--text-primary)]">Welcome!</h2>
-                            <p class="text-[var(--text-secondary)] text-sm mt-2 px-4">{{ availability.message }}</p>
+                            <h2 class="text-lg font-bold text-[var(--text-primary)]">Welcome!</h2>
+                            <p class="text-[var(--text-secondary)] text-xs mt-1.5 px-2">{{ availability.message }}</p>
                         </div>
                         
-                        <div class="w-full space-y-3 pt-4">
-                            <Button @click="goToForm" class="w-full h-12 rounded-xl text-base font-semibold shadow-md">
+                        <div class="w-full space-y-2.5 pt-2">
+                            <Button @click="goToForm" class="w-full h-10 rounded-lg text-sm font-semibold shadow-md">
                                 Start new conversation
                             </Button>
-                            <Button v-if="isAuthenticated" variant="outline" @click="goToHistory" class="w-full h-12 rounded-xl text-base font-semibold border-[var(--border-default)]">
+                            <Button v-if="isAuthenticated" variant="outline" @click="goToHistory" class="w-full h-10 rounded-lg text-sm font-semibold border-[var(--border-default)]">
                                 <History class="w-4 h-4 mr-2" />
                                 View previous chats
                             </Button>
@@ -2152,24 +2168,24 @@ onBeforeUnmount(() => {
                     </div>
 
                     <!-- Lead Form View (For Guests) -->
-                    <div v-else-if="viewState === 'form'" class="flex-1 flex flex-col p-6 space-y-6">
+                    <div v-else-if="viewState === 'form'" class="flex-1 flex flex-col p-4 space-y-4">
                         <div class="space-y-2">
-                            <h3 class="text-lg font-bold text-[var(--text-primary)]">Give us a few details</h3>
-                            <p class="text-sm text-[var(--text-secondary)]">We'll use this to get back to you if we're offline.</p>
+                            <h3 class="text-base font-bold text-[var(--text-primary)]">Give us a few details</h3>
+                            <p class="text-xs text-[var(--text-secondary)]">We'll use this to get back to you if we're offline.</p>
                         </div>
                         
-                        <div class="space-y-4">
-                            <div class="space-y-2">
+                        <div class="space-y-3">
+                            <div class="space-y-1.5">
                                 <label class="text-xs font-bold text-[var(--text-muted)] uppercase ml-1">Your Name</label>
-                                <div class="relative flex items-center bg-[var(--surface-secondary)] rounded-xl border border-[var(--border-default)] focus-within:border-[var(--interactive-primary)] transition-all px-4 py-3">
-                                    <User class="w-4 h-4 text-[var(--text-muted)] mr-3" />
+                                <div class="relative flex items-center bg-[var(--surface-secondary)] rounded-lg border border-[var(--border-default)] focus-within:border-[var(--interactive-primary)] transition-all px-3 py-2.5">
+                                    <User class="w-4 h-4 text-[var(--text-muted)] mr-2.5" />
                                     <input v-model="leadForm.name" type="text" placeholder="John Doe" class="bg-transparent border-none text-sm w-full focus:outline-none" />
                                 </div>
                             </div>
-                            <div class="space-y-2">
+                            <div class="space-y-1.5">
                                 <label class="text-xs font-bold text-[var(--text-muted)] uppercase ml-1">Email Address</label>
-                                <div class="relative flex items-center bg-[var(--surface-secondary)] rounded-xl border border-[var(--border-default)] focus-within:border-[var(--interactive-primary)] transition-all px-4 py-3">
-                                    <Mail class="w-4 h-4 text-[var(--text-muted)] mr-3" />
+                                <div class="relative flex items-center bg-[var(--surface-secondary)] rounded-lg border border-[var(--border-default)] focus-within:border-[var(--interactive-primary)] transition-all px-3 py-2.5">
+                                    <Mail class="w-4 h-4 text-[var(--text-muted)] mr-2.5" />
                                     <input v-model="leadForm.email" type="email" placeholder="john@example.com" class="bg-transparent border-none text-sm w-full focus:outline-none" />
                                 </div>
                             </div>
@@ -2184,7 +2200,7 @@ onBeforeUnmount(() => {
                             </div>
                         </div>
                         
-                        <Button @click="startChatFromForm" :disabled="!leadForm.name || !leadForm.email" class="w-full h-12 rounded-xl text-base font-semibold shadow-md mt-auto">
+                        <Button @click="startChatFromForm" :disabled="!leadForm.name || !leadForm.email" class="w-full h-10 rounded-lg text-sm font-semibold shadow-md mt-auto">
                             Start Chatting
                         </Button>
                         <p class="text-[10px] text-[var(--text-muted)] leading-relaxed">
@@ -2197,8 +2213,8 @@ onBeforeUnmount(() => {
                     </div>
 
                     <!-- History View (For Auth Users) -->
-                    <div v-else-if="viewState === 'history'" class="flex-1 flex flex-col p-4 bg-[var(--surface-secondary)]/30">
-                        <div class="flex justify-between items-center mb-4 px-2">
+                    <div v-else-if="viewState === 'history'" class="flex-1 flex flex-col p-3 bg-[var(--surface-secondary)]/30">
+                        <div class="flex justify-between items-center mb-3 px-1.5">
                             <h3 class="font-bold text-[var(--text-primary)]">Previous Chats</h3>
                             <Button variant="ghost" size="sm" @click="startNewChat" class="h-8 text-[var(--interactive-primary)] hover:text-[var(--interactive-hover)]">
                                 <PlusCircle class="w-4 h-4 mr-1.5" />
@@ -2216,7 +2232,7 @@ onBeforeUnmount(() => {
                                 v-for="item in historyItems" 
                                 :key="item.id"
                                 @click="selectConversation(item)"
-                                class="p-4 bg-[var(--surface-primary)] rounded-xl border border-[var(--border-default)] hover:border-[var(--interactive-primary)] cursor-pointer transition-all shadow-sm"
+                                class="p-3 bg-[var(--surface-primary)] rounded-lg border border-[var(--border-default)] hover:border-[var(--interactive-primary)] cursor-pointer transition-all shadow-sm"
                             >
                                 <div class="flex justify-between items-start mb-1">
                                     <span class="text-xs font-bold text-[var(--text-primary)]">Support #{{ item.id?.slice(-6) }}</span>
@@ -2231,7 +2247,7 @@ onBeforeUnmount(() => {
                         </div>
 
                         <div v-if="!isLoadingHistory && historyItems.length === 0" class="flex-1 flex flex-col items-center justify-center text-center opacity-50 space-y-3">
-                             <History class="w-12 h-12 text-[var(--text-muted)]" />
+                             <History class="w-10 h-10 text-[var(--text-muted)]" />
                              <p class="text-sm font-medium">No previous conversations</p>
                         </div>
                     </div>
@@ -2241,7 +2257,7 @@ onBeforeUnmount(() => {
                         <!-- Messages -->
                         <div 
                             ref="messagesContainer"
-                            class="flex-1 overflow-y-auto p-4 space-y-4 bg-[var(--surface-primary)] relative"
+                            class="flex-1 overflow-y-auto p-4 pt-5 space-y-4 bg-[var(--surface-primary)] relative"
                             @scroll="onMessagesScroll"
                         >
                             <!-- Background Pattern -->
@@ -2274,7 +2290,7 @@ onBeforeUnmount(() => {
                                 :key="message.id"
                                 :id="message.type === 'divider' ? undefined : `support-widget-message-${message.id}`"
                                 class="flex flex-col relative z-10"
-                                :class="message.type === 'visitor' ? 'items-end' : 'items-start'"
+                                :class="message.type === 'visitor' ? 'items-end' : (message.type === 'system' ? 'items-center' : 'items-start')"
                             >
                                 <div v-if="message.type === 'divider'" class="w-full flex items-center gap-2.5 my-2">
                                     <div class="h-px flex-1 bg-[var(--border-default)]/70"></div>
@@ -2283,6 +2299,17 @@ onBeforeUnmount(() => {
                                         <span class="ml-1 normal-case text-[var(--text-muted)]">({{ message.unreadCount }})</span>
                                     </span>
                                     <div class="h-px flex-1 bg-[var(--border-default)]/70"></div>
+                                </div>
+
+                                <div v-else-if="message.type === 'system'" class="flex max-w-[92%] flex-col items-center">
+                                    <div class="rounded-lg border border-[var(--border-default)] bg-[var(--surface-secondary)]/80 px-3 py-2 text-xs leading-5 text-[var(--text-secondary)] shadow-sm">
+                                        <div
+                                            v-if="messageContentForDisplay(message)"
+                                            class="support-rich-content break-words text-center"
+                                            v-html="messageContentHtml(message)"
+                                        ></div>
+                                    </div>
+                                    <span class="mt-1 text-[10px] text-[var(--text-muted)]">{{ message.time }}</span>
                                 </div>
 
                                 <div v-else-if="message.type === 'agent'" class="flex items-end gap-2 max-w-[85%]">
@@ -2298,7 +2325,11 @@ onBeforeUnmount(() => {
                                     <div class="flex flex-col">
                                         <span class="text-[10px] text-[var(--text-muted)] ml-1 mb-0.5">{{ message.agentName }}</span>
                                         <div class="bg-[var(--surface-secondary)] text-[var(--text-primary)] px-3.5 py-2.5 rounded-2xl rounded-bl-sm text-sm border border-[var(--border-default)] shadow-sm">
-                                            <p v-if="messageContentForDisplay(message)" class="whitespace-pre-wrap break-words">{{ messageContentForDisplay(message) }}</p>
+                                            <div
+                                                v-if="messageContentForDisplay(message)"
+                                                class="support-rich-content break-words"
+                                                v-html="messageContentHtml(message)"
+                                            ></div>
                                             <div v-if="message.firstUrl" class="mt-2">
                                                 <LinkPreview
                                                     :url="message.firstUrl"
@@ -2318,9 +2349,13 @@ onBeforeUnmount(() => {
                                     </div>
                                 </div>
 
-                                <div v-else class="flex flex-col items-end max-w-[85%]">
+                                <div v-else class="flex flex-col items-end max-w-[88%]">
                                     <div class="bg-[var(--interactive-primary)] text-white px-3.5 py-2.5 rounded-2xl rounded-br-sm text-sm shadow-sm border border-black/5 dark:border-white/5">
-                                        <p v-if="messageContentForDisplay(message)" class="whitespace-pre-wrap break-words">{{ messageContentForDisplay(message) }}</p>
+                                        <div
+                                            v-if="messageContentForDisplay(message)"
+                                            class="support-rich-content break-words"
+                                            v-html="messageContentHtml(message)"
+                                        ></div>
                                         <div v-if="message.firstUrl" class="mt-2">
                                             <LinkPreview
                                                 :url="message.firstUrl"
@@ -2346,7 +2381,11 @@ onBeforeUnmount(() => {
                                 class="flex flex-col items-end relative z-10"
                             >
                                 <div class="bg-[var(--interactive-primary)] text-white px-3.5 py-2.5 rounded-2xl rounded-br-sm text-sm shadow-sm border border-black/5 dark:border-white/5 max-w-[85%]">
-                                    {{ pending.body }}
+                                    <div
+                                        v-if="pending.body"
+                                        class="support-rich-content break-words"
+                                        v-html="pendingMessageContentHtml(pending)"
+                                    ></div>
                                     <p v-if="pending.fileNames?.length" class="mt-1 text-[11px] text-white/90">
                                         {{ pending.fileNames.length }} attachment<span v-if="pending.fileNames.length > 1">s</span>
                                     </p>
@@ -2370,36 +2409,26 @@ onBeforeUnmount(() => {
                                 </div>
                             </div>
 
-                            <div v-if="showJumpToLatest" class="sticky bottom-2 z-20 flex justify-center gap-2 pointer-events-none">
-                                <Button
-                                    v-if="unreadMessageCount > 0"
-                                    size="sm"
-                                    variant="outline"
-                                    class="pointer-events-auto bg-[var(--surface-primary)]/95 backdrop-blur border-[var(--border-default)] shadow"
-                                    @click="jumpToFirstUnread"
+                            <div v-if="showJumpToLatest" class="sticky bottom-2 z-20 flex justify-center pointer-events-none">
+                                <button
+                                    type="button"
+                                    class="pointer-events-auto relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-900 bg-slate-900 text-white shadow-sm transition-colors hover:bg-slate-800 dark:border-slate-200 dark:bg-slate-200 dark:text-slate-900 dark:hover:bg-slate-300"
+                                    :title="unreadMessageCount > 0 ? 'Jump to first unread message' : 'Jump to latest message'"
+                                    @click="handleJumpToLatestClick"
                                 >
-                                    First unread
-                                </Button>
-                                <Button
-                                    size="sm"
-                                    variant="outline"
-                                    class="pointer-events-auto bg-[var(--surface-primary)]/95 backdrop-blur border-[var(--border-default)] shadow"
-                                    @click="jumpToLatest"
-                                >
-                                    <ChevronsDown class="w-3.5 h-3.5 mr-1.5" />
-                                    Jump to latest
+                                    <ChevronsDown class="h-4 w-4" />
                                     <span
                                         v-if="unreadMessageCount > 0"
-                                        class="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--interactive-primary)] px-1.5 text-[10px] font-semibold text-white"
+                                        class="absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--interactive-primary)] px-1 text-[9px] font-semibold leading-none text-white"
                                     >
                                         {{ unreadMessageCount > 99 ? '99+' : unreadMessageCount }}
                                     </span>
-                                </Button>
+                                </button>
                             </div>
                         </div>
 
                         <!-- Input Area -->
-                        <div class="p-3 bg-[var(--surface-primary)] border-t border-[var(--border-default)] shrink-0">
+                        <div class="p-2.5 bg-[var(--surface-primary)] border-t border-[var(--border-default)] shrink-0">
                             <div v-if="agentTypingIndicator" class="px-2 pb-2">
                                 <div class="support-typing-pill">
                                     <div class="support-typing-dots">
@@ -2413,7 +2442,7 @@ onBeforeUnmount(() => {
 
                             <div
                                 v-if="showSurveyPanel"
-                                class="mb-3 rounded-xl border border-[var(--border-default)] bg-[var(--surface-secondary)]/60 p-3"
+                                class="mb-3 rounded-xl border border-slate-300/85 bg-white/92 p-3 shadow-[0_1px_0_rgba(15,23,42,0.05)] ring-1 ring-slate-200/70 dark:border-[var(--border-default)] dark:bg-[var(--surface-secondary)]/60 dark:shadow-none dark:ring-transparent"
                             >
                                 <div v-if="isLoadingSurvey" class="flex items-center text-xs text-[var(--text-secondary)]">
                                     <Loader2 class="mr-2 h-3.5 w-3.5 animate-spin" />
@@ -2523,7 +2552,7 @@ onBeforeUnmount(() => {
                                 </template>
                             </div>
 
-                            <div class="relative rounded-2xl border border-[var(--border-default)] bg-[var(--surface-secondary)]/85 shadow-sm">
+                            <div class="relative rounded-xl border border-slate-300/90 bg-white/95 shadow-[0_2px_12px_rgba(15,23,42,0.08)] ring-1 ring-slate-200/70 dark:border-[var(--border-default)] dark:bg-[var(--surface-secondary)]/85 dark:shadow-sm dark:ring-transparent">
                                 <input
                                     ref="fileInput"
                                     type="file"
@@ -2531,19 +2560,20 @@ onBeforeUnmount(() => {
                                     class="hidden"
                                     @change="handleFileSelection"
                                 />
-                                <div class="px-4 pt-3 pb-2">
+                                <div class="px-3.5 pt-2 pb-1.5">
                                     <input 
+                                        ref="composerInputRef"
                                         v-model="newMessage"
                                         type="text" 
-                                        :placeholder="isConversationClosed ? 'This conversation is resolved. Start a new one to continue.' : 'Write a message...'"
-                                        :disabled="isConversationClosed || isSending || isStartingConversation || isSendCoolingDown"
-                                        class="w-full bg-transparent border-none text-sm focus:outline-none focus:ring-0 focus:ring-offset-0 focus-visible:ring-0 focus-visible:outline-none text-[var(--text-primary)] placeholder-[var(--text-muted)] h-8"
+                                        :placeholder="isConversationClosed ? 'Conversation resolved. Start a new chat.' : 'Write a message...'"
+                                        :disabled="isConversationClosed || isSendCoolingDown"
+                                        class="w-full bg-transparent border-none text-sm leading-5 focus:outline-none focus:ring-0 focus:ring-offset-0 focus-visible:ring-0 focus-visible:outline-none text-[var(--text-primary)] placeholder:text-slate-400 dark:placeholder:text-[var(--text-muted)] h-8"
                                         @keydown.enter="sendMessage"
                                         @input="handleComposerInput"
                                         @blur="emitTyping(false)"
                                     />
                                 </div>
-                                <div class="flex items-center justify-between border-t border-[var(--border-default)]/70 px-2.5 py-1.5">
+                                <div class="flex items-center justify-between border-t border-slate-200/90 px-2 py-1.5 dark:border-[var(--border-default)]/70">
                                     <div class="flex items-center gap-1">
                                     <button
                                         class="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors rounded-md hover:bg-[var(--surface-tertiary)]"
@@ -2628,16 +2658,14 @@ onBeforeUnmount(() => {
         <button 
             v-if="!hideLauncher"
             @click="toggleChat"
-            class="flex items-center justify-center w-14 h-14 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-[var(--interactive-primary)] rounded-full shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300 relative group border border-slate-200/50 dark:border-slate-700/50"
+            class="flex items-center justify-center w-14 h-14 rounded-2xl bg-[var(--interactive-primary)] text-white shadow-[0_12px_30px_rgba(2,132,199,0.35)] hover:bg-[var(--interactive-primary-hover)] hover:shadow-[0_16px_36px_rgba(2,132,199,0.45)] hover:-translate-y-1 transition-all duration-300 relative group border border-black/10 dark:border-white/20 overflow-hidden"
             :class="isOpen ? 'scale-0 opacity-0' : 'scale-100 opacity-100'"
         >
-            <MessageSquare class="w-6 h-6 transition-transform duration-300 group-hover:scale-110" />
-            <!-- Notification Badge -->
-            <span class="absolute top-0 right-0 w-3.5 h-3.5 bg-red-500 border-2 border-white dark:border-slate-800 rounded-full shadow-sm"></span>
+            <Headset class="w-6 h-6 transition-transform duration-300 group-hover:scale-110 relative z-10" />
             
             <!-- Tooltip -->
             <div class="absolute right-full mr-4 bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-sm font-medium px-4 py-2 rounded-xl opacity-0 pointer-events-none group-hover:opacity-100 transition-all duration-300 translate-x-4 group-hover:translate-x-0 whitespace-nowrap shadow-xl border border-white/10 dark:border-slate-200">
-                Need help? Chat with us
+                Live support
                 <div class="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 rotate-45 w-2 h-2 bg-slate-900 dark:bg-white"></div>
             </div>
         </button>
@@ -2707,6 +2735,48 @@ input:focus, textarea:focus {
 
 .support-typing-delay-2 {
     animation-delay: -0.15s;
+}
+
+:deep(.support-rich-content) {
+    line-height: 1.45;
+    white-space: normal;
+}
+
+:deep(.support-rich-content p) {
+    margin: 0.3rem 0;
+    white-space: pre-wrap;
+}
+
+:deep(.support-rich-content p:first-child) {
+    margin-top: 0;
+}
+
+:deep(.support-rich-content p:last-child) {
+    margin-bottom: 0;
+}
+
+:deep(.support-rich-content ul),
+:deep(.support-rich-content ol) {
+    margin: 0.35rem 0;
+    padding-left: 1.1rem;
+}
+
+:deep(.support-rich-content li) {
+    margin: 0.15rem 0;
+}
+
+:deep(.support-rich-content a) {
+    color: inherit !important;
+    text-decoration: underline;
+    text-decoration-color: currentColor;
+    text-underline-offset: 2px;
+    word-break: break-all;
+}
+
+:deep(.support-rich-content a:visited),
+:deep(.support-rich-content a:hover),
+:deep(.support-rich-content a:active) {
+    color: inherit !important;
 }
 
 @keyframes supportTypingBounce {

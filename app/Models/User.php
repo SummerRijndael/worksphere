@@ -685,6 +685,28 @@ class User extends Authenticatable implements HasMedia, MustVerifyEmail, WebAuth
     }
 
     /**
+     * Get support skills where the user is enrolled.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsToMany<SupportSkill>
+     */
+    public function supportSkills(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(SupportSkill::class, 'support_skill_user', 'user_id', 'support_skill_id')
+            ->withPivot(['membership_role', 'is_primary', 'is_active', 'capacity', 'settings'])
+            ->withTimestamps();
+    }
+
+    /**
+     * Get support skill memberships for role/capacity tracking.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasMany<SupportSkillMembership>
+     */
+    public function supportSkillMemberships(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(SupportSkillMembership::class, 'user_id');
+    }
+
+    /**
      * Get the projects the user belongs to.
      */
     public function projects(): \Illuminate\Database\Eloquent\Relations\BelongsToMany

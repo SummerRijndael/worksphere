@@ -183,7 +183,7 @@
 
     /* Sidebar */
     --sidebar-width: 260px;
-    --sidebar-width-collapsed: 72px;
+    --sidebar-width-collapsed: 64px;
 
     /* Content */
     --content-max-width: 1280px;

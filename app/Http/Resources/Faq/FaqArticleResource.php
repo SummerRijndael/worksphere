@@ -16,6 +16,7 @@ class FaqArticleResource extends JsonResource
             'content' => $this->content, // Assuming rich text or markdown
             'tags' => $this->tags,
             'is_published' => (bool) $this->is_published,
+            'is_internal' => (bool) $this->is_internal,
             'views' => (int) $this->views,
             'helpful_count' => (int) $this->helpful_count,
             'unhelpful_count' => (int) $this->unhelpful_count,

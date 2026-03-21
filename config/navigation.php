@@ -94,6 +94,7 @@ return [
                     'id' => 'support-overview',
                     'label' => 'Overview',
                     'route' => '/support',
+                    'permission' => ['support.chats.view', 'support.chats.reply', 'support.chats.assign', 'support.chats.resolve'],
                 ],
                 [
                     'id' => 'support-ticket-dashboard',
@@ -103,8 +104,14 @@ return [
                 ],
                 [
                     'id' => 'support-inbox',
-                    'label' => 'Agent Inbox',
+                    'label' => 'Lead Inbox',
                     'route' => '/support/inbox',
+                    'permission' => ['support.chats.view', 'support.chats.reply', 'tickets.manage'],
+                ],
+                [
+                    'id' => 'support-workbench',
+                    'label' => 'Agent Workbench',
+                    'route' => '/support/workbench',
                     'permission' => ['support.chats.view', 'support.chats.reply', 'tickets.manage'],
                 ],
                 [

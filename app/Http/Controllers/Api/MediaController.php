@@ -14,6 +14,20 @@ class MediaController extends Controller
         protected \App\Services\PermissionService $permissionService
     ) {}
 
+    protected function canAccessInternalFaqMedia(\App\Models\User $user): bool
+    {
+        try {
+            if ($user->hasPermissionTo('faq.manage') || $user->hasPermissionTo('support.chats.view') || $user->hasPermissionTo('support.chats.reply')) {
+                return true;
+            }
+        } catch (\Spatie\Permission\Exceptions\PermissionDoesNotExist) {
+            // Ignore and fallback to role checks below.
+        }
+
+        return $user->hasRole('administrator')
+            || $user->hasAnyRole((array) config('support_chat.agent_roles', ['administrator', 'it_support', 'support']));
+    }
+
     /**
      * Download a private media file.
      */
@@ -101,8 +115,10 @@ class MediaController extends Controller
      */
     protected function authorizeMediaAccess(Media $media): void
     {
+        $hasValidSignature = request()->hasValidSignature();
+
         // 0. Check for Valid Signed Route
-        if (request()->hasValidSignature()) {
+        if ($hasValidSignature && $media->model_type !== 'App\Models\FaqArticle') {
             return;
         }
 
@@ -110,8 +126,12 @@ class MediaController extends Controller
         if ($media->model_type === 'App\Models\FaqArticle') {
             $article = \App\Models\FaqArticle::find($media->model_id);
             if ($article) {
-                // If published, ANYONE (even guests) can view
-                if ($article->is_published) {
+                $isPubliclyAccessible = $article->is_published
+                    && (bool) optional($article->category)->is_public
+                    && ! $article->is_internal;
+
+                // Published, non-internal FAQ assets are publicly accessible.
+                if ($isPubliclyAccessible) {
                     return;
                 }
             }
@@ -181,8 +201,12 @@ class MediaController extends Controller
         // 7. Draft FAQ Articles (Auth required)
         if ($media->model_type === 'App\Models\FaqArticle') {
             $article = \App\Models\FaqArticle::find($media->model_id);
-            if ($article && ! $article->is_published) {
-                if ($this->permissionService->hasPermission($user, 'faq.manage')) {
+            if ($article) {
+                if ($article->is_internal && $article->is_published && optional($article->category)->is_public && $this->canAccessInternalFaqMedia($user)) {
+                    return;
+                }
+
+                if (! $article->is_published && $this->permissionService->hasPermission($user, 'faq.manage')) {
                     return;
                 }
             }

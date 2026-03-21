@@ -12,6 +12,7 @@ import AuthLayout from "@/layouts/AuthLayout.vue";
 import AppLayout from "@/layouts/AppLayout.vue";
 import LegalLayout from "@/layouts/LegalLayout.vue";
 import { appConfig } from "@/config/app";
+import { preferredSupportWorkspaceRoute } from "@/utils/supportWorkspace";
 
 // Views
 import LoginView from "@/views/auth/LoginView.vue";
@@ -34,7 +35,7 @@ declare module "vue-router" {
         title?: string;
         breadcrumb?: string;
         transition?: string;
-        permission?: string;
+        permission?: string | string[];
         layout?: any;
         layoutFixed?: boolean;
         layoutFullWidth?: boolean;
@@ -540,7 +541,7 @@ const routes: RouteRecordRaw[] = [
                     title: "Support",
                     breadcrumb: "Support",
                     transition: "slide-fade",
-                    permission: ["tickets.view_own", "tickets.view", "tickets.manage", "support.chats.view", "support.chats.reply"],
+                    permission: ["support.chats.view", "support.chats.reply", "support.chats.assign", "support.chats.resolve"],
                 },
             },
             {
@@ -613,6 +614,22 @@ const routes: RouteRecordRaw[] = [
                     transition: "slide-fade",
                     layoutFullWidth: true, // Remove padding for the edge-to-edge inbox view
                     layoutFixed: true, // Handle height within the layout
+                    permission: ["support.chats.view", "support.chats.reply", "tickets.manage"],
+                },
+            },
+            {
+                path: "support/workbench",
+                name: "support.workbench",
+                component: () =>
+                    import("@/views/support/SupportAgentWorkbenchView.vue"),
+                meta: {
+                    title: "Agent Workbench",
+                    breadcrumb: "Workbench",
+                    breadcrumbParent: { name: "support", label: "Support" },
+                    transition: "slide-fade",
+                    layout: "fullscreen",
+                    layoutFullWidth: true,
+                    layoutFixed: true,
                     permission: ["support.chats.view", "support.chats.reply", "tickets.manage"],
                 },
             },
@@ -1501,6 +1518,26 @@ router.beforeEach(
         if (to.name === "enforce-2fa-setup" && !authStore.requires2FASetup) {
             next({ name: "dashboard" });
             return;
+        }
+
+        const targetRouteName = typeof to.name === "string" ? to.name : "";
+        if (
+            authStore.isAuthenticated &&
+            (targetRouteName === "support.inbox" ||
+                targetRouteName === "support.workbench")
+        ) {
+            const preferredWorkspaceRoute = preferredSupportWorkspaceRoute(
+                authStore.user,
+                authStore.hasPermission,
+            );
+
+            if (
+                targetRouteName === "support.inbox" &&
+                preferredWorkspaceRoute === "/support/workbench"
+            ) {
+                next({ path: "/support/workbench", query: to.query });
+                return;
+            }
         }
 
         // Permission Check

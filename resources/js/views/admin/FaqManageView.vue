@@ -101,10 +101,10 @@ const articleForm = ref({
     id: null,
     category_id: "",
     title: "",
-    title: "",
     content: "",
     tags: [],
     is_published: false,
+    is_internal: false,
 });
 const tagsInput = ref("");
 const addTag = () => {
@@ -120,6 +120,7 @@ const removeTag = (tag) => {
 const articleErrors = ref({});
 const articleCategoryFilter = ref("");
 const articleStatusFilter = ref(""); // 'published', 'draft', or ''
+const articleVisibilityFilter = ref(""); // 'internal', 'public', or ''
 const showArticleFilters = ref(false);
 const articleSearch = ref("");
 
@@ -183,6 +184,7 @@ const fetchArticles = debounce(async (page = 1) => {
             per_page: perPage.value,
             category_id: articleCategoryFilter.value,
             status: articleStatusFilter.value || undefined,
+            visibility: articleVisibilityFilter.value || undefined,
             search: articleSearch.value,
             sort_by: articleSort.value.field,
             sort_dir: articleSort.value.direction,
@@ -490,6 +492,7 @@ watch(perPage, () => {
 
 watch(articleCategoryFilter, () => fetchArticles(1));
 watch(articleStatusFilter, () => fetchArticles(1));
+watch(articleVisibilityFilter, () => fetchArticles(1));
 watch(articleSearch, () => fetchArticles(1));
 watch(
     categorySearch,
@@ -935,6 +938,17 @@ const stripHtml = (html) => {
                         class="w-full bg-[var(--surface-elevated)]"
                     />
                 </div>
+                <div class="w-full sm:w-48">
+                    <SelectFilter
+                        v-model="articleVisibilityFilter"
+                        :options="[
+                            { value: 'public', label: 'Public' },
+                            { value: 'internal', label: 'Internal' },
+                        ]"
+                        placeholder="All Visibility"
+                        class="w-full bg-[var(--surface-elevated)]"
+                    />
+                </div>
                 <!-- Date Range Filter -->
                 <div
                     class="flex items-center gap-2 bg-[var(--surface-elevated)] border border-[var(--border-default)] rounded-lg px-3 py-1.5"
@@ -968,12 +982,14 @@ const stripHtml = (html) => {
                     v-if="
                         articleCategoryFilter ||
                         articleStatusFilter ||
+                        articleVisibilityFilter ||
                         articleDateRange.from ||
                         articleDateRange.to
                     "
                     @click="
                         articleCategoryFilter = '';
                         articleStatusFilter = '';
+                        articleVisibilityFilter = '';
                         faqStore.clearDateRange('articles');
                     "
                     class="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] underline decoration-dotted underline-offset-4 ml-auto"
@@ -2175,23 +2191,36 @@ const stripHtml = (html) => {
                                             </div>
                                         </td>
                                         <td class="px-6 py-4">
-                                            <span
-                                                :class="
-                                                    article.is_published
-                                                        ? 'bg-green-500/10 text-green-700 dark:text-green-400 border-transparent'
-                                                        : 'bg-[var(--surface-tertiary)] text-[var(--text-secondary)] border-transparent'
-                                                "
-                                                class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full"
-                                            >
+                                            <div class="flex flex-wrap items-center gap-1.5">
                                                 <span
-                                                    class="w-1.5 h-1.5 rounded-full bg-current"
-                                                ></span>
-                                                {{
-                                                    article.is_published
-                                                        ? "Published"
-                                                        : "Draft"
-                                                }}
-                                            </span>
+                                                    :class="
+                                                        article.is_published
+                                                            ? 'bg-green-500/10 text-green-700 dark:text-green-400 border-transparent'
+                                                            : 'bg-[var(--surface-tertiary)] text-[var(--text-secondary)] border-transparent'
+                                                    "
+                                                    class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full"
+                                                >
+                                                    <span
+                                                        class="w-1.5 h-1.5 rounded-full bg-current"
+                                                    ></span>
+                                                    {{
+                                                        article.is_published
+                                                            ? "Published"
+                                                            : "Draft"
+                                                    }}
+                                                </span>
+                                                <span
+                                                    :class="
+                                                        article.is_internal
+                                                            ? 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-300'
+                                                            : 'bg-sky-500/10 text-sky-700 dark:text-sky-300'
+                                                    "
+                                                    class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full"
+                                                >
+                                                    <span class="w-1.5 h-1.5 rounded-full bg-current"></span>
+                                                    {{ article.is_internal ? "Internal" : "Public" }}
+                                                </span>
+                                            </div>
                                         </td>
                                         <td
                                             class="px-6 py-4 text-xs text-[var(--text-secondary)]"
@@ -2471,6 +2500,17 @@ const stripHtml = (html) => {
                                                 ? "Published"
                                                 : "Draft"
                                         }}
+                                    </span>
+                                    <span
+                                        :class="
+                                            article.is_internal
+                                                ? 'text-indigo-600 dark:text-indigo-300'
+                                                : 'text-sky-600 dark:text-sky-300'
+                                        "
+                                        class="flex items-center gap-1.5 font-medium"
+                                    >
+                                        <span class="w-1.5 h-1.5 rounded-full bg-current"></span>
+                                        {{ article.is_internal ? "Internal" : "Public" }}
                                     </span>
                                 </div>
                             </div>

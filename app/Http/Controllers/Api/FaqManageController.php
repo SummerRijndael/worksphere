@@ -115,6 +115,7 @@ class FaqManageController extends Controller
         $dateFrom = $request->input('date_from');
         $dateTo = $request->input('date_to');
         $status = $request->input('status'); // 'published', 'draft', or null
+        $visibility = $request->input('visibility'); // 'internal', 'public', or null
 
         $articles = $this->faqService->getArticles(
             $request->input('category_id'),
@@ -125,7 +126,8 @@ class FaqManageController extends Controller
             $sortDir,
             $dateFrom,
             $dateTo,
-            $status
+            $status,
+            $visibility
         );
 
         return \App\Http\Resources\Faq\FaqArticleResource::collection($articles);
@@ -197,6 +199,7 @@ class FaqManageController extends Controller
 
         return response()->json([
             'total_articles' => FaqArticle::count(),
+            'internal_articles' => FaqArticle::where('is_internal', true)->count(),
             'total_views' => FaqArticle::sum('views'),
             'total_votes' => FaqArticle::sum('helpful_count') + FaqArticle::sum('unhelpful_count'),
             'most_viewed' => FaqArticle::orderByDesc('views')->limit(5)->get(['title', 'views', 'public_id']),

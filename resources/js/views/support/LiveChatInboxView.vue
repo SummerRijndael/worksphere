@@ -7,6 +7,11 @@ import {
     Send,
     Smile,
     Image as ImageIcon,
+    Bold,
+    Underline,
+    List,
+    ListOrdered,
+    Link2,
     Clock,
     CheckCircle2,
     AlertCircle,
@@ -40,12 +45,60 @@ import { hasSupportRealtimeToken, setSupportRealtimeToken, startEcho } from '@/e
 import { createSupportLogger, summarizeError } from '@/utils/supportDebug';
 import { playSupportMessageSound } from '@/utils/supportSound';
 import { PROFESSIONAL_SUPPORT_EMOJIS } from '@/constants/supportEmojis';
+import { renderSupportRichText } from '@/utils/supportRichText';
 
 const toast = useToast();
 const authStore = useAuthStore();
 const supportLogger = createSupportLogger('Inbox');
 
-const activeTab = ref('mine'); // mine | unassigned | all
+const SUPPORT_INBOX_SCOPE_STORAGE_KEY = 'worksphere.support.inbox.scope';
+const SUPPORT_INBOX_LEFT_WIDTH_STORAGE_KEY = 'worksphere.support.inbox.left_sidebar_width';
+const SUPPORT_INBOX_RIGHT_WIDTH_STORAGE_KEY = 'worksphere.support.inbox.right_sidebar_width';
+const LEFT_SIDEBAR_MIN_WIDTH = 220;
+const LEFT_SIDEBAR_MAX_WIDTH = 420;
+const RIGHT_SIDEBAR_MIN_WIDTH = 220;
+const RIGHT_SIDEBAR_MAX_WIDTH = 420;
+const THREAD_MIN_WIDTH = 420;
+const DEFAULT_LEFT_SIDEBAR_WIDTH = 288;
+const DEFAULT_RIGHT_SIDEBAR_WIDTH = 288;
+const DEFAULT_UI_TIMER_SETTINGS = {
+    tick_ms: 1000,
+    last_response_warn_minutes: 5,
+    last_response_alert_minutes: 15,
+    last_response_include_bot: true,
+};
+
+function normalizeInboxScope(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (['mine', 'unassigned', 'all'].includes(normalized)) {
+        return normalized;
+    }
+
+    return 'all';
+}
+
+function readStoredInboxScope() {
+    if (typeof window === 'undefined') {
+        return 'all';
+    }
+
+    return normalizeInboxScope(window.localStorage.getItem(SUPPORT_INBOX_SCOPE_STORAGE_KEY));
+}
+
+function readStoredWidth(storageKey, fallback) {
+    if (typeof window === 'undefined') {
+        return fallback;
+    }
+
+    const raw = Number(window.localStorage.getItem(storageKey));
+    if (!Number.isFinite(raw) || raw <= 0) {
+        return fallback;
+    }
+
+    return Math.round(raw);
+}
+
+const activeTab = ref(readStoredInboxScope()); // mine | unassigned | all
 const searchQuery = ref('');
 const conversations = ref([]);
 const conversationPagination = ref({
@@ -62,6 +115,8 @@ const selectedAgentId = ref('');
 const detailsSidebarTab = ref('overview');
 const messagesContainer = ref(null);
 const composerFileInput = ref(null);
+const composerTextareaRef = ref(null);
+const supportLayoutRef = ref(null);
 const selectedComposerFiles = ref([]);
 const emojiPickerRef = ref(null);
 
@@ -78,15 +133,21 @@ const pendingOutgoingMessages = ref([]);
 const unsafeMessageIds = ref(new Set());
 const showEmojiPicker = ref(false);
 const sendCooldownSeconds = ref(0);
+const liveClockNow = ref(Date.now());
+const uiTimerSettings = ref({ ...DEFAULT_UI_TIMER_SETTINGS });
 
 const isLoadingList = ref(false);
 const isLoadingMoreConversations = ref(false);
+const isRefreshingListSilently = ref(false);
 const isLoadingConversation = ref(false);
 const isLoadingAgents = ref(false);
 const isSending = ref(false);
 const isAssigning = ref(false);
 const isResolving = ref(false);
 const isEnding = ref(false);
+const activeSidebarResize = ref(null);
+const leftSidebarWidth = ref(readStoredWidth(SUPPORT_INBOX_LEFT_WIDTH_STORAGE_KEY, DEFAULT_LEFT_SIDEBAR_WIDTH));
+const rightSidebarWidth = ref(readStoredWidth(SUPPORT_INBOX_RIGHT_WIDTH_STORAGE_KEY, DEFAULT_RIGHT_SIDEBAR_WIDTH));
 const MAX_ATTACHABLE_FILES = 10;
 
 let searchDebounceTimer = null;
@@ -100,6 +161,25 @@ let typingDebounceTimer = null;
 let lastTypingSentAt = 0;
 let supportRealtimeRetryAttempts = 0;
 let sendCooldownTimer = null;
+let liveCounterTicker = null;
+
+async function focusComposerTextarea() {
+    await nextTick();
+    const input = composerTextareaRef.value;
+    if (!input || input.disabled) {
+        return;
+    }
+
+    input.focus({ preventScroll: true });
+    if (typeof input.setSelectionRange === 'function') {
+        const len = String(newMessage.value || '').length;
+        try {
+            input.setSelectionRange(len, len);
+        } catch {
+            // Ignore selection errors for non-text mode environments.
+        }
+    }
+}
 
 function scheduleSupportRealtimeRetry() {
     if (realtimeSubscriptionRetryTimer) {
@@ -322,6 +402,7 @@ const conversationStartedSummary = computed(() => {
 const latestSupportReplyMeta = computed(() => {
     const messages = Array.isArray(conversationMessages.value) ? conversationMessages.value : [];
     const isAssigned = isConversationAssigned.value;
+    const includeBot = Boolean(uiTimerSettings.value.last_response_include_bot);
 
     const pickLatestByTypes = (senderTypes = []) => {
         const normalized = new Set(senderTypes.map((type) => String(type || '').toLowerCase()));
@@ -355,13 +436,11 @@ const latestSupportReplyMeta = computed(() => {
         return latest;
     };
 
-    let latest = isAssigned
-        ? pickLatestByTypes(['agent'])
-        : pickLatestByTypes(['bot']);
-
-    if (!latest && !isAssigned) {
-        latest = pickLatestByTypes(['agent']);
-    }
+    const latest = pickLatestByTypes(
+        isAssigned
+            ? ['agent']
+            : (includeBot ? ['bot', 'agent'] : ['agent'])
+    );
 
     if (latest) {
         return latest;
@@ -382,7 +461,7 @@ const latestSupportReplyMeta = computed(() => {
         return null;
     }
 
-    if (!isAssigned && !['bot', 'agent'].includes(fallbackType)) {
+    if (!isAssigned && !['agent', ...(includeBot ? ['bot'] : [])].includes(fallbackType)) {
         return null;
     }
 
@@ -423,6 +502,60 @@ const latestSupportReplyInline = computed(() => (
         ? latestSupportReplySummary.value.text
         : `${latestSupportReplySummary.value.actor} ${latestSupportReplySummary.value.relative}`
 ));
+const conversationDurationSeconds = computed(() => {
+    const createdAt = activeConversation.value?.created_at || null;
+    if (!createdAt) {
+        return 0;
+    }
+
+    const startedAtMs = new Date(createdAt).getTime();
+    if (!Number.isFinite(startedAtMs)) {
+        return 0;
+    }
+
+    return Math.max(0, Math.floor((liveClockNow.value - startedAtMs) / 1000));
+});
+const conversationDurationCounter = computed(() => formatDurationCounter(conversationDurationSeconds.value));
+const lastSupportReplyElapsedSeconds = computed(() => {
+    const createdAt = latestSupportReplyMeta.value?.created_at || null;
+    if (!createdAt) {
+        return null;
+    }
+
+    const repliedAtMs = new Date(createdAt).getTime();
+    if (!Number.isFinite(repliedAtMs)) {
+        return null;
+    }
+
+    return Math.max(0, Math.floor((liveClockNow.value - repliedAtMs) / 1000));
+});
+const lastSupportReplyCounter = computed(() => {
+    const elapsedSeconds = lastSupportReplyElapsedSeconds.value;
+    if (elapsedSeconds === null) {
+        return 'Awaiting first reply';
+    }
+
+    return formatElapsedCounter(elapsedSeconds);
+});
+const lastSupportReplyCounterToneClass = computed(() => {
+    const elapsedSeconds = lastSupportReplyElapsedSeconds.value;
+    if (elapsedSeconds === null) {
+        return 'text-[var(--text-muted)]';
+    }
+
+    const elapsedMinutes = Math.floor(elapsedSeconds / 60);
+    const warnAt = Number(uiTimerSettings.value.last_response_warn_minutes || DEFAULT_UI_TIMER_SETTINGS.last_response_warn_minutes);
+    const alertAt = Number(uiTimerSettings.value.last_response_alert_minutes || DEFAULT_UI_TIMER_SETTINGS.last_response_alert_minutes);
+
+    if (elapsedMinutes >= alertAt) {
+        return 'text-rose-600 dark:text-rose-300';
+    }
+    if (elapsedMinutes >= warnAt) {
+        return 'text-amber-600 dark:text-amber-300';
+    }
+
+    return 'text-emerald-600 dark:text-emerald-300';
+});
 
 const pendingMessagesForActiveConversation = computed(() => {
     const conversationId = activeConversationId.value;
@@ -468,6 +601,103 @@ const activeScopeShortLabel = computed(() => {
 const canLoadMoreConversations = computed(
     () => conversationPagination.value.currentPage < conversationPagination.value.lastPage,
 );
+const leftSidebarStyle = computed(() => ({
+    width: `${leftSidebarWidth.value}px`,
+}));
+const rightSidebarStyle = computed(() => ({
+    width: `${rightSidebarWidth.value}px`,
+}));
+const isAnySidebarResizing = computed(() => activeSidebarResize.value !== null);
+
+function getSupportLayoutWidth() {
+    const rect = supportLayoutRef.value?.getBoundingClientRect();
+    return rect?.width || 0;
+}
+
+function clampSidebarWidth(value, min, max) {
+    return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+function clampLeftSidebarWidth(value) {
+    const layoutWidth = getSupportLayoutWidth();
+    const maxByLayout = layoutWidth > 0
+        ? layoutWidth - rightSidebarWidth.value - THREAD_MIN_WIDTH
+        : LEFT_SIDEBAR_MAX_WIDTH;
+    const effectiveMax = Math.max(LEFT_SIDEBAR_MIN_WIDTH, Math.min(LEFT_SIDEBAR_MAX_WIDTH, maxByLayout));
+
+    return clampSidebarWidth(value, LEFT_SIDEBAR_MIN_WIDTH, effectiveMax);
+}
+
+function clampRightSidebarWidth(value) {
+    const layoutWidth = getSupportLayoutWidth();
+    const maxByLayout = layoutWidth > 0
+        ? layoutWidth - leftSidebarWidth.value - THREAD_MIN_WIDTH
+        : RIGHT_SIDEBAR_MAX_WIDTH;
+    const effectiveMax = Math.max(RIGHT_SIDEBAR_MIN_WIDTH, Math.min(RIGHT_SIDEBAR_MAX_WIDTH, maxByLayout));
+
+    return clampSidebarWidth(value, RIGHT_SIDEBAR_MIN_WIDTH, effectiveMax);
+}
+
+function stopSidebarResize() {
+    if (!activeSidebarResize.value) {
+        return;
+    }
+
+    activeSidebarResize.value = null;
+    window.removeEventListener('pointermove', handleSidebarResizeMove);
+    window.removeEventListener('pointerup', stopSidebarResize);
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+}
+
+function handleSidebarResizeMove(event) {
+    const layoutRect = supportLayoutRef.value?.getBoundingClientRect();
+    if (!layoutRect || !activeSidebarResize.value) {
+        return;
+    }
+
+    if (activeSidebarResize.value === 'left') {
+        const nextWidth = event.clientX - layoutRect.left;
+        leftSidebarWidth.value = clampLeftSidebarWidth(nextWidth);
+        return;
+    }
+
+    const nextWidth = layoutRect.right - event.clientX;
+    rightSidebarWidth.value = clampRightSidebarWidth(nextWidth);
+}
+
+function startSidebarResize(side, event) {
+    if (event.button !== 0) {
+        return;
+    }
+
+    event.preventDefault();
+    activeSidebarResize.value = side;
+    window.addEventListener('pointermove', handleSidebarResizeMove);
+    window.addEventListener('pointerup', stopSidebarResize);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+}
+
+function handleSidebarResizeDoubleClick(side) {
+    stopSidebarResize();
+
+    if (side === 'left') {
+        leftSidebarWidth.value = clampLeftSidebarWidth(DEFAULT_LEFT_SIDEBAR_WIDTH);
+        return;
+    }
+
+    rightSidebarWidth.value = clampRightSidebarWidth(DEFAULT_RIGHT_SIDEBAR_WIDTH);
+}
+
+function handleSupportLayoutResize() {
+    leftSidebarWidth.value = clampLeftSidebarWidth(leftSidebarWidth.value);
+    rightSidebarWidth.value = clampRightSidebarWidth(rightSidebarWidth.value);
+}
+
+function onQuickLinkFacadeClick(label) {
+    toast.info('Quick link coming soon', `${label} integration is in facade mode for now.`);
+}
 
 function formatTimestamp(isoValue) {
     if (!isoValue) {
@@ -492,7 +722,7 @@ function formatRelativeTime(isoValue) {
         return 'Now';
     }
 
-    const diffSeconds = Math.floor((Date.now() - date.getTime()) / 1000);
+    const diffSeconds = Math.floor((liveClockNow.value - date.getTime()) / 1000);
     if (diffSeconds < 60) {
         return 'Just now';
     }
@@ -513,6 +743,80 @@ function formatRelativeTime(isoValue) {
     }
 
     return date.toLocaleDateString();
+}
+
+function formatDurationCounter(totalSeconds) {
+    const safeSeconds = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+    const hours = Math.floor(safeSeconds / 3600);
+    const minutes = Math.floor((safeSeconds % 3600) / 60);
+    const seconds = safeSeconds % 60;
+
+    if (hours > 0) {
+        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
+
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+function formatElapsedCounter(totalSeconds) {
+    const safeSeconds = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+    const hours = Math.floor(safeSeconds / 3600);
+    const minutes = Math.floor((safeSeconds % 3600) / 60);
+    const seconds = safeSeconds % 60;
+
+    if (hours > 0) {
+        return `${hours}h ${minutes}m ${seconds}s`;
+    }
+
+    return `${Math.floor(safeSeconds / 60)}m ${seconds}s`;
+}
+
+function normalizeUiTimerMeta(meta) {
+    const incoming = meta?.ui_timers || {};
+    const tickMsRaw = Number(incoming.tick_ms);
+    const tickMs = Number.isFinite(tickMsRaw) ? Math.max(250, Math.floor(tickMsRaw)) : DEFAULT_UI_TIMER_SETTINGS.tick_ms;
+    const warnRaw = Number(incoming.last_response_warn_minutes);
+    const warnMinutes = Number.isFinite(warnRaw) ? Math.max(1, Math.floor(warnRaw)) : DEFAULT_UI_TIMER_SETTINGS.last_response_warn_minutes;
+    const alertRaw = Number(incoming.last_response_alert_minutes);
+    const alertMinutes = Number.isFinite(alertRaw)
+        ? Math.max(warnMinutes, Math.floor(alertRaw))
+        : Math.max(warnMinutes, DEFAULT_UI_TIMER_SETTINGS.last_response_alert_minutes);
+
+    return {
+        tick_ms: tickMs,
+        last_response_warn_minutes: warnMinutes,
+        last_response_alert_minutes: alertMinutes,
+        last_response_include_bot: Boolean(incoming.last_response_include_bot ?? DEFAULT_UI_TIMER_SETTINGS.last_response_include_bot),
+    };
+}
+
+function startLiveCounterTicker() {
+    if (liveCounterTicker) {
+        clearInterval(liveCounterTicker);
+        liveCounterTicker = null;
+    }
+
+    const tickMs = Math.max(250, Number(uiTimerSettings.value.tick_ms || DEFAULT_UI_TIMER_SETTINGS.tick_ms));
+    liveCounterTicker = setInterval(() => {
+        liveClockNow.value = Date.now();
+    }, tickMs);
+}
+
+function stopLiveCounterTicker() {
+    if (liveCounterTicker) {
+        clearInterval(liveCounterTicker);
+        liveCounterTicker = null;
+    }
+}
+
+function applyUiTimerMeta(meta) {
+    const next = normalizeUiTimerMeta(meta);
+    const didTickMsChange = next.tick_ms !== uiTimerSettings.value.tick_ms;
+    uiTimerSettings.value = next;
+
+    if (didTickMsChange) {
+        startLiveCounterTicker();
+    }
 }
 
 function formatDateTime(isoValue) {
@@ -569,6 +873,259 @@ function messageContentForDisplay(message) {
     }
 
     return content.replace(firstUrl, '').trim();
+}
+
+function messageContentHtml(message) {
+    return renderSupportRichText(messageContentForDisplay(message));
+}
+
+function noteContentHtml(note) {
+    return renderSupportRichText(String(note?.body || ''));
+}
+
+function pendingMessageContentHtml(pending) {
+    return renderSupportRichText(String(pending?.body || ''));
+}
+
+function withComposerSelection(mutator) {
+    if (composerDisabled.value || isSending.value || isSendCoolingDown.value) {
+        return;
+    }
+
+    const input = composerTextareaRef.value;
+    if (!input) {
+        return;
+    }
+
+    const currentValue = String(newMessage.value || '');
+    const start = Number.isFinite(input.selectionStart) ? input.selectionStart : currentValue.length;
+    const end = Number.isFinite(input.selectionEnd) ? input.selectionEnd : currentValue.length;
+    const selected = currentValue.slice(start, end);
+
+    const result = mutator({
+        value: currentValue,
+        start,
+        end,
+        selected,
+    });
+
+    if (!result || typeof result.value !== 'string') {
+        return;
+    }
+
+    newMessage.value = result.value;
+    handleComposerInput();
+
+    nextTick(() => {
+        const textarea = composerTextareaRef.value;
+        if (!textarea || textarea.disabled) {
+            return;
+        }
+
+        textarea.focus({ preventScroll: true });
+
+        if (typeof textarea.setSelectionRange === 'function') {
+            const selectionStart = Number.isFinite(result.selectionStart) ? result.selectionStart : result.value.length;
+            const selectionEnd = Number.isFinite(result.selectionEnd) ? result.selectionEnd : selectionStart;
+            try {
+                textarea.setSelectionRange(selectionStart, selectionEnd);
+            } catch {
+                // Ignore browsers/input modes that block selection APIs.
+            }
+        }
+    });
+}
+
+function applyComposerInlineFormat(prefix, suffix = prefix, placeholder = 'text') {
+    withComposerSelection(({ value, start, end, selected }) => {
+        const base = selected || placeholder;
+        const replacement = `${prefix}${base}${suffix}`;
+        const nextValue = `${value.slice(0, start)}${replacement}${value.slice(end)}`;
+        const selectionStart = start + prefix.length;
+        const selectionEnd = selectionStart + base.length;
+
+        return {
+            value: nextValue,
+            selectionStart,
+            selectionEnd,
+        };
+    });
+}
+
+function applyComposerListFormat(type = 'bullet') {
+    withComposerSelection(({ value, start, end, selected }) => {
+        const raw = selected || 'List item';
+        const lines = raw.split('\n');
+        const replacement = lines
+            .map((line, index) => {
+                const marker = type === 'numbered' ? `${index + 1}.` : '-';
+                return `${marker} ${line || 'List item'}`;
+            })
+            .join('\n');
+
+        const nextValue = `${value.slice(0, start)}${replacement}${value.slice(end)}`;
+        const selectionStart = start;
+        const selectionEnd = start + replacement.length;
+
+        return {
+            value: nextValue,
+            selectionStart,
+            selectionEnd,
+        };
+    });
+}
+
+function insertComposerLink() {
+    withComposerSelection(({ value, start, end, selected }) => {
+        const trimmed = selected.trim();
+        const selectedIsUrl = /^https?:\/\/\S+$/i.test(trimmed);
+        const linkText = selectedIsUrl ? 'link text' : (trimmed || 'link text');
+        const url = selectedIsUrl ? trimmed : 'https://example.com';
+        const replacement = `[${linkText}](${url})`;
+        const nextValue = `${value.slice(0, start)}${replacement}${value.slice(end)}`;
+        const urlStartOffset = replacement.indexOf(url);
+        const selectionStart = start + urlStartOffset;
+        const selectionEnd = selectionStart + url.length;
+
+        return {
+            value: nextValue,
+            selectionStart,
+            selectionEnd,
+        };
+    });
+}
+
+function handleComposerKeydown(event) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        sendMessage();
+        return;
+    }
+
+    if (!event.metaKey && !event.ctrlKey) {
+        return;
+    }
+
+    const key = String(event.key || '').toLowerCase();
+    if (key === 'b') {
+        event.preventDefault();
+        applyComposerInlineFormat('**', '**', 'bold text');
+        return;
+    }
+
+    if (key === 'u') {
+        event.preventDefault();
+        applyComposerInlineFormat('<u>', '</u>', 'underlined text');
+        return;
+    }
+
+    if (key === 'k') {
+        event.preventDefault();
+        insertComposerLink();
+    }
+}
+
+function stripConversationMessages(conversation) {
+    if (!conversation || typeof conversation !== 'object') {
+        return null;
+    }
+
+    const normalized = { ...conversation };
+    if (Object.prototype.hasOwnProperty.call(normalized, 'messages')) {
+        delete normalized.messages;
+    }
+
+    return normalized;
+}
+
+function upsertConversationInList(conversation, options = {}) {
+    const normalized = stripConversationMessages(conversation);
+    if (!normalized?.id) {
+        return;
+    }
+
+    const moveToTop = options.moveToTop === true;
+    const index = conversations.value.findIndex((chat) => chat.id === normalized.id);
+
+    if (index === -1) {
+        conversations.value = [normalized, ...conversations.value];
+        return;
+    }
+
+    const merged = {
+        ...conversations.value[index],
+        ...normalized,
+    };
+
+    const next = [...conversations.value];
+    if (moveToTop && index > 0) {
+        next.splice(index, 1);
+        next.unshift(merged);
+    } else {
+        next[index] = merged;
+    }
+
+    conversations.value = next;
+}
+
+function applyConversationSnapshot(conversation, options = {}) {
+    const normalized = stripConversationMessages(conversation);
+    if (!normalized?.id) {
+        return;
+    }
+
+    if (activeConversationId.value === normalized.id) {
+        activeConversation.value = {
+            ...(activeConversation.value || {}),
+            ...normalized,
+        };
+        selectedAgentId.value = activeConversation.value?.assignee?.id || selectedAgentId.value;
+    }
+
+    upsertConversationInList(normalized, options);
+}
+
+function patchConversationFromMessage(conversationId, message, options = {}) {
+    if (!conversationId || !message) {
+        return;
+    }
+
+    applyConversationSnapshot({
+        id: conversationId,
+        latest_message: message,
+        last_message_at: message.created_at || null,
+        updated_at: message.created_at || null,
+    }, {
+        moveToTop: options.moveToTop !== false,
+    });
+}
+
+function extractMessagePayload(responseData) {
+    const direct = responseData?.data;
+    if (direct && typeof direct === 'object' && direct.id) {
+        return direct;
+    }
+
+    const nested = responseData?.data?.data;
+    if (nested && typeof nested === 'object' && nested.id) {
+        return nested;
+    }
+
+    return null;
+}
+
+function extractConversationPayload(responseData) {
+    const direct = responseData?.conversation;
+    if (direct && typeof direct === 'object' && direct.id) {
+        return direct;
+    }
+
+    const nested = responseData?.conversation?.data;
+    if (nested && typeof nested === 'object' && nested.id) {
+        return nested;
+    }
+
+    return null;
 }
 
 function getAttachmentOpenUrl(attachment) {
@@ -828,6 +1385,7 @@ function statusBadgeVariant(status) {
 }
 
 function applyRealtimeMeta(meta) {
+    applyUiTimerMeta(meta);
     const token = meta?.realtime?.token;
     if (typeof token === 'string' && token.trim() !== '') {
         setSupportRealtimeToken(token.trim(), 'agent');
@@ -1012,20 +1570,7 @@ async function handleRealtimeMessage(event) {
         };
     }
 
-    if (activeConversation.value) {
-        activeConversation.value = {
-            ...activeConversation.value,
-            latest_message: incoming,
-            last_message_at: incoming.created_at || activeConversation.value.last_message_at,
-        };
-    }
-
-    if (realtimeInboxRefreshTimer) {
-        clearTimeout(realtimeInboxRefreshTimer);
-    }
-    realtimeInboxRefreshTimer = setTimeout(async () => {
-        await loadConversations();
-    }, 250);
+    patchConversationFromMessage(event?.conversation_id, incoming, { moveToTop: true });
 
     if (existingIndex === -1) {
         if (!wasNearBottom) {
@@ -1133,7 +1678,7 @@ async function subscribeSupportRealtime() {
                 }
 
                 realtimeInboxRefreshTimer = setTimeout(async () => {
-                    await loadConversations();
+                    await loadConversations({ silent: true, syncActiveConversation: false });
                 }, 250);
             });
 
@@ -1275,17 +1820,26 @@ async function loadAgents() {
 
 async function loadConversations(options = {}) {
     const append = options.append === true;
+    const silent = options.silent === true;
+    const syncActiveConversation = options.syncActiveConversation !== false;
     if (append && !canLoadMoreConversations.value) {
         return;
     }
 
     if (append) {
-        if (isLoadingMoreConversations.value || isLoadingList.value) {
+        if (isLoadingMoreConversations.value || isLoadingList.value || isRefreshingListSilently.value) {
             return;
         }
         isLoadingMoreConversations.value = true;
     } else {
-        isLoadingList.value = true;
+        if (isLoadingList.value || isRefreshingListSilently.value) {
+            return;
+        }
+        if (silent) {
+            isRefreshingListSilently.value = true;
+        } else {
+            isLoadingList.value = true;
+        }
     }
 
     supportLogger.debug('inbox.fetch.start', 'Loading support inbox conversations.', {
@@ -1332,28 +1886,49 @@ async function loadConversations(options = {}) {
             activeConversationId.value = conversations.value[0]?.id || null;
         }
 
-        if (!append && activeConversationId.value) {
-            const shouldLoadMessages = !activeConversation.value
-                || activeConversation.value.id !== activeConversationId.value
-                || conversationMessages.value.length === 0;
+        if (!append) {
+            if (activeConversationId.value) {
+                const shouldLoadMessages = !activeConversation.value
+                    || activeConversation.value.id !== activeConversationId.value
+                    || conversationMessages.value.length === 0;
+                const shouldSyncSelectedConversation = syncActiveConversation
+                    || shouldLoadMessages
+                    || !activeConversation.value
+                    || activeConversation.value.id !== activeConversationId.value;
 
-            await fetchConversation(activeConversationId.value, { loadMessages: shouldLoadMessages });
+                if (shouldSyncSelectedConversation) {
+                    await fetchConversation(activeConversationId.value, {
+                        loadMessages: shouldLoadMessages,
+                        withLoading: !silent && shouldLoadMessages,
+                    });
+                } else {
+                    await subscribeSupportRealtime();
+                }
+            } else {
+                activeConversation.value = null;
+                conversationMessages.value = [];
+                clearCustomerTypingIndicator();
+                clearUnreadMarker();
+                await subscribeSupportRealtime();
+            }
         } else {
-            activeConversation.value = null;
-            conversationMessages.value = [];
-            clearCustomerTypingIndicator();
-            clearUnreadMarker();
             await subscribeSupportRealtime();
         }
     } catch (error) {
         supportLogger.error('inbox.fetch.failure', 'Failed to load support inbox conversations.', summarizeError(error));
         console.error('Failed to load support inbox:', error);
-        toast.error('Error', error.response?.data?.message || 'Failed to load support inbox.');
+        if (!silent) {
+            toast.error('Error', error.response?.data?.message || 'Failed to load support inbox.');
+        }
     } finally {
         if (append) {
             isLoadingMoreConversations.value = false;
         } else {
-            isLoadingList.value = false;
+            if (silent) {
+                isRefreshingListSilently.value = false;
+            } else {
+                isLoadingList.value = false;
+            }
         }
     }
 }
@@ -1384,8 +1959,8 @@ async function fetchConversation(conversationId, options = {}) {
         return;
     }
 
-    const withLoading = options.withLoading !== false;
     const shouldLoadMessages = options.loadMessages !== false;
+    const withLoading = options.withLoading !== false && shouldLoadMessages;
 
     if (withLoading) {
         isLoadingConversation.value = true;
@@ -1487,6 +2062,15 @@ function jumpToLatest() {
     scrollToLatest(true);
 }
 
+async function handleJumpToLatestClick() {
+    if (unreadMessageCount.value > 0) {
+        await jumpToFirstUnread();
+        return;
+    }
+
+    jumpToLatest();
+}
+
 async function jumpToFirstUnread() {
     if (!firstUnreadMessageId.value) {
         await jumpToLatest();
@@ -1579,20 +2163,45 @@ async function transmitPendingMessage(messageId, options = {}) {
                 is_private_note: pending.isPrivateNote,
             });
         }
-        applyRealtimeMeta(response.data?.meta);
+        const responseData = response.data || {};
+        applyRealtimeMeta(responseData?.meta);
+        const confirmedMessage = extractMessagePayload(responseData);
+        const conversationPayload = extractConversationPayload(responseData);
+
+        if (conversationPayload) {
+            applyConversationSnapshot(conversationPayload, { moveToTop: true });
+        }
 
         removePendingMessage(messageId);
 
         if (activeConversationId.value === pending.conversationId) {
             const wasNearBottom = isNearBottom();
-            await fetchConversation(pending.conversationId, { withLoading: false, loadMessages: false });
-            await loadConversationMessages(pending.conversationId, { mergeLatest: true, wasNearBottom, trackUnread: false });
+
+            if (confirmedMessage?.id) {
+                const existingIndex = conversationMessages.value.findIndex((message) => message.id === confirmedMessage.id);
+                if (existingIndex === -1) {
+                    conversationMessages.value = [...conversationMessages.value, confirmedMessage]
+                        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+                } else {
+                    conversationMessages.value[existingIndex] = {
+                        ...conversationMessages.value[existingIndex],
+                        ...confirmedMessage,
+                    };
+                }
+
+                patchConversationFromMessage(pending.conversationId, confirmedMessage, { moveToTop: true });
+            } else {
+                await loadConversationMessages(pending.conversationId, { mergeLatest: true, wasNearBottom, trackUnread: false });
+            }
+
             if (wasNearBottom) {
                 await scrollToLatest(false);
             }
         }
 
-        await loadConversations();
+        if (!conversationPayload && !confirmedMessage) {
+            await loadConversations({ silent: true, syncActiveConversation: false });
+        }
         supportLogger.info('message.send.success', 'Agent support message sent.', {
             pending_id: messageId,
             conversation_id: pending.conversationId,
@@ -1694,6 +2303,7 @@ async function sendMessage() {
 
         newMessage.value = '';
         clearComposerFiles();
+        await focusComposerTextarea();
 
         if (shouldStickToBottom) {
             await scrollToLatest(false);
@@ -1704,6 +2314,7 @@ async function sendMessage() {
         toast.error('Error', 'Failed to queue message.');
     } finally {
         isSending.value = false;
+        await focusComposerTextarea();
     }
 }
 
@@ -1832,7 +2443,22 @@ async function refreshCurrentConversation() {
 }
 
 watch(activeTab, async () => {
+    if (typeof window !== 'undefined') {
+        window.localStorage.setItem(SUPPORT_INBOX_SCOPE_STORAGE_KEY, normalizeInboxScope(activeTab.value));
+    }
     await loadConversations();
+});
+
+watch(leftSidebarWidth, (value) => {
+    if (typeof window !== 'undefined') {
+        window.localStorage.setItem(SUPPORT_INBOX_LEFT_WIDTH_STORAGE_KEY, String(Math.round(value)));
+    }
+});
+
+watch(rightSidebarWidth, (value) => {
+    if (typeof window !== 'undefined') {
+        window.localStorage.setItem(SUPPORT_INBOX_RIGHT_WIDTH_STORAGE_KEY, String(Math.round(value)));
+    }
 });
 
 watch(searchQuery, () => {
@@ -1851,9 +2477,13 @@ watch(activeConversationId, () => {
 
 onMounted(async () => {
     supportLogger.info('lifecycle.mounted', 'Support inbox view mounted.');
+    startLiveCounterTicker();
+    leftSidebarWidth.value = clampLeftSidebarWidth(leftSidebarWidth.value);
+    rightSidebarWidth.value = clampRightSidebarWidth(rightSidebarWidth.value);
     await Promise.all([refreshRealtimeToken(), loadAgents(), loadConversations()]);
     window.addEventListener('echo:connected', handleEchoConnected);
     window.addEventListener('pointerdown', handleGlobalPointerDown);
+    window.addEventListener('resize', handleSupportLayoutResize);
 
     realtimeTokenRefreshTimer = setInterval(() => {
         refreshRealtimeToken();
@@ -1897,18 +2527,29 @@ onBeforeUnmount(() => {
         sendCooldownTimer = null;
     }
 
+    stopLiveCounterTicker();
+
     clearCustomerTypingIndicator();
     clearComposerFiles();
     clearRealtimeSubscription();
+    stopSidebarResize();
     window.removeEventListener('echo:connected', handleEchoConnected);
     window.removeEventListener('pointerdown', handleGlobalPointerDown);
+    window.removeEventListener('resize', handleSupportLayoutResize);
 });
 </script>
 
 <template>
-    <div class="flex-1 w-full bg-[var(--surface-primary)] flex overflow-hidden border-t border-[var(--border-default)]">
+    <div
+        ref="supportLayoutRef"
+        class="flex-1 w-full bg-[var(--surface-primary)] flex overflow-hidden border-t border-[var(--border-default)]"
+        :class="{ 'support-resize-active': isAnySidebarResizing }"
+    >
         <!-- Left Sidebar: Conversations List -->
-        <div class="w-72 flex-shrink-0 border-r border-[var(--border-default)] bg-[var(--surface-secondary)]/30 flex flex-col">
+        <div
+            class="support-inbox-sidebar support-inbox-sidebar-left border-r border-[var(--border-default)] bg-[var(--surface-secondary)]/30 flex flex-col"
+            :style="leftSidebarStyle"
+        >
             <div class="p-2.5 border-b border-[var(--border-default)]">
                 <div class="flex items-center gap-1.5">
                     <Dropdown>
@@ -2024,6 +2665,20 @@ onBeforeUnmount(() => {
                 </div>
             </div>
         </div>
+        <div
+            class="support-sidebar-resize-handle support-sidebar-resize-handle--left"
+            :class="{ 'is-active': activeSidebarResize === 'left' }"
+            title="Resize conversation list (double-click to reset)"
+            @pointerdown="startSidebarResize('left', $event)"
+            @dblclick.prevent="handleSidebarResizeDoubleClick('left')"
+        >
+            <span class="support-sidebar-grip" aria-hidden="true">
+                <span class="support-sidebar-grip-dot"></span>
+                <span class="support-sidebar-grip-dot"></span>
+                <span class="support-sidebar-grip-dot"></span>
+                <span class="support-sidebar-grip-dot"></span>
+            </span>
+        </div>
 
         <!-- Middle Column: Active Chat Thread -->
         <div class="flex-1 flex flex-col bg-[var(--surface-primary)] relative border-r border-[var(--border-default)]">
@@ -2040,15 +2695,18 @@ onBeforeUnmount(() => {
                     <div class="flex items-start justify-between gap-2">
                         <div class="min-w-0 flex-1">
                             <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-[var(--text-secondary)]">
-                                <span>Started <span class="font-semibold text-[var(--text-primary)]">{{ conversationStartedSummary.relative }}</span></span>
+                                <span>
+                                    Duration
+                                    <span class="font-semibold text-[var(--text-primary)]">{{ conversationDurationCounter }}</span>
+                                </span>
                                 <span class="text-[var(--text-muted)]">•</span>
                                 <span>
-                                    Last support reply
+                                    Response gap
                                     <span
                                         class="font-semibold"
-                                        :class="latestSupportReplySummary.muted ? 'text-[var(--text-primary)]' : 'text-emerald-600 dark:text-emerald-300'"
+                                        :class="lastSupportReplyCounterToneClass"
                                     >
-                                        {{ latestSupportReplyInline }}
+                                        {{ lastSupportReplyCounter }}
                                     </span>
                                 </span>
                             </div>
@@ -2138,7 +2796,11 @@ onBeforeUnmount(() => {
                                     <span class="text-xs font-bold uppercase tracking-wider">Internal Note</span>
                                     <span class="text-xs opacity-70 ml-auto">{{ message.time }} by {{ message.agentName }}</span>
                                 </div>
-                                <p v-if="messageContentForDisplay(message)" class="text-sm whitespace-pre-wrap break-words">{{ messageContentForDisplay(message) }}</p>
+                                <div
+                                    v-if="messageContentForDisplay(message)"
+                                    class="support-rich-content text-sm break-words"
+                                    v-html="messageContentHtml(message)"
+                                ></div>
                                 <div v-if="message.firstUrl" class="mt-2">
                                     <LinkPreview
                                         :url="message.firstUrl"
@@ -2167,7 +2829,11 @@ onBeforeUnmount(() => {
                             />
                             <div class="max-w-[75%] flex flex-col items-start">
                                 <div class="bg-[var(--surface-elevated)] border border-black/5 dark:border-white/5 text-[var(--text-primary)] px-4 py-2.5 rounded-2xl rounded-bl-sm shadow-md backdrop-blur-sm text-sm">
-                                    <p v-if="messageContentForDisplay(message)" class="whitespace-pre-wrap break-words">{{ messageContentForDisplay(message) }}</p>
+                                    <div
+                                        v-if="messageContentForDisplay(message)"
+                                        class="support-rich-content break-words"
+                                        v-html="messageContentHtml(message)"
+                                    ></div>
                                     <div v-if="message.firstUrl" class="mt-2">
                                         <LinkPreview
                                             :url="message.firstUrl"
@@ -2189,7 +2855,11 @@ onBeforeUnmount(() => {
                         <div v-else class="flex flex-col items-end mb-2">
                             <div class="max-w-[75%] flex flex-col items-end">
                                 <div class="bg-[var(--interactive-primary)] text-white px-4 py-2.5 rounded-2xl rounded-br-sm shadow-md border border-black/5 dark:border-white/5 backdrop-blur-sm text-sm">
-                                    <p v-if="messageContentForDisplay(message)" class="whitespace-pre-wrap break-words">{{ messageContentForDisplay(message) }}</p>
+                                    <div
+                                        v-if="messageContentForDisplay(message)"
+                                        class="support-rich-content break-words"
+                                        v-html="messageContentHtml(message)"
+                                    ></div>
                                     <div v-if="message.firstUrl" class="mt-2">
                                         <LinkPreview
                                             :url="message.firstUrl"
@@ -2209,31 +2879,21 @@ onBeforeUnmount(() => {
                         </div>
                     </div>
 
-                    <div v-if="showJumpToLatest" class="sticky bottom-2 z-20 flex justify-center gap-2 pointer-events-none">
-                        <Button
-                            v-if="unreadMessageCount > 0"
-                            size="sm"
-                            variant="outline"
-                            class="pointer-events-auto bg-[var(--surface-primary)]/95 backdrop-blur border-[var(--border-default)] shadow"
-                            @click="jumpToFirstUnread"
+                    <div v-if="showJumpToLatest" class="sticky bottom-3 z-20 flex justify-center pointer-events-none">
+                        <button
+                            type="button"
+                            class="pointer-events-auto relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-900 bg-slate-900 text-white shadow-sm transition-colors hover:bg-slate-800 dark:border-slate-200 dark:bg-slate-200 dark:text-slate-900 dark:hover:bg-slate-300"
+                            :title="unreadMessageCount > 0 ? 'Jump to first unread message' : 'Jump to latest message'"
+                            @click="handleJumpToLatestClick"
                         >
-                            First unread
-                        </Button>
-                        <Button
-                            size="sm"
-                            variant="outline"
-                            class="pointer-events-auto bg-[var(--surface-primary)]/95 backdrop-blur border-[var(--border-default)] shadow"
-                            @click="jumpToLatest"
-                        >
-                            <ChevronsDown class="h-3.5 w-3.5 mr-1.5" />
-                            Jump to latest
+                            <ChevronsDown class="h-4 w-4" />
                             <span
                                 v-if="unreadMessageCount > 0"
-                                class="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--interactive-primary)] px-1.5 text-[10px] font-semibold text-white"
+                                class="absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--interactive-primary)] px-1 text-[9px] font-semibold leading-none text-white"
                             >
                                 {{ unreadMessageCount > 99 ? '99+' : unreadMessageCount }}
                             </span>
-                        </Button>
+                        </button>
                     </div>
 
                     <div
@@ -2245,7 +2905,11 @@ onBeforeUnmount(() => {
                             v-if="pending.isPrivateNote"
                             class="max-w-[75%] bg-amber-500/10 border border-amber-500/25 text-amber-700 dark:text-amber-400 px-4 py-2.5 rounded-2xl rounded-br-sm text-sm"
                         >
-                            {{ pending.body }}
+                            <div
+                                v-if="pending.body"
+                                class="support-rich-content break-words"
+                                v-html="pendingMessageContentHtml(pending)"
+                            ></div>
                             <p v-if="pending.fileNames?.length" class="mt-1 text-[11px]">
                                 {{ pending.fileNames.length }} attachment<span v-if="pending.fileNames.length > 1">s</span>
                             </p>
@@ -2254,7 +2918,11 @@ onBeforeUnmount(() => {
                             v-else
                             class="max-w-[75%] bg-[var(--interactive-primary)] text-white px-4 py-2.5 rounded-2xl rounded-br-sm shadow-md border border-black/5 dark:border-white/5 text-sm"
                         >
-                            {{ pending.body }}
+                            <div
+                                v-if="pending.body"
+                                class="support-rich-content break-words"
+                                v-html="pendingMessageContentHtml(pending)"
+                            ></div>
                             <p v-if="pending.fileNames?.length" class="mt-1 text-[11px] text-white/90">
                                 {{ pending.fileNames.length }} attachment<span v-if="pending.fileNames.length > 1">s</span>
                             </p>
@@ -2328,12 +2996,70 @@ onBeforeUnmount(() => {
                             class="hidden"
                             @change="handleComposerFileSelection"
                         />
+                        <div class="flex items-center gap-2 border-b border-[var(--border-default)]/50 px-2.5 py-2">
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                class="h-9 w-9 p-0 border border-[var(--border-default)]/70 bg-[var(--surface-primary)] text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10"
+                                title="Bold (Ctrl/Cmd+B)"
+                                :disabled="composerDisabled || isSending || isSendCoolingDown"
+                                @mousedown.prevent
+                                @click="applyComposerInlineFormat('**', '**', 'bold text')"
+                            >
+                                <Bold class="h-[18px] w-[18px]" />
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                class="h-9 w-9 p-0 border border-[var(--border-default)]/70 bg-[var(--surface-primary)] text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10"
+                                title="Underline (Ctrl/Cmd+U)"
+                                :disabled="composerDisabled || isSending || isSendCoolingDown"
+                                @mousedown.prevent
+                                @click="applyComposerInlineFormat('<u>', '</u>', 'underlined text')"
+                            >
+                                <Underline class="h-[18px] w-[18px]" />
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                class="h-9 w-9 p-0 border border-[var(--border-default)]/70 bg-[var(--surface-primary)] text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10"
+                                title="Bulleted list"
+                                :disabled="composerDisabled || isSending || isSendCoolingDown"
+                                @mousedown.prevent
+                                @click="applyComposerListFormat('bullet')"
+                            >
+                                <List class="h-[18px] w-[18px]" />
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                class="h-9 w-9 p-0 border border-[var(--border-default)]/70 bg-[var(--surface-primary)] text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10"
+                                title="Numbered list"
+                                :disabled="composerDisabled || isSending || isSendCoolingDown"
+                                @mousedown.prevent
+                                @click="applyComposerListFormat('numbered')"
+                            >
+                                <ListOrdered class="h-[18px] w-[18px]" />
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                class="h-9 w-9 p-0 border border-[var(--border-default)]/70 bg-[var(--surface-primary)] text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10"
+                                title="Insert link (Ctrl/Cmd+K)"
+                                :disabled="composerDisabled || isSending || isSendCoolingDown"
+                                @mousedown.prevent
+                                @click="insertComposerLink"
+                            >
+                                <Link2 class="h-[18px] w-[18px]" />
+                            </Button>
+                        </div>
                         <textarea
+                            ref="composerTextareaRef"
                             v-model="newMessage"
                             :placeholder="isNoteMode ? 'Type an internal note (visitors cannot see this)...' : 'Type your message... (Press Shift+Enter for new line)'"
                             class="w-full bg-transparent border-none p-3 text-sm focus:outline-none focus:ring-0 focus:ring-offset-0 focus-visible:ring-0 focus-visible:outline-none resize-none min-h-[80px] max-h-[200px] text-[var(--text-primary)]"
-                            :disabled="composerDisabled || isSending || isSendCoolingDown"
-                            @keydown.enter.exact.prevent="sendMessage"
+                            :disabled="composerDisabled || isSendCoolingDown"
+                            @keydown="handleComposerKeydown"
                             @input="handleComposerInput"
                             @blur="emitTyping(false)"
                         ></textarea>
@@ -2343,29 +3069,35 @@ onBeforeUnmount(() => {
                                 <Button
                                     variant="ghost"
                                     size="sm"
-                                    class="h-8 w-8 p-0 hover:bg-black/5 dark:hover:bg-white/5"
+                                    class="h-9 w-9 p-0 border border-[var(--border-default)] text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10"
                                     title="Attach file"
                                     :disabled="composerDisabled || isSending || isSendCoolingDown"
                                     @click="openComposerFilePicker"
                                 >
-                                    <Paperclip class="h-4 w-4 text-[var(--text-secondary)]" />
-                                </Button>
-                                <Button variant="ghost" size="sm" class="h-8 w-8 p-0 hover:bg-black/5 dark:hover:bg-white/5" title="Insert image" :disabled="composerDisabled">
-                                    <ImageIcon class="h-4 w-4 text-[var(--text-secondary)]" />
+                                    <Paperclip class="h-[17px] w-[17px]" />
                                 </Button>
                                 <Button
                                     variant="ghost"
                                     size="sm"
-                                    class="h-8 w-8 p-0 hover:bg-black/5 dark:hover:bg-white/5"
+                                    class="h-9 w-9 p-0 border border-[var(--border-default)] text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10"
+                                    title="Insert image"
+                                    :disabled="composerDisabled || isSending || isSendCoolingDown"
+                                >
+                                    <ImageIcon class="h-[17px] w-[17px]" />
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    class="h-9 w-9 p-0 border border-[var(--border-default)] text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10"
                                     title="Insert emoji"
                                     :disabled="composerDisabled || isSending || isSendCoolingDown"
                                     @click="toggleEmojiPicker"
                                 >
-                                    <Smile class="h-4 w-4 text-[var(--text-secondary)]" />
+                                    <Smile class="h-[17px] w-[17px]" />
                                 </Button>
                                 <div class="h-4 w-px bg-[var(--border-default)] mx-1"></div>
-                                <Button variant="ghost" size="sm" class="h-8 px-2 text-xs font-medium text-[var(--text-secondary)] hover:bg-black/5 dark:hover:bg-white/5" title="Use a saved macro" :disabled="composerDisabled">
-                                    <Zap class="h-3.5 w-3.5 mr-1" /> Macros
+                                <Button variant="ghost" size="sm" class="h-9 px-2.5 text-[12px] font-semibold text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10" title="Use a saved macro" :disabled="composerDisabled">
+                                    <Zap class="h-4 w-4 mr-1.5" /> Macros
                                 </Button>
                             </div>
                             <Button
@@ -2374,12 +3106,13 @@ onBeforeUnmount(() => {
                                 @click="sendMessage"
                                 :disabled="composerDisabled || isSending || isSendCoolingDown || (!newMessage.trim() && selectedComposerFiles.length === 0)"
                                 :class="[
+                                    'h-9 px-3 text-[13px] font-semibold',
                                     isNoteMode ? 'bg-amber-100 dark:bg-amber-900 border-amber-500/30 text-amber-700 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-800' : ''
                                 ]"
                             >
-                                <Loader2 v-if="isSending" class="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                                <Loader2 v-if="isSending" class="h-4 w-4 mr-1.5 animate-spin" />
                                 <span>{{ isNoteMode ? 'Add Note' : 'Send' }}</span>
-                                <Send class="h-3.5 w-3.5 ml-1.5" />
+                                <Send class="h-4 w-4 ml-1.5" />
                             </Button>
                         </div>
                         <div
@@ -2428,7 +3161,24 @@ onBeforeUnmount(() => {
         </div>
 
         <!-- Right Sidebar: Visitor Info & Context -->
-        <div class="w-72 flex-shrink-0 bg-[var(--surface-secondary)]/30 overflow-y-auto">
+        <div
+            class="support-sidebar-resize-handle support-sidebar-resize-handle--right"
+            :class="{ 'is-active': activeSidebarResize === 'right' }"
+            title="Resize chat details (double-click to reset)"
+            @pointerdown="startSidebarResize('right', $event)"
+            @dblclick.prevent="handleSidebarResizeDoubleClick('right')"
+        >
+            <span class="support-sidebar-grip" aria-hidden="true">
+                <span class="support-sidebar-grip-dot"></span>
+                <span class="support-sidebar-grip-dot"></span>
+                <span class="support-sidebar-grip-dot"></span>
+                <span class="support-sidebar-grip-dot"></span>
+            </span>
+        </div>
+        <div
+            class="support-inbox-sidebar support-inbox-sidebar-right bg-[var(--surface-secondary)]/30 overflow-y-auto"
+            :style="rightSidebarStyle"
+        >
             <div v-if="!activeConversationDisplay" class="h-full flex items-center justify-center text-[var(--text-secondary)] text-sm p-4 text-center">
                 Customer context will appear here when you select a conversation.
             </div>
@@ -2575,6 +3325,35 @@ onBeforeUnmount(() => {
                                     <p class="truncate text-xs font-medium text-[var(--text-primary)]">{{ formatRelativeTime(activeConversation?.created_at) }}</p>
                                 </div>
                             </div>
+                            <div class="rounded-lg border border-[var(--border-default)]/50 bg-[var(--surface-secondary)]/20 px-2 py-2">
+                                <p class="mb-1.5 text-[10px] uppercase tracking-wider text-[var(--text-secondary)]">Quick Links</p>
+                                <div class="space-y-1.5">
+                                    <button
+                                        type="button"
+                                        class="flex w-full items-center gap-2 rounded-md border border-[var(--border-default)] bg-[var(--surface-primary)] px-2 py-1.5 text-left text-[11px] font-semibold text-[var(--text-primary)] transition-colors hover:bg-[var(--surface-tertiary)]"
+                                        @click="onQuickLinkFacadeClick('Knowledge base')"
+                                    >
+                                        <FileText class="h-3.5 w-3.5 text-[var(--interactive-primary)]" />
+                                        Knowledge base
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="flex w-full items-center gap-2 rounded-md border border-[var(--border-default)] bg-[var(--surface-primary)] px-2 py-1.5 text-left text-[11px] font-semibold text-[var(--text-primary)] transition-colors hover:bg-[var(--surface-tertiary)]"
+                                        @click="onQuickLinkFacadeClick('Ticket dashboard')"
+                                    >
+                                        <Hash class="h-3.5 w-3.5 text-[var(--interactive-primary)]" />
+                                        Ticket dashboard
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="flex w-full items-center gap-2 rounded-md border border-[var(--border-default)] bg-[var(--surface-primary)] px-2 py-1.5 text-left text-[11px] font-semibold text-[var(--text-primary)] transition-colors hover:bg-[var(--surface-tertiary)]"
+                                        @click="onQuickLinkFacadeClick('Customer profile')"
+                                    >
+                                        <User class="h-3.5 w-3.5 text-[var(--interactive-primary)]" />
+                                        Customer profile
+                                    </button>
+                                </div>
+                            </div>
                         </div>
 
                         <div v-else-if="detailsSidebarTab === 'media'" class="mt-3 space-y-2">
@@ -2650,9 +3429,10 @@ onBeforeUnmount(() => {
                                         <p class="text-[10px] text-[var(--text-muted)]">{{ formatRelativeTime(note.created_at) }}</p>
                                     </div>
                                 </div>
-                                <p class="mt-2 whitespace-pre-wrap break-words text-[11px] text-[var(--text-primary)]">
-                                    {{ note.body || 'Internal note (no text)' }}
-                                </p>
+                                <div class="mt-2 break-words text-[11px] text-[var(--text-primary)]">
+                                    <div v-if="note.body" class="support-rich-content" v-html="noteContentHtml(note)"></div>
+                                    <span v-else>Internal note (no text)</span>
+                                </div>
                                 <SupportMessageAttachments
                                     v-if="Array.isArray(note.attachments) && note.attachments.length > 0"
                                     class="mt-2"
@@ -2679,6 +3459,85 @@ textarea:focus {
     outline: none !important;
     box-shadow: none !important;
     border: none !important;
+}
+
+.support-inbox-sidebar {
+    flex-shrink: 0;
+    min-width: 0;
+}
+
+.support-resize-active {
+    user-select: none;
+}
+
+.support-sidebar-resize-handle {
+    position: relative;
+    width: 0;
+    flex: 0 0 0;
+    overflow: visible;
+    cursor: col-resize;
+    touch-action: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    z-index: 20;
+}
+
+.support-sidebar-resize-handle::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: color-mix(in srgb, var(--border-default) 55%, transparent);
+    transition: background-color 120ms ease, opacity 120ms ease;
+    opacity: 0.6;
+}
+
+.support-sidebar-resize-handle::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -6px;
+    width: 12px;
+}
+
+.support-sidebar-resize-handle:hover::before,
+.support-sidebar-resize-handle.is-active::before {
+    background: color-mix(in srgb, var(--interactive-primary) 75%, transparent);
+    opacity: 1;
+}
+
+.support-sidebar-grip {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2px;
+    padding: 3px 2px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--surface-secondary) 88%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border-default) 80%, transparent);
+    transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.support-sidebar-grip-dot {
+    width: 2px;
+    height: 2px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--text-muted) 82%, transparent);
+}
+
+.support-sidebar-resize-handle:hover .support-sidebar-grip,
+.support-sidebar-resize-handle.is-active .support-sidebar-grip {
+    border-color: color-mix(in srgb, var(--interactive-primary) 75%, transparent);
+    background: color-mix(in srgb, var(--surface-secondary) 95%, var(--interactive-primary) 5%);
 }
 
 .support-typing-pill {
@@ -2711,6 +3570,53 @@ textarea:focus {
 
 .support-typing-delay-2 {
     animation-delay: -0.15s;
+}
+
+:deep(.support-rich-content) {
+    line-height: 1.45;
+    white-space: normal;
+}
+
+:deep(.support-rich-content p) {
+    margin: 0.35rem 0;
+    white-space: pre-wrap;
+}
+
+:deep(.support-rich-content p:first-child) {
+    margin-top: 0;
+}
+
+:deep(.support-rich-content p:last-child) {
+    margin-bottom: 0;
+}
+
+:deep(.support-rich-content ul),
+:deep(.support-rich-content ol) {
+    margin: 0.35rem 0;
+    padding-left: 1.1rem;
+}
+
+:deep(.support-rich-content li) {
+    margin: 0.15rem 0;
+}
+
+:deep(.support-rich-content a) {
+    color: inherit !important;
+    text-decoration: underline;
+    text-decoration-color: currentColor;
+    text-underline-offset: 2px;
+    word-break: break-all;
+}
+
+:deep(.support-rich-content a:visited),
+:deep(.support-rich-content a:hover),
+:deep(.support-rich-content a:active) {
+    color: inherit !important;
+}
+
+:deep(.support-rich-content pre),
+:deep(.support-rich-content code) {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
 @keyframes supportTypingBounce {

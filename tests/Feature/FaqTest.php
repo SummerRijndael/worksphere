@@ -19,6 +19,8 @@ class FaqTest extends TestCase
         // Seed permissions if needed, generally tests use Factories
         // Assuming permissions are seeded or we create them
         Permission::firstOrCreate(['name' => 'settings.update']);
+        Permission::firstOrCreate(['name' => 'faq.manage']);
+        Permission::firstOrCreate(['name' => 'support.chats.view']);
     }
 
     public function test_public_can_view_faq()
@@ -56,6 +58,47 @@ class FaqTest extends TestCase
             ->assertJsonMissing(['title' => 'Secret']);
     }
 
+    public function test_public_cannot_view_internal_articles()
+    {
+        $author = User::factory()->create();
+        $category = FaqCategory::create(['name' => 'General', 'is_public' => true, 'order' => 1]);
+        FaqArticle::create([
+            'category_id' => $category->id,
+            'title' => 'Internal Runbook',
+            'content' => 'Only support/admin should see this.',
+            'is_published' => true,
+            'is_internal' => true,
+            'author_id' => $author->id,
+        ]);
+
+        $response = $this->getJson('/api/public/faq');
+        $response->assertStatus(200)
+            ->assertJsonMissing(['title' => 'Internal Runbook']);
+    }
+
+    public function test_support_user_can_access_internal_faq_endpoints()
+    {
+        $support = User::factory()->create();
+        $support->givePermissionTo('support.chats.view');
+
+        $author = User::factory()->create();
+        $category = FaqCategory::create(['name' => 'Support', 'is_public' => true, 'order' => 1]);
+        $article = FaqArticle::create([
+            'category_id' => $category->id,
+            'title' => 'Internal Escalation SOP',
+            'content' => 'Escalation flow for support.',
+            'is_published' => true,
+            'is_internal' => true,
+            'author_id' => $author->id,
+        ]);
+
+        $index = $this->actingAs($support)->getJson('/api/faq/internal');
+        $index->assertStatus(200)->assertJsonFragment(['title' => 'Internal Escalation SOP']);
+
+        $show = $this->actingAs($support)->getJson("/api/faq/internal/{$article->slug}");
+        $show->assertStatus(200)->assertJsonFragment(['title' => 'Internal Escalation SOP']);
+    }
+
     public function test_admin_can_manage_faq()
     {
         $admin = User::factory()->create();
@@ -85,8 +128,10 @@ class FaqTest extends TestCase
 
     public function test_admin_can_upload_media_to_article()
     {
+        \Illuminate\Support\Facades\Storage::fake('private');
+
         $admin = User::factory()->create();
-        $permission = \Spatie\Permission\Models\Permission::create(['name' => 'faq.manage']);
+        $permission = \Spatie\Permission\Models\Permission::firstOrCreate(['name' => 'faq.manage']);
         $admin->givePermissionTo($permission);
 
         $category = FaqCategory::create(['name' => 'General', 'is_public' => true, 'order' => 1]);

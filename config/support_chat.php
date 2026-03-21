@@ -14,13 +14,45 @@ return [
     | Human Agent Detection
     |--------------------------------------------------------------------------
     */
-    'agent_roles' => ['administrator', 'it_support'],
+    'agent_roles' => ['administrator', 'it_support', 'support'],
     'agent_permissions' => [
         'support.chats.view',
         'support.chats.reply',
         'support.chats.assign',
         'support.chats.resolve',
         'tickets.manage',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Access Adapter
+    |--------------------------------------------------------------------------
+    |
+    | legacy: Existing role/permission based behavior.
+    | skills: Skill membership + role capability routing.
+    |
+    */
+    'access_adapter' => env('SUPPORT_ACCESS_ADAPTER', 'legacy'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Skill Routing + Membership Capabilities
+    |--------------------------------------------------------------------------
+    */
+    'skills' => [
+        'enabled' => env('SUPPORT_SKILLS_ENABLED', false),
+        'allow_legacy_fallback' => env('SUPPORT_SKILLS_ALLOW_LEGACY_FALLBACK', true),
+        'allow_unrouted_conversation_fallback' => env('SUPPORT_SKILLS_ALLOW_UNROUTED_FALLBACK', true),
+        'global_admin_roles' => ['administrator'],
+        'global_admin_permissions' => ['tickets.manage'],
+
+        // Queue/ability capabilities aligned for lead/sme/qa/agent role split.
+        'role_capabilities' => [
+            'team_lead' => ['view_queue', 'reply', 'assign', 'resolve', 'monitor'],
+            'sme' => ['view_queue', 'reply', 'assign', 'resolve'],
+            'qa' => ['view_queue', 'reply', 'resolve'],
+            'agent' => ['reply'],
+        ],
     ],
 
     /*
@@ -132,5 +164,21 @@ return [
             'ttl_hours' => env('SUPPORT_NPS_TTL_HOURS', 720),
             'cooldown_days' => env('SUPPORT_NPS_COOLDOWN_DAYS', 90),
         ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | UI Timers
+    |--------------------------------------------------------------------------
+    |
+    | Configurable timing for agent-side conversation duration and
+    | "last support response elapsed" counters.
+    |
+    */
+    'ui_timers' => [
+        'tick_ms' => env('SUPPORT_UI_TIMER_TICK_MS', 1000),
+        'last_response_warn_minutes' => env('SUPPORT_UI_LAST_RESPONSE_WARN_MINUTES', 5),
+        'last_response_alert_minutes' => env('SUPPORT_UI_LAST_RESPONSE_ALERT_MINUTES', 15),
+        'last_response_include_bot' => env('SUPPORT_UI_LAST_RESPONSE_INCLUDE_BOT', true),
     ],
 ];

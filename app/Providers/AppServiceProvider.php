@@ -131,6 +131,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(\App\Models\Meeting::class, \App\Policies\MeetingPolicy::class);
         Gate::policy(\App\Models\AppReview::class, \App\Policies\AppReviewPolicy::class);
         Gate::policy(\App\Models\SupportConversation::class, \App\Policies\SupportConversationPolicy::class);
+        Gate::policy(\App\Models\SupportSkill::class, \App\Policies\SupportSkillPolicy::class);
 
         // Pulse authorization - allow users with system.maintenance permission
         Gate::define('viewPulse', function ($user) {

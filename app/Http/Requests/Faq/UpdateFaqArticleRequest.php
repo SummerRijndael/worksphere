@@ -18,6 +18,7 @@ class UpdateFaqArticleRequest extends FormRequest
             'title' => 'string|max:255',
             'content' => 'sometimes|string',
             'is_published' => 'boolean',
+            'is_internal' => 'boolean',
             'tags' => 'nullable|array',
             'tags.*' => 'string|max:50',
             'reason' => 'nullable|string',
