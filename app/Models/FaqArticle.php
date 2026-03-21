@@ -22,6 +22,7 @@ class FaqArticle extends Model implements HasMedia
         'slug',
         'content',
         'is_published',
+        'is_internal',
         'views',
         'helpful_count',
         'unhelpful_count',
@@ -48,6 +49,7 @@ class FaqArticle extends Model implements HasMedia
 
     protected $casts = [
         'is_published' => 'boolean',
+        'is_internal' => 'boolean',
         'views' => 'integer',
         'helpful_count' => 'integer',
         'unhelpful_count' => 'integer',

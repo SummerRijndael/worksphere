@@ -2,6 +2,7 @@
 
 namespace App\Services\Support;
 
+use App\Contracts\SupportAccessAdapterContract;
 use App\Contracts\SupportConversationServiceContract;
 use App\Enums\AuditAction;
 use App\Enums\AuditCategory;
@@ -13,6 +14,7 @@ use App\Models\SupportConversation;
 use App\Models\SupportMessage;
 use App\Models\SupportSurveyInvite;
 use App\Models\User;
+use App\Services\Support\Access\SupportAccessAdapterResolver;
 use App\Services\AuditService;
 use App\Services\Support\Pipelines\SupportHandoffPipeline;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -24,7 +26,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
-use Spatie\Permission\Exceptions\PermissionDoesNotExist;
 
 class SupportConversationService implements SupportConversationServiceContract
 {
@@ -33,10 +34,15 @@ class SupportConversationService implements SupportConversationServiceContract
      */
     protected ?array $supportConversationColumnMap = null;
 
+    // TODO(PARKED:support-chat-hardening): Move support message rendering to backend.
+    // Keep raw `body` for edit/audit, and add canonical safe `body_rendered` in API/resource
+    // payloads so clients don't rely only on frontend sanitization during the migration.
+
     public function __construct(
         protected SupportHandoffPipeline $handoffPipeline,
         protected SupportChatMediaService $supportChatMediaService,
-        protected AuditService $auditService
+        protected AuditService $auditService,
+        protected SupportAccessAdapterResolver $supportAccessAdapterResolver
     ) {}
 
     /**
@@ -48,10 +54,11 @@ class SupportConversationService implements SupportConversationServiceContract
         if ($initialMessage === '') {
             throw new \InvalidArgumentException('Initial message is required.');
         }
+        $conversationType = $this->normalizeConversationType($payload['conversation_type'] ?? null);
 
         /** @var SupportConversation $conversation */
-        $conversation = DB::transaction(function () use ($payload, $actor, $initialMessage) {
-            $conversation = SupportConversation::create([
+        $conversation = DB::transaction(function () use ($payload, $actor, $initialMessage, $conversationType) {
+            $baseAttributes = [
                 'requester_user_id' => $actor?->id,
                 'guest_name' => $actor ? null : ($payload['guest_name'] ?? null),
                 'guest_email' => $actor ? null : ($payload['guest_email'] ?? null),
@@ -63,7 +70,16 @@ class SupportConversationService implements SupportConversationServiceContract
                 'source_url' => $payload['source_url'] ?? null,
                 'ai_enabled' => (bool) ($payload['ai_enabled'] ?? config('support_chat.ai_enabled', true)),
                 'metadata' => is_array($payload['metadata'] ?? null) ? $payload['metadata'] : null,
+            ];
+
+            $stateAttributes = $this->filterExistingSupportConversationColumns([
+                'chat_state' => SupportConversation::CHAT_STATE_NEW,
+                'assignment_state' => SupportConversation::ASSIGNMENT_STATE_UNASSIGNED,
+                'resolution_marker' => SupportConversation::RESOLUTION_MARKER_UNRESOLVED,
+                'conversation_type' => $conversationType,
             ]);
+
+            $conversation = SupportConversation::create(array_merge($baseAttributes, $stateAttributes));
 
             $this->createMessage(
                 conversation: $conversation,
@@ -79,13 +95,13 @@ class SupportConversationService implements SupportConversationServiceContract
 
         $this->broadcastConversationChanged($conversation->fresh());
 
-        return $conversation->fresh(['requester', 'assignee', 'endedBy', 'latestMessage.sender', 'latestMessage.media', 'messages.sender', 'messages.media']);
+        return $conversation->fresh(['requester', 'assignee', 'endedBy', 'skill', 'latestMessage.sender', 'latestMessage.media', 'messages.sender', 'messages.media']);
     }
 
     public function getConversationForActor(SupportConversation $conversation, ?User $actor = null, ?string $guestToken = null): SupportConversation
     {
         if ($actor) {
-            if ($this->canOperateAsAgent($actor)) {
+            if ($this->supportAccessAdapter()->canAccessConversation($actor, $conversation)) {
                 return $conversation;
             }
 
@@ -163,7 +179,7 @@ class SupportConversationService implements SupportConversationServiceContract
      */
     public function addAgentMessage(SupportConversation $conversation, User $agent, array $payload): SupportMessage
     {
-        if (! $this->canOperateAsAgent($agent)) {
+        if (! $this->supportAccessAdapter()->canReply($agent, $conversation)) {
             throw new AuthorizationException('Only support agents can send agent messages.');
         }
 
@@ -210,7 +226,12 @@ class SupportConversationService implements SupportConversationServiceContract
                 ? SupportConversation::STATUS_ASSIGNED
                 : $conversation->status,
             'ai_handoff_required' => false,
-        ])->save();
+        ])->forceFill(
+            $this->filterExistingSupportConversationColumns([
+                'chat_state' => SupportConversation::CHAT_STATE_NEW,
+                'assignment_state' => SupportConversation::ASSIGNMENT_STATE_ASSIGNED,
+            ])
+        )->save();
 
         $this->broadcastConversationChanged($conversation->fresh(), ! $isPrivateNote);
 
@@ -219,12 +240,15 @@ class SupportConversationService implements SupportConversationServiceContract
 
     public function assignConversation(SupportConversation $conversation, User $agent, User $actor): SupportConversation
     {
-        if (! $this->canOperateAsAgent($actor)) {
+        if (! $this->supportAccessAdapter()->canAssign($actor, $conversation)) {
             throw new AuthorizationException('Only support agents can assign conversations.');
         }
 
-        if (! $this->canOperateAsAgent($agent)) {
+        if (! $this->supportAccessAdapter()->canBeAssignedToConversation($agent, $conversation)) {
             throw new \InvalidArgumentException('Assigned user must be an eligible support agent.');
+        }
+        if ($conversation->isClosedLike()) {
+            throw new \InvalidArgumentException('Cannot assign an ended/resolved conversation.');
         }
 
         $conversation->forceFill([
@@ -232,7 +256,12 @@ class SupportConversationService implements SupportConversationServiceContract
             'status' => SupportConversation::STATUS_ASSIGNED,
             'ai_handoff_required' => false,
             'ai_handoff_reason' => null,
-        ])->save();
+        ])->forceFill(
+            $this->filterExistingSupportConversationColumns([
+                'chat_state' => SupportConversation::CHAT_STATE_NEW,
+                'assignment_state' => SupportConversation::ASSIGNMENT_STATE_ASSIGNED,
+            ])
+        )->save();
 
         $assignmentMessage = $this->createMessage(
             conversation: $conversation,
@@ -245,19 +274,23 @@ class SupportConversationService implements SupportConversationServiceContract
 
         $this->broadcastConversationChanged($conversation->fresh());
 
-        return $conversation->fresh(['requester', 'assignee', 'endedBy', 'latestMessage']);
+        return $conversation->fresh(['requester', 'assignee', 'endedBy', 'skill', 'latestMessage']);
     }
 
     public function resolveConversation(SupportConversation $conversation, User $actor): SupportConversation
     {
-        if (! $this->canOperateAsAgent($actor)) {
+        if (! $this->supportAccessAdapter()->canResolve($actor, $conversation)) {
             throw new AuthorizationException('Only support agents can resolve conversations.');
         }
 
         $conversation->forceFill([
             'status' => SupportConversation::STATUS_RESOLVED,
             'resolved_at' => now(),
-        ])->save();
+        ])->forceFill(
+            $this->filterExistingSupportConversationColumns([
+                'resolution_marker' => SupportConversation::RESOLUTION_MARKER_RESOLVED,
+            ])
+        )->save();
 
         $resolutionMessage = $this->createMessage(
             conversation: $conversation,
@@ -270,7 +303,7 @@ class SupportConversationService implements SupportConversationServiceContract
 
         $this->broadcastConversationChanged($conversation->fresh());
 
-        return $conversation->fresh(['requester', 'assignee', 'endedBy', 'latestMessage']);
+        return $conversation->fresh(['requester', 'assignee', 'endedBy', 'skill', 'latestMessage']);
     }
 
     /**
@@ -284,8 +317,11 @@ class SupportConversationService implements SupportConversationServiceContract
     ): SupportConversation {
         $conversation = $this->getConversationForActor($conversation, $actor, $guestToken);
 
-        if ($conversation->status === SupportConversation::STATUS_CLOSED) {
-            return $conversation->fresh(['requester', 'assignee', 'endedBy', 'latestMessage.sender', 'latestMessage.media', 'messages.sender', 'messages.media']);
+        if (
+            $conversation->status === SupportConversation::STATUS_CLOSED
+            || $conversation->chat_state === SupportConversation::CHAT_STATE_ENDED
+        ) {
+            return $conversation->fresh(['requester', 'assignee', 'endedBy', 'skill', 'latestMessage.sender', 'latestMessage.media', 'messages.sender', 'messages.media']);
         }
 
         $endedByType = 'guest';
@@ -306,6 +342,10 @@ class SupportConversationService implements SupportConversationServiceContract
                 $endedByName = (string) $actor->name;
             }
         }
+        $endReason = $this->normalizeEndReason(
+            $options['end_reason'] ?? null,
+            $endedByType
+        );
 
         $existingColumns = $this->existingSupportConversationColumns();
 
@@ -313,6 +353,18 @@ class SupportConversationService implements SupportConversationServiceContract
             'status' => $conversation->status,
             'closed_at' => $conversation->closed_at?->toISOString(),
         ];
+        if (isset($existingColumns['chat_state'])) {
+            $oldValues['chat_state'] = $conversation->chat_state;
+        }
+        if (isset($existingColumns['assignment_state'])) {
+            $oldValues['assignment_state'] = $conversation->assignment_state;
+        }
+        if (isset($existingColumns['resolution_marker'])) {
+            $oldValues['resolution_marker'] = $conversation->resolution_marker;
+        }
+        if (isset($existingColumns['end_reason'])) {
+            $oldValues['end_reason'] = $conversation->end_reason;
+        }
 
         if (isset($existingColumns['ended_at'])) {
             $oldValues['ended_at'] = $conversation->ended_at?->toISOString();
@@ -334,6 +386,13 @@ class SupportConversationService implements SupportConversationServiceContract
             'ended_by_type' => $endedByType,
             'ended_by_user_id' => $endedByUserId,
             'ended_by_name' => $endedByName,
+            'chat_state' => SupportConversation::CHAT_STATE_ENDED,
+            'assignment_state' => $conversation->assigned_to
+                ? SupportConversation::ASSIGNMENT_STATE_ASSIGNED
+                : SupportConversation::ASSIGNMENT_STATE_UNASSIGNED,
+            'resolution_marker' => $conversation->resolution_marker
+                ?: SupportConversation::RESOLUTION_MARKER_UNRESOLVED,
+            'end_reason' => $endReason,
             'ai_handoff_required' => false,
         ]);
         $conversation->forceFill($conversationUpdates)->save();
@@ -351,6 +410,7 @@ class SupportConversationService implements SupportConversationServiceContract
                 'type' => 'conversation_closed',
                 'ended_by_type' => $endedByType,
                 'ended_by_name' => $endedByName,
+                'end_reason' => $endReason,
             ],
         );
         $this->broadcastMessageCreated($conversation->fresh(), $endingMessage->fresh('sender'));
@@ -370,7 +430,7 @@ class SupportConversationService implements SupportConversationServiceContract
             ]
         );
 
-        return $conversation->fresh(['requester', 'assignee', 'endedBy', 'latestMessage.sender', 'latestMessage.media', 'messages.sender', 'messages.media']);
+        return $conversation->fresh(['requester', 'assignee', 'endedBy', 'skill', 'latestMessage.sender', 'latestMessage.media', 'messages.sender', 'messages.media']);
     }
 
     public function updateSurveyPreference(
@@ -401,7 +461,7 @@ class SupportConversationService implements SupportConversationServiceContract
 
         $this->broadcastConversationChanged($conversation->fresh());
 
-        return $conversation->fresh(['requester', 'assignee', 'endedBy', 'latestMessage.sender', 'latestMessage.media', 'messages.sender', 'messages.media']);
+        return $conversation->fresh(['requester', 'assignee', 'endedBy', 'skill', 'latestMessage.sender', 'latestMessage.media', 'messages.sender', 'messages.media']);
     }
 
     /**
@@ -448,6 +508,18 @@ class SupportConversationService implements SupportConversationServiceContract
             'status' => $conversation->status,
             'closed_at' => $conversation->closed_at?->toISOString(),
         ];
+        if (isset($existingColumns['chat_state'])) {
+            $values['chat_state'] = $conversation->chat_state;
+        }
+        if (isset($existingColumns['assignment_state'])) {
+            $values['assignment_state'] = $conversation->assignment_state;
+        }
+        if (isset($existingColumns['resolution_marker'])) {
+            $values['resolution_marker'] = $conversation->resolution_marker;
+        }
+        if (isset($existingColumns['end_reason'])) {
+            $values['end_reason'] = $conversation->end_reason;
+        }
 
         if (isset($existingColumns['ended_at'])) {
             $values['ended_at'] = $conversation->ended_at?->toISOString();
@@ -482,7 +554,7 @@ class SupportConversationService implements SupportConversationServiceContract
             $this->broadcastConversationChanged($conversation->fresh());
         }
 
-        return $conversation->fresh(['requester', 'assignee', 'endedBy', 'latestMessage.sender', 'latestMessage.media', 'messages.sender', 'messages.media']);
+        return $conversation->fresh(['requester', 'assignee', 'endedBy', 'skill', 'latestMessage.sender', 'latestMessage.media', 'messages.sender', 'messages.media']);
     }
 
     /**
@@ -490,7 +562,7 @@ class SupportConversationService implements SupportConversationServiceContract
      */
     public function inbox(User $agent, string $scope = 'mine', array $filters = []): LengthAwarePaginator
     {
-        if (! $this->canOperateAsAgent($agent)) {
+        if (! $this->supportAccessAdapter()->canViewAny($agent)) {
             throw new AuthorizationException('Only support agents can access support inbox.');
         }
 
@@ -502,19 +574,34 @@ class SupportConversationService implements SupportConversationServiceContract
         $safePerPage = max(1, min($maxPerPage, $perPage));
 
         $query = SupportConversation::query()
-            ->with(['requester:id,public_id,name,email', 'assignee:id,public_id,name,email', 'endedBy:id,public_id,name,email', 'latestMessage.sender:id,public_id,name,email', 'latestMessage.media'])
+            ->with([
+                'requester:id,public_id,name,email',
+                'assignee:id,public_id,name,email',
+                'endedBy:id,public_id,name,email',
+                'skill:id,public_id,name,slug,department',
+                'latestMessage.sender:id,public_id,name,email',
+                'latestMessage.media',
+            ])
             ->orderByDesc('last_message_at')
             ->orderByDesc('updated_at');
+
+        $this->supportAccessAdapter()->applyInboxAccessScope($agent, $query);
 
         if ($scope === 'mine') {
             $query->where('assigned_to', $agent->id);
         } elseif ($scope === 'unassigned') {
-            $query->whereNull('assigned_to')
-                ->whereIn('status', [
-                    SupportConversation::STATUS_OPEN,
-                    SupportConversation::STATUS_BOT_ACTIVE,
-                    SupportConversation::STATUS_WAITING_HUMAN,
-                ]);
+            $columns = $this->existingSupportConversationColumns();
+            if (isset($columns['assignment_state']) && isset($columns['chat_state'])) {
+                $query->where('assignment_state', SupportConversation::ASSIGNMENT_STATE_UNASSIGNED)
+                    ->where('chat_state', SupportConversation::CHAT_STATE_NEW);
+            } else {
+                $query->whereNull('assigned_to')
+                    ->whereIn('status', [
+                        SupportConversation::STATUS_OPEN,
+                        SupportConversation::STATUS_BOT_ACTIVE,
+                        SupportConversation::STATUS_WAITING_HUMAN,
+                    ]);
+            }
         }
 
         if ($status) {
@@ -536,7 +623,7 @@ class SupportConversationService implements SupportConversationServiceContract
 
     public function canOperateAsAgent(User $user): bool
     {
-        return $this->isSupportAgent($user);
+        return $this->supportAccessAdapter()->canOperateAsAgent($user);
     }
 
     /**
@@ -544,7 +631,10 @@ class SupportConversationService implements SupportConversationServiceContract
      */
     public function eligibleAgents(): Collection
     {
-        return $this->eligibleAgentsQuery()
+        $query = User::query();
+        $this->supportAccessAdapter()->applyEligibleAgentsScope($query);
+
+        return $query
             ->where('status', 'active')
             ->select(['id', 'public_id', 'name', 'email', 'status'])
             ->orderBy('name')
@@ -565,6 +655,11 @@ class SupportConversationService implements SupportConversationServiceContract
                 ? 'Support agents are currently available.'
                 : 'No support agent is available right now, but you can leave a message.',
         ];
+    }
+
+    protected function supportAccessAdapter(): SupportAccessAdapterContract
+    {
+        return $this->supportAccessAdapterResolver->resolve();
     }
 
     /**
@@ -638,7 +733,12 @@ class SupportConversationService implements SupportConversationServiceContract
                 'ai_handoff_required' => true,
                 'ai_handoff_reason' => $decision['reason'] ?? null,
                 'metadata' => $meta,
-            ])->save();
+            ])->forceFill(
+                $this->filterExistingSupportConversationColumns([
+                    'chat_state' => SupportConversation::CHAT_STATE_NEW,
+                    'assignment_state' => SupportConversation::ASSIGNMENT_STATE_UNASSIGNED,
+                ])
+            )->save();
 
             if (! $availability['available']) {
                 $availabilityMessage = $this->createMessage(
@@ -654,9 +754,49 @@ class SupportConversationService implements SupportConversationServiceContract
         }
 
         if ($conversation->status === SupportConversation::STATUS_OPEN) {
-            $conversation->status = SupportConversation::STATUS_BOT_ACTIVE;
-            $conversation->save();
+            $conversation->forceFill([
+                'status' => SupportConversation::STATUS_BOT_ACTIVE,
+            ])->forceFill(
+                $this->filterExistingSupportConversationColumns([
+                    'chat_state' => SupportConversation::CHAT_STATE_NEW,
+                    'assignment_state' => SupportConversation::ASSIGNMENT_STATE_UNASSIGNED,
+                ])
+            )->save();
         }
+    }
+
+    protected function normalizeConversationType(mixed $type): string
+    {
+        $normalized = strtolower(trim((string) ($type ?? '')));
+        if (in_array($normalized, ['complaint'], true)) {
+            return SupportConversation::TYPE_COMPLAINT;
+        }
+
+        if (in_array($normalized, ['inquery', 'inquiry'], true)) {
+            return SupportConversation::TYPE_INQUIRY;
+        }
+
+        return SupportConversation::TYPE_INQUIRY;
+    }
+
+    protected function normalizeEndReason(mixed $reason, string $endedByType): string
+    {
+        $normalized = strtolower(trim((string) ($reason ?? '')));
+        if ($normalized !== '' && in_array($normalized, [
+            SupportConversation::END_REASON_USER_ENDED,
+            SupportConversation::END_REASON_AGENT_ENDED,
+            SupportConversation::END_REASON_GHOST_TIMEOUT,
+            SupportConversation::END_REASON_ABANDONED,
+            SupportConversation::END_REASON_SYSTEM_ENDED,
+        ], true)) {
+            return $normalized;
+        }
+
+        return match ($endedByType) {
+            'agent' => SupportConversation::END_REASON_AGENT_ENDED,
+            'customer', 'guest' => SupportConversation::END_REASON_USER_ENDED,
+            default => SupportConversation::END_REASON_SYSTEM_ENDED,
+        };
     }
 
     protected function shouldSkipAiAutoReply(SupportConversation $conversation): bool
@@ -667,6 +807,8 @@ class SupportConversationService implements SupportConversationServiceContract
 
         return (bool) (
             $conversation->assigned_to
+            || $conversation->chat_state === SupportConversation::CHAT_STATE_ENDED
+            || $conversation->assignment_state === SupportConversation::ASSIGNMENT_STATE_ASSIGNED
             || in_array($conversation->status, [
                 SupportConversation::STATUS_ASSIGNED,
                 SupportConversation::STATUS_WAITING_HUMAN,
@@ -691,54 +833,6 @@ class SupportConversationService implements SupportConversationServiceContract
         }
 
         return array_values(array_filter($files, fn ($file): bool => $file instanceof UploadedFile));
-    }
-
-    protected function isSupportAgent(User $user): bool
-    {
-        $roles = (array) config('support_chat.agent_roles', ['administrator', 'it_support']);
-        $permissions = (array) config('support_chat.agent_permissions', ['tickets.manage']);
-
-        if (! empty($roles) && $user->hasAnyRole($roles)) {
-            return true;
-        }
-
-        foreach ($permissions as $permission) {
-            try {
-                if ($user->hasPermissionTo($permission)) {
-                    return true;
-                }
-            } catch (PermissionDoesNotExist) {
-                continue;
-            } catch (\Throwable) {
-                continue;
-            }
-        }
-
-        return false;
-    }
-
-    protected function eligibleAgentsQuery(): Builder
-    {
-        $roles = (array) config('support_chat.agent_roles', ['administrator', 'it_support']);
-        $permissions = (array) config('support_chat.agent_permissions', ['tickets.manage']);
-
-        return User::query()
-            ->where(function (Builder $query) use ($roles, $permissions) {
-                $hasClause = false;
-
-                if (! empty($roles)) {
-                    $query->whereHas('roles', fn (Builder $roleQuery) => $roleQuery->whereIn('name', $roles));
-                    $hasClause = true;
-                }
-
-                if (! empty($permissions)) {
-                    if ($hasClause) {
-                        $query->orWhereHas('permissions', fn (Builder $permissionQuery) => $permissionQuery->whereIn('name', $permissions));
-                    } else {
-                        $query->whereHas('permissions', fn (Builder $permissionQuery) => $permissionQuery->whereIn('name', $permissions));
-                    }
-                }
-            });
     }
 
     protected function broadcastConversationChanged(SupportConversation $conversation, bool $broadcastToCustomer = true): void

@@ -18,6 +18,7 @@ class StoreFaqArticleRequest extends FormRequest
             'title' => 'required|string|max:255',
             'content' => 'required|string',
             'is_published' => 'boolean',
+            'is_internal' => 'boolean',
             'tags' => 'nullable|array',
             'tags.*' => 'string|max:50',
         ];

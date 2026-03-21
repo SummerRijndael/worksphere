@@ -49,6 +49,7 @@ class SupportInboxController extends Controller
 
         return $this->paginatedConversationResponse($paginator, $request, [
             'realtime' => $this->supportRealtimeService->agentRealtimeMeta($request->user()),
+            'ui_timers' => $this->supportUiTimerMeta(),
         ]);
     }
 
@@ -68,6 +69,7 @@ class SupportInboxController extends Controller
             'data' => new SupportConversationResource($conversation, includePrivateNotes: true),
             'meta' => [
                 'realtime' => $this->supportRealtimeService->agentRealtimeMeta($request->user(), $conversation->public_id),
+                'ui_timers' => $this->supportUiTimerMeta(),
             ],
         ]);
     }
@@ -294,6 +296,7 @@ class SupportInboxController extends Controller
             'requester:id,public_id,name,email',
             'assignee:id,public_id,name,email',
             'endedBy:id,public_id,name,email',
+            'skill:id,public_id,name,slug,department',
             'latestMessage.sender:id,public_id,name,email',
             'latestMessage.media',
             'messages.sender:id,public_id,name,email',
@@ -330,6 +333,7 @@ class SupportInboxController extends Controller
             'requester:id,public_id,name,email',
             'assignee:id,public_id,name,email',
             'endedBy:id,public_id,name,email',
+            'skill:id,public_id,name,slug,department',
             'latestMessage.sender:id,public_id,name,email',
             'latestMessage.media',
             'messages.sender:id,public_id,name,email',
@@ -367,6 +371,7 @@ class SupportInboxController extends Controller
             'requester:id,public_id,name,email',
             'assignee:id,public_id,name,email',
             'endedBy:id,public_id,name,email',
+            'skill:id,public_id,name,slug,department',
             'latestMessage.sender:id,public_id,name,email',
             'latestMessage.media',
             'messages.sender:id,public_id,name,email',
@@ -417,6 +422,7 @@ class SupportInboxController extends Controller
             'requester:id,public_id,name,email',
             'assignee:id,public_id,name,email',
             'endedBy:id,public_id,name,email',
+            'skill:id,public_id,name,slug,department',
             'latestMessage.sender:id,public_id,name,email',
             'latestMessage.media',
             'messages.sender:id,public_id,name,email',
@@ -484,6 +490,7 @@ class SupportInboxController extends Controller
             'requester:id,public_id,name,email',
             'assignee:id,public_id,name,email',
             'endedBy:id,public_id,name,email',
+            'skill:id,public_id,name,slug,department',
             'latestMessage.sender:id,public_id,name,email',
             'latestMessage.media',
             'messages' => function ($query) use ($includePrivateNotes): void {
@@ -581,5 +588,22 @@ class SupportInboxController extends Controller
         }
 
         return $serialized;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function supportUiTimerMeta(): array
+    {
+        $tickMs = max(250, (int) config('support_chat.ui_timers.tick_ms', 1000));
+        $warnMinutes = max(1, (int) config('support_chat.ui_timers.last_response_warn_minutes', 5));
+        $alertMinutes = max($warnMinutes, (int) config('support_chat.ui_timers.last_response_alert_minutes', 15));
+
+        return [
+            'tick_ms' => $tickMs,
+            'last_response_warn_minutes' => $warnMinutes,
+            'last_response_alert_minutes' => $alertMinutes,
+            'last_response_include_bot' => (bool) config('support_chat.ui_timers.last_response_include_bot', true),
+        ];
     }
 }

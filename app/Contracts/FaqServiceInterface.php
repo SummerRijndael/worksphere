@@ -10,7 +10,7 @@ interface FaqServiceInterface
     /**
      * Get all categories with specific logic (e.g. public only, or all).
      */
-    public function getAllCategories(bool $publicOnly = false, ?int $perPage = null, ?string $search = null, string $sortBy = 'order', string $sortDir = 'asc', ?string $dateFrom = null, ?string $dateTo = null, ?string $status = null): \Illuminate\Contracts\Pagination\LengthAwarePaginator|\Illuminate\Database\Eloquent\Collection;
+    public function getAllCategories(bool $publicOnly = false, ?int $perPage = null, ?string $search = null, string $sortBy = 'order', string $sortDir = 'asc', ?string $dateFrom = null, ?string $dateTo = null, ?string $status = null, bool $includeInternal = false): \Illuminate\Contracts\Pagination\LengthAwarePaginator|\Illuminate\Database\Eloquent\Collection;
 
     /**
      * Create a new category.
@@ -30,12 +30,12 @@ interface FaqServiceInterface
     /**
      * Get articles, optionally filtered by category and visibility.
      */
-    public function getArticles(?int $categoryId = null, bool $publishedOnly = false, int $perPage = 20, ?string $search = null, string $sortBy = 'created_at', string $sortDir = 'desc', ?string $dateFrom = null, ?string $dateTo = null, ?string $status = null): \Illuminate\Contracts\Pagination\LengthAwarePaginator;
+    public function getArticles(?int $categoryId = null, bool $publishedOnly = false, int $perPage = 20, ?string $search = null, string $sortBy = 'created_at', string $sortDir = 'desc', ?string $dateFrom = null, ?string $dateTo = null, ?string $status = null, ?string $visibility = null, bool $includeInternal = false): \Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
     /**
      * Get a specific article by slug.
      */
-    public function getArticleBySlug(string $slug, bool $publishedOnly = false): FaqArticle;
+    public function getArticleBySlug(string $slug, bool $publishedOnly = false, bool $includeInternal = false): FaqArticle;
 
     /**
      * Create a new article.

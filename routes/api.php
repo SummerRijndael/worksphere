@@ -148,6 +148,13 @@ Route::middleware(['throttle:60,1'])->group(function () {
 });
 
 Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->group(function () {
+    // Internal FAQ (staff-only; includes internal articles)
+    Route::middleware('permission:faq.manage|support.chats.view|support.chats.reply')->prefix('faq/internal')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\FaqController::class, 'internalIndex']);
+        Route::get('/search', [\App\Http\Controllers\Api\FaqController::class, 'internalSearch']);
+        Route::get('/{slug}', [\App\Http\Controllers\Api\FaqController::class, 'internalShow']);
+    });
+
     // Current User
     Route::get('/user', [AuthController::class, 'user']);
     Route::get('/user/details', [UserController::class, 'details']);
@@ -267,6 +274,14 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
         Route::get('/realtime-token', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'realtimeToken']);
         Route::get('/inbox', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'index']);
         Route::get('/agents', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'agents']);
+        Route::get('/skills', [\App\Http\Controllers\Api\Support\SupportSkillController::class, 'index']);
+        Route::post('/skills', [\App\Http\Controllers\Api\Support\SupportSkillController::class, 'store']);
+        Route::put('/skills/{skill}', [\App\Http\Controllers\Api\Support\SupportSkillController::class, 'update'])
+            ->whereUlid('skill');
+        Route::post('/skills/{skill}/members', [\App\Http\Controllers\Api\Support\SupportSkillController::class, 'upsertMember'])
+            ->whereUlid('skill');
+        Route::delete('/skills/{skill}/members/{user}', [\App\Http\Controllers\Api\Support\SupportSkillController::class, 'destroyMember'])
+            ->whereUlid('skill');
         Route::get('/surveys/metrics', [\App\Http\Controllers\Api\Support\SupportSurveyController::class, 'metrics']);
         Route::post('/claim-guest', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'claimGuestConversation']);
         Route::get('/agent/{conversation}', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'show'])
@@ -280,6 +295,8 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
         Route::post('/{conversation}/agent-messages', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'storeAgentMessage'])
             ->whereUlid('conversation');
         Route::post('/{conversation}/assign', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'assign'])
+            ->whereUlid('conversation');
+        Route::post('/{conversation}/routing/skill', [\App\Http\Controllers\Api\Support\SupportSkillController::class, 'assignConversationSkill'])
             ->whereUlid('conversation');
         Route::post('/{conversation}/resolve', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'resolve'])
             ->whereUlid('conversation');

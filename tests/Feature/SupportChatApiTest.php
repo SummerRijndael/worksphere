@@ -50,6 +50,10 @@ class SupportChatApiTest extends TestCase
         $startResponse->assertStatus(201)
             ->assertJsonPath('data.guest_name', 'Guest User')
             ->assertJsonPath('data.guest_email', 'guest@example.com')
+            ->assertJsonPath('data.chat_state', SupportConversation::CHAT_STATE_NEW)
+            ->assertJsonPath('data.assignment_state', SupportConversation::ASSIGNMENT_STATE_UNASSIGNED)
+            ->assertJsonPath('data.resolution_marker', SupportConversation::RESOLUTION_MARKER_UNRESOLVED)
+            ->assertJsonPath('data.conversation_type', SupportConversation::TYPE_INQUIRY)
             ->assertJsonStructure([
                 'meta' => [
                     'realtime' => ['token', 'expires_at', 'channels', 'auth_endpoint'],
@@ -643,6 +647,7 @@ class SupportChatApiTest extends TestCase
 
         $assignResponse->assertOk()
             ->assertJsonPath('data.status', SupportConversation::STATUS_ASSIGNED)
+            ->assertJsonPath('data.assignment_state', SupportConversation::ASSIGNMENT_STATE_ASSIGNED)
             ->assertJsonPath('data.assignee.id', $secondaryAgent->public_id);
 
         $replyResponse = $this->actingAs($secondaryAgent)
@@ -657,7 +662,8 @@ class SupportChatApiTest extends TestCase
             ->postJson("/api/support/chats/{$conversation->public_id}/resolve");
 
         $resolveResponse->assertOk()
-            ->assertJsonPath('data.status', SupportConversation::STATUS_RESOLVED);
+            ->assertJsonPath('data.status', SupportConversation::STATUS_RESOLVED)
+            ->assertJsonPath('data.resolution_marker', SupportConversation::RESOLUTION_MARKER_RESOLVED);
 
         $this->assertDatabaseHas('support_conversations', [
             'id' => $conversation->id,
@@ -837,12 +843,16 @@ class SupportChatApiTest extends TestCase
             'ended_by_name' => 'Guest Person',
         ])->assertOk()
             ->assertJsonPath('data.status', SupportConversation::STATUS_CLOSED)
+            ->assertJsonPath('data.chat_state', SupportConversation::CHAT_STATE_ENDED)
+            ->assertJsonPath('data.end_reason', SupportConversation::END_REASON_USER_ENDED)
             ->assertJsonPath('data.ended_by.type', 'guest')
             ->assertJsonPath('data.ended_by.name', 'Guest Person');
 
         $this->assertDatabaseHas('support_conversations', [
             'id' => $conversation->id,
             'status' => SupportConversation::STATUS_CLOSED,
+            'chat_state' => SupportConversation::CHAT_STATE_ENDED,
+            'end_reason' => SupportConversation::END_REASON_USER_ENDED,
             'ended_by_type' => 'guest',
             'ended_by_name' => 'Guest Person',
         ]);
@@ -875,12 +885,16 @@ class SupportChatApiTest extends TestCase
             ->postJson("/api/support/chats/agent/{$conversation->public_id}/end")
             ->assertOk()
             ->assertJsonPath('data.status', SupportConversation::STATUS_CLOSED)
+            ->assertJsonPath('data.chat_state', SupportConversation::CHAT_STATE_ENDED)
+            ->assertJsonPath('data.end_reason', SupportConversation::END_REASON_AGENT_ENDED)
             ->assertJsonPath('data.ended_by.type', 'agent')
             ->assertJsonPath('data.ended_by.user.id', $agent->public_id);
 
         $this->assertDatabaseHas('support_conversations', [
             'id' => $conversation->id,
             'status' => SupportConversation::STATUS_CLOSED,
+            'chat_state' => SupportConversation::CHAT_STATE_ENDED,
+            'end_reason' => SupportConversation::END_REASON_AGENT_ENDED,
             'ended_by_type' => 'agent',
             'ended_by_user_id' => $agent->id,
         ]);

@@ -49,6 +49,7 @@ class SupportChatController extends Controller
             'subject' => ['nullable', 'string', 'max:255'],
             'initial_message' => ['required', 'string', 'max:5000'],
             'priority' => ['nullable', 'string', 'in:low,normal,high,urgent'],
+            'conversation_type' => ['nullable', 'string', 'in:inquiry,inquery,complaint'],
             'channel' => ['nullable', 'string', 'max:64'],
             'source_url' => ['nullable', 'string', 'max:2048'],
             'ai_enabled' => ['nullable', 'boolean'],
@@ -649,6 +650,7 @@ class SupportChatController extends Controller
             'requester:id,public_id,name,email',
             'assignee:id,public_id,name,email',
             'endedBy:id,public_id,name,email',
+            'skill:id,public_id,name,slug,department',
             'latestMessage.sender:id,public_id,name,email',
             'latestMessage.media',
             'messages' => function ($query) use ($includePrivateNotes): void {

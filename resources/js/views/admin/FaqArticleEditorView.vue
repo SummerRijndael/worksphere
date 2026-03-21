@@ -71,6 +71,7 @@ const articleForm = ref({
     content: "",
     tags: [],
     is_published: false,
+    is_internal: false,
 });
 const tagsInput = ref("");
 const articleErrors = ref({});
@@ -325,6 +326,7 @@ const fetchArticle = async () => {
             content: article.content,
             tags: article.tags || [],
             is_published: article.is_published,
+            is_internal: Boolean(article.is_internal),
         };
         originalArticle.value = { ...articleForm.value };
     } catch (error) {
@@ -755,6 +757,33 @@ const currentUser = { name: "You (Preview)" };
                                 <input
                                     id="publish-toggle"
                                     v-model="articleForm.is_published"
+                                    type="checkbox"
+                                    class="toggle rounded-full border-[var(--border-strong)]"
+                                />
+                            </div>
+
+                            <!-- Internal Visibility Toggle -->
+                            <div
+                                class="flex items-center justify-between p-3 bg-[var(--surface-secondary)] rounded-lg"
+                            >
+                                <div class="flex flex-col">
+                                    <label
+                                        class="text-sm font-medium text-[var(--text-primary)] cursor-pointer"
+                                        for="internal-toggle"
+                                    >
+                                        {{ articleForm.is_internal ? "Internal Article" : "Public Article" }}
+                                    </label>
+                                    <span class="text-xs text-[var(--text-muted)]">
+                                        {{
+                                            articleForm.is_internal
+                                                ? "Only administrators and support agents can access this article."
+                                                : "Available on the public FAQ when published."
+                                        }}
+                                    </span>
+                                </div>
+                                <input
+                                    id="internal-toggle"
+                                    v-model="articleForm.is_internal"
                                     type="checkbox"
                                     class="toggle rounded-full border-[var(--border-strong)]"
                                 />

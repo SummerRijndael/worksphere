@@ -4,12 +4,29 @@ import { Card, Button, Badge } from "@/components/ui";
 import { LifeBuoy, Ticket, Inbox, MessageSquare, ArrowRight, Archive } from "lucide-vue-next";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
+import { preferredSupportWorkspaceRoute } from "@/utils/supportWorkspace";
 
 const router = useRouter();
 const authStore = useAuthStore();
 
 const canAccessSupportTicketDashboard = computed(() =>
     authStore.hasPermission("tickets.manage"),
+);
+
+const supportWorkAreaRoute = computed(() =>
+    preferredSupportWorkspaceRoute(authStore.user, authStore.hasPermission),
+);
+
+const supportWorkAreaTitle = computed(() =>
+    supportWorkAreaRoute.value === "/support/workbench"
+        ? "Agent Workbench"
+        : "Lead Inbox",
+);
+
+const supportWorkAreaDescription = computed(() =>
+    supportWorkAreaRoute.value === "/support/workbench"
+        ? "Handle multiple active chats in a full-page agent desk."
+        : "Monitor queue, routing, and assignment from the lead console.",
 );
 
 const goTo = (path) => router.push(path);
@@ -45,9 +62,9 @@ const goTo = (path) => router.push(path);
                     <Inbox class="h-5 w-5 text-[var(--interactive-primary)]" />
                     <Badge variant="secondary" size="sm">Agents</Badge>
                 </div>
-                <h2 class="font-semibold text-[var(--text-primary)]">Inbox Work Area</h2>
-                <p class="text-sm text-[var(--text-secondary)]">Handle assigned and unassigned live chats.</p>
-                <Button variant="outline" class="w-full" @click="goTo('/support/inbox')">
+                <h2 class="font-semibold text-[var(--text-primary)]">{{ supportWorkAreaTitle }}</h2>
+                <p class="text-sm text-[var(--text-secondary)]">{{ supportWorkAreaDescription }}</p>
+                <Button variant="outline" class="w-full" @click="goTo(supportWorkAreaRoute)">
                     Open
                     <ArrowRight class="ml-2 h-4 w-4" />
                 </Button>

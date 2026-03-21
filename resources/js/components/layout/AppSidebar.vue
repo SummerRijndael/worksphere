@@ -181,23 +181,43 @@ onMounted(() => {
         @mouseleave="handleMouseLeave"
     >
         <!-- Header -->
-        <div class="flex h-14 items-center justify-between px-3 pb-1.5 pt-2.5">
+        <div
+            :class="
+                cn(
+                    'flex items-center justify-between transition-all duration-200',
+                    showExpanded ? 'h-14 px-3 pb-1.5 pt-2.5' : 'h-11 px-1.5 py-1.5',
+                )
+            "
+        >
             <!-- Logo -->
             <a
                 href="/"
                 target="_blank"
                 :class="
                     cn(
-                        'flex items-center gap-2.5 transition-all duration-300',
+                        'flex items-center transition-all duration-300',
+                        showExpanded ? 'gap-2.5' : 'gap-0',
                         !showExpanded && 'justify-center w-full',
                     )
                 "
             >
                 <div
-                    class="h-8 w-8 rounded-lg bg-[var(--color-primary-600)] flex items-center justify-center shrink-0"
+                    :class="
+                        cn(
+                            'bg-[var(--color-primary-600)] flex items-center justify-center shrink-0 transition-all duration-200',
+                            showExpanded
+                                ? 'h-8 w-8 rounded-lg'
+                                : 'h-7 w-7 rounded-md',
+                        )
+                    "
                 >
                     <svg
-                        class="h-4.5 w-4.5 text-white"
+                        :class="
+                            cn(
+                                'text-white transition-all duration-200',
+                                showExpanded ? 'h-4.5 w-4.5' : 'h-4 w-4',
+                            )
+                        "
                         fill="none"
                         viewBox="0 0 24 24"
                         stroke="currentColor"
@@ -256,7 +276,12 @@ onMounted(() => {
 
         <!-- Navigation -->
         <nav
-            class="flex-1 overflow-y-auto overflow-x-hidden p-2.5 space-y-4 scrollbar-thin hover:scrollbar-thumb-[var(--scrollbar-thumb)]"
+            :class="
+                cn(
+                    'flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin hover:scrollbar-thumb-[var(--scrollbar-thumb)]',
+                    showExpanded ? 'p-2.5 space-y-4' : 'px-1.5 py-1.5 space-y-2.5',
+                )
+            "
         >
             <!-- Pinned Items -->
             <div v-if="navStore.pinnedItems.length" class="space-y-0.5">
@@ -276,7 +301,7 @@ onMounted(() => {
                                         'group relative flex w-full items-center rounded-lg transition-colors duration-200 border border-transparent',
                                         // Base spacing
                                         !showExpanded
-                                            ? 'justify-center p-2 mx-auto'
+                                            ? 'justify-center h-8 w-8 p-0 mx-auto rounded-md'
                                             : 'px-2.5 py-1.5 gap-2.5',
                                         // Active State (Pill)
                                         isActive(item.route) ||
@@ -291,7 +316,9 @@ onMounted(() => {
                                     :is="getIcon(item.icon)"
                                     :class="
                                         cn(
-                                            'h-4 w-4 shrink-0 transition-colors duration-200',
+                                            showExpanded
+                                                ? 'h-4 w-4 shrink-0 transition-colors duration-200'
+                                                : 'h-3.5 w-3.5 shrink-0 transition-colors duration-200',
                                             isActive(item.route) ||
                                                 isChildActive(item)
                                                 ? 'text-[var(--text-primary)]'
@@ -478,7 +505,7 @@ onMounted(() => {
                                         'group relative flex w-full items-center rounded-lg transition-colors duration-200 border border-transparent',
                                         // Base spacing
                                         !showExpanded
-                                            ? 'justify-center p-2 mx-auto'
+                                            ? 'justify-center h-8 w-8 p-0 mx-auto rounded-md'
                                             : 'px-2.5 py-1.5 gap-2.5',
                                         // Active State (Pill)
                                         isActive(item.route) ||
@@ -493,7 +520,9 @@ onMounted(() => {
                                     :is="getIcon(item.icon)"
                                     :class="
                                         cn(
-                                            'h-4 w-4 shrink-0 transition-colors duration-200',
+                                            showExpanded
+                                                ? 'h-4 w-4 shrink-0 transition-colors duration-200'
+                                                : 'h-3.5 w-3.5 shrink-0 transition-colors duration-200',
                                             isActive(item.route) ||
                                                 isChildActive(item)
                                                 ? 'text-[var(--text-primary)]'
@@ -659,7 +688,7 @@ onMounted(() => {
         </nav>
 
         <!-- Dialer Quick Action (Demo) -->
-        <div class="px-2.5 mb-1.5">
+        <div :class="cn(showExpanded ? 'px-2.5 mb-1.5' : 'px-1.5 mb-1')">
             <Tooltip
                 content="Phone Dialer (Demo)"
                 side="right"
@@ -675,13 +704,18 @@ onMounted(() => {
                             'bg-emerald-500/5 border-emerald-500/10 hover:border-emerald-500/30 hover:bg-emerald-500/10',
                             'text-emerald-600 dark:text-emerald-400',
                             !showExpanded
-                                ? 'justify-center p-2 w-[2.5rem] h-[2.5rem] mx-auto'
+                                ? 'justify-center p-0 w-9 h-9 mx-auto rounded-md'
                                 : 'w-full px-2.5 py-1.5 gap-2.5',
                         )
                     "
                 >
                     <Phone
-                        class="h-4 w-4 shrink-0"
+                        :class="
+                            cn(
+                                'shrink-0',
+                                showExpanded ? 'h-4 w-4' : 'h-3.5 w-3.5',
+                            )
+                        "
                         stroke-width="2.5"
                     />
                     <span
@@ -702,7 +736,7 @@ onMounted(() => {
         </div>
 
         <!-- User Section -->
-        <div class="p-2.5 mt-auto">
+        <div :class="cn(showExpanded ? 'p-2.5 mt-auto' : 'px-1.5 pb-1.5 pt-1 mt-auto')">
             <Dropdown align="start" side="top" :side-offset="12" class="w-full">
                 <template #trigger>
                     <button
@@ -712,7 +746,7 @@ onMounted(() => {
                                 'hover:bg-[var(--surface-secondary)] active:scale-[0.98]',
                                 'cursor-pointer',
                                 !showExpanded
-                                    ? 'justify-center gap-0'
+                                    ? 'justify-center gap-0 p-0 w-8 h-8 mx-auto'
                                     : 'gap-2.5',
                             )
                         "

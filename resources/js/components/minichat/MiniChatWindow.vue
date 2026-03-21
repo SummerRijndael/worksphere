@@ -151,7 +151,18 @@ const messagesRef = ref<HTMLElement | null>(null);
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const emojiMountRef = ref<HTMLElement | null>(null);
+const emojiButtonRef = ref<HTMLButtonElement | null>(null);
+const giphyButtonRef = ref<HTMLButtonElement | null>(null);
+const giphyPopoverRef = ref<HTMLElement | null>(null);
 const minichatWindowRef = ref<HTMLElement | null>(null);
+const emojiPickerStyle = ref<{ left: string; top: string }>({
+    left: "0px",
+    top: "0px",
+});
+const giphyPickerStyle = ref<{ left: string; top: string }>({
+    left: "0px",
+    top: "0px",
+});
 
 const { attach: attachMention } = useMention(
     textareaRef,
@@ -215,6 +226,10 @@ const recordedAudioDraft = ref<RecordedAudioDraft | null>(null);
 const draftAudioRef = ref<HTMLAudioElement | null>(null);
 const isDraftPlaying = ref(false);
 let pickerInstance: any = null;
+const EMOJI_PICKER_FALLBACK_WIDTH = 352;
+const EMOJI_PICKER_FALLBACK_HEIGHT = 380;
+const GIPHY_PICKER_FALLBACK_WIDTH = 320;
+const GIPHY_PICKER_FALLBACK_HEIGHT = 336;
 
 const {
     isSupported: isRecorderSupported,
@@ -562,12 +577,16 @@ onMounted(async () => {
 
     document.addEventListener("click", handleClickOutside);
     document.addEventListener("keydown", handleEsc);
+    window.addEventListener("resize", handleEmojiPickerViewportChange);
+    window.addEventListener("scroll", handleEmojiPickerViewportChange, true);
     attachMention();
 });
 
 onUnmounted(() => {
     document.removeEventListener("click", handleClickOutside);
     document.removeEventListener("keydown", handleEsc);
+    window.removeEventListener("resize", handleEmojiPickerViewportChange);
+    window.removeEventListener("scroll", handleEmojiPickerViewportChange, true);
     // Cleanup pending files
     pendingFiles.value.forEach((f) => {
         if (f.url) URL.revokeObjectURL(f.url);
@@ -591,6 +610,37 @@ watch(
         scrollToBottom();
     },
     { deep: true },
+);
+
+watch(
+    showEmoji,
+    async (isOpen) => {
+        if (!isOpen) {
+            return;
+        }
+
+        await nextTick();
+        updateEmojiPickerPosition();
+    },
+);
+
+watch(
+    showGiphy,
+    async (isOpen) => {
+        if (!isOpen) {
+            return;
+        }
+
+        await nextTick();
+        updateGiphyPickerPosition();
+    },
+);
+
+watch(
+    () => [props.window.position.right, props.window.position.bottom],
+    () => {
+        handleEmojiPickerViewportChange();
+    },
 );
 
 function scrollToBottom() {
@@ -1042,10 +1092,94 @@ function clearPendingFiles() {
 }
 
 // Emoji handling
+function resolvePopoverPosition(
+    anchorEl: HTMLElement,
+    popoverWidth: number,
+    popoverHeight: number,
+) {
+    const margin = 8;
+    const spacing = 8;
+    const bottomPadding = 14;
+    const anchorRect = anchorEl.getBoundingClientRect();
+    const maxLeft = Math.max(margin, window.innerWidth - popoverWidth - margin);
+    const left = Math.min(maxLeft, Math.max(margin, anchorRect.left));
+
+    const aboveTop = anchorRect.top - popoverHeight - spacing;
+    if (aboveTop >= margin) {
+        return {
+            left: `${Math.round(left)}px`,
+            top: `${Math.round(aboveTop)}px`,
+        };
+    }
+
+    const maxTop = Math.max(
+        margin,
+        window.innerHeight - popoverHeight - bottomPadding,
+    );
+    const belowTop = Math.max(margin, anchorRect.bottom + spacing);
+
+    return {
+        left: `${Math.round(left)}px`,
+        top: `${Math.round(Math.min(maxTop, belowTop))}px`,
+    };
+}
+
+function updateEmojiPickerPosition() {
+    if (!showEmoji.value || !emojiButtonRef.value) {
+        return;
+    }
+
+    const pickerElement = emojiMountRef.value?.firstElementChild as
+        | HTMLElement
+        | undefined;
+    const pickerWidth =
+        pickerElement?.offsetWidth || EMOJI_PICKER_FALLBACK_WIDTH;
+    const pickerHeight =
+        pickerElement?.offsetHeight || EMOJI_PICKER_FALLBACK_HEIGHT;
+    emojiPickerStyle.value = resolvePopoverPosition(
+        emojiButtonRef.value,
+        pickerWidth,
+        pickerHeight,
+    );
+}
+
+function updateGiphyPickerPosition() {
+    if (!showGiphy.value || !giphyButtonRef.value) {
+        return;
+    }
+
+    const pickerWidth =
+        giphyPopoverRef.value?.offsetWidth || GIPHY_PICKER_FALLBACK_WIDTH;
+    const pickerHeight =
+        giphyPopoverRef.value?.offsetHeight || GIPHY_PICKER_FALLBACK_HEIGHT;
+    giphyPickerStyle.value = resolvePopoverPosition(
+        giphyButtonRef.value,
+        pickerWidth,
+        pickerHeight,
+    );
+}
+
+function handleEmojiPickerViewportChange() {
+    if (!showEmoji.value && !showGiphy.value) {
+        return;
+    }
+
+    window.requestAnimationFrame(() => {
+        if (showEmoji.value) {
+            updateEmojiPickerPosition();
+        }
+        if (showGiphy.value) {
+            updateGiphyPickerPosition();
+        }
+    });
+}
+
 async function toggleGiphy() {
     showGiphy.value = !showGiphy.value;
     if (showGiphy.value) {
         showEmoji.value = false;
+        await nextTick();
+        updateGiphyPickerPosition();
     }
 }
 
@@ -1055,6 +1189,7 @@ async function toggleEmoji() {
         showGiphy.value = false;
     }
     await nextTick();
+    updateEmojiPickerPosition();
 
     if (showEmoji.value && !pickerInstance && emojiMountRef.value) {
         pickerInstance = new Picker({
@@ -1069,29 +1204,47 @@ async function toggleEmoji() {
             searchPosition: "static",
         });
         emojiMountRef.value.appendChild(pickerInstance);
+        window.requestAnimationFrame(() => {
+            updateEmojiPickerPosition();
+        });
     }
 }
 
 function insertEmoji(emoji: string) {
     messageInput.value += emoji;
-    showEmoji.value = false;
+    nextTick(() => {
+        textareaRef.value?.focus();
+    });
 }
 
 function handleClickOutside(e: MouseEvent) {
     const target = e.target as HTMLElement;
+    if (emojiButtonRef.value?.contains(target)) {
+        return;
+    }
+    if (giphyButtonRef.value?.contains(target)) {
+        return;
+    }
     if (
         showEmoji.value &&
         emojiMountRef.value &&
         !emojiMountRef.value.contains(target)
     ) {
-        const emojiBtn = target.closest(".minichat-emoji-btn");
-        if (!emojiBtn) showEmoji.value = false;
+        showEmoji.value = false;
+    }
+    if (
+        showGiphy.value &&
+        giphyPopoverRef.value &&
+        !giphyPopoverRef.value.contains(target)
+    ) {
+        showGiphy.value = false;
     }
 }
 
 function handleEsc(e: KeyboardEvent) {
-    if (e.key === "Escape" && showEmoji.value) {
+    if (e.key === "Escape") {
         showEmoji.value = false;
+        showGiphy.value = false;
     }
 }
 
@@ -1124,14 +1277,20 @@ onUnmounted(() => {
 
 // Window controls
 function handleMinimize() {
+    showEmoji.value = false;
+    showGiphy.value = false;
     miniChatStore.minimizeChatWindow(props.window.chatId);
 }
 
 function handleClose() {
+    showEmoji.value = false;
+    showGiphy.value = false;
     miniChatStore.closeChatWindow(props.window.chatId);
 }
 
 function handleOpenFull() {
+    showEmoji.value = false;
+    showGiphy.value = false;
     router.push(`/chat/${props.window.chatId}`);
     miniChatStore.closeAllWindows();
 }
@@ -1177,6 +1336,8 @@ function handleDragMove(e: MouseEvent) {
         right: newRight,
         bottom: newBottom,
     });
+
+    handleEmojiPickerViewportChange();
 }
 
 function handleDragEnd() {
@@ -1593,6 +1754,7 @@ function isOwnMessage(msg: Message): boolean {
 
                 <!-- Emoji button -->
                 <button
+                    ref="emojiButtonRef"
                     class="minichat-composer-btn minichat-emoji-btn"
                     :class="{ 'is-active': showEmoji }"
                     title="Emoji"
@@ -1603,6 +1765,7 @@ function isOwnMessage(msg: Message): boolean {
 
                 <!-- GIF button -->
                 <button
+                    ref="giphyButtonRef"
                     class="minichat-composer-btn"
                     :class="{ 'is-active': showGiphy }"
                     title="GIF"
@@ -1616,17 +1779,26 @@ function isOwnMessage(msg: Message): boolean {
                 </button>
             </template>
 
-            <!-- Emoji Picker -->
-            <div
-                v-show="showEmoji"
-                ref="emojiMountRef"
-                class="minichat-emoji-picker"
-            />
+            <Teleport to="body">
+                <div
+                    v-show="showEmoji"
+                    class="minichat-emoji-popover"
+                    :style="emojiPickerStyle"
+                >
+                    <div ref="emojiMountRef" class="minichat-emoji-picker-shell" />
+                </div>
+            </Teleport>
 
-            <!-- Giphy Picker -->
-            <div v-if="showGiphy" class="minichat-emoji-picker">
-                <GiphyPicker compact @select="sendGif" />
-            </div>
+            <Teleport to="body">
+                <div
+                    v-show="showGiphy"
+                    ref="giphyPopoverRef"
+                    class="minichat-giphy-popover"
+                    :style="giphyPickerStyle"
+                >
+                    <GiphyPicker compact @select="sendGif" />
+                </div>
+            </Teleport>
 
             <div
                 v-if="isRecorderBusy || isRecorderActive"
@@ -2369,6 +2541,27 @@ function isOwnMessage(msg: Message): boolean {
 .minichat-composer-btn.is-disabled {
     opacity: 0.45;
     pointer-events: none;
+}
+
+.minichat-emoji-popover {
+    position: fixed;
+    z-index: 12050;
+    padding-bottom: 6px;
+}
+
+.minichat-emoji-picker-shell {
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+}
+
+.minichat-giphy-popover {
+    position: fixed;
+    z-index: 12050;
+    padding-bottom: 6px;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
 }
 
 .minichat-emoji-picker {

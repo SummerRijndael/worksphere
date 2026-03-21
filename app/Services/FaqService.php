@@ -10,7 +10,7 @@ use Illuminate\Support\Str;
 
 class FaqService implements FaqServiceInterface
 {
-    public function getAllCategories(bool $publicOnly = false, ?int $perPage = null, ?string $search = null, string $sortBy = 'order', string $sortDir = 'asc', ?string $dateFrom = null, ?string $dateTo = null, ?string $status = null): \Illuminate\Contracts\Pagination\LengthAwarePaginator|\Illuminate\Database\Eloquent\Collection
+    public function getAllCategories(bool $publicOnly = false, ?int $perPage = null, ?string $search = null, string $sortBy = 'order', string $sortDir = 'asc', ?string $dateFrom = null, ?string $dateTo = null, ?string $status = null, bool $includeInternal = false): \Illuminate\Contracts\Pagination\LengthAwarePaginator|\Illuminate\Database\Eloquent\Collection
     {
         // Use Scout for full-text search if search term provided
         if ($search && strlen($search) >= 2) {
@@ -50,8 +50,35 @@ class FaqService implements FaqServiceInterface
 
         if ($publicOnly) {
             $query->where('is_public', true)
-                ->with(['articles' => function ($q) {
+                ->withCount(['articles as articles_count' => function ($q) use ($includeInternal) {
+                    $q->where('is_published', true);
+                    if (! $includeInternal) {
+                        $q->where('is_internal', false);
+                    }
+                }])
+                ->withSum(['articles as total_views' => function ($q) use ($includeInternal) {
+                    $q->where('is_published', true);
+                    if (! $includeInternal) {
+                        $q->where('is_internal', false);
+                    }
+                }], 'views')
+                ->withSum(['articles as total_helpful' => function ($q) use ($includeInternal) {
+                    $q->where('is_published', true);
+                    if (! $includeInternal) {
+                        $q->where('is_internal', false);
+                    }
+                }], 'helpful_count')
+                ->withSum(['articles as total_unhelpful' => function ($q) use ($includeInternal) {
+                    $q->where('is_published', true);
+                    if (! $includeInternal) {
+                        $q->where('is_internal', false);
+                    }
+                }], 'unhelpful_count')
+                ->with(['articles' => function ($q) use ($includeInternal) {
                     $q->where('is_published', '=', true);
+                    if (! $includeInternal) {
+                        $q->where('is_internal', false);
+                    }
                 }]);
         }
 
@@ -105,7 +132,7 @@ class FaqService implements FaqServiceInterface
         });
     }
 
-    public function getArticles(?int $categoryId = null, bool $publishedOnly = false, int $perPage = 20, ?string $search = null, string $sortBy = 'created_at', string $sortDir = 'desc', ?string $dateFrom = null, ?string $dateTo = null, ?string $status = null): LengthAwarePaginator
+    public function getArticles(?int $categoryId = null, bool $publishedOnly = false, int $perPage = 20, ?string $search = null, string $sortBy = 'created_at', string $sortDir = 'desc', ?string $dateFrom = null, ?string $dateTo = null, ?string $status = null, ?string $visibility = null, bool $includeInternal = false): LengthAwarePaginator
     {
         // Use Scout for full-text search if search term provided
         if ($search && strlen($search) >= 2) {
@@ -143,6 +170,16 @@ class FaqService implements FaqServiceInterface
             });
         }
 
+        if ($visibility === 'internal') {
+            $query->where('faq_articles.is_internal', true);
+        } elseif ($visibility === 'public') {
+            $query->where('faq_articles.is_internal', false);
+        }
+
+        if (! $includeInternal) {
+            $query->where('faq_articles.is_internal', false);
+        }
+
         // Date range filter
         if ($dateFrom) {
             $query->whereDate('faq_articles.created_at', '>=', $dateFrom);
@@ -152,7 +189,7 @@ class FaqService implements FaqServiceInterface
         }
 
         // Handle sorting - including author and category via join
-        $allowedSorts = ['title', 'slug', 'views', 'helpful_count', 'unhelpful_count', 'is_published', 'created_at', 'comments_count'];
+        $allowedSorts = ['title', 'slug', 'views', 'helpful_count', 'unhelpful_count', 'is_published', 'is_internal', 'created_at', 'comments_count'];
         if ($sortBy === 'author') {
             $query->leftJoin('users', 'faq_articles.author_id', '=', 'users.id')
                 ->orderBy('users.name', $sortDir)
@@ -170,7 +207,7 @@ class FaqService implements FaqServiceInterface
         return $query->paginate($perPage);
     }
 
-    public function getArticleBySlug(string $slug, bool $publishedOnly = false): FaqArticle
+    public function getArticleBySlug(string $slug, bool $publishedOnly = false, bool $includeInternal = false): FaqArticle
     {
         $query = FaqArticle::where('slug', $slug)->with('category', 'author')->withCount('comments');
 
@@ -179,6 +216,10 @@ class FaqService implements FaqServiceInterface
             $query->whereHas('category', function ($q) {
                 $q->where('is_public', true);
             });
+        }
+
+        if (! $includeInternal) {
+            $query->where('is_internal', false);
         }
 
         return $query->firstOrFail();
