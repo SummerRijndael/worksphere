@@ -6,12 +6,12 @@ import { Avatar, Badge, Button, Card, Dropdown, DropdownItem, DropdownSeparator 
 import {
     AlertCircle,
     Bold,
-    Columns3,
-    FileText,
+    Check,
+    ChevronLeft,
+    ChevronRight,
     Globe,
-    Grid3X3,
     Hash,
-    Image as ImageIcon,
+    ImageIcon,
     Link2,
     List,
     ListOrdered,
@@ -37,6 +37,8 @@ import { playSupportMessageSound } from "@/utils/supportSound";
 import { renderSupportRichText } from "@/utils/supportRichText";
 import SupportMessageAttachments from "@/components/support/SupportMessageAttachments.vue";
 import { useAuthStore } from "@/stores/auth";
+import SupportTransferModal from "@/components/support/SupportTransferModal.vue";
+import SupportStatusSelector from "@/components/support/SupportStatusSelector.vue";
 
 interface SupportUserSummary {
     id: string;
@@ -111,7 +113,6 @@ const toast = useToast();
 const authStore = useAuthStore();
 const supportLogger = createSupportLogger("Workbench");
 
-const WORKBENCH_COLUMNS_STORAGE_KEY = "worksphere.support.workbench.columns";
 const REFRESH_INTERVAL_MS = 20_000;
 const TOKEN_REFRESH_INTERVAL_MS = 240_000;
 const DETAILS_FOCUS_THROTTLE_MS = 220;
@@ -131,6 +132,27 @@ const focusedConversationId = ref<string | null>(null);
 const columns = ref<WorkbenchColumns>(3);
 const detailsTab = ref<WorkbenchDetailTab>("overview");
 const leftSidebarCollapsed = ref(false);
+const isLeftSidebarHovered = ref(false);
+let leftSidebarHoverTimeout: ReturnType<typeof setTimeout> | null = null;
+
+const handleLeftSidebarMouseEnter = () => {
+    if (!leftSidebarCollapsed.value) return; // Already expanded
+    leftSidebarHoverTimeout = setTimeout(() => {
+        isLeftSidebarHovered.value = true;
+    }, 150);
+};
+
+const handleLeftSidebarMouseLeave = () => {
+    if (leftSidebarHoverTimeout) {
+        clearTimeout(leftSidebarHoverTimeout);
+        leftSidebarHoverTimeout = null;
+    }
+    isLeftSidebarHovered.value = false;
+};
+
+const isLeftSidebarExpanded = computed(() => {
+    return !leftSidebarCollapsed.value || isLeftSidebarHovered.value;
+});
 const detailsHydratingConversationId = ref<string | null>(null);
 const isLoadingList = ref(false);
 const isRefreshingList = ref(false);
@@ -140,7 +162,10 @@ const uiTimerSettings = ref({ ...DEFAULT_UI_TIMER_SETTINGS });
 const messagesByConversation = ref<Record<string, SupportMessage[]>>({});
 const loadingMessagesByConversation = ref<Record<string, boolean>>({});
 const sendingByConversation = ref<Record<string, boolean>>({});
+const acceptingByConversation = ref<Record<string, boolean>>({});
+const rejectingByConversation = ref<Record<string, boolean>>({});
 const assigningByConversation = ref<Record<string, boolean>>({});
+const completingWrapUpByConversation = ref<Record<string, boolean>>({});
 const resolvingByConversation = ref<Record<string, boolean>>({});
 const endingByConversation = ref<Record<string, boolean>>({});
 const composerByConversation = ref<Record<string, string>>({});
@@ -158,6 +183,9 @@ const panelComposerRefs: Record<string, HTMLTextAreaElement | null> = {};
 const panelFileInputRefs: Record<string, HTMLInputElement | null> = {};
 const panelEmojiMountRefs: Record<string, HTMLElement | null> = {};
 const panelEmojiPickerInstances = new Map<string, HTMLElement>();
+const pendingAssignments = ref<SupportConversationListItem[]>([]);
+const isTransferModalOpen = ref(false);
+const transferConversationId = ref<string | null>(null);
 
 let refreshInterval: ReturnType<typeof setInterval> | null = null;
 let realtimeTokenRefreshTimer: ReturnType<typeof setInterval> | null = null;
@@ -174,27 +202,6 @@ let supportRealtimeSubscribeInFlight = false;
 let supportRealtimeSubscribePending = false;
 let supportRealtimeTokenHydratePromise: Promise<boolean> | null = null;
 let liveCounterTicker: ReturnType<typeof setInterval> | null = null;
-
-function readStoredColumns(): WorkbenchColumns {
-    if (typeof window === "undefined") {
-        return 3;
-    }
-
-    const raw = Number(window.localStorage.getItem(WORKBENCH_COLUMNS_STORAGE_KEY));
-    return raw === 5 ? 5 : 3;
-}
-
-function persistColumns(value: WorkbenchColumns): void {
-    if (typeof window === "undefined") {
-        return;
-    }
-
-    window.localStorage.setItem(WORKBENCH_COLUMNS_STORAGE_KEY, String(value));
-}
-
-function setColumns(nextValue: WorkbenchColumns): void {
-    columns.value = nextValue;
-}
 
 const maxOpenPanels = computed(() => (columns.value === 5 ? 5 : 3));
 const isDenseGrid = computed(() => columns.value === 5);
@@ -2046,6 +2053,22 @@ function handleRealtimeConversationChanged(event: any): void {
     );
 
     scheduleSilentInboxRefresh();
+
+    if (nextStatus === "pending_acceptance" && event?.assigned_to === authStore.user?.public_id) {
+        const existing = pendingAssignments.value.find(c => c.id === conversationId);
+        if (!existing) {
+            const conversation = conversationMap.value.get(conversationId) || {
+                id: conversationId,
+                status: nextStatus,
+                guest_name: event.guest_name || "New Customer",
+                support_skill: event.support_skill || { name: "General" }
+            } as any;
+            conversation._receivedAt = Date.now();
+            pendingAssignments.value.push(conversation);
+        }
+    } else {
+        pendingAssignments.value = pendingAssignments.value.filter(c => c.id !== conversationId);
+    }
 }
 
 async function subscribeSupportRealtime(): Promise<void> {
@@ -2302,8 +2325,10 @@ async function loadConversations(
         const rows = Array.isArray(response?.data?.data)
             ? (response.data.data as SupportConversationListItem[])
             : [];
-        const visibleRows = rows.filter((conversation) => !isConversationClosedLike(conversation));
+        const visibleRows = rows.filter((conversation) => !isConversationClosedLike(conversation) && conversation.status !== 'pending_acceptance');
         conversations.value = visibleRows;
+        pendingAssignments.value = rows.filter((conversation) => conversation.status === 'pending_acceptance')
+            .map(c => ({ ...c, _receivedAt: Date.now() }));
         ensureOpenConversations(visibleRows);
 
         if (refreshPanelMessages) {
@@ -2345,7 +2370,7 @@ async function sendPanelMessage(conversationId: string): Promise<void> {
     }
 
     setSending(conversationId, true);
-    const sendAsInternalNote = isNoteMode(conversationId);
+    const sendAsInternalNote = isNoteMode(conversationId) || (!!conversation && isConversationClosedLike(conversation));
     const previousBody = String(composerByConversation.value[conversationId] || "");
     const previousFiles = [...files];
 
@@ -2406,6 +2431,90 @@ async function sendPanelMessage(conversationId: string): Promise<void> {
         await focusPanelComposer(conversationId);
     } finally {
         setSending(conversationId, false);
+    }
+}
+
+async function acceptAssignment(conversationId: string): Promise<void> {
+    if (!conversationId || acceptingByConversation.value[conversationId]) return;
+
+    acceptingByConversation.value[conversationId] = true;
+    try {
+        const response = await api.post(`/api/support/chats/${conversationId}/accept`);
+        const conversationPayload = extractConversationPayload(response.data);
+        if (conversationPayload) {
+            upsertConversationInList(conversationPayload, { moveToTop: true });
+        }
+        pendingAssignments.value = pendingAssignments.value.filter(c => c.id !== conversationId);
+        
+        // Open the conversation if not already open
+        if (!openConversationIds.value.includes(conversationId)) {
+            openConversationIds.value = [conversationId, ...openConversationIds.value.slice(0, maxOpenPanels.value - 1)];
+        }
+        setFocusedConversation(conversationId);
+        toast.success("Assignment accepted.");
+    } catch (error: any) {
+        toast.error(error?.response?.data?.message || "Failed to accept assignment.");
+    } finally {
+        acceptingByConversation.value[conversationId] = false;
+    }
+}
+
+async function rejectAssignment(conversationId: string): Promise<void> {
+    if (!conversationId || rejectingByConversation.value[conversationId]) return;
+
+    rejectingByConversation.value[conversationId] = true;
+    try {
+        await api.post(`/api/support/chats/${conversationId}/reject`, {
+            reason: "Agent declined via UI"
+        });
+        pendingAssignments.value = pendingAssignments.value.filter(c => c.id !== conversationId);
+        toast.info("Assignment declined.");
+    } catch (error: any) {
+        toast.error(error?.response?.data?.message || "Failed to decline assignment.");
+    } finally {
+        rejectingByConversation.value[conversationId] = false;
+    }
+}
+
+function openTransferModal(conversationId: string): void {
+    if (!conversationId) return;
+    transferConversationId.value = conversationId;
+    isTransferModalOpen.value = true;
+}
+
+function handleTransferSuccess(conversationId: string): void {
+    // Close the panel as it's no longer assigned to this agent
+    openConversationIds.value = openConversationIds.value.filter(id => id !== conversationId);
+    if (focusedConversationId.value === conversationId) {
+        focusedConversationId.value = openConversationIds.value[0] || null;
+    }
+    
+    // Also remove from inbox list if it was there (silent refresh will handle it but this is faster)
+    conversations.value = conversations.value.filter(c => c.id !== conversationId);
+}
+
+async function completeWrapUp(conversationId: string): Promise<void> {
+    if (!conversationId || completingWrapUpByConversation.value[conversationId]) return;
+
+    completingWrapUpByConversation.value[conversationId] = true;
+    try {
+        const response = await api.post(`/api/support/chats/${conversationId}/wrap-up/complete`);
+        const conversationPayload = extractConversationPayload(response.data);
+        if (conversationPayload) {
+            upsertConversationInList(conversationPayload, { moveToTop: true });
+        }
+        
+        // Remove from open panels
+        openConversationIds.value = openConversationIds.value.filter(id => id !== conversationId);
+        if (focusedConversationId.value === conversationId) {
+            focusedConversationId.value = openConversationIds.value[0] || null;
+        }
+        
+        toast.success("Wrap-up completed.");
+    } catch (error: any) {
+        toast.error(error?.response?.data?.message || "Failed to complete wrap-up.");
+    } finally {
+        completingWrapUpByConversation.value[conversationId] = false;
     }
 }
 
@@ -2484,33 +2593,14 @@ watch(conversations, (rows) => {
 });
 
 onMounted(async () => {
-    columns.value = readStoredColumns();
     startLiveCounterTicker();
     await loadConversations();
-
-    refreshInterval = setInterval(() => {
-        void loadConversations({ silent: true, refreshPanelMessages: false });
-    }, REFRESH_INTERVAL_MS);
-
-    realtimeTokenRefreshTimer = setInterval(() => {
-        void refreshRealtimeToken();
-    }, TOKEN_REFRESH_INTERVAL_MS);
 
     document.addEventListener("pointerdown", handleWorkbenchGlobalPointerDown);
     window.addEventListener("echo:connected", handleEchoConnected);
 });
 
 onBeforeUnmount(() => {
-    if (refreshInterval) {
-        clearInterval(refreshInterval);
-        refreshInterval = null;
-    }
-
-    if (realtimeTokenRefreshTimer) {
-        clearInterval(realtimeTokenRefreshTimer);
-        realtimeTokenRefreshTimer = null;
-    }
-
     if (realtimeSubscriptionRetryTimer) {
         clearTimeout(realtimeSubscriptionRetryTimer);
         realtimeSubscriptionRetryTimer = null;
@@ -2548,299 +2638,218 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-    <div class="flex h-screen min-h-0 flex-col bg-[var(--surface-primary)]">
-        <header class="border-b border-[var(--border-muted)] bg-[var(--surface-secondary)]/20 px-3 py-2 lg:px-4">
-            <div class="flex items-center justify-between gap-2">
-                <div class="flex min-w-0 items-center gap-1.5">
-                    <span
-                        v-if="isDevMode"
-                        class="inline-flex h-7 items-center rounded-md border border-amber-500/30 bg-amber-500/10 px-2 text-[11px] font-semibold text-amber-300"
-                    >
-                        Dev Tool
-                    </span>
-                    <span
-                        v-if="isLoadingList || isRefreshingList"
-                        class="inline-flex h-7 items-center gap-1.5 rounded-md border border-[var(--border-default)] bg-[var(--surface-primary)] px-2 text-[11px] text-[var(--text-secondary)]"
-                    >
-                        <Loader2 class="h-3.5 w-3.5 animate-spin" />
-                        Syncing
-                    </span>
+    <div class="flex h-screen min-h-0 bg-(--surface-primary)">
+        <!-- Persistent Left Sidebar -->
+        <aside
+            class="hidden min-h-0 shrink-0 flex-col border-r border-(--border-muted) bg-(--surface-secondary)/15 transition-all duration-300 ease-in-out lg:flex"
+            :class="isLeftSidebarExpanded ? 'w-[18.4rem]' : 'w-16'"
+            @mouseenter="handleLeftSidebarMouseEnter"
+            @mouseleave="handleLeftSidebarMouseLeave"
+        >
+            <!-- Sidebar Top: Presence & Identity -->
+            <div class="flex shrink-0 items-center border-b border-(--border-muted)/50" :class="!isLeftSidebarExpanded ? 'p-3 justify-center' : 'p-3'">
+                <SupportStatusSelector :collapsed="!isLeftSidebarExpanded" />
+            </div>
+
+            <!-- Sidebar Middle: Core Actions & Sync Status -->
+            <div class="flex min-h-0 flex-1 flex-col items-center gap-0 overflow-y-auto py-0">
+                <!-- Syncing Indicator -->
+                <div 
+                    v-if="isLoadingList || isRefreshingList" 
+                    class="flex items-center justify-center rounded-lg border border-(--border-default) bg-(--surface-primary) transition-all px-3 py-2"
+                    :class="!isLeftSidebarExpanded ? 'w-10 h-10 p-0' : 'w-full mx-3 gap-2 h-10'"
+                    title="Syncing..."
+                >
+                    <Loader2 class="h-4 w-4 animate-spin text-(--text-secondary)" />
+                    <span v-if="isLeftSidebarExpanded" class="text-xs font-semibold text-(--text-secondary)">Syncing</span>
                 </div>
 
-                <div class="flex items-center gap-1.5">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        class="h-8 px-2.5 text-[11px]"
-                        @click="leftSidebarCollapsed = !leftSidebarCollapsed"
-                    >
-                        {{ leftSidebarCollapsed ? "Show Details" : "Hide Details" }}
-                    </Button>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        class="h-8 px-2.5 text-[11px]"
-                        :class="
-                            columns === 3
-                                ? 'border-[var(--interactive-primary)] text-[var(--interactive-primary)]'
-                                : ''
-                        "
-                        @click="setColumns(3)"
-                    >
-                        <Columns3 class="mr-1 h-3.5 w-3.5" />
-                        3
-                    </Button>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        class="h-8 px-2.5 text-[11px]"
-                        :class="
-                            columns === 5
-                                ? 'border-[var(--interactive-primary)] text-[var(--interactive-primary)]'
-                                : ''
-                        "
-                        @click="setColumns(5)"
-                    >
-                        <Grid3X3 class="mr-1 h-3.5 w-3.5" />
-                        5
-                    </Button>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        class="h-8 px-2.5 text-[11px]"
-                        :disabled="isLoadingList || isRefreshingList"
-                        @click="loadConversations()"
-                    >
-                        <RefreshCw
-                            class="mr-1 h-3.5 w-3.5"
-                            :class="isRefreshingList ? 'animate-spin' : ''"
-                        />
-                        Refresh
-                    </Button>
+
+                <!-- Details Content Section (only when expanded) -->
+                <div v-if="isLeftSidebarExpanded" class="flex w-full flex-1 flex-col px-3 pt-2 overflow-y-auto">
+                    <div v-if="!focusedConversationDisplay" class="rounded-xl border border-dashed border-(--border-muted) p-6 text-center">
+                        <MessageSquare class="mx-auto h-8 w-8 text-(--text-muted)/50" />
+                        <p class="mt-2 text-xs font-medium text-(--text-muted)">Select a conversation to view detailed insights.</p>
+                    </div>
+
+                    <div v-else-if="showDetailsSkeleton" class="space-y-4">
+                        <section class="rounded-lg border border-(--border-default) bg-(--surface-primary)/70 p-3">
+                            <div class="flex items-start gap-2.5 animate-pulse">
+                                <div class="h-10 w-10 rounded-full bg-(--surface-tertiary)"></div>
+                                <div class="flex-1 space-y-2">
+                                    <div class="h-3 w-2/3 rounded bg-(--surface-tertiary)"></div>
+                                    <div class="h-2.5 w-4/5 rounded bg-(--surface-tertiary)"></div>
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+                    
+                    <div v-else class="space-y-4">
+                        <section class="relative overflow-hidden rounded-2xl border border-(--border-default) bg-(--surface-primary) p-5 shadow-sm ring-1 ring-black/5">
+                            <!-- Subtle Background Glow -->
+                            <div class="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-(--brand)/5 blur-3xl"></div>
+                            
+                            <div class="relative flex items-center gap-4">
+                                <Avatar
+                                    :src="focusedConversationDisplay.avatar_url"
+                                    :thumb-url="focusedConversationDisplay.avatar_thumb_url"
+                                    :alt="focusedConversationDisplay.name"
+                                    :fallback="focusedConversationDisplay.name.slice(0, 1).toUpperCase()"
+                                    :color="focusedConversationDisplay.avatar_color || 'var(--surface-tertiary)'"
+                                    size="lg"
+                                    class="h-12 w-12 rounded-xl ring-2 ring-(--surface-primary) shadow-sm"
+                                />
+                                <div class="min-w-0 flex-1">
+                                    <h3 class="truncate text-base font-bold tracking-tight text-(--text-primary)">
+                                        {{ focusedConversationDisplay.name }}
+                                    </h3>
+                                    <p class="truncate text-xs font-medium text-(--text-secondary) opacity-80">
+                                        {{ focusedConversationDisplay.email }}
+                                    </p>
+                                </div>
+                            </div>
+                            
+                            <div class="mt-4 flex flex-wrap items-center gap-2">
+                                <Badge
+                                    v-if="shouldShowResolutionBadge(focusedConversationDisplay.status)"
+                                    variant="outline"
+                                    size="sm"
+                                    :class="[statusToneClass(focusedConversationDisplay.status), 'px-2 py-0.5 font-bold uppercase tracking-wider text-[9px]']"
+                                >
+                                    {{ statusDisplayLabel(focusedConversationDisplay.status) }}
+                                </Badge>
+                                <span class="inline-flex items-center gap-1 rounded-md border border-(--border-muted)/30 bg-(--surface-secondary)/40 px-2 py-0.5 text-[10px] font-bold text-(--text-secondary)">
+                                    <Hash class="h-2.5 w-2.5 opacity-50" />
+                                    {{ focusedConversationDisplay.id.slice(-6) }}
+                                </span>
+                            </div>
+                        </section>
+
+                        <!-- Tabs & Detailed Info -->
+                        <section class="flex min-h-0 flex-1 flex-col gap-3">
+                            <div class="grid grid-cols-3 gap-1 rounded-lg border border-(--border-default) bg-(--surface-secondary)/20 p-1">
+                                <button
+                                    v-for="tab in (['overview', 'media', 'links'] as WorkbenchDetailTab[])"
+                                    :key="tab"
+                                    type="button"
+                                    class="h-8 rounded-md text-[10px] font-bold capitalize transition-all"
+                                    :class="detailsTab === tab 
+                                        ? 'bg-(--surface-primary) text-(--text-primary) shadow-sm' 
+                                        : 'text-(--text-secondary) hover:bg-(--surface-secondary)'"
+                                    @click="detailsTab = tab"
+                                >
+                                    {{ tab }}
+                                    <span v-if="tab === 'media' && focusedConversationAttachmentItems.length > 0" class="ml-1 opacity-60">
+                                        {{ focusedConversationAttachmentItems.length }}
+                                    </span>
+                                </button>
+                            </div>
+
+                            <div class="flex-1 overflow-y-auto pr-1">
+                                <div v-if="detailsTab === 'overview'" class="space-y-4">
+                                    <!-- Metadata Grid -->
+                                    <div class="grid grid-cols-1 gap-2">
+                                        <div v-for="item in [
+                                            { icon: MapPin, label: 'Location', value: focusedConversationDisplay.location, color: 'text-blue-500' },
+                                            { icon: Globe, label: 'Browser', value: focusedConversationDisplay.browser, color: 'text-emerald-500' },
+                                            { icon: Hash, label: 'IP Address', value: focusedConversationDisplay.ip, color: 'text-purple-500' },
+                                            { icon: Monitor, label: 'Source URL', value: focusedConversationDisplay.page, color: 'text-orange-500' },
+                                            { icon: User, label: 'Skill', value: focusedConversationDisplay.skill, color: 'text-pink-500' }
+                                        ]" :key="item.label" class="group flex items-center gap-3 rounded-xl border border-(--border-muted)/30 bg-(--surface-secondary)/10 p-2.5 transition-all hover:border-(--border-default) hover:bg-(--surface-secondary)/20">
+                                            <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-(--surface-primary) shadow-sm ring-1 ring-(--border-muted)/20 transition-transform group-hover:scale-105" :class="item.color">
+                                                <component :is="item.icon" class="h-4 w-4" />
+                                            </div>
+                                            <div class="min-w-0 flex-1">
+                                                <p class="text-[10px] font-bold uppercase tracking-wider text-(--text-muted)/80">{{ item.label }}</p>
+                                                <p class="truncate text-xs font-semibold text-(--text-primary)">{{ item.value }}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Quick Links Section -->
+                                    <div class="mt-2 space-y-2 border-t border-(--border-muted)/30 pt-4">
+                                        <h4 class="px-1 text-[10px] font-bold uppercase tracking-widest text-(--text-muted)">Quick Links</h4>
+                                        <div class="grid grid-cols-1 gap-1.5">
+                                            <a 
+                                                v-for="link in [
+                                                    { label: 'Knowledge Base', icon: Link2, url: '#' },
+                                                    { label: 'Customer History', icon: User, url: '#' },
+                                                    { label: 'Internal Wiki', icon: Globe, url: '#' }
+                                                ]"
+                                                :key="link.label"
+                                                href="#"
+                                                class="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-(--text-secondary) transition-all hover:bg-(--surface-secondary)/50 hover:text-(--text-primary)"
+                                            >
+                                                <component :is="link.icon" class="h-3.5 w-3.5 text-(--text-muted)" />
+                                                {{ link.label }}
+                                            </a>
+                                        </div>
+                                    </div>
+
+                                    <!-- Duration Meta -->
+                                    <div class="rounded-xl bg-(--surface-secondary)/10 p-3 text-[10px] text-(--text-muted)">
+                                        <div class="flex items-center justify-between">
+                                            <span>Current Duration</span>
+                                            <span class="font-bold text-(--text-primary)">{{ conversationDurationLabel(focusedConversation || null) }}</span>
+                                        </div>
+                                        <div class="mt-1.5 flex items-center justify-between opacity-80">
+                                            <span>Communication Started</span>
+                                            <span>{{ formatRelativeTime(focusedConversationDisplay.created_at) }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div v-else-if="detailsTab === 'media'" class="space-y-2">
+                                    <div v-if="focusedConversationAttachmentItems.length === 0" class="rounded-xl border border-dashed border-(--border-muted) p-6 text-center">
+                                         <ImageIcon class="mx-auto h-6 w-6 text-(--text-muted)/40" />
+                                         <p class="mt-2 text-[11px] text-(--text-muted)">No media found.</p>
+                                    </div>
+                                    <button
+                                        v-for="attachment in focusedConversationAttachmentItems"
+                                        :key="attachment._key"
+                                        type="button"
+                                        class="group flex w-full items-center gap-3 rounded-lg border border-(--border-default)/70 bg-(--surface-secondary)/20 p-2 text-left transition-all hover:bg-(--surface-secondary)/50"
+                                        @click="openAttachmentFromSidebar(attachment)"
+                                    >
+                                        <div class="h-10 w-10 shrink-0 overflow-hidden rounded-md border border-(--border-default) bg-(--surface-primary)">
+                                            <img v-if="isImageAttachment(attachment) || isVideoAttachment(attachment)" 
+                                                 :src="attachment.thumb_url || attachment.url" 
+                                                 class="h-full w-full object-cover" />
+                                            <div v-else class="flex h-full w-full items-center justify-center bg-(--surface-tertiary) text-[10px] font-bold text-(--text-muted)">
+                                                {{ getAttachmentTypeLabel(attachment) }}
+                                            </div>
+                                        </div>
+                                        <div class="min-w-0 flex-1">
+                                            <p class="truncate text-[11px] font-bold text-(--text-primary)">{{ attachment.name }}</p>
+                                            <p class="text-[10px] text-(--text-secondary)">{{ formatAttachmentSize(attachment.size) }}</p>
+                                        </div>
+                                    </button>
+                                </div>
+                            </div>
+                        </section>
+                    </div>
                 </div>
             </div>
-        </header>
 
-        <div class="flex min-h-0 flex-1 p-3" :class="leftSidebarCollapsed ? 'gap-0' : 'gap-3'">
-            <aside
-                class="hidden min-h-0 shrink-0 overflow-hidden transition-[width,opacity] duration-200 ease-out lg:block"
-                :class="leftSidebarCollapsed ? 'w-0 opacity-0 pointer-events-none' : `${detailsSidebarWidthClass} opacity-100`"
-            >
-                <div
-                    class="h-full overflow-y-auto rounded-xl border border-[var(--border-muted)] bg-[var(--surface-secondary)]/25"
+            <!-- Sidebar Footer: Collapse Toggle -->
+            <div class="border-t border-(--border-muted)/50 p-2">
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    class="h-10 w-full justify-center text-(--text-muted) hover:bg-(--surface-tertiary) hover:text-(--text-primary)"
+                    @click="leftSidebarCollapsed = !leftSidebarCollapsed"
                 >
-                    <div v-if="!focusedConversationDisplay" class="p-4 text-sm text-[var(--text-secondary)]">
-                        Focus a panel composer to load chat details.
-                    </div>
+                    <ChevronLeft v-if="!leftSidebarCollapsed" class="h-5 w-5" />
+                    <ChevronRight v-else class="h-5 w-5" />
+                    <span v-if="isLeftSidebarExpanded" class="ml-2 text-xs font-bold">
+                        {{ leftSidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar' }}
+                    </span>
+                </Button>
+            </div>
+        </aside>
 
-                    <div v-else-if="showDetailsSkeleton" class="p-3 space-y-3">
-                        <section class="rounded-lg border border-[var(--border-default)] bg-[var(--surface-primary)]/70 p-3">
-                            <div class="flex items-start gap-2.5 animate-pulse">
-                                <div class="h-10 w-10 rounded-full bg-[var(--surface-tertiary)]"></div>
-                                <div class="flex-1 space-y-2">
-                                    <div class="h-3 w-2/3 rounded bg-[var(--surface-tertiary)]"></div>
-                                    <div class="h-2.5 w-4/5 rounded bg-[var(--surface-tertiary)]"></div>
-                                    <div class="h-5 w-24 rounded bg-[var(--surface-tertiary)]"></div>
-                                </div>
-                            </div>
-                        </section>
-                        <section class="rounded-lg border border-[var(--border-default)] bg-[var(--surface-primary)]/60 p-2.5">
-                            <div class="space-y-2 animate-pulse">
-                                <div class="h-7 rounded bg-[var(--surface-tertiary)]"></div>
-                                <div class="h-11 rounded bg-[var(--surface-tertiary)]"></div>
-                                <div class="h-11 rounded bg-[var(--surface-tertiary)]"></div>
-                                <div class="h-11 rounded bg-[var(--surface-tertiary)]"></div>
-                            </div>
-                        </section>
-                    </div>
-
-                    <div v-else class="p-3 space-y-3">
-                    <section class="rounded-lg border border-[var(--border-default)] bg-[var(--surface-primary)]/70 p-3">
-                        <div class="flex items-start gap-2.5">
-                            <Avatar
-                                :src="focusedConversationDisplay.avatar_url"
-                                :thumb-url="focusedConversationDisplay.avatar_thumb_url"
-                                :alt="focusedConversationDisplay.name"
-                                :fallback="focusedConversationDisplay.name.slice(0, 1).toUpperCase()"
-                                :color="focusedConversationDisplay.avatar_color || 'var(--surface-tertiary)'"
-                                size="md"
-                            />
-                            <div class="min-w-0 flex-1">
-                                <p class="truncate text-sm font-semibold text-[var(--text-primary)]">
-                                    {{ focusedConversationDisplay.name }}
-                                </p>
-                                <p class="truncate text-xs text-[var(--text-secondary)]">
-                                    {{ focusedConversationDisplay.email }}
-                                </p>
-                                <div class="mt-2 flex flex-wrap items-center gap-1.5">
-                                    <Badge
-                                        v-if="shouldShowResolutionBadge(focusedConversationDisplay.status)"
-                                        variant="outline"
-                                        size="sm"
-                                        :class="statusToneClass(focusedConversationDisplay.status)"
-                                    >
-                                        {{ statusDisplayLabel(focusedConversationDisplay.status) }}
-                                    </Badge>
-                                    <span class="inline-flex items-center rounded-md border border-[var(--border-default)] bg-[var(--surface-secondary)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">
-                                        #{{ focusedConversationDisplay.id.slice(-6) }}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-
-                    <section class="rounded-lg border border-[var(--border-default)] bg-[var(--surface-primary)]/60 p-2.5">
-                        <div class="grid grid-cols-3 gap-1 rounded-md border border-[var(--border-default)] bg-[var(--surface-secondary)]/20 p-1">
-                            <button
-                                type="button"
-                                class="h-7 rounded-md text-[10px] font-semibold transition-colors"
-                                :class="detailsTab === 'overview' ? 'bg-[var(--surface-primary)] text-[var(--text-primary)] shadow-sm' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-secondary)]'"
-                                @click="detailsTab = 'overview'"
-                            >
-                                Overview
-                            </button>
-                            <button
-                                type="button"
-                                class="h-7 rounded-md text-[10px] font-semibold transition-colors"
-                                :class="detailsTab === 'media' ? 'bg-[var(--surface-primary)] text-[var(--text-primary)] shadow-sm' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-secondary)]'"
-                                @click="detailsTab = 'media'"
-                            >
-                                Media {{ focusedConversationAttachmentItems.length }}
-                            </button>
-                            <button
-                                type="button"
-                                class="h-7 rounded-md text-[10px] font-semibold transition-colors"
-                                :class="detailsTab === 'links' ? 'bg-[var(--surface-primary)] text-[var(--text-primary)] shadow-sm' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-secondary)]'"
-                                @click="detailsTab = 'links'"
-                            >
-                                Links
-                            </button>
-                        </div>
-
-                        <div v-if="detailsTab === 'overview'" class="mt-2.5 space-y-1.5">
-                            <div class="flex items-start gap-2 rounded-md border border-[var(--border-default)]/70 bg-[var(--surface-secondary)]/20 px-2 py-1.5">
-                                <MapPin class="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
-                                <div class="min-w-0">
-                                    <p class="text-[10px] text-[var(--text-secondary)]">Location</p>
-                                    <p class="truncate text-xs font-medium text-[var(--text-primary)]">{{ focusedConversationDisplay.location }}</p>
-                                </div>
-                            </div>
-                            <div class="flex items-start gap-2 rounded-md border border-[var(--border-default)]/70 bg-[var(--surface-secondary)]/20 px-2 py-1.5">
-                                <Globe class="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
-                                <div class="min-w-0">
-                                    <p class="text-[10px] text-[var(--text-secondary)]">Browser</p>
-                                    <p class="line-clamp-2 text-xs font-medium text-[var(--text-primary)]">{{ focusedConversationDisplay.browser }}</p>
-                                </div>
-                            </div>
-                            <div class="flex items-start gap-2 rounded-md border border-[var(--border-default)]/70 bg-[var(--surface-secondary)]/20 px-2 py-1.5">
-                                <Hash class="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
-                                <div class="min-w-0">
-                                    <p class="text-[10px] text-[var(--text-secondary)]">IP Address</p>
-                                    <p class="truncate text-xs font-medium text-[var(--text-primary)]">{{ focusedConversationDisplay.ip }}</p>
-                                </div>
-                            </div>
-                            <div class="flex items-start gap-2 rounded-md border border-[var(--border-default)]/70 bg-[var(--surface-secondary)]/20 px-2 py-1.5">
-                                <Monitor class="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
-                                <div class="min-w-0">
-                                    <p class="text-[10px] text-[var(--text-secondary)]">Source URL</p>
-                                    <p class="line-clamp-2 break-all text-xs font-medium text-[var(--text-primary)]">{{ focusedConversationDisplay.page }}</p>
-                                </div>
-                            </div>
-                            <div class="flex items-start gap-2 rounded-md border border-[var(--border-default)]/70 bg-[var(--surface-secondary)]/20 px-2 py-1.5">
-                                <User class="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
-                                <div class="min-w-0">
-                                    <p class="text-[10px] text-[var(--text-secondary)]">Support Skill</p>
-                                    <p class="truncate text-xs font-medium text-[var(--text-primary)]">{{ focusedConversationDisplay.skill }}</p>
-                                </div>
-                            </div>
-                            <div class="px-1 text-[10px] text-[var(--text-muted)] space-y-0.5">
-                                <p>
-                                    Duration
-                                    <span class="font-semibold text-[var(--text-primary)]">{{ conversationDurationLabel(focusedConversation || null) }}</span>
-                                    ·
-                                    Started {{ formatRelativeTime(focusedConversationDisplay.created_at) }}
-                                </p>
-                                <p>
-                                    Response gap
-                                    <span :class="['font-semibold', focusedConversation ? responseGapToneClass(focusedConversation.id) : 'text-[var(--text-muted)]']">
-                                        {{ focusedConversation ? responseGapLabel(focusedConversation.id) : 'Awaiting first reply' }}
-                                    </span>
-                                </p>
-                            </div>
-                        </div>
-
-                        <div v-else-if="detailsTab === 'media'" class="mt-2.5 space-y-1.5">
-                            <div
-                                v-if="focusedConversationAttachmentItems.length === 0"
-                                class="rounded-md border border-dashed border-[var(--border-default)] px-3 py-4 text-center"
-                            >
-                                <ImageIcon class="mx-auto mb-1 h-4 w-4 text-[var(--text-muted)]" />
-                                <p class="text-[11px] text-[var(--text-secondary)]">No media yet for this chat.</p>
-                            </div>
-
-                            <button
-                                v-for="attachment in focusedConversationAttachmentItems"
-                                :key="attachment._key"
-                                type="button"
-                                class="flex w-full items-center gap-2 rounded-md border border-[var(--border-default)]/70 bg-[var(--surface-secondary)]/20 px-2 py-1.5 text-left transition-colors hover:bg-[var(--surface-secondary)]/50"
-                                @click="openAttachmentFromSidebar(attachment)"
-                            >
-                                <div class="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-md border border-[var(--border-default)] bg-[var(--surface-primary)]">
-                                    <img
-                                        v-if="isImageAttachment(attachment) || isVideoAttachment(attachment)"
-                                        :src="attachment.thumb_url || attachment.url || attachment.download_url"
-                                        :alt="attachment.name || 'Attachment preview'"
-                                        class="h-full w-full object-cover"
-                                        loading="lazy"
-                                        decoding="async"
-                                    />
-                                    <span v-else class="text-[9px] font-semibold text-[var(--text-secondary)]">
-                                        {{ getAttachmentTypeLabel(attachment) }}
-                                    </span>
-                                </div>
-                                <div class="min-w-0 flex-1">
-                                    <p class="truncate text-[11px] font-semibold text-[var(--text-primary)]">
-                                        {{ attachment.name || `${getAttachmentTypeLabel(attachment)} attachment` }}
-                                    </p>
-                                    <p class="truncate text-[10px] text-[var(--text-secondary)]">
-                                        {{ formatAttachmentSize(attachment.size) }} · {{ formatRelativeTime(attachment._createdAt) }}
-                                    </p>
-                                </div>
-                            </button>
-                        </div>
-
-                        <div v-else class="mt-2.5 space-y-1.5">
-                            <button
-                                type="button"
-                                class="flex w-full items-center gap-2 rounded-md border border-[var(--border-default)] bg-[var(--surface-primary)] px-2 py-1.5 text-left text-[11px] font-semibold text-[var(--text-primary)] transition-colors hover:bg-[var(--surface-tertiary)]"
-                                @click="onQuickLinkFacadeClick('Knowledge base')"
-                            >
-                                <FileText class="h-3.5 w-3.5 text-[var(--interactive-primary)]" />
-                                Knowledge base
-                            </button>
-                            <button
-                                type="button"
-                                class="flex w-full items-center gap-2 rounded-md border border-[var(--border-default)] bg-[var(--surface-primary)] px-2 py-1.5 text-left text-[11px] font-semibold text-[var(--text-primary)] transition-colors hover:bg-[var(--surface-tertiary)]"
-                                @click="onQuickLinkFacadeClick('Ticket dashboard')"
-                            >
-                                <Hash class="h-3.5 w-3.5 text-[var(--interactive-primary)]" />
-                                Ticket dashboard
-                            </button>
-                            <button
-                                type="button"
-                                class="flex w-full items-center gap-2 rounded-md border border-[var(--border-default)] bg-[var(--surface-primary)] px-2 py-1.5 text-left text-[11px] font-semibold text-[var(--text-primary)] transition-colors hover:bg-[var(--surface-tertiary)]"
-                                @click="onQuickLinkFacadeClick('Customer profile')"
-                            >
-                                <User class="h-3.5 w-3.5 text-[var(--interactive-primary)]" />
-                                Customer profile
-                            </button>
-                        </div>
-                    </section>
-                </div>
-                </div>
-            </aside>
-
-            <div class="flex min-h-0 flex-1 flex-col">
+        <!-- Main Content Area -->
+        <main class="flex min-w-0 flex-1 flex-col overflow-hidden p-3 pt-0">
                 <section class="min-h-0 flex-1 overflow-hidden">
                     <div v-if="openConversations.length === 0" class="flex h-full items-center justify-center">
                         <Card class="w-full max-w-md border border-[var(--border-muted)] bg-[var(--surface-secondary)] p-8 text-center">
@@ -2964,6 +2973,13 @@ onBeforeUnmount(() => {
                                             <DropdownItem v-else disabled>
                                                 Resolve unavailable
                                             </DropdownItem>
+                                            <DropdownSeparator v-if="isAssignedToCurrentUser(conversation.id)" />
+                                            <DropdownItem
+                                                v-if="isAssignedToCurrentUser(conversation.id)"
+                                                @select="openTransferModal(conversation.id)"
+                                            >
+                                                Transfer chat
+                                            </DropdownItem>
                                         </Dropdown>
                                     </div>
                                 </div>
@@ -3061,16 +3077,13 @@ onBeforeUnmount(() => {
                                 class="border-t border-[var(--border-muted)] bg-[var(--surface-secondary)]/60"
                                 :class="isDenseGrid ? 'p-1' : 'p-1.5'"
                             >
-                                <div
-                                    v-if="isConversationClosedLike(conversation)"
-                                    class="rounded-md border border-[var(--border-default)] bg-[var(--surface-primary)] px-3 py-2 text-xs text-[var(--text-secondary)]"
-                                >
-                                    This conversation is {{ statusDisplayLabel(conversation.status) }}.
-                                </div>
-
-                                <div v-else class="space-y-1.5" @click.stop>
+                                <div class="space-y-1.5" @click.stop>
+                                    <div v-if="isConversationClosedLike(conversation)" class="px-1 py-0.5 text-xs text-[var(--text-secondary)] italic">
+                                        This conversation is {{ statusDisplayLabel(conversation.status) }}. Internal notes only.
+                                    </div>
                                     <div class="flex items-center gap-1 px-0.5" :class="isDenseGrid ? 'pb-0.5' : ''">
                                         <button
+                                            v-if="!isConversationClosedLike(conversation)"
                                             type="button"
                                             class="rounded-full font-semibold transition-colors"
                                             :class="[
@@ -3103,7 +3116,7 @@ onBeforeUnmount(() => {
 
                                     <div
                                         class="rounded-lg border"
-                                        :class="isNoteMode(conversation.id)
+                                        :class="(isNoteMode(conversation.id) || isConversationClosedLike(conversation))
                                             ? 'border-amber-500/30 bg-amber-500/5'
                                             : 'border-[var(--border-default)] bg-[var(--surface-primary)]'"
                                     >
@@ -3146,7 +3159,7 @@ onBeforeUnmount(() => {
                                             <Button
                                                 variant="ghost"
                                                 size="sm"
-                                                class="h-8 w-8 p-0 text-[var(--text-primary)] hover:bg-[var(--surface-secondary)]"
+                                                class="h-8 w-8 p-0 text-(--text-primary) hover:bg-(--surface-secondary)"
                                                 :disabled="sendingByConversation[conversation.id]"
                                                 title="Bold"
                                                 @mousedown.prevent
@@ -3157,7 +3170,7 @@ onBeforeUnmount(() => {
                                             <Button
                                                 variant="ghost"
                                                 size="sm"
-                                                class="h-8 w-8 p-0 text-[var(--text-primary)] hover:bg-[var(--surface-secondary)]"
+                                                class="h-8 w-8 p-0 text-(--text-primary) hover:bg-(--surface-secondary)"
                                                 :disabled="sendingByConversation[conversation.id]"
                                                 title="Underline"
                                                 @mousedown.prevent
@@ -3168,7 +3181,7 @@ onBeforeUnmount(() => {
                                             <Button
                                                 variant="ghost"
                                                 size="sm"
-                                                class="h-8 w-8 p-0 text-[var(--text-primary)] hover:bg-[var(--surface-secondary)]"
+                                                class="h-8 w-8 p-0 text-(--text-primary) hover:bg-(--surface-secondary)"
                                                 :disabled="sendingByConversation[conversation.id]"
                                                 title="Bulleted list"
                                                 @mousedown.prevent
@@ -3179,7 +3192,7 @@ onBeforeUnmount(() => {
                                             <Button
                                                 variant="ghost"
                                                 size="sm"
-                                                class="h-8 w-8 p-0 text-[var(--text-primary)] hover:bg-[var(--surface-secondary)]"
+                                                class="h-8 w-8 p-0 text-(--text-primary) hover:bg-(--surface-secondary)"
                                                 :disabled="sendingByConversation[conversation.id]"
                                                 title="Numbered list"
                                                 @mousedown.prevent
@@ -3190,7 +3203,7 @@ onBeforeUnmount(() => {
                                             <Button
                                                 variant="ghost"
                                                 size="sm"
-                                                class="h-8 w-8 p-0 text-[var(--text-primary)] hover:bg-[var(--surface-secondary)]"
+                                                class="h-8 w-8 p-0 text-(--text-primary) hover:bg-(--surface-secondary)"
                                                 :disabled="sendingByConversation[conversation.id]"
                                                 title="Insert link"
                                                 @mousedown.prevent
@@ -3206,7 +3219,7 @@ onBeforeUnmount(() => {
                                             rows="2"
                                             class="w-full resize-none border-none bg-transparent text-[var(--text-primary)] outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
                                             :class="isDenseGrid ? 'min-h-[52px] px-2 py-1.5 text-[13px]' : 'min-h-[58px] px-2.5 py-1.5 text-[13px]'"
-                                            :placeholder="isNoteMode(conversation.id) ? 'Internal note (customer cannot see this)...' : 'Type your message...'"
+                                            :placeholder="(isNoteMode(conversation.id) || isConversationClosedLike(conversation)) ? 'Internal note (customer cannot see this)...' : 'Type your message...'"
                                             :disabled="sendingByConversation[conversation.id]"
                                             @focus="focusDetailsFromComposer(conversation.id)"
                                             @input="
@@ -3226,7 +3239,7 @@ onBeforeUnmount(() => {
                                                 <Button
                                                     variant="ghost"
                                                     size="sm"
-                                                    class="h-8 w-8 p-0 text-[var(--text-primary)] hover:bg-[var(--surface-secondary)]"
+                                                    class="h-8 w-8 p-0 text-(--text-primary) hover:bg-(--surface-secondary)"
                                                     :disabled="sendingByConversation[conversation.id]"
                                                     title="Attach file"
                                                     @click="openPanelFilePicker(conversation.id)"
@@ -3236,7 +3249,7 @@ onBeforeUnmount(() => {
                                                 <Button
                                                     variant="ghost"
                                                     size="sm"
-                                                    class="h-8 w-8 p-0 text-[var(--text-primary)] hover:bg-[var(--surface-secondary)]"
+                                                    class="h-8 w-8 p-0 text-(--text-primary) hover:bg-(--surface-secondary)"
                                                     :disabled="sendingByConversation[conversation.id]"
                                                     title="Insert image"
                                                     @click="openPanelFilePicker(conversation.id)"
@@ -3246,7 +3259,7 @@ onBeforeUnmount(() => {
                                                 <Button
                                                     variant="ghost"
                                                     size="sm"
-                                                    class="h-8 w-8 p-0 text-[var(--text-primary)] hover:bg-[var(--surface-secondary)]"
+                                                    class="h-8 w-8 p-0 text-(--text-primary) hover:bg-(--surface-secondary)"
                                                     :disabled="sendingByConversation[conversation.id]"
                                                     title="Insert emoji"
                                                     :data-workbench-emoji-toggle="conversation.id"
@@ -3257,7 +3270,7 @@ onBeforeUnmount(() => {
                                                 <Button
                                                     variant="ghost"
                                                     size="sm"
-                                                    class="font-semibold text-[var(--text-primary)]"
+                                                    class="font-semibold text-(--text-primary)"
                                                     :class="isDenseGrid ? 'h-8 px-2.5 text-[12px]' : 'h-8 px-2.5 text-[12px]'"
                                                     :disabled="sendingByConversation[conversation.id]"
                                                     title="Macros"
@@ -3272,7 +3285,7 @@ onBeforeUnmount(() => {
                                                 size="sm"
                                                 class="text-xs"
                                                 :class="isDenseGrid ? 'h-9 px-3 text-[13px]' : 'h-9 px-3 text-[13px]'"
-                                                :variant="isNoteMode(conversation.id) ? 'outline' : 'primary'"
+                                                :variant="(isNoteMode(conversation.id) || isConversationClosedLike(conversation)) ? 'outline' : 'primary'"
                                                 :disabled="
                                                     sendingByConversation[conversation.id] ||
                                                     (
@@ -3287,7 +3300,20 @@ onBeforeUnmount(() => {
                                                     class="mr-1 h-4 w-4 animate-spin"
                                                 />
                                                 <Send v-else class="mr-1 h-4 w-4" />
-                                                <span>{{ isNoteMode(conversation.id) ? "Add Note" : "Send" }}</span>
+                                                <span>{{ (isNoteMode(conversation.id) || isConversationClosedLike(conversation)) ? "Add Note" : "Send" }}</span>
+                                            </Button>
+
+                                            <Button
+                                                v-if="conversation.status === 'wrap_up'"
+                                                size="sm"
+                                                variant="outline"
+                                                class="ml-2 h-9 px-3 text-xs font-bold border-emerald-500/50 text-emerald-600 hover:bg-emerald-50"
+                                                :disabled="completingWrapUpByConversation[conversation.id]"
+                                                @click="completeWrapUp(conversation.id)"
+                                            >
+                                                <Loader2 v-if="completingWrapUpByConversation[conversation.id]" class="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                                                <Check v-else class="mr-1.5 h-3.5 w-3.5" />
+                                                Complete Wrap-up
                                             </Button>
                                         </div>
 
@@ -3307,9 +3333,77 @@ onBeforeUnmount(() => {
                     </div>
                     </div>
                 </section>
-            </div>
-        </div>
 
+        </main>
+        
+        <!-- Assignment Notification Overlay -->
+        <TransitionGroup
+            tag="div"
+            enter-active-class="transition duration-300 ease-out"
+            enter-from-class="translate-y-4 opacity-0 scale-95"
+            enter-to-class="translate-y-0 opacity-100 scale-100"
+            leave-active-class="transition duration-200 ease-in"
+            leave-from-class="translate-y-0 opacity-100 scale-100"
+            leave-to-class="translate-y-4 opacity-0 scale-95"
+            class="fixed bottom-6 left-1/2 z-100 flex -translate-x-1/2 flex-col gap-3 pointer-events-none"
+        >
+            <div
+                v-for="assignment in pendingAssignments"
+                :key="assignment.id"
+                class="pointer-events-auto flex w-[420px] items-center gap-4 rounded-2xl border border-(--border-strong) bg-(--surface-elevated) p-4 shadow-2xl ring-1 ring-black/10"
+            >
+                <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-(--interactive-primary)/10 text-(--interactive-primary)">
+                    <MessageSquare class="h-6 w-6" />
+                </div>
+                <div class="min-w-0 flex-1">
+                    <h3 class="font-bold text-(--text-primary)">New Chat Assignment</h3>
+                    <p class="truncate text-sm text-(--text-secondary)">
+                        {{ customerName(assignment) }} is waiting
+                        <span v-if="assignment.support_skill" class="text-(--text-muted)">· {{ assignment.support_skill.name }}</span>
+                    </p>
+                    <div class="mt-2 flex items-center gap-2">
+                        <div class="h-1 flex-1 overflow-hidden rounded-full bg-(--surface-tertiary)">
+                            <div 
+                                class="h-full bg-(--interactive-primary) transition-all duration-300"
+                                :style="{ width: `${Math.max(0, Math.min(100, (60 - (liveClockNow - (assignment._receivedAt || Date.now())) / 1000) / 60 * 100))}%` }"
+                            />
+                        </div>
+                        <span class="text-[10px] font-mono font-medium text-(--text-muted) tabular-nums">
+                            {{ Math.max(0, Math.ceil(60 - (liveClockNow - (assignment._receivedAt || Date.now())) / 1000)) }}s
+                        </span>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        class="h-9 px-3 text-rose-500 hover:bg-rose-500/10 hover:text-rose-600"
+                        :disabled="rejectingByConversation[assignment.id]"
+                        @click="rejectAssignment(assignment.id)"
+                    >
+                        <Loader2 v-if="rejectingByConversation[assignment.id]" class="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                        Decline
+                    </Button>
+                    <Button
+                        variant="primary"
+                        size="sm"
+                        class="h-9 px-4 font-bold shadow-lg shadow-(--interactive-primary)/20"
+                        :disabled="acceptingByConversation[assignment.id]"
+                        @click="acceptAssignment(assignment.id)"
+                    >
+                        <Loader2 v-if="acceptingByConversation[assignment.id]" class="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                        Accept
+                    </Button>
+                </div>
+            </div>
+        </TransitionGroup>
+
+        <!-- Transfer Modal -->
+        <SupportTransferModal
+            v-model:open="isTransferModalOpen"
+            :conversation-id="transferConversationId"
+            @success="handleTransferSuccess"
+        />
     </div>
 </template>
 

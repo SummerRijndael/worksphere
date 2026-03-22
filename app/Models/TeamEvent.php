@@ -14,6 +14,7 @@ class TeamEvent extends Model
 
     protected $fillable = [
         'team_id',
+        'internal_team_id',
         'user_id',
         'title',
         'description',
@@ -61,6 +62,14 @@ class TeamEvent extends Model
     public function team(): BelongsTo
     {
         return $this->belongsTo(Team::class);
+    }
+
+    /**
+     * Get the internal team that owns the event.
+     */
+    public function internalTeam(): BelongsTo
+    {
+        return $this->belongsTo(InternalTeam::class);
     }
 
     /**

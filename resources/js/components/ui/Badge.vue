@@ -55,14 +55,14 @@ const dotClasses = computed(() =>
     cn(
         'h-1.5 w-1.5 rounded-full',
         {
-            'bg-[var(--text-muted)]': props.variant === 'default',
-            'bg-[var(--color-primary-500)]': props.variant === 'primary',
-            'bg-[var(--text-secondary)]': props.variant === 'secondary',
+            'bg-(--text-muted)': props.variant === 'default',
+            'bg-(--color-primary-500)': props.variant === 'primary',
+            'bg-(--text-secondary)': props.variant === 'secondary',
             'bg-green-500': props.variant === 'success',
             'bg-yellow-500': props.variant === 'warning',
-            'bg-[var(--text-muted)]': props.variant === 'neutral',
+            'bg-(--text-muted)': props.variant === 'neutral',
             'bg-red-500': props.variant === 'error' || props.variant === 'danger',
-            'bg-[var(--text-muted)]': props.variant === 'outline',
+            'bg-(--text-muted)': props.variant === 'outline',
         }
     )
 );

@@ -187,10 +187,31 @@ const storageKey = computed(() => {
     return `worksphere_support_widget_history_${currentUser.value?.public_id || 'guest'}`;
 });
 
+// Event types that should only be shown to agents, not customers
+const AGENT_ONLY_EVENT_TYPES = new Set([
+    'resolution_started',
+    'wrap_up_completed',
+    'assignment',
+    'assignment_accepted',
+    'assignment_rejected',
+    'transfer',
+]);
+
 const mappedMessages = computed(() => {
     const messages = conversationMessages.value || [];
 
-    const mapped = messages.map((message) => {
+    const mapped = messages
+        .filter((message) => {
+            // In the customer-facing widget, hide agent-only system events
+            if (message.sender_type === 'system') {
+                const eventType = message.metadata?.type;
+                if (eventType && AGENT_ONLY_EVENT_TYPES.has(eventType)) {
+                    return false;
+                }
+            }
+            return true;
+        })
+        .map((message) => {
         let type = 'agent';
         let agentName = message.sender?.name || 'Support Team';
 
@@ -322,8 +343,7 @@ const hasSubmittedSurvey = computed(() => {
 const showSurveyPanel = computed(() => {
     return isLoadingSurvey.value
         || hasPendingSurvey.value
-        || hasSubmittedSurvey.value
-        || (Boolean(activeConversation.value?.id) && isConversationClosed.value);
+        || hasSubmittedSurvey.value;
 });
 const isSurveyOptedOut = computed(() => Boolean(activeConversation.value?.survey_opt_out));
 const csatScaleValues = computed(() => {

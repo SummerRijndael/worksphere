@@ -116,6 +116,10 @@ export const useNotificationsStore = defineStore('notifications', () => {
         }
     }
 
+    // Track active subscriptions to prevent ghost sessions and 403s
+    let activeChannelName: string | null = null;
+    let isTicketsListening = false;
+
     // Real-time notifications
     async function startRealtimeListeners(): Promise<void> {
         const { useAuthStore } = await import('@/stores/auth');
@@ -141,21 +145,31 @@ export const useNotificationsStore = defineStore('notifications', () => {
 
         const channelName = `App.Models.User.${authStore.user.public_id}`;
 
-        echo.private(channelName)
-            .notification((notification: Notification) => {
-                console.log('[Notifications] Received:', notification);
-                // Add to list if not exists
-                if (!notifications.value.find(n => n.id === notification.id)) {
-                    notifications.value.unshift(notification);
-                    unreadCount.value++;
+        // Cleanup previous ghost subscriptions if user changed (due to Pinia persistence race condition)
+        if (activeChannelName && activeChannelName !== channelName) {
+            console.log(`[Notifications] Leaving old channel: ${activeChannelName}`);
+            echo.leave(activeChannelName);
+        }
 
-                    // Show toast with appropriate routing
-                    showNotificationToast(notification);
-                }
-            });
+        if (activeChannelName !== channelName) {
+             echo.private(channelName)
+                 .notification((notification: Notification) => {
+                     console.log('[Notifications] Received:', notification);
+                     // Add to list if not exists
+                     if (!notifications.value.find(n => n.id === notification.id)) {
+                         notifications.value.unshift(notification);
+                         unreadCount.value++;
+
+                         // Show toast with appropriate routing
+                         showNotificationToast(notification);
+                     }
+                 });
+             activeChannelName = channelName;
+             console.debug(`[Notifications] Listening on ${channelName}`);
+        }
 
         // Listen to ticket queue for support staff (if they have tickets.manage permission)
-        if (authStore.hasPermission('tickets.manage')) {
+        if (authStore.hasPermission('tickets.manage') && !isTicketsListening) {
             echo.private('tickets.queue')
                 .listen('.ticket.created', (event: any) => {
                     console.log('[Notifications] New ticket created:', event);
@@ -200,10 +214,9 @@ export const useNotificationsStore = defineStore('notifications', () => {
                     });
                 });
 
+            isTicketsListening = true;
             console.debug('[Notifications] Listening on tickets.queue');
         }
-
-        console.debug(`[Notifications] Listening on ${channelName}`);
     }
 
     // Helper to show toast with appropriate routing based on notification type
@@ -252,13 +265,17 @@ export const useNotificationsStore = defineStore('notifications', () => {
     }
 
     async function stopRealtimeListeners(): Promise<void> {
-         const { useAuthStore } = await import('@/stores/auth');
-         const authStore = useAuthStore();
          const { default: echo, isEchoAvailable } = await import('@/echo');
 
-         if (authStore.user?.public_id && isEchoAvailable()) {
-             echo.leave(`App.Models.User.${authStore.user.public_id}`);
-             echo.leave('tickets.queue');
+         if (isEchoAvailable()) {
+             if (activeChannelName) {
+                 echo.leave(activeChannelName);
+                 activeChannelName = null;
+             }
+             if (isTicketsListening) {
+                 echo.leave('tickets.queue');
+                 isTicketsListening = false;
+             }
          }
     }
 

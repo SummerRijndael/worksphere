@@ -85,7 +85,16 @@ class DemoDataSeeder extends Seeder
             $this->logAction($user, AuditAction::Created, AuditCategory::UserManagement, $user, ['role' => 'administrator']);
         }
 
-        // 35 IT Support
+        // 35 IT Support (Now in Internal Teams)
+        $itSupportTeam = \App\Models\InternalTeam::updateOrCreate(
+            ['slug' => 'it-support-global'],
+            [
+                'name' => 'IT Support (Global)',
+                'department' => 'IT',
+                'status' => 'active',
+            ]
+        );
+
         for ($i = 0; $i < 35; $i++) {
             $user = User::updateOrCreate(
                 ['email' => "it{$i}@example.com"],
@@ -96,8 +105,21 @@ class DemoDataSeeder extends Seeder
                     'email_verified_at' => now(),
                 ]
             );
-            $user->assignRole('it_support');
-            $this->logAction($user, AuditAction::Created, AuditCategory::UserManagement, $user, ['role' => 'it_support']);
+            $user->assignRole('user'); // Everyone is a 'user' now
+            
+            // Assign to IT Support team
+            $role = 'agent';
+            if ($i === 0) $role = 'manager';
+            elseif ($i < 5) $role = 'lead';
+
+            if (!$itSupportTeam->members()->where('user_id', $user->id)->exists()) {
+                $itSupportTeam->members()->attach($user->id, [
+                    'role' => $role,
+                    'joined_at' => now(),
+                ]);
+            }
+
+            $this->logAction($user, AuditAction::Created, AuditCategory::UserManagement, $user, ['internal_team' => 'it-support-global', 'role' => $role]);
         }
 
         // 200 regular Users

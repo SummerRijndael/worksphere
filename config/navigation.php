@@ -113,12 +113,19 @@ return [
                     'label' => 'Agent Workbench',
                     'route' => '/support/workbench',
                     'permission' => ['support.chats.view', 'support.chats.reply', 'tickets.manage'],
+                    'new_tab' => true,
                 ],
                 [
                     'id' => 'support-livechat-dashboard',
                     'label' => 'Live Chat Dashboard',
                     'route' => '/support/chats/dashboard',
                     'permission' => ['support.chats.view', 'support.chats.reply', 'tickets.manage'],
+                ],
+                [
+                    'id' => 'support-skills',
+                    'label' => 'Support Skills',
+                    'route' => '/support/skills',
+                    'permission' => ['support.chats.assign', 'tickets.manage'],
                 ],
                 [
                     'id' => 'support-helpdesk',

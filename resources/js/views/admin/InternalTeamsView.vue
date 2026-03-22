@@ -388,7 +388,7 @@ const statusBadge = (status: string) =>
         </div>
 
         <!-- Create Modal -->
-        <Modal :show="showCreateModal" @close="showCreateModal = false" max-width="lg">
+        <Modal v-model:open="showCreateModal" size="lg">
             <template #title>
                 <div class="flex items-center gap-2">
                     <div class="p-1.5 rounded-lg bg-violet-500/10">
@@ -397,28 +397,23 @@ const statusBadge = (status: string) =>
                     New Internal Team
                 </div>
             </template>
-            <template #body>
-                <div class="space-y-4">
-                    <div>
-                        <label class="block text-sm font-medium text-[var(--text-primary)] mb-1.5">Team Name <span class="text-red-500">*</span></label>
-                        <Input v-model="formData.name" placeholder="e.g. Tier 1 Support" :error="errors.name?.[0]" />
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-[var(--text-primary)] mb-1.5">Department</label>
-                        <Input v-model="formData.department" placeholder="e.g. IT, Finance, Marketing" :error="errors.department?.[0]" />
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-[var(--text-primary)] mb-1.5">Status</label>
-                        <select
-                            v-model="formData.status"
-                            class="input w-full"
-                        >
-                            <option value="active">Active</option>
-                            <option value="inactive">Inactive</option>
-                        </select>
-                    </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-[var(--text-primary)] mb-1.5">Team Name <span class="text-red-500">*</span></label>
+                    <Input v-model="formData.name" placeholder="e.g. Tier 1 Support" :error="errors.name?.[0]" />
                 </div>
-            </template>
+                <div>
+                    <label class="block text-sm font-medium text-[var(--text-primary)] mb-1.5">Department</label>
+                    <Input v-model="formData.department" placeholder="e.g. IT, Finance, Marketing" :error="errors.department?.[0]" />
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-[var(--text-primary)] mb-1.5">Status</label>
+                    <select v-model="formData.status" class="input w-full">
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                    </select>
+                </div>
+            </div>
             <template #footer>
                 <div class="flex justify-end gap-3">
                     <Button variant="secondary" @click="showCreateModal = false">Cancel</Button>
@@ -428,7 +423,7 @@ const statusBadge = (status: string) =>
         </Modal>
 
         <!-- Edit Modal -->
-        <Modal :show="showEditModal" @close="showEditModal = false" max-width="lg">
+        <Modal v-model:open="showEditModal" size="lg">
             <template #title>
                 <div class="flex items-center gap-2">
                     <div class="p-1.5 rounded-lg bg-blue-500/10">
@@ -437,25 +432,23 @@ const statusBadge = (status: string) =>
                     Edit — {{ currentTeam?.name }}
                 </div>
             </template>
-            <template #body>
-                <div class="space-y-4">
-                    <div>
-                        <label class="block text-sm font-medium text-[var(--text-primary)] mb-1.5">Team Name <span class="text-red-500">*</span></label>
-                        <Input v-model="formData.name" :error="errors.name?.[0]" />
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-[var(--text-primary)] mb-1.5">Department</label>
-                        <Input v-model="formData.department" :error="errors.department?.[0]" />
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-[var(--text-primary)] mb-1.5">Status</label>
-                        <select v-model="formData.status" class="input w-full">
-                            <option value="active">Active</option>
-                            <option value="inactive">Inactive</option>
-                        </select>
-                    </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-[var(--text-primary)] mb-1.5">Team Name <span class="text-red-500">*</span></label>
+                    <Input v-model="formData.name" :error="errors.name?.[0]" />
                 </div>
-            </template>
+                <div>
+                    <label class="block text-sm font-medium text-[var(--text-primary)] mb-1.5">Department</label>
+                    <Input v-model="formData.department" :error="errors.department?.[0]" />
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-[var(--text-primary)] mb-1.5">Status</label>
+                    <select v-model="formData.status" class="input w-full">
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                    </select>
+                </div>
+            </div>
             <template #footer>
                 <div class="flex justify-end gap-3">
                     <Button variant="secondary" @click="showEditModal = false">Cancel</Button>

@@ -93,6 +93,9 @@ class PresenceController extends Controller
             }
 
             $participantPublicId = $participant->public_id;
+
+            // Automatically set user status to on_call when in a meeting
+            $this->presenceService->setExplicitStatus($authUser, 'on_call');
         } else {
             $participantSessionId = MeetingParticipantSession::resolveGuestParticipantId($request, $meeting);
             if (! $participantSessionId) {
@@ -116,7 +119,7 @@ class PresenceController extends Controller
         }
 
         $this->presenceService->meetingHeartbeat($meetingId, $participantPublicId);
-
+ 
         // Update peak participant count
         if ($meeting && $meeting->status === 'active') {
             $activeCount = count($this->presenceService->getActiveMeetingParticipantIds($meetingId));
@@ -305,6 +308,10 @@ class PresenceController extends Controller
             'online', 'active', 'here' => 'online',
             'away', 'idle' => 'away',
             'busy', 'dnd' => 'busy',
+            'break', 'rest' => 'break',
+            'lunch', 'food' => 'lunch',
+            'meeting', 'in_meeting' => 'meeting',
+            'on_call', 'calling' => 'on_call',
             'invisible', 'hidden' => 'invisible',
             'offline' => 'offline',
             default => 'online',

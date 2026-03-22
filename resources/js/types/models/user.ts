@@ -10,6 +10,8 @@ export interface User {
   is_password_set?: boolean;
   password_last_updated_at?: string | null;
   presence?: 'online' | 'offline' | 'away' | 'busy' | 'invisible';
+  support_available?: boolean;
+  support_status?: 'available' | 'break' | 'lunch' | 'acw' | 'bio' | 'unavailable';
   roles?: Role[];
   permissions?: Permission[];
   teams?: Team[];

@@ -14,8 +14,6 @@ class SupportSkillMembershipResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        $user = $this->whenLoaded('user');
-
         return [
             'id' => (int) $this->id,
             'membership_role' => $this->membership_role,
@@ -23,12 +21,23 @@ class SupportSkillMembershipResource extends JsonResource
             'is_active' => (bool) $this->is_active,
             'capacity' => $this->capacity,
             'settings' => $this->settings ?? (object) [],
-            'user' => $user ? [
-                'id' => $user->public_id,
-                'name' => $user->name,
-                'email' => $user->email,
-                'status' => $user->status,
-            ] : null,
+            'user' => $this->whenLoaded('user', function () {
+                return [
+                    'id' => $this->user->public_id,
+                    'name' => $this->user->name,
+                    'email' => $this->user->email,
+                    'status' => $this->user->status,
+                ];
+            }),
+            'skill' => $this->whenLoaded('skill', function () {
+                return [
+                    'id' => $this->skill->public_id,
+                    'name' => $this->skill->name,
+                    'slug' => $this->skill->slug,
+                    'description' => $this->skill->description,
+                    'is_active' => (bool) $this->skill->is_active,
+                ];
+            }),
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),
         ];

@@ -54,12 +54,15 @@ class PresenceService
         $previousStatus = $current['status'] ?? null;
 
         // CRITICAL: Use database preference as fallback when cache expires
-        // This prevents "busy" status from being lost after inactivity
         $preferredStatus = $current['status'] ?? $userModel->presence_preference ?? 'online';
+        $supportStatus = $current['support_status'] ?? $userModel->support_status ?? 'unavailable';
+        $supportAvailable = (bool) ($current['support_available'] ?? $userModel->support_available ?? false);
 
         Cache::put($cacheKey, [
             'last_active' => now()->timestamp,
             'status' => $preferredStatus,
+            'support_status' => $supportStatus,
+            'support_available' => $supportAvailable,
         ], now()->addSeconds(self::OFFLINE_AFTER_SECONDS + 60));
         $this->rememberIndex($userModel->id);
 
@@ -71,14 +74,14 @@ class PresenceService
         if (! $wasOnline) {
             // User just came online, broadcast their current status
             try {
-                UserPresenceChanged::dispatch($userModel, $newStatus);
+                UserPresenceChanged::dispatch($userModel, $newStatus, $supportAvailable, $supportStatus);
             } catch (\Throwable $e) {
                 Log::warning('Presence broadcast failed: '.$e->getMessage());
             }
         } elseif ($previousStatus !== null && $previousStatus !== $newStatus) {
             // Status changed, broadcast the new status
             try {
-                UserPresenceChanged::dispatch($userModel, $newStatus);
+                UserPresenceChanged::dispatch($userModel, $newStatus, $supportAvailable, $supportStatus);
             } catch (\Throwable $e) {
                 Log::warning('Presence broadcast failed: '.$e->getMessage());
             }
@@ -135,7 +138,7 @@ class PresenceService
         $this->forgetIndex($userModel->id);
 
         if ($wasOnline || $current !== 'offline') {
-            UserPresenceChanged::dispatch($userModel, 'offline');
+            UserPresenceChanged::dispatch($userModel, 'offline', false, 'offline');
         }
 
         return $wasOnline;
@@ -168,7 +171,7 @@ class PresenceService
                     // The return value indicates if cache *was* there.
                     // We count it as pruned if we cleaned them up.
                     $this->forgetIndex((int) $id);
-                    UserPresenceChanged::dispatch(User::find($id), 'offline');
+                    UserPresenceChanged::dispatch(User::find($id), 'offline', false, 'offline');
                     $pruned++;
                 }
             }
@@ -191,20 +194,93 @@ class PresenceService
             default => 'online',
         };
 
-        // CRITICAL: Persist user preference to database so it survives cache expiry and server restarts
+        // Persist global preference
         $userModel->update(['presence_preference' => $status]);
 
         $cacheKey = $this->keyFor($userModel->id);
-        $payload = Cache::get($cacheKey, []);
-
-        Cache::put($cacheKey, [
+        $current = Cache::get($cacheKey, []);
+        
+        Cache::put($cacheKey, array_merge($current, [
             'last_active' => now()->timestamp,
             'status' => $status,
-        ], now()->addSeconds(self::OFFLINE_AFTER_SECONDS));
+        ]), now()->addSeconds(self::OFFLINE_AFTER_SECONDS));
 
         $this->rememberIndex($userModel->id);
 
-        UserPresenceChanged::dispatch($userModel, $status);
+        UserPresenceChanged::dispatch($userModel, $status, (bool) ($current['support_available'] ?? $userModel->support_available), (string) ($current['support_status'] ?? $userModel->support_status));
+    }
+
+    public function setSupportStatus(User|int|null $user, string $status, bool $available): void
+    {
+        $userModel = $this->resolveUser($user);
+        if (! $userModel) {
+            return;
+        }
+
+        $status = match ($status) {
+            'available' => 'available',
+            'break' => 'break',
+            'lunch' => 'lunch',
+            'acw' => 'acw',
+            'bio' => 'bio',
+            'unavailable' => 'unavailable',
+            default => 'unavailable',
+        };
+
+        // Persist support status
+        $userModel->update([
+            'support_status' => $status,
+            'support_available' => $available,
+        ]);
+
+        $cacheKey = $this->keyFor($userModel->id);
+        $current = Cache::get($cacheKey, []);
+
+        Cache::put($cacheKey, array_merge($current, [
+            'last_active' => now()->timestamp,
+            'support_status' => $status,
+            'support_available' => $available,
+        ]), now()->addSeconds(self::OFFLINE_AFTER_SECONDS));
+
+        $this->rememberIndex($userModel->id);
+
+        // Broadcast with global status but updated support info
+        $globalStatus = $current['status'] ?? $userModel->presence_preference ?? 'online';
+        UserPresenceChanged::dispatch($userModel, $globalStatus, $available, $status);
+    }
+
+    public function setSupportAvailability(User|int|null $user, bool $available): void
+    {
+        $userModel = $this->resolveUser($user);
+        if (! $userModel) {
+            return;
+        }
+
+        $userModel->update(['support_available' => $available]);
+
+        $cacheKey = $this->keyFor($userModel->id);
+        $current = Cache::get($cacheKey, []);
+        
+        Cache::put($cacheKey, array_merge($current, [
+            'last_active' => now()->timestamp,
+            'support_available' => $available,
+        ]), now()->addSeconds(self::OFFLINE_AFTER_SECONDS));
+
+        $this->rememberIndex($userModel->id);
+
+        $globalStatus = $current['status'] ?? $userModel->presence_preference ?? 'online';
+        UserPresenceChanged::dispatch($userModel, $globalStatus, $available, (string) ($current['support_status'] ?? $userModel->support_status));
+    }
+
+    public function isSupportAvailable(int $userId): bool
+    {
+        $data = Cache::get($this->keyFor($userId));
+        
+        if ($this->presenceStatus($userId) === 'offline') {
+            return false;
+        }
+
+        return (bool) ($data['support_available'] ?? false);
     }
 
     /**
@@ -296,17 +372,17 @@ class PresenceService
         }
 
         if ($age >= self::AWAY_AFTER_SECONDS) {
-            if (($data['status'] ?? null) !== 'away' && ($data['status'] ?? null) !== 'busy') {
+            if (!in_array($data['status'] ?? null, ['away', 'busy', 'break', 'lunch', 'meeting', 'on_call', 'acw', 'bio'])) {
                 Cache::put($this->keyFor($userId), [
                     'last_active' => $last,
                     'status' => 'away',
                 ], now()->addSeconds(self::OFFLINE_AFTER_SECONDS - $age));
             }
 
-            return ($data['status'] ?? null) === 'busy' ? 'busy' : 'away';
+            return in_array($data['status'] ?? null, ['busy', 'break', 'lunch', 'meeting', 'on_call', 'acw', 'bio']) ? $data['status'] : 'away';
         }
 
-        return ($data['status'] ?? null) === 'busy' ? 'busy' : 'online';
+        return in_array($data['status'] ?? null, ['busy', 'break', 'lunch', 'meeting', 'on_call', 'acw', 'bio']) ? $data['status'] : 'online';
     }
 
     protected function rememberIndex(int $userId): void
@@ -349,7 +425,7 @@ class PresenceService
         try {
             $redis = Redis::connection('cache');
         } catch (\Throwable $e) {
-            \Log::debug('PresenceService: redis unavailable, falling back to cache index', [
+            Log::debug('PresenceService: redis unavailable, falling back to cache index', [
                 'error' => $e->getMessage(),
             ]);
 
@@ -373,7 +449,7 @@ class PresenceService
             $iterations++;
 
             if ($iterations >= $maxIterations) {
-                \Log::warning('PresenceService::getActiveUserKeys exceeded max iterations', [
+                Log::warning('PresenceService::getActiveUserKeys exceeded max iterations', [
                     'iterations' => $iterations,
                     'pattern' => $pattern,
                     'keys_found' => count($keys),

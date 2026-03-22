@@ -2,21 +2,42 @@
 
 namespace App\Models;
 
+use App\Traits\Auditable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Spatie\MediaLibrary\HasMedia;
+use Spatie\MediaLibrary\InteractsWithMedia;
 
-class InternalTeam extends Model
+class InternalTeam extends Model implements HasMedia
 {
+    use Auditable, InteractsWithMedia;
     /**
      * @var list<string>
      */
     protected $fillable = [
+        'public_id',
         'name',
         'slug',
         'department',
         'status',
     ];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+
+        static::creating(function (InternalTeam $team): void {
+            if (empty($team->public_id)) {
+                $team->public_id = (string) \Illuminate\Support\Str::ulid();
+            }
+        });
+    }
+
+    public function getRouteKeyName(): string
+    {
+        return 'public_id';
+    }
 
     /**
      * @return BelongsToMany<User>
@@ -24,7 +45,7 @@ class InternalTeam extends Model
     public function members(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'internal_team_user', 'internal_team_id', 'user_id')
-            ->withPivot('role')
+            ->withPivot(['role', 'joined_at'])
             ->withTimestamps();
     }
 

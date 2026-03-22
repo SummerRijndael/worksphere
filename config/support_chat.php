@@ -74,6 +74,9 @@ return [
         'data loss',
         'urgent',
         'critical',
+        'talk to human',
+        'real person',
+        'human agent',
     ],
     'complexity_min_length' => 420,
 
@@ -152,6 +155,9 @@ return [
         'lock_seconds' => (int) env('SUPPORT_ROUTING_LOCK_SECONDS', 15),
         'stale_routing_seconds' => (int) env('SUPPORT_ROUTING_STALE_SECONDS', 60),
         'sweeper_batch_size' => (int) env('SUPPORT_ROUTING_SWEEPER_BATCH_SIZE', 50),
+        'require_online_agent' => (bool) env('SUPPORT_ROUTING_REQUIRE_ONLINE', true),
+        'require_support_available' => (bool) env('SUPPORT_ROUTING_REQUIRE_AVAILABLE', true),
+        'assignment_timeout_seconds' => (int) env('SUPPORT_ASSIGNMENT_TIMEOUT', 60),
     ],
 
     /*

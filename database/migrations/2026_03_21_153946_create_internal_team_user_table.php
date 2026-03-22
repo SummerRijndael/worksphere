@@ -16,6 +16,7 @@ return new class extends Migration
             $table->foreignId('internal_team_id')->constrained()->cascadeOnDelete();
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
             $table->string('role')->default('agent');
+            $table->timestamp('joined_at')->nullable();
             $table->timestamps();
 
             $table->unique(['internal_team_id', 'user_id']);

@@ -21,15 +21,17 @@ class InternalTeamService implements InternalTeamServiceContract
         $query = InternalTeam::query();
 
         if (isset($filters['search'])) {
-            $query->where('name', 'like', '%' . $filters['search'] . '%')
-                  ->orWhere('department', 'like', '%' . $filters['search'] . '%');
+            $query->where(function ($q) use ($filters) {
+                $q->where('name', 'LIKE', '%' . $filters['search'] . '%')
+                  ->orWhere('department', 'LIKE', '%' . $filters['search'] . '%');
+            });
         }
-
+ 
         if (isset($filters['status'])) {
-            $query->where('status', $filters['status']);
+            $query->where('status', '=', $filters['status']);
         }
-
-        return $query->latest()->paginate($perPage);
+ 
+        return $query->latest('created_at')->paginate($perPage);
     }
 
     public function create(array $data, User $actor): InternalTeam
@@ -88,7 +90,7 @@ class InternalTeamService implements InternalTeamServiceContract
     public function addMember(InternalTeam $team, User $user, string $role, User $actor): void
     {
         if (!$team->members()->where('user_id', $user->id)->exists()) {
-            $team->members()->attach($user->id, ['role' => $role]);
+            $team->members()->attach($user->id, ['role' => $role, 'joined_at' => now()]);
 
             $this->auditService->log(
                 action: AuditAction::MemberAdded,

@@ -9,6 +9,7 @@ export interface NavigationItem {
   badge?: number | string;
   badge_key?: string;
   children?: NavigationChild[];
+  new_tab?: boolean;
 }
 
 export interface NavigationChild {
@@ -19,6 +20,7 @@ export interface NavigationChild {
   icon?: string;
   badge?: number | string;
   team_badge?: string;
+  new_tab?: boolean;
 }
 
 export interface NavigationPreferences {

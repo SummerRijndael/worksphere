@@ -23,9 +23,9 @@ const cardClasses = computed(() =>
 
         // Variant styles
         {
-            'bg-[var(--surface-elevated)] border border-[var(--border-subtle)] shadow-sm': props.variant === 'default',
-            'bg-[var(--surface-secondary)]': props.variant === 'ghost',
-            'border border-[var(--border-subtle)] bg-transparent': props.variant === 'outline',
+            'bg-(--surface-elevated) border border-(--border-subtle) shadow-sm': props.variant === 'default',
+            'bg-(--surface-secondary)': props.variant === 'ghost',
+            'border border-(--border-subtle) bg-transparent': props.variant === 'outline',
         },
 
         // Padding
@@ -38,7 +38,7 @@ const cardClasses = computed(() =>
         },
 
         // Interactive states
-        props.hover && 'hover:shadow-lg hover:border-[var(--border-strong)]',
+        props.hover && 'hover:shadow-lg hover:border-(--border-strong)',
         props.clickable && 'cursor-pointer active:scale-[0.99]'
     )
 );

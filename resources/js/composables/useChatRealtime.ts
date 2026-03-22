@@ -521,7 +521,20 @@ export function useChatRealtime() {
   // Watch for active user to subscribe to private channel (fixes race condition)
   watch(
     () => authStore.user,
-    (newUser) => {
+    (newUser, oldUser) => {
+      // Unsubscribe from old user channel if it changed
+      if (oldUser && oldUser.public_id && (!newUser || newUser.public_id !== oldUser.public_id)) {
+        const oldChannelName = `user.${oldUser.public_id}`;
+        if (subscribedChannels.value.has(oldChannelName)) {
+          console.log(`[ChatRealtime] Leaving old user channel: ${oldChannelName}`);
+          const echo = (window as any).Echo as Echo<'reverb'>;
+          if (echo) {
+            echo.leave(oldChannelName);
+          }
+          subscribedChannels.value.delete(oldChannelName);
+        }
+      }
+
       if (newUser && newUser.public_id) {
         subscribeToUserChannel();
       }

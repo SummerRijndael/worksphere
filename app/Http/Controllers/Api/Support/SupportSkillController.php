@@ -32,18 +32,18 @@ class SupportSkillController extends Controller
         $this->authorize('viewAny', SupportSkill::class);
 
         $validated = $request->validate([
-            'q' => ['nullable', 'string', 'max:120'],
-            'department' => ['nullable', 'string', 'max:120'],
-            'is_active' => ['nullable', 'boolean'],
-            'include_members' => ['nullable', 'boolean'],
+            'q' => ['nullable', 'string', 'max:255'],
+            'department' => ['nullable', 'string', 'max:255'],
+            'is_active' => ['nullable'],
+            'include_members' => ['nullable'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
 
         $perPage = (int) ($validated['per_page'] ?? 20);
-        $includeMembers = (bool) ($validated['include_members'] ?? false);
         $q = trim((string) ($validated['q'] ?? ''));
         $department = trim((string) ($validated['department'] ?? ''));
-        $isActive = $validated['is_active'] ?? null;
+        $isActive = isset($validated['is_active']) ? filter_var($validated['is_active'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) : null;
+        $includeMembers = filter_var($validated['include_members'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
         $query = SupportSkill::query()
             ->with('creator:id,public_id,name,email')
@@ -67,7 +67,7 @@ class SupportSkillController extends Controller
         }
 
         if ($isActive !== null) {
-            $query->where('is_active', (bool) $isActive);
+            $query->where('is_active', $isActive);
         }
 
         if ($includeMembers) {

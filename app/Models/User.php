@@ -95,6 +95,8 @@ class User extends Authenticatable implements HasMedia, MustVerifyEmail, WebAuth
         'is_password_set',
         'password_last_updated_at',
         'presence_preference',
+        'support_status',
+        'support_available',
         'last_seen_at',
         'registration_fingerprint',
     ];
@@ -214,6 +216,7 @@ class User extends Authenticatable implements HasMedia, MustVerifyEmail, WebAuth
             'last_seen_at' => 'datetime',
             'two_factor_confirmed_at' => 'datetime',
             'is_public' => 'boolean',
+            'support_available' => 'boolean',
         ];
     }
 

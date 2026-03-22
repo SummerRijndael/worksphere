@@ -10,7 +10,6 @@ const SUPPORT_AGENT_PERMISSIONS = [
 
 const SUPPORT_LEAD_ROLE_NAMES = new Set([
     "administrator",
-    "it_support",
     "support_lead",
     "support_manager",
     "team_lead",

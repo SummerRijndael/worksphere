@@ -40,7 +40,8 @@ Broadcast::channel('online-users', ChannelAuthLogger::wrap('online-users', funct
 // Ticket queue channel - for support staff to receive new ticket notifications
 // IMPORTANT: This specific route MUST come before tickets.{ticketId} parameterized route
 Broadcast::channel('tickets.queue', ChannelAuthLogger::wrap('tickets.queue', function ($user) {
-    return $user->hasPermissionTo('tickets.view') || $user->hasPermissionTo('tickets.manage');
+    $persona = app(\App\Services\PermissionService::class)->getPersona($user);
+    return $persona->hasPermission('tickets.view') || $persona->hasPermission('tickets.manage');
 }));
 
 // Ticket channel - users can subscribe if they can view the ticket

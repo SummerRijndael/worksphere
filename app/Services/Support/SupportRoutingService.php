@@ -12,6 +12,8 @@ use App\Models\SupportMessage;
 use App\Models\SupportRoutingQueueEntry;
 use App\Models\SupportSkillMembership;
 use App\Models\User;
+use App\Jobs\Support\SupportAssignmentTimeoutJob;
+use App\Services\Chat\PresenceService;
 use App\Services\Support\Access\SupportAccessAdapterResolver;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Cache;
@@ -22,7 +24,8 @@ use Illuminate\Support\Facades\Schema;
 class SupportRoutingService
 {
     public function __construct(
-        protected SupportAccessAdapterResolver $supportAccessAdapterResolver
+        protected SupportAccessAdapterResolver $supportAccessAdapterResolver,
+        protected PresenceService $presenceService
     ) {}
 
     public function enqueueConversation(
@@ -239,20 +242,25 @@ class SupportRoutingService
 
                 $conversation->forceFill([
                     'assigned_to' => $agent->id,
-                    'status' => SupportConversation::STATUS_ASSIGNED,
+                    'status' => SupportConversation::STATUS_PENDING_ACCEPTANCE,
                     'ai_handoff_required' => false,
                     'ai_handoff_reason' => null,
                     'support_skill_id' => $conversation->support_skill_id ?? $entry->support_skill_id,
                 ])->forceFill([
                     'chat_state' => SupportConversation::CHAT_STATE_NEW,
-                    'assignment_state' => SupportConversation::ASSIGNMENT_STATE_ASSIGNED,
+                    'assignment_state' => SupportConversation::ASSIGNMENT_STATE_PENDING,
                 ])->save();
+
+                $timeoutSeconds = (int) config('support_chat.routing.assignment_timeout_seconds', 60);
+                SupportAssignmentTimeoutJob::dispatch($conversation->id, $agent->id)
+                    ->delay(now()->addSeconds($timeoutSeconds));
+
 
                 $message = SupportMessage::query()->create([
                     'conversation_id' => $conversation->id,
                     'sender_type' => SupportMessage::SENDER_SYSTEM,
                     'sender_user_id' => null,
-                    'body' => "Conversation was automatically assigned to {$agent->name}.",
+                    'body' => "Conversation is being assigned to {$agent->name} (Waiting for acceptance).",
                     'metadata' => [
                         'type' => 'assignment_auto',
                         'agent_id' => $agent->public_id,
@@ -448,6 +456,20 @@ class SupportRoutingService
         foreach ($candidates as $candidate) {
             if (! $adapter->canBeAssignedToConversation($candidate, $conversation)) {
                 continue;
+            }
+
+            // Presence Check
+            if (config('support_chat.routing.require_online_agent', true)) {
+                $status = $this->presenceService->presenceStatus($candidate->id);
+                if ($status !== 'online') {
+                    continue;
+                }
+            }
+
+            if (config('support_chat.routing.require_support_available', true)) {
+                if (! $this->presenceService->isSupportAvailable((int) $candidate->id)) {
+                    continue;
+                }
             }
 
             $userId = (int) $candidate->id;

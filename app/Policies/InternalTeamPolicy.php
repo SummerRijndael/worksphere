@@ -70,4 +70,19 @@ class InternalTeamPolicy
         return $internalTeam->hasRole($user, InternalTeamRole::Manager->value) ||
                $internalTeam->hasRole($user, InternalTeamRole::Lead->value);
     }
+
+    public function manageFiles(User $user, InternalTeam $internalTeam): bool
+    {
+        return $this->update($user, $internalTeam);
+    }
+
+    public function manageCalendar(User $user, InternalTeam $internalTeam): bool
+    {
+        return $this->update($user, $internalTeam);
+    }
+
+    public function viewActivity(User $user, InternalTeam $internalTeam): bool
+    {
+        return $this->view($user, $internalTeam);
+    }
 }

@@ -22,6 +22,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
+use App\Services\Chat\PresenceService;
 
 class SupportInboxController extends Controller
 {
@@ -37,7 +38,8 @@ class SupportInboxController extends Controller
         $this->authorize('viewAny', SupportConversation::class);
 
         $scope = (string) $request->input('scope', 'mine');
-        if (! in_array($scope, ['mine', 'unassigned', 'all'], true)) {
+        $allowedScopes = ['mine', 'unassigned', 'all', 'waiting', 'ai', 'assigned_all'];
+        if (! in_array($scope, $allowedScopes, true)) {
             $scope = 'mine';
         }
 
@@ -50,6 +52,47 @@ class SupportInboxController extends Controller
         return $this->paginatedConversationResponse($paginator, $request, [
             'realtime' => $this->supportRealtimeService->agentRealtimeMeta($request->user()),
             'ui_timers' => $this->supportUiTimerMeta(),
+        ]);
+    }
+
+    public function metrics(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', SupportConversation::class);
+
+        $now = now();
+        $since = $now->copy()->subDay();
+
+        // Average Wait Time (last 24h)
+        // Calculated for conversations that were assigned to a human agent
+        $avgWaitTimeSeconds = SupportConversation::query()
+            ->whereNotNull('first_response_at')
+            ->where('created_at', '>=', $since)
+            ->whereNotNull('assigned_to')
+            ->selectRaw('AVG(TIMESTAMPDIFF(SECOND, created_at, first_response_at)) as avg_wait')
+            ->value('avg_wait') ?: 0;
+
+        // AI Resolution Rate (last 24h)
+        // Resolved by AI = Resolved/Closed AND never assigned to a human
+        $totalResolved = SupportConversation::query()
+            ->whereIn('status', [SupportConversation::STATUS_RESOLVED, SupportConversation::STATUS_CLOSED])
+            ->where('created_at', '>=', $since)
+            ->count();
+
+        $aiResolved = SupportConversation::query()
+            ->whereIn('status', [SupportConversation::STATUS_RESOLVED, SupportConversation::STATUS_CLOSED])
+            ->where('created_at', '>=', $since)
+            ->whereNull('assigned_to')
+            ->count();
+
+        $aiResolutionRate = $totalResolved > 0 ? ($aiResolved / $totalResolved) * 100 : 0;
+
+        return response()->json([
+            'data' => [
+                'average_wait_time_seconds' => (int) $avgWaitTimeSeconds,
+                'ai_resolution_rate' => round((float) $aiResolutionRate, 1),
+                'resolved_today' => $totalResolved,
+                'ai_resolved_today' => $aiResolved,
+            ],
         ]);
     }
 
@@ -384,6 +427,89 @@ class SupportInboxController extends Controller
             'meta' => [
                 'realtime' => $this->supportRealtimeService->agentRealtimeMeta($request->user(), $conversation->public_id),
                 'survey_invite_bundle' => $this->serializeSurveyInviteBundle($surveyBundle, $request),
+            ],
+        ]);
+    }
+
+    public function accept(Request $request, SupportConversation $conversation): JsonResponse
+    {
+        $this->authorize('respondAsAgent', $conversation);
+
+        $conversation = $this->supportService->acceptAssignment($conversation, $request->user());
+
+        return response()->json([
+            'message' => 'Assignment accepted.',
+            'data' => new SupportConversationResource($conversation->load(['requester', 'assignee', 'skill']), includePrivateNotes: true),
+        ]);
+    }
+
+    public function reject(Request $request, SupportConversation $conversation): JsonResponse
+    {
+        $this->authorize('respondAsAgent', $conversation);
+
+        $validated = $request->validate([
+            'reason' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $conversation = $this->supportService->rejectAssignment($conversation, $request->user(), $validated['reason'] ?? null);
+
+        return response()->json([
+            'message' => 'Assignment declined.',
+            'data' => new SupportConversationResource($conversation->load(['requester', 'assignee', 'skill']), includePrivateNotes: true),
+        ]);
+    }
+
+    public function transfer(Request $request, SupportConversation $conversation): JsonResponse
+    {
+        $this->authorize('assign', $conversation);
+
+        $validated = $request->validate([
+            'support_skill_id' => ['nullable', 'integer', 'exists:support_skills,id'],
+            'assigned_to' => ['nullable', 'integer', 'exists:users,id'],
+        ]);
+
+        try {
+            $conversation = $this->supportService->transfer($conversation, $request->user(), $validated);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'message' => 'Conversation transferred successfully.',
+            'data' => new SupportConversationResource($conversation->load(['requester', 'assignee', 'skill']), includePrivateNotes: true),
+        ]);
+    }
+
+    public function completeWrapUp(Request $request, SupportConversation $conversation): JsonResponse
+    {
+        $this->authorize('resolve', $conversation);
+
+        $conversation = $this->supportService->completeWrapUp($conversation, $request->user());
+
+        return response()->json([
+            'message' => 'Wrap-up completed.',
+            'data' => new SupportConversationResource($conversation->load(['requester', 'assignee', 'skill']), includePrivateNotes: true),
+        ]);
+    }
+
+    public function updateAvailability(Request $request, PresenceService $presenceService): JsonResponse
+    {
+        $this->authorize('viewAny', SupportConversation::class);
+
+        $validated = $request->validate([
+            'status' => ['required', 'string', 'in:available,break,lunch,acw,bio,unavailable'],
+        ]);
+
+        $status = $validated['status'];
+        $isAvailable = $status === 'available';
+
+        $presenceService->setSupportStatus($request->user(), $status, $isAvailable);
+
+        return response()->json([
+            'message' => 'Support presence updated.',
+            'data' => [
+                'status' => $status,
+                'support_available' => $isAvailable,
             ],
         ]);
     }

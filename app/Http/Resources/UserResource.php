@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use App\Http\Resources\Support\SupportSkillMembershipResource;
 
 class UserResource extends JsonResource
 {
@@ -54,6 +55,7 @@ class UserResource extends JsonResource
                 'status' => $this->status,
                 'status_reason' => $this->status_reason,
                 'suspended_until' => $this->suspended_until?->toISOString(),
+                'support_available' => app(\App\Services\Chat\PresenceService::class)->isSupportAvailable($this->id),
                 'preferences' => $this->preferences ?? [],
                 'email_verified' => $this->hasVerifiedEmail(),
                 'email_verified_at' => $this->email_verified_at?->toISOString(),
@@ -141,6 +143,9 @@ class UserResource extends JsonResource
                             'joined_at' => $team->pivot->joined_at ?? $team->created_at,
                         ],
                     ];
+                }),
+                'support_skills' => $this->whenLoaded('supportSkillMemberships', function () {
+                    return SupportSkillMembershipResource::collection($this->supportSkillMemberships);
                 }),
                 'files' => $this->whenLoaded('media', function () {
                     return $this->getMedia('documents')->map(function ($media) {

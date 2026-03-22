@@ -37,7 +37,7 @@ const disabledUsers = computed(() => props.stats.status_counts['disabled'] || 0)
 const problemUsers = computed(() => suspendedUsers.value + blockedUsers.value + disabledUsers.value);
 
 const administrators = computed(() => props.stats.role_counts['administrator'] || 0);
-const itSupport = computed(() => props.stats.role_counts['it_support'] || 0);
+const internalSupport = computed(() => props.stats.internal_support_count || 0);
 const users = computed(() => props.stats.role_counts['user'] || props.stats.role_counts['member'] || 0);
 </script>
 
@@ -122,9 +122,9 @@ const users = computed(() => props.stats.role_counts['user'] || props.stats.role
                     <div class="flex items-center justify-between p-1.5 rounded-lg bg-[var(--surface-secondary)] border border-[var(--border-default)]">
                         <div class="flex items-center gap-1.5">
                             <Headset class="w-3.5 h-3.5 text-orange-600 dark:text-orange-400" />
-                            <span class="text-[var(--text-secondary)]">IT Support</span>
+                            <span class="text-[var(--text-secondary)]">Support</span>
                         </div>
-                        <span class="font-bold text-[var(--text-primary)]">{{ itSupport }}</span>
+                        <span class="font-bold text-[var(--text-primary)]">{{ internalSupport }}</span>
                     </div>
                      <div class="col-span-2 flex items-center justify-between p-1.5 rounded-lg bg-[var(--surface-secondary)] border border-[var(--border-default)]">
                         <div class="flex items-center gap-1.5">

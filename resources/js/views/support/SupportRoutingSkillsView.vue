@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import api from "@/lib/api";
-import { Badge, Button, Card, Input, Textarea } from "@/components/ui";
+import { Badge, Button, Card, Input, Textarea, StatsCard } from "@/components/ui";
 import { useToast } from "@/composables/useToast.ts";
 import { useAuthStore } from "@/stores/auth";
-import { Cog, Plus, RefreshCw, ShieldCheck, Users, UserPlus2, Trash2, Save, Pencil } from "lucide-vue-next";
+import { Cog, Plus, RefreshCw, ShieldCheck, Users, UserPlus2, Trash2, Save, Pencil, BarChart2 } from "lucide-vue-next";
 
 interface SkillMemberUser {
     id: string;
@@ -49,6 +49,7 @@ const loading = ref(false);
 const savingSkill = ref(false);
 const savingMember = ref(false);
 const deletingMemberUserId = ref<string | null>(null);
+const isCreatingNew = ref(false);
 
 const skills = ref<SupportSkill[]>([]);
 const selectedSkillId = ref<string>("");
@@ -127,6 +128,7 @@ function ensureSelectedSkill(): void {
 }
 
 function populateSkillForm(skill: SupportSkill): void {
+    isCreatingNew.value = false;
     skillForm.value = {
         id: skill.id,
         name: skill.name || "",
@@ -228,6 +230,7 @@ function selectSkill(skillId: string): void {
 
 function newSkill(): void {
     selectedSkillId.value = "";
+    isCreatingNew.value = true;
     resetSkillForm();
     resetMemberForm();
 }
@@ -405,270 +408,373 @@ onBeforeUnmount(() => {
             </div>
         </div>
 
+        <!-- Performance Stats -->
         <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <Card class="p-4">
-                <div class="mb-2 flex items-center justify-between">
-                    <ShieldCheck class="h-5 w-5 text-[var(--interactive-primary)]" />
-                    <Badge variant="secondary" size="sm">Skills</Badge>
-                </div>
-                <p class="text-xs uppercase tracking-wide text-[var(--text-secondary)]">Total Skills</p>
-                <p class="mt-2 text-2xl font-semibold text-[var(--text-primary)]">{{ totalSkills }}</p>
-            </Card>
-            <Card class="p-4">
-                <div class="mb-2 flex items-center justify-between">
-                    <Cog class="h-5 w-5 text-emerald-500" />
-                    <Badge variant="success" size="sm">Active</Badge>
-                </div>
-                <p class="text-xs uppercase tracking-wide text-[var(--text-secondary)]">Active Skills</p>
-                <p class="mt-2 text-2xl font-semibold text-[var(--text-primary)]">{{ activeSkills }}</p>
-            </Card>
-            <Card class="p-4">
-                <div class="mb-2 flex items-center justify-between">
-                    <Users class="h-5 w-5 text-blue-500" />
-                    <Badge variant="info" size="sm">Coverage</Badge>
-                </div>
-                <p class="text-xs uppercase tracking-wide text-[var(--text-secondary)]">Active Skill Memberships</p>
-                <p class="mt-2 text-2xl font-semibold text-[var(--text-primary)]">{{ totalMembers }}</p>
-            </Card>
+            <StatsCard
+                label="Total Defined"
+                :value="totalSkills"
+                :icon="ShieldCheck"
+                variant="primary"
+                sub-value="Skill Groups"
+            />
+            <StatsCard
+                label="Active Skills"
+                :value="activeSkills"
+                :icon="Cog"
+                variant="success"
+                sub-value="Ready for Routing"
+            />
+            <StatsCard
+                label="Total Agents"
+                :value="totalMembers"
+                :icon="Users"
+                variant="info"
+                sub-value="Equipped Personnel"
+            />
         </div>
 
-        <Card class="p-4">
+        <Card class="p-4 shadow-sm border-(--border-muted) bg-(--surface-primary)/50 backdrop-blur-md">
             <div class="grid grid-cols-1 gap-3 lg:grid-cols-3">
-                <Input v-model="filters.q" placeholder="Search skill name, slug, or description..." />
+                <div class="relative">
+                    <Input v-model="filters.q" placeholder="Filter by name, slug, or tags..." class="pl-9 bg-(--surface-primary) border-(--border-muted)" />
+                    <Cog class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-(--text-muted)" />
+                </div>
                 <select
                     v-model="filters.department"
-                    class="h-10 rounded-lg border border-[var(--border-default)] bg-[var(--surface-base)] px-3 text-sm text-[var(--text-primary)] focus:border-[var(--interactive-primary)] focus:outline-none"
+                    class="h-10 rounded-lg border border-(--border-muted) bg-(--surface-primary) px-3 text-sm text-(--text-primary) focus:border-(--interactive-primary) focus:outline-none transition-all hover:border-(--border-default)"
                 >
-                    <option value="">All departments</option>
+                    <option value="">All Regions / Departments</option>
                     <option v-for="department in departments" :key="department" :value="department">
                         {{ department }}
                     </option>
                 </select>
                 <select
                     v-model="filters.is_active"
-                    class="h-10 rounded-lg border border-[var(--border-default)] bg-[var(--surface-base)] px-3 text-sm text-[var(--text-primary)] focus:border-[var(--interactive-primary)] focus:outline-none"
+                    class="h-10 rounded-lg border border-(--border-muted) bg-(--surface-primary) px-3 text-sm text-(--text-primary) focus:border-(--interactive-primary) focus:outline-none transition-all hover:border-(--border-default)"
                 >
-                    <option value="">All statuses</option>
-                    <option value="true">Active</option>
-                    <option value="false">Inactive</option>
+                    <option value="">Availability: All</option>
+                    <option value="true">Online / Active</option>
+                    <option value="false">Offline / Archived</option>
                 </select>
             </div>
         </Card>
 
         <div class="grid grid-cols-1 gap-4 xl:grid-cols-12">
-            <Card class="p-3 xl:col-span-4">
-                <div class="mb-3 flex items-center justify-between">
-                    <h2 class="text-sm font-semibold text-[var(--text-primary)]">Skills</h2>
-                    <Badge variant="secondary" size="sm">{{ skills.length }}</Badge>
+            <Card class="flex flex-col overflow-hidden bg-(--surface-base) xl:col-span-4">
+                <div class="border-b-(--border-muted) border-b p-4">
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-sm font-bold uppercase tracking-wider text-(--text-secondary)">Skill Registry</h2>
+                        <Badge variant="secondary" size="sm" class="font-mono">{{ skills.length }}</Badge>
+                    </div>
                 </div>
-                <div class="max-h-[620px] space-y-2 overflow-y-auto pr-1">
+                <div class="max-h-[700px] flex-1 space-y-2 overflow-y-auto p-3">
                     <button
                         v-for="skill in skills"
                         :key="skill.id"
                         type="button"
-                        class="w-full rounded-lg border p-3 text-left transition"
+                        class="group relative w-full overflow-hidden rounded-xl border border-(--border-muted) p-4 text-left transition-all duration-200"
                         :class="selectedSkillId === skill.id
-                            ? 'border-[var(--interactive-primary)] bg-[var(--interactive-primary)]/10'
-                            : 'border-[var(--border-default)] hover:border-[var(--border-strong)]'"
+                            ? 'border-(--interactive-primary)/30 bg-(--interactive-primary)/10 shadow-sm'
+                            : 'bg-(--surface-secondary)/20 hover:border-(--border-default) hover:bg-(--surface-secondary)/50'"
                         @click="selectSkill(skill.id)"
                     >
-                        <div class="mb-1 flex items-center justify-between gap-2">
-                            <p class="truncate text-sm font-semibold text-[var(--text-primary)]">{{ skill.name }}</p>
-                            <Badge :variant="skill.is_active ? 'success' : 'secondary'" size="sm">
+                        <div v-if="selectedSkillId === skill.id" class="absolute inset-y-0 left-0 w-1 bg-(interactive-primary)"></div>
+                        <div class="mb-2 flex items-center justify-between gap-2">
+                            <p class="truncate text-base font-bold text-(--text-primary)">{{ skill.name }}</p>
+                            <Badge :variant="skill.is_active ? 'success' : 'secondary'" size="sm" class="capitalize">
                                 {{ skill.is_active ? "active" : "inactive" }}
                             </Badge>
                         </div>
-                        <p class="truncate text-xs text-[var(--text-secondary)]">{{ skill.slug }}</p>
-                        <div class="mt-2 flex items-center justify-between text-xs text-[var(--text-muted)]">
-                            <span>{{ skill.department || "No department" }}</span>
-                            <span>{{ skill.active_members_count }}/{{ skill.members_count }} members</span>
+                        <div class="mb-3 flex items-center gap-2">
+                            <code class="rounded bg-(--surface-tertiary) px-1.5 py-0.5 text-[10px] font-medium text-(--text-muted)">{{ skill.slug }}</code>
+                            <span class="text-[10px] text-(--text-tertiary)">•</span>
+                            <span class="text-[10px] font-medium text-(--text-secondary)">{{ skill.department || "No Department" }}</span>
+                        </div>
+                        <div class="flex items-center justify-between border-t-(--border-muted)/50 border-t pt-2 text-[11px]">
+                            <div class="flex items-center gap-1.5 text-(--text-muted)">
+                                <Users class="h-3 w-3" />
+                                <span>{{ skill.active_members_count }} Active</span>
+                            </div>
+                            <span class="font-medium text-(--text-secondary)">ID: {{ skill.id.substring(0, 8) }}</span>
                         </div>
                     </button>
-                    <p v-if="!loading && skills.length === 0" class="rounded-lg border border-dashed border-[var(--border-default)] p-4 text-sm text-[var(--text-secondary)]">
-                        No support skills found for the current filters.
-                    </p>
+                    <div v-if="!loading && skills.length === 0" class="flex flex-col items-center justify-center rounded-xl border border-dashed border-(--border-default) py-12 text-center">
+                        <Cog class="mb-3 h-10 w-10 text-(--text-muted)/50" />
+                        <p class="text-sm font-medium text-(--text-secondary)">No skills matched your search</p>
+                        <Button variant="ghost" size="sm" class="mt-2" @click="filters = { q: '', department: '', is_active: '' }">Clear Filters</Button>
+                    </div>
                 </div>
             </Card>
 
             <div class="space-y-4 xl:col-span-8">
-                <Card class="p-4">
-                    <div class="mb-4 flex items-center justify-between">
-                        <h2 class="text-sm font-semibold text-[var(--text-primary)]">
-                            {{ skillForm.id ? "Edit Skill" : "Create Skill" }}
-                        </h2>
-                        <Button
-                            v-if="selectedSkill && canManageRouting"
-                            variant="ghost"
-                            size="sm"
-                            @click="populateSkillForm(selectedSkill)"
-                        >
-                            <Pencil class="mr-2 h-4 w-4" />
-                            Reset Form
-                        </Button>
-                    </div>
-
-                    <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-                        <div>
-                            <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-[var(--text-secondary)]">Name</label>
-                            <Input v-model="skillForm.name" :disabled="!canManageRouting" placeholder="Billing Escalations" />
-                        </div>
-                        <div>
-                            <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-[var(--text-secondary)]">Slug</label>
-                            <Input v-model="skillForm.slug" :disabled="!canManageRouting" placeholder="billing_escalations" />
-                        </div>
-                        <div>
-                            <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-[var(--text-secondary)]">Department</label>
-                            <Input v-model="skillForm.department" :disabled="!canManageRouting" placeholder="Support" />
-                        </div>
-                        <div>
-                            <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-[var(--text-secondary)]">Priority</label>
-                            <Input v-model.number="skillForm.priority" :disabled="!canManageRouting" type="number" min="1" max="65535" />
-                        </div>
-                        <div class="md:col-span-2">
-                            <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-[var(--text-secondary)]">Description</label>
-                            <Textarea
-                                v-model="skillForm.description"
-                                :disabled="!canManageRouting"
-                                rows="3"
-                                placeholder="Routing notes, escalation rules, and ownership context."
-                            />
-                        </div>
-                    </div>
-
-                    <div class="mt-3 flex items-center gap-2">
-                        <input id="skill-active" v-model="skillForm.is_active" :disabled="!canManageRouting" type="checkbox" class="h-4 w-4 rounded border-[var(--border-default)]" />
-                        <label for="skill-active" class="text-sm text-[var(--text-primary)]">Skill is active</label>
-                    </div>
-
-                    <div class="mt-4 flex items-center justify-between">
-                        <p class="text-xs text-[var(--text-muted)]">
-                            Roles: Team Lead can assign/monitor, SME can assign, QA can resolve, Agent can reply.
-                        </p>
-                        <Button v-if="canManageRouting" variant="primary" :disabled="savingSkill" @click="saveSkill">
-                            <Save class="mr-2 h-4 w-4" />
-                            {{ savingSkill ? "Saving..." : "Save Skill" }}
-                        </Button>
-                    </div>
-                </Card>
-
-                <Card class="p-4">
-                    <div class="mb-4 flex items-center justify-between">
-                        <h2 class="text-sm font-semibold text-[var(--text-primary)]">Skill Members</h2>
-                        <Badge variant="secondary" size="sm">{{ selectedSkill?.memberships?.length || 0 }}</Badge>
-                    </div>
-
-                    <div v-if="selectedSkill" class="space-y-4">
-                        <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-                            <div>
-                                <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-[var(--text-secondary)]">Agent</label>
-                                <select
-                                    v-model="memberForm.agent_public_id"
-                                    :disabled="!canManageRouting"
-                                    class="h-10 w-full rounded-lg border border-[var(--border-default)] bg-[var(--surface-base)] px-3 text-sm text-[var(--text-primary)] focus:border-[var(--interactive-primary)] focus:outline-none"
-                                >
-                                    <option value="">Select agent</option>
-                                    <option v-for="agent in agents" :key="agent.id" :value="agent.id">
-                                        {{ agent.name }} {{ agent.email ? `(${agent.email})` : "" }}
-                                    </option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-[var(--text-secondary)]">Membership Role</label>
-                                <select
-                                    v-model="memberForm.membership_role"
-                                    :disabled="!canManageRouting"
-                                    class="h-10 w-full rounded-lg border border-[var(--border-default)] bg-[var(--surface-base)] px-3 text-sm text-[var(--text-primary)] focus:border-[var(--interactive-primary)] focus:outline-none"
-                                >
-                                    <option value="team_lead">Team Lead</option>
-                                    <option value="sme">SME</option>
-                                    <option value="qa">QA</option>
-                                    <option value="agent">Agent</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-[var(--text-secondary)]">Capacity</label>
-                                <Input
-                                    v-model="memberForm.capacity"
-                                    :disabled="!canManageRouting"
-                                    type="number"
-                                    min="1"
-                                    max="65535"
-                                    placeholder="Optional"
-                                />
-                            </div>
-                            <div class="flex items-center gap-4 pt-6">
-                                <label class="inline-flex items-center gap-2 text-sm text-[var(--text-primary)]">
-                                    <input v-model="memberForm.is_primary" :disabled="!canManageRouting" type="checkbox" class="h-4 w-4 rounded border-[var(--border-default)]" />
-                                    Primary skill
-                                </label>
-                                <label class="inline-flex items-center gap-2 text-sm text-[var(--text-primary)]">
-                                    <input v-model="memberForm.is_active" :disabled="!canManageRouting" type="checkbox" class="h-4 w-4 rounded border-[var(--border-default)]" />
-                                    Active
-                                </label>
-                            </div>
-                        </div>
-
-                        <div class="flex items-center justify-end gap-2">
-                            <Button variant="ghost" :disabled="!canManageRouting" @click="resetMemberForm">Reset</Button>
-                            <Button v-if="canManageRouting" variant="primary" :disabled="savingMember" @click="saveMembership">
-                                <UserPlus2 class="mr-2 h-4 w-4" />
-                                {{ savingMember ? "Saving..." : "Save Member" }}
-                            </Button>
-                        </div>
-
-                        <div class="space-y-2">
-                            <div
-                                v-for="member in selectedSkill.memberships || []"
-                                :key="member.id"
-                                class="rounded-lg border border-[var(--border-default)] p-3"
-                            >
-                                <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                                    <div>
-                                        <p class="text-sm font-semibold text-[var(--text-primary)]">
-                                            {{ member.user?.name || "Unknown Agent" }}
-                                        </p>
-                                        <p class="text-xs text-[var(--text-secondary)]">{{ member.user?.email || "No email" }}</p>
+                <template v-if="selectedSkillId || isCreatingNew">
+                    <Card class="overflow-hidden border-(--border-muted) bg-(--surface-primary) shadow-sm">
+                        <div class="border-b-(--border-muted) border-b bg-(--surface-secondary)/30 px-6 py-4">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-3">
+                                    <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-(--interactive-primary)/10 text-(--interactive-primary)">
+                                        <Cog class="h-5 w-5" />
                                     </div>
-                                    <div class="flex flex-wrap items-center gap-2">
-                                        <Badge variant="secondary" size="sm">{{ roleLabel(member.membership_role) }}</Badge>
-                                        <Badge :variant="member.is_active ? 'success' : 'secondary'" size="sm">
-                                            {{ member.is_active ? "active" : "inactive" }}
-                                        </Badge>
-                                        <Badge v-if="member.is_primary" variant="info" size="sm">primary</Badge>
-                                        <Badge v-if="member.capacity" variant="outline" size="sm">cap {{ member.capacity }}</Badge>
+                                    <div>
+                                        <h2 class="text-base font-bold text-(--text-primary)">
+                                            {{ skillForm.id ? `Edit: ${skillForm.name}` : "Create New Skill Profile" }}
+                                        </h2>
+                                        <p class="text-xs text-(--text-muted)">Configure global routing attributes and priorities</p>
                                     </div>
                                 </div>
-                                <div class="mt-2 flex items-center justify-end gap-2">
-                                    <Button v-if="canManageRouting" variant="ghost" size="sm" @click="editMember(member)">Edit</Button>
-                                    <Button
-                                        v-if="canManageRouting"
-                                        variant="ghost"
-                                        size="sm"
-                                        class="text-red-500 hover:text-red-400"
-                                        :disabled="deletingMemberUserId === member.user?.id"
-                                        @click="removeMembership(member)"
+                                <Button
+                                    v-if="selectedSkill && canManageRouting"
+                                    variant="ghost"
+                                    size="sm"
+                                    class="h-8 rounded-full border border-(--border-default) px-4 hover:bg-(--surface-tertiary)"
+                                    @click="populateSkillForm(selectedSkill)"
+                                >
+                                    <RefreshCw class="mr-2 h-3.5 w-3.5" />
+                                    Discard Changes
+                                </Button>
+                            </div>
+                        </div>
+
+                        <div class="space-y-6 p-6">
+                            <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+                                <div class="space-y-1.5">
+                                    <label class="text-xs font-bold uppercase tracking-wider text-(--text-tertiary)">Official Name</label>
+                                    <Input v-model="skillForm.name" :disabled="!canManageRouting" placeholder="e.g. Technical Support - Tier 2" class="bg-(--surface-secondary)/30 border-(--border-muted)" />
+                                </div>
+                                <div class="space-y-1.5">
+                                    <label class="text-xs font-bold uppercase tracking-wider text-(--text-tertiary)">System Slug</label>
+                                    <Input v-model="skillForm.slug" :disabled="!canManageRouting" placeholder="e.g. tech_support_t2" class="bg-(--surface-secondary)/30 border-(--border-muted)" />
+                                </div>
+                                <div class="space-y-1.5">
+                                    <label class="text-xs font-bold uppercase tracking-wider text-(--text-tertiary)">Department / Region</label>
+                                    <Input v-model="skillForm.department" :disabled="!canManageRouting" placeholder="e.g. Customer Success" class="bg-(--surface-secondary)/30 border-(--border-muted)" />
+                                </div>
+                                <div class="space-y-1.5">
+                                    <label class="text-xs font-bold uppercase tracking-wider text-(--text-tertiary)">Routing Priority</label>
+                                    <div class="flex items-center gap-3">
+                                        <Input v-model.number="skillForm.priority" :disabled="!canManageRouting" type="number" min="1" max="65535" class="w-full bg-(--surface-secondary)/30 border-(--border-muted)" />
+                                        <Badge variant="secondary" class="whitespace-nowrap border border-(--border-muted) bg-(--surface-secondary)/50 text-(--text-secondary)">Lower = Higher Priority</Badge>
+                                    </div>
+                                </div>
+                                <div class="md:col-span-2 space-y-1.5">
+                                    <label class="text-xs font-bold uppercase tracking-wider text-(--text-tertiary)">Internal Description</label>
+                                    <Textarea
+                                        v-model="skillForm.description"
+                                        :disabled="!canManageRouting"
+                                        rows="3"
+                                        class="resize-none bg-(--surface-secondary)/30 shadow-none border-(--border-muted)"
+                                        placeholder="Detailed escalation rules, required training level, or specific knowledge areas covered by this skill profile."
+                                    />
+                                </div>
+                            </div>
+
+                            <div class="flex items-center justify-between rounded-xl border border-(--border-muted) bg-(--surface-secondary)/30 p-4 transition-colors hover:bg-(--surface-secondary)/50">
+                                <div class="flex items-center gap-3">
+                                    <div
+                                        class="flex h-10 w-10 items-center justify-center rounded-full bg-(--surface-primary) shadow-sm ring-1 ring-(--border-muted) transition-colors"
+                                        :class="skillForm.is_active ? 'text-emerald-500' : 'text-(--text-muted)'"
                                     >
-                                        <Trash2 class="mr-2 h-4 w-4" />
-                                        Remove
+                                        <Cog class="h-5 w-5" :class="{ 'animate-spin': skillForm.is_active }" />
+                                    </div>
+                                    <div>
+                                        <p class="text-sm font-bold text-(--text-primary)">Skill Availability</p>
+                                        <p class="text-xs text-(--text-muted)">Inactive skills are excluded from automatic case assignment</p>
+                                    </div>
+                                </div>
+                                <div
+                                    class="relative h-6 w-11 cursor-pointer rounded-full transition-colors duration-200 focus:outline-none"
+                                    :class="skillForm.is_active ? 'bg-emerald-500 shadow-inner' : 'bg-(--surface-tertiary) ring-1 ring-inset ring-(--border-muted)'"
+                                    @click="canManageRouting && (skillForm.is_active = !skillForm.is_active)"
+                                >
+                                    <div
+                                        class="absolute left-1 top-1 h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform duration-200"
+                                        :class="skillForm.is_active ? 'translate-x-5' : 'translate-x-0'"
+                                    ></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="border-t-(--border-muted) border-t bg-(--surface-secondary)/20 px-6 py-4">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-2 text-xs text-(--text-muted)">
+                                    <ShieldCheck class="h-3.5 w-3.5" />
+                                    <span>Changes will propagate to routing engines within 60 seconds.</span>
+                                </div>
+                                <Button v-if="canManageRouting" variant="primary" :disabled="savingSkill" class="px-8 shadow-sm" @click="saveSkill">
+                                    <Save v-if="!savingSkill" class="mr-2 h-4 w-4" />
+                                    <RefreshCw v-else class="mr-2 h-4 w-4 animate-spin" />
+                                    {{ savingSkill ? "Saving Profile..." : "Publish Profile" }}
+                                </Button>
+                            </div>
+                        </div>
+                    </Card>
+
+                    <Card v-if="selectedSkillId" class="overflow-hidden bg-(--surface-base) shadow-sm">
+                        <div class="border-t-(--border-muted) border-t px-6 py-4">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-3">
+                                    <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500">
+                                        <Users class="h-5 w-5" />
+                                    </div>
+                                    <div>
+                                        <h2 class="text-base font-bold text-(--text-primary)">Skill Personnel</h2>
+                                        <p class="text-xs text-(--text-muted)">Assign agents and define their specific roles in this skill</p>
+                                    </div>
+                                </div>
+                                <Badge variant="secondary" class="rounded-full px-3 font-mono border border-(--border-muted) bg-(--surface-secondary)/50 text-(--text-primary)">{{ selectedSkill?.memberships?.length || 0 }} Active Members</Badge>
+                            </div>
+                        </div>
+
+                        <div class="space-y-6 p-6">
+                            <div class="rounded-xl border border-(--border-muted) bg-(--surface-secondary)/10 p-4">
+                                <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                    <div class="space-y-1.5">
+                                        <label class="text-xs font-bold uppercase tracking-wider text-(--text-tertiary)">Support Agent</label>
+                                        <select
+                                            v-model="memberForm.agent_public_id"
+                                            :disabled="!canManageRouting"
+                                            class="h-10 w-full rounded-lg border border-(--border-muted) bg-(--surface-primary) px-3 text-sm text-(--text-primary) focus:border-(--interactive-primary) focus:outline-none transition-all hover:border-(--border-default)"
+                                        >
+                                            <option value="">Search agents by name or email...</option>
+                                            <option v-for="agent in agents" :key="agent.id" :value="agent.id">
+                                                {{ agent.name }} — {{ agent.email || "No email" }}
+                                            </option>
+                                        </select>
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        <label class="text-xs font-bold uppercase tracking-wider text-(--text-tertiary)">Specialized Functional Role</label>
+                                        <select
+                                            v-model="memberForm.membership_role"
+                                            :disabled="!canManageRouting"
+                                            class="h-10 w-full rounded-lg border border-(--border-muted) bg-(--surface-primary) px-3 text-sm text-(--text-primary) focus:border-(--interactive-primary) focus:outline-none transition-all hover:border-(--border-default)"
+                                        >
+                                            <option value="team_lead">Team Lead (Supervisor)</option>
+                                            <option value="sme">SME (Area Expert)</option>
+                                            <option value="qa">QA (Quality Analyst)</option>
+                                            <option value="agent">Standard Agent</option>
+                                        </select>
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        <label class="text-xs font-bold uppercase tracking-wider text-(--text-tertiary)">Case Capacity Override</label>
+                                        <Input
+                                            v-model="memberForm.capacity"
+                                            :disabled="!canManageRouting"
+                                            type="number"
+                                            min="1"
+                                            max="65535"
+                                            class="bg-(--surface-primary) border-(--border-muted)"
+                                            placeholder="System default if empty"
+                                        />
+                                    </div>
+                                    <div class="flex items-end gap-6 pb-2">
+                                        <label class="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-(--text-primary) select-none">
+                                            <input v-model="memberForm.is_primary" :disabled="!canManageRouting" type="checkbox" class="h-4 w-4 rounded border-(--border-muted) text-(--interactive-primary) bg-(--surface-primary) focus:ring-0 focus:ring-offset-0" />
+                                            Primary Focus
+                                        </label>
+                                        <label class="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-(--text-primary) select-none">
+                                            <input v-model="memberForm.is_active" :disabled="!canManageRouting" type="checkbox" class="h-4 w-4 rounded border-(--border-muted) text-(--interactive-primary) bg-(--surface-primary) focus:ring-0 focus:ring-offset-0" />
+                                            Enabled
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div class="mt-4 flex items-center justify-end gap-2 border-t-(--border-muted) border-t pt-4">
+                                    <Button variant="ghost" size="sm" :disabled="!canManageRouting" class="text-(--text-muted)" @click="resetMemberForm">Clear Entry</Button>
+                                    <Button v-if="canManageRouting" variant="primary" size="sm" :disabled="savingMember" @click="saveMembership">
+                                        <UserPlus2 v-if="!savingMember" class="mr-2 h-4 w-4" />
+                                        <RefreshCw v-else class="mr-2 h-4 w-4 animate-spin" />
+                                        {{ savingMember ? "Updating Member..." : "Add to Registry" }}
                                     </Button>
                                 </div>
                             </div>
-                            <p
-                                v-if="(selectedSkill.memberships || []).length === 0"
-                                class="rounded-lg border border-dashed border-[var(--border-default)] p-4 text-sm text-[var(--text-secondary)]"
-                            >
-                                No members assigned yet. Add at least one agent to enable skill-specific routing.
-                            </p>
+
+                            <div class="space-y-3">
+                                <TransitionGroup name="list">
+                                    <div
+                                        v-for="member in selectedSkill.memberships || []"
+                                        :key="member.id"
+                                        class="group overflow-hidden rounded-xl border border-(--border-muted) bg-(--surface-base) transition-all hover:border-(--border-strong) hover:shadow-sm"
+                                    >
+                                        <div class="flex items-center justify-between p-4">
+                                            <div class="flex items-center gap-3">
+                                                <div class="flex h-10 w-10 items-center justify-center rounded-full bg-(--surface-secondary) text-(--text-muted) font-bold">
+                                                    {{ member.user?.name?.charAt(0) || "?" }}
+                                                </div>
+                                                <div>
+                                                    <p class="text-sm font-bold text-(--text-primary)">{{ member.user?.name || "Unidentified Agent" }}</p>
+                                                    <p class="text-xs text-(--text-muted)">{{ member.user?.email || "No direct contact" }}</p>
+                                                </div>
+                                            </div>
+                                            <div class="flex items-center gap-3">
+                                                <div class="hidden flex-col items-end gap-1 md:flex">
+                                                    <div class="flex items-center gap-2">
+                                                        <Badge variant="secondary" class="rounded-full text-[10px] uppercase tracking-tighter border border-(--border-muted) bg-(--surface-secondary)/50 text-(--text-primary)">{{ roleLabel(member.membership_role) }}</Badge>
+                                                        <Badge :variant="member.is_active ? 'success' : 'secondary'" class="rounded-full text-[10px] uppercase tracking-tighter border border-(--border-muted)/50">{{ member.is_active ? "active" : "standby" }}</Badge>
+                                                    </div>
+                                                    <div class="flex items-center gap-2 text-[10px] text-(--text-muted)">
+                                                        <span v-if="member.is_primary" class="font-bold text-blue-500/80">PRIMARY FOCUS</span>
+                                                        <span v-if="member.is_primary && member.capacity">•</span>
+                                                        <span v-if="member.capacity">CAPACITY: {{ member.capacity }}</span>
+                                                    </div>
+                                                </div>
+                                                <div class="flex h-8 items-center gap-1 border-l-(--border-muted) border-l pl-2 opacity-0 transition-opacity group-hover:opacity-100">
+                                                    <Button v-if="canManageRouting" variant="ghost" size="icon" class="h-7 w-7" @click="editMember(member)">
+                                                        <Pencil class="h-3.5 w-3.5" />
+                                                    </Button>
+                                                    <Button
+                                                        v-if="canManageRouting"
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        class="h-7 w-7 text-red-500 hover:bg-red-50 hover:text-red-600"
+                                                        :disabled="deletingMemberUserId === member.user?.id"
+                                                        @click="removeMembership(member)"
+                                                    >
+                                                        <Trash2 class="h-3.5 w-3.5" />
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </TransitionGroup>
+
+                                <div
+                                    v-if="(selectedSkill.memberships || []).length === 0"
+                                    class="flex flex-col items-center justify-center rounded-xl border border-dashed border-(--border-default) py-12 text-center"
+                                >
+                                    <UserPlus2 class="mb-3 h-10 w-10 text-(--text-muted)/30" />
+                                    <p class="text-sm font-medium text-(--text-secondary)">This skill set has no active members</p>
+                                    <p class="mt-1 text-xs text-(--text-muted)">Tickets routed here will remain in the unassigned pool</p>
+                                </div>
+                            </div>
+                        </div>
+                    </Card>
+                </template>
+
+                <div v-else class="flex h-full min-h-[500px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-(--border-default) bg-(--surface-secondary)/20 p-12 text-center">
+                    <div class="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-(--surface-base) shadow-sm">
+                        <ShieldCheck class="h-8 w-8 text-(--interactive-primary) opacity-40" />
+                    </div>
+                    <h3 class="text-lg font-bold text-(--text-primary)">No Skill Selected</h3>
+                    <p class="mx-auto mt-2 max-w-md text-sm text-(--text-muted)">
+                        Select a skill profile from the registry on the left to manage its routing configuration, priority, and assigned personnel.
+                    </p>
+                    <div class="mt-8 flex items-center gap-3">
+                        <div class="flex items-center gap-2 text-xs font-medium text-(--text-secondary)">
+                            <div class="h-1.5 w-1.5 rounded-full bg-orange-500"></div>
+                            Configure Routes
+                        </div>
+                        <div class="h-4 w-px bg-(--border-default)"></div>
+                        <div class="flex items-center gap-2 text-xs font-medium text-(--text-secondary)">
+                            <div class="h-1.5 w-1.5 rounded-full bg-blue-500"></div>
+                            Assign Personnel
+                        </div>
+                        <div class="h-4 w-px bg-(--border-default)"></div>
+                        <div class="flex items-center gap-2 text-xs font-medium text-(--text-secondary)">
+                            <div class="h-1.5 w-1.5 rounded-full bg-emerald-500"></div>
+                            Define Capacities
                         </div>
                     </div>
-
-                    <p
-                        v-else
-                        class="rounded-lg border border-dashed border-[var(--border-default)] p-4 text-sm text-[var(--text-secondary)]"
-                    >
-                        Select a skill from the left panel or create a new one to manage memberships.
-                    </p>
-                </Card>
+                </div>
             </div>
         </div>
     </div>

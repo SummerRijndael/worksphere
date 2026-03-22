@@ -5,6 +5,7 @@ import echo, { isConnected, reconnect, disconnect, isEchoAvailable } from '@/ech
 import api from '@/lib/api';
 
 type PresenceStatus = 'online' | 'away' | 'busy' | 'offline' | 'invisible';
+type SupportPresenceStatus = 'available' | 'break' | 'lunch' | 'acw' | 'bio' | 'unavailable';
 type ConnectionHealth = 'healthy' | 'degraded' | 'disconnected' | 'unknown';
 
 interface PresenceUser {
@@ -13,6 +14,8 @@ interface PresenceUser {
     name?: string;
     avatar?: string;
     status: PresenceStatus;
+    support_status?: SupportPresenceStatus;
+    support_available?: boolean;
     lastSeen: number;
 }
 
@@ -293,6 +296,8 @@ export function usePresence(options: UsePresenceOptions = {}) {
             ...existing,
             ...user,
             status: status || user.status || existing.status || 'offline',
+            support_status: user.support_status || existing.support_status,
+            support_available: typeof user.support_available !== 'undefined' ? user.support_available : existing.support_available,
             lastSeen: Date.now() // Reset timer on any update/whisper
         });
         triggerRef(presenceUsers);
@@ -313,6 +318,14 @@ export function usePresence(options: UsePresenceOptions = {}) {
         echo.private(`presence.${userPublicId.value}`)
             .listen('.presence.changed', (data: any) => {
                 currentStatus.value = data.status;
+                if (authStore.user) {
+                    if (typeof data.support_available !== 'undefined') {
+                        authStore.user.support_available = !!data.support_available;
+                    }
+                    if (data.support_status) {
+                        authStore.user.support_status = data.support_status;
+                    }
+                }
             });
 
         echo.join('online-users')
@@ -615,6 +628,36 @@ export function usePresence(options: UsePresenceOptions = {}) {
  */
 export function getUserPresence(publicId: string): PresenceUser | undefined {
     return presenceUsers.value.get(publicId);
+}
+
+/**
+ * Get support status color class.
+ */
+export function getSupportStatusColor(status: SupportPresenceStatus): string {
+    const colors: Record<SupportPresenceStatus, string> = {
+        available: 'bg-green-500',
+        break: 'bg-amber-500',
+        lunch: 'bg-blue-500',
+        acw: 'bg-purple-500',
+        bio: 'bg-emerald-500',
+        unavailable: 'bg-gray-500',
+    };
+    return colors[status] || 'bg-gray-400';
+}
+
+/**
+ * Get support status label.
+ */
+export function getSupportStatusLabel(status: SupportPresenceStatus): string {
+    const labels: Record<SupportPresenceStatus, string> = {
+        available: 'Available',
+        break: 'Break',
+        lunch: 'Lunch',
+        acw: 'ACW',
+        bio: 'Bio',
+        unavailable: 'Unavailable',
+    };
+    return labels[status] || (status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Unknown');
 }
 
 /**

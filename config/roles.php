@@ -62,35 +62,6 @@ return [
             'level' => 100,
             'permissions' => ['*'], // All permissions
         ],
-        'it_support' => [
-            'label' => 'IT Support',
-            'description' => 'Support related permissions (tickets, user management)',
-            'color' => 'warning',
-            'level' => 50,
-            'permissions' => [
-                'dashboard.view',
-                'dashboard.analytics',
-                'users.view',
-                'users.update',
-                'users.manage_status',
-                'tickets.view',
-                'tickets.manage',
-                'tickets.create',
-                'tickets.reports',
-                'support.chats.view',
-                'support.chats.reply',
-                'support.chats.assign',
-                'support.chats.resolve',
-                'clients.view_all',
-                'reports.view_all',
-                'notes.view',
-                'notes.create',
-                'notes.update',
-                'notes.delete',
-                'teams.view',
-                'teams.create',
-            ],
-        ],
         'user' => [
             'label' => 'User',
             'description' => 'Regular user permissions for self-service actions',
@@ -572,8 +543,73 @@ return [
 
     'approval_required_roles' => [
         'administrator',
-        'it_support',
         'user',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Internal Team Role Permissions
+    |--------------------------------------------------------------------------
+    |
+    | Define the default permissions for each internal team role.
+    | These are dynamically loaded by the PermissionService.
+    |
+    */
+
+    'internal_team_role_permissions' => [
+        'manager' => [
+            'dashboard.view',
+            'dashboard.analytics',
+            'users.view',
+            'users.update',
+            'users.manage_status',
+            'tickets.view',
+            'tickets.manage',
+            'tickets.create',
+            'tickets.reports',
+            'support.chats.view',
+            'support.chats.reply',
+            'support.chats.assign',
+            'support.chats.resolve',
+            'clients.view_all',
+            'reports.view_all',
+            'notes.view',
+            'notes.create',
+            'notes.update',
+            'notes.delete',
+            'teams.view',
+            'teams.create',
+        ],
+        'lead' => [
+            'dashboard.view',
+            'dashboard.analytics',
+            'tickets.view',
+            'tickets.manage',
+            'tickets.create',
+            'tickets.reports',
+            'support.chats.view',
+            'support.chats.reply',
+            'support.chats.assign',
+            'support.chats.resolve',
+            'clients.view_all',
+            'reports.view_all',
+            'notes.view',
+            'notes.create',
+            'notes.update',
+            'notes.delete',
+            'teams.view',
+        ],
+        'agent' => [
+            'dashboard.view',
+            'tickets.view',
+            'tickets.create',
+            'support.chats.view',
+            'support.chats.reply',
+            'support.chats.resolve',
+            'notes.view',
+            'notes.create',
+            'notes.update',
+        ],
     ],
 
 ];
