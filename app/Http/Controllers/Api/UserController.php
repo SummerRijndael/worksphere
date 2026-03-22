@@ -105,7 +105,7 @@ class UserController extends Controller
     {
         $this->authorize('view', $user);
 
-        $user->load(['roles', 'permissions']);
+        $user->load(['roles', 'permissions', 'supportSkillMemberships.skill']);
 
         return response()->json(new UserResource($user));
     }
@@ -118,7 +118,7 @@ class UserController extends Controller
         $user = $request->user();
 
         // Load related data
-        $user->load(['teams', 'roles', 'permissions']);
+        $user->load(['teams', 'roles', 'permissions', 'supportSkillMemberships.skill']);
         $user->loadCount([
             'projects',
             'assignedTasks as completed_tasks_count' => function ($query) {
@@ -869,6 +869,9 @@ class UserController extends Controller
             ->groupBy('roles.name')
             ->pluck('count', 'name');
 
+        // Internal Support Counts (Users in internal teams)
+        $internalSupportCount = User::has('internalTeams')->count();
+
         // Registration Trends (Last 30 days)
         $trends = User::selectRaw('DATE(created_at) as date, count(*) as count')
             ->where('created_at', '>=', now()->subDays(30))
@@ -892,6 +895,7 @@ class UserController extends Controller
             'total_users' => $totalUsers,
             'status_counts' => $statusCounts,
             'role_counts' => $roleCounts,
+            'internal_support_count' => $internalSupportCount,
             'trends' => [
                 'registrations' => $chartData,
             ],

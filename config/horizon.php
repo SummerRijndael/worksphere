@@ -99,6 +99,7 @@ return [
     'waits' => [
         'redis:default' => 60,
         'redis:meetings' => 60,
+        'redis:chats' => 30,
     ],
 
     /*
@@ -305,6 +306,18 @@ return [
                 'tries' => 5,
                 'retry_after' => 300, // 5 minutes
                 'timeout' => 120, // 2 minutes
+            ],
+            'supervisor-support-chats' => [
+                'connection' => 'redis',
+                'queue' => ['chats'],
+                'balance' => 'auto',
+                'minProcesses' => 1,
+                'maxProcesses' => 6,
+                'balanceMaxShift' => 1,
+                'balanceCooldown' => 3,
+                'tries' => 5,
+                'retry_after' => 120,
+                'timeout' => 60,
             ],
             'supervisor-heavy' => [
                 'connection' => 'redis',

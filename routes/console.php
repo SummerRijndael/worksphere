@@ -65,6 +65,15 @@ Schedule::job(new \App\Jobs\ProcessTicketRemindersJob)
     ->withoutOverlapping()
     ->onOneServer();
 
+// Sweep support routing queue and recover stale routing locks.
+Schedule::call(function () {
+    app(\App\Services\Support\SupportRoutingService::class)->dispatchDueEntries();
+})
+    ->everyMinute()
+    ->name('support-routing-sweep')
+    ->withoutOverlapping()
+    ->onOneServer();
+
 // Run server monitor checks every minute
 Schedule::command('server-monitor:run-checks')
     ->everyMinute()

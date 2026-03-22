@@ -273,6 +273,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
     Route::prefix('support/chats')->group(function () {
         Route::get('/realtime-token', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'realtimeToken']);
         Route::get('/inbox', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'index']);
+        Route::get('/metrics', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'metrics']);
         Route::get('/agents', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'agents']);
         Route::get('/skills', [\App\Http\Controllers\Api\Support\SupportSkillController::class, 'index']);
         Route::post('/skills', [\App\Http\Controllers\Api\Support\SupportSkillController::class, 'store']);
@@ -300,6 +301,15 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
             ->whereUlid('conversation');
         Route::post('/{conversation}/resolve', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'resolve'])
             ->whereUlid('conversation');
+        Route::post('/{conversation}/accept', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'accept'])
+            ->whereUlid('conversation');
+        Route::post('/{conversation}/reject', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'reject'])
+            ->whereUlid('conversation');
+        Route::post('/{conversation}/transfer', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'transfer'])
+            ->whereUlid('conversation');
+        Route::post('/{conversation}/wrap-up/complete', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'completeWrapUp'])
+            ->whereUlid('conversation');
+        Route::post('/availability', [\App\Http\Controllers\Api\Support\SupportInboxController::class, 'updateAvailability']);
         Route::post('/{conversation}/surveys/invite', [\App\Http\Controllers\Api\Support\SupportSurveyController::class, 'createInvite'])
             ->whereUlid('conversation');
     });
@@ -317,6 +327,27 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
     Route::get('/projects/{project}/stats', [\App\Http\Controllers\Api\ProjectController::class, 'statsGlobal']);
     Route::get('/projects/{project}/files', [\App\Http\Controllers\Api\ProjectController::class, 'filesGlobal']);
     Route::get('/projects/{project}/members', [\App\Http\Controllers\Api\ProjectController::class, 'membersGlobal']);
+
+    // Internal Teams Management
+    Route::apiResource('internal-teams', \App\Http\Controllers\Api\InternalTeamController::class);
+    Route::prefix('internal-teams/{internal_team}')->group(function () {
+        Route::get('/members', [\App\Http\Controllers\Api\InternalTeamController::class, 'members']);
+        Route::post('/members', [\App\Http\Controllers\Api\InternalTeamController::class, 'addMember']);
+        Route::put('/members/{user}/role', [\App\Http\Controllers\Api\InternalTeamController::class, 'updateMemberRole']);
+        Route::delete('/members/{user}', [\App\Http\Controllers\Api\InternalTeamController::class, 'removeMember']);
+
+        // Parity with regular teams
+        Route::get('/files', [\App\Http\Controllers\Api\InternalTeamController::class, 'files']);
+        Route::post('/files', [\App\Http\Controllers\Api\InternalTeamController::class, 'uploadFile']);
+        Route::post('/files/bulk-download', [\App\Http\Controllers\Api\InternalTeamController::class, 'bulkDownload']);
+        Route::post('/files/bulk-delete', [\App\Http\Controllers\Api\InternalTeamController::class, 'bulkDelete']);
+        Route::delete('/files/{mediaId}', [\App\Http\Controllers\Api\InternalTeamController::class, 'deleteFile']);
+        Route::get('/activity', [\App\Http\Controllers\Api\InternalTeamController::class, 'activity']);
+        Route::get('/calendar', [\App\Http\Controllers\Api\InternalTeamController::class, 'calendar']);
+        Route::get('/projects', [\App\Http\Controllers\Api\InternalTeamController::class, 'projects']);
+        Route::post('/avatar', [\App\Http\Controllers\Api\InternalTeamController::class, 'uploadAvatar']);
+        Route::delete('/avatar', [\App\Http\Controllers\Api\InternalTeamController::class, 'deleteAvatar']);
+    });
 
     // User Management
     Route::apiResource('teams', \App\Http\Controllers\Api\TeamController::class);

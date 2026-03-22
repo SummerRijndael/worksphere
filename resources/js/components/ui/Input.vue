@@ -42,10 +42,10 @@ const wrapperClasses = computed(() => cn('relative'));
 const inputClasses = computed(() =>
     cn(
         // Base styles
-        'w-full rounded-lg border bg-[var(--surface-elevated)] text-[var(--text-primary)]',
+        'w-full rounded-lg border bg-(--surface-elevated) text-(--text-primary)',
         'transition-all duration-150 ease-out',
-        'placeholder:text-[var(--text-muted)]',
-        'focus:outline-none focus:ring-2 focus:ring-[var(--interactive-primary)]/20 focus:border-[var(--interactive-primary)]',
+        'placeholder:text-(--text-muted)',
+        'focus:outline-none focus:ring-2 focus:ring-(--interactive-primary)/20 focus:border-(--interactive-primary)',
         'disabled:cursor-not-allowed disabled:opacity-50',
 
         // Size variants
@@ -71,8 +71,8 @@ const inputClasses = computed(() =>
 
         // State styles
         props.error
-            ? 'border-[var(--color-error)] focus:ring-[var(--color-error)]/20 focus:border-[var(--color-error)]'
-            : 'border-[var(--border-default)] hover:border-[var(--border-strong)]'
+            ? 'border-(--color-error) focus:ring-(--color-error)/20 focus:border-(--color-error)'
+            : 'border-(--border-default) hover:border-(--border-strong)'
     )
 );
 
@@ -95,7 +95,7 @@ function handleBlur(e) {
     <div class="space-y-1.5">
         <label
             v-if="label"
-            class="block text-sm font-medium text-[var(--text-primary)]"
+            class="block text-sm font-medium text-(--text-primary)"
         >
             {{ label }}
         </label>
@@ -104,7 +104,7 @@ function handleBlur(e) {
             <!-- Leading icon -->
             <div
                 v-if="icon || $slots.prefix"
-                class="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] flex items-center"
+                class="absolute left-3 top-1/2 -translate-y-1/2 text-(--text-muted) flex items-center"
             >
                 <component v-if="icon" :is="icon" class="h-4 w-4" />
                 <slot v-else name="prefix"></slot>
@@ -125,7 +125,7 @@ function handleBlur(e) {
             <button
                 v-if="type === 'password'"
                 type="button"
-                class="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+                class="absolute right-3 top-1/2 -translate-y-1/2 text-(--text-muted) hover:text-(--text-secondary) transition-colors"
                 tabindex="-1"
                 @click="showPassword = !showPassword"
             >
@@ -135,12 +135,12 @@ function handleBlur(e) {
         </div>
 
         <!-- Error message -->
-        <p v-if="error" class="text-sm text-[var(--color-error)]">
+        <p v-if="error" class="text-sm text-(--color-error)">
             {{ error }}
         </p>
 
         <!-- Hint text -->
-        <p v-else-if="hint" class="text-sm text-[var(--text-muted)]">
+        <p v-else-if="hint" class="text-sm text-(--text-muted)">
             {{ hint }}
         </p>
     </div>

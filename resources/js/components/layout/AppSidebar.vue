@@ -123,8 +123,12 @@ function isChildActive(item: NavigationItem): boolean {
     );
 }
 
-function navigate(path: string): void {
-    router.push(path);
+function navigate(path: string, newTab: boolean = false): void {
+    if (newTab) {
+        window.open(path, '_blank');
+    } else {
+        router.push(path);
+    }
     navStore.closeMobileSidebar();
 }
 
@@ -433,7 +437,7 @@ onMounted(() => {
                                             )
                                         "
                                         @click="
-                                            child.route && navigate(child.route)
+                                            child.route && navigate(child.route, !!child.new_tab)
                                         "
                                     >
                                         <component
@@ -637,7 +641,7 @@ onMounted(() => {
                                             )
                                         "
                                         @click="
-                                            child.route && navigate(child.route)
+                                            child.route && navigate(child.route, !!child.new_tab)
                                         "
                                     >
                                         <component

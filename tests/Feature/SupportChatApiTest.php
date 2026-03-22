@@ -587,7 +587,7 @@ class SupportChatApiTest extends TestCase
 
     public function test_agent_can_view_inbox_assign_reply_and_resolve_conversation(): void
     {
-        $agentRole = Role::findOrCreate('it_support', 'web');
+        $agentRole = Role::findOrCreate('administrator', 'web');
         $agentRole->syncPermissions([
             'support.chats.view',
             'support.chats.reply',
@@ -680,7 +680,7 @@ class SupportChatApiTest extends TestCase
             ->getJson('/api/support/chats/realtime-token')
             ->assertStatus(403);
 
-        $agentRole = Role::findOrCreate('it_support', 'web');
+        $agentRole = Role::findOrCreate('administrator', 'web');
         $agentRole->syncPermissions([
             'support.chats.view',
         ]);
@@ -698,7 +698,7 @@ class SupportChatApiTest extends TestCase
 
     public function test_resolving_conversation_issues_bundled_csat_and_nps_invites(): void
     {
-        $agentRole = Role::findOrCreate('it_support', 'web');
+        $agentRole = Role::findOrCreate('administrator', 'web');
         $agentRole->syncPermissions([
             'support.chats.view',
             'support.chats.reply',
@@ -785,7 +785,7 @@ class SupportChatApiTest extends TestCase
 
     public function test_guest_survey_opt_out_blocks_future_bundle_invites(): void
     {
-        $agentRole = Role::findOrCreate('it_support', 'web');
+        $agentRole = Role::findOrCreate('administrator', 'web');
         $agentRole->syncPermissions([
             'support.chats.view',
             'support.chats.reply',
@@ -860,7 +860,7 @@ class SupportChatApiTest extends TestCase
 
     public function test_agent_can_end_conversation_via_agent_endpoint(): void
     {
-        $agentRole = Role::findOrCreate('it_support', 'web');
+        $agentRole = Role::findOrCreate('administrator', 'web');
         $agentRole->syncPermissions([
             'support.chats.view',
             'support.chats.reply',
@@ -977,7 +977,7 @@ class SupportChatApiTest extends TestCase
 
     public function test_agent_can_view_survey_metrics_and_non_agent_is_forbidden(): void
     {
-        $agentRole = Role::findOrCreate('it_support', 'web');
+        $agentRole = Role::findOrCreate('administrator', 'web');
         $agentRole->syncPermissions([
             'support.chats.view',
             'support.chats.reply',

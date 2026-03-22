@@ -95,6 +95,8 @@ class User extends Authenticatable implements HasMedia, MustVerifyEmail, WebAuth
         'is_password_set',
         'password_last_updated_at',
         'presence_preference',
+        'support_status',
+        'support_available',
         'last_seen_at',
         'registration_fingerprint',
     ];
@@ -214,6 +216,7 @@ class User extends Authenticatable implements HasMedia, MustVerifyEmail, WebAuth
             'last_seen_at' => 'datetime',
             'two_factor_confirmed_at' => 'datetime',
             'is_public' => 'boolean',
+            'support_available' => 'boolean',
         ];
     }
 
@@ -660,6 +663,18 @@ class User extends Authenticatable implements HasMedia, MustVerifyEmail, WebAuth
     public function roleChangeApprovals(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(RoleChangeApproval::class, 'admin_id');
+    }
+
+    /**
+     * Get the internal teams that the user belongs to.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsToMany<\App\Models\InternalTeam>
+     */
+    public function internalTeams(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(\App\Models\InternalTeam::class, 'internal_team_user')
+            ->withPivot(['role', 'joined_at'])
+            ->withTimestamps();
     }
 
     /**

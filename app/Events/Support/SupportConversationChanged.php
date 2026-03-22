@@ -50,6 +50,7 @@ class SupportConversationChanged implements ShouldBroadcastNow
             'status' => $this->conversation->status,
             'ai_handoff_required' => (bool) $this->conversation->ai_handoff_required,
             'assigned_to' => $this->conversation->assignee?->public_id,
+            'assignment_state' => $this->conversation->assignment_state,
             'updated_at' => $this->conversation->updated_at?->toISOString(),
             'last_message_at' => $this->conversation->last_message_at?->toISOString(),
         ];

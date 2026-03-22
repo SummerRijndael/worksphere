@@ -601,6 +601,22 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function updateSupportPresence(status: string): Promise<boolean> {
+    if (!user.value) return false;
+
+    try {
+      const response = await api.post('/api/support/chats/availability', { status });
+      if (user.value && response.data?.data) {
+        user.value.support_available = !!response.data.data.support_available;
+        user.value.support_status = response.data.data.status;
+      }
+      return true;
+    } catch (error) {
+      console.error('[Auth] Failed to update support presence:', error);
+      return false;
+    }
+  }
+
   // Permission change listener
   let permissionChannel: any = null;
 
@@ -858,6 +874,7 @@ export const useAuthStore = defineStore('auth', () => {
     isSessionVerified,
     isImpersonating,
     stopImpersonating,
+    updateSupportPresence,
   };
 }, {
   persist: {

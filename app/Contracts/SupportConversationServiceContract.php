@@ -66,4 +66,15 @@ interface SupportConversationServiceContract
      * @return array{available: bool, available_agents: int, message: string}
      */
     public function availability(): array;
+
+    public function acceptAssignment(SupportConversation $conversation, User $agent): SupportConversation;
+
+    public function rejectAssignment(SupportConversation $conversation, User $agent, ?string $reason = null): SupportConversation;
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    public function transfer(SupportConversation $conversation, User $actor, array $payload): SupportConversation;
+
+    public function completeWrapUp(SupportConversation $conversation, User $actor): SupportConversation;
 }

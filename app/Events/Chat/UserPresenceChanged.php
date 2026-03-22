@@ -20,15 +20,22 @@ class UserPresenceChanged implements ShouldBroadcastNow
 
     public ?int $lastSeen;
 
+    public bool $available;
+    public ?string $supportStatus;
+
     /**
      * Create a new event instance.
      */
     public function __construct(
         public User $user,
-        string $status
+        string $status,
+        bool $available = false,
+        ?string $supportStatus = null
     ) {
         $this->publicId = $user->public_id;
         $this->status = $status;
+        $this->available = $available;
+        $this->supportStatus = $supportStatus ?? $user->support_status;
         $this->lastSeen = now()->timestamp;
     }
 
@@ -68,6 +75,8 @@ class UserPresenceChanged implements ShouldBroadcastNow
         return [
             'public_id' => $this->publicId,
             'status' => $this->status,
+            'support_available' => $this->available,
+            'support_status' => $this->supportStatus,
             'last_seen' => $this->lastSeen,
             'name' => $this->user->name,
             'avatar_thumb_url' => $this->user->avatar_thumb_url,

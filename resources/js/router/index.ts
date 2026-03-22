@@ -646,6 +646,18 @@ const routes: RouteRecordRaw[] = [
                 },
             },
             {
+                path: "support/skills",
+                name: "support.skills",
+                component: () => import("@/views/support/SupportRoutingSkillsView.vue"),
+                meta: {
+                    title: "Support Skills",
+                    breadcrumb: "Routing & Skills",
+                    breadcrumbParent: { name: "support", label: "Support" },
+                    transition: "slide-fade",
+                    permission: ["support.chats.view", "support.chats.assign", "tickets.manage"],
+                },
+            },
+            {
                 path: "calendar",
                 name: "calendar",
                 component: () => import("@/views/Calendar/Index.vue"),
@@ -853,6 +865,29 @@ const routes: RouteRecordRaw[] = [
                     title: "User Details",
                     breadcrumb: "User Details",
                     breadcrumbParent: { name: "admin-users", label: "Users" },
+                    transition: "slide-fade",
+                    permission: "user_manage",
+                },
+            },
+            {
+                path: "/admin/internal-teams",
+                name: "admin-internal-teams",
+                component: () => import("@/views/admin/InternalTeamsView.vue"),
+                meta: {
+                    title: "Internal Teams",
+                    breadcrumb: "Internal Teams",
+                    transition: "slide-fade",
+                    permission: "user_manage",
+                },
+            },
+            {
+                path: "/admin/internal-teams/:id",
+                name: "admin-internal-team-details",
+                component: () => import("@/views/admin/InternalTeamDetailsView.vue"),
+                meta: {
+                    title: "Internal Team Details",
+                    breadcrumb: "Team Details",
+                    breadcrumbParent: { name: "admin-internal-teams", label: "Internal Teams" },
                     transition: "slide-fade",
                     permission: "user_manage",
                 },

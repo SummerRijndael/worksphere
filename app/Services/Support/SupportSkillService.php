@@ -11,6 +11,10 @@ use Illuminate\Support\Facades\DB;
 
 class SupportSkillService
 {
+    public function __construct(
+        protected SupportRoutingService $supportRoutingService
+    ) {}
+
     /**
      * @param  array<string, mixed>  $payload
      */
@@ -90,6 +94,11 @@ class SupportSkillService
             'ai_handoff_required' => $skill ? false : $conversation->ai_handoff_required,
         ])->save();
 
+        $this->supportRoutingService->enqueueConversation(
+            $conversation->fresh(),
+            reason: $skill ? 'skill_routed' : 'routing_reset'
+        );
+
         return $conversation->fresh([
             'requester',
             'assignee',
@@ -102,4 +111,3 @@ class SupportSkillService
         ]);
     }
 }
-

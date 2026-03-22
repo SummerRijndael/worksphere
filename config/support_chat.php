@@ -14,7 +14,7 @@ return [
     | Human Agent Detection
     |--------------------------------------------------------------------------
     */
-    'agent_roles' => ['administrator', 'it_support', 'support'],
+    'agent_roles' => ['administrator'],
     'agent_permissions' => [
         'support.chats.view',
         'support.chats.reply',
@@ -74,6 +74,9 @@ return [
         'data loss',
         'urgent',
         'critical',
+        'talk to human',
+        'real person',
+        'human agent',
     ],
     'complexity_min_length' => 420,
 
@@ -136,6 +139,25 @@ return [
         'enabled' => env('SUPPORT_CHAT_JOBS_ENABLED', true),
         'queue' => env('SUPPORT_CHAT_JOBS_QUEUE', 'chats'),
         'broadcast_mode' => env('SUPPORT_CHAT_BROADCAST_MODE', 'sync_first'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Auto Routing Queue
+    |--------------------------------------------------------------------------
+    */
+    'routing' => [
+        'enabled' => env('SUPPORT_ROUTING_ENABLED', true),
+        'queue' => env('SUPPORT_ROUTING_QUEUE', env('SUPPORT_CHAT_JOBS_QUEUE', 'chats')),
+        'default_agent_capacity' => (int) env('SUPPORT_ROUTING_DEFAULT_AGENT_CAPACITY', 3),
+        'max_attempts' => (int) env('SUPPORT_ROUTING_MAX_ATTEMPTS', 20),
+        'retry_delay_seconds' => (int) env('SUPPORT_ROUTING_RETRY_DELAY_SECONDS', 15),
+        'lock_seconds' => (int) env('SUPPORT_ROUTING_LOCK_SECONDS', 15),
+        'stale_routing_seconds' => (int) env('SUPPORT_ROUTING_STALE_SECONDS', 60),
+        'sweeper_batch_size' => (int) env('SUPPORT_ROUTING_SWEEPER_BATCH_SIZE', 50),
+        'require_online_agent' => (bool) env('SUPPORT_ROUTING_REQUIRE_ONLINE', true),
+        'require_support_available' => (bool) env('SUPPORT_ROUTING_REQUIRE_AVAILABLE', true),
+        'assignment_timeout_seconds' => (int) env('SUPPORT_ASSIGNMENT_TIMEOUT', 60),
     ],
 
     /*

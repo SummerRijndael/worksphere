@@ -37,6 +37,10 @@ class LegacySupportAccessAdapter implements SupportAccessAdapterContract
 
     public function canOperateAsAgent(User $user): bool
     {
+        if ($user->internalTeams()->exists()) {
+            return true;
+        }
+
         if (! empty((array) config('support_chat.agent_roles', [])) && $user->hasAnyRole((array) config('support_chat.agent_roles', []))) {
             return true;
         }
@@ -59,29 +63,20 @@ class LegacySupportAccessAdapter implements SupportAccessAdapterContract
         return $query;
     }
 
-    /**
-     * @param  Builder<User>  $query
-     * @return Builder<User>
-     */
     public function applyEligibleAgentsScope(Builder $query, ?SupportConversation $conversation = null): Builder
     {
-        $roles = (array) config('support_chat.agent_roles', ['administrator', 'it_support', 'support']);
+        $roles = (array) config('support_chat.agent_roles', ['administrator']);
         $permissions = (array) config('support_chat.agent_permissions', ['tickets.manage']);
 
         return $query->where(function (Builder $nested) use ($roles, $permissions): void {
-            $hasClause = false;
+            $nested->whereHas('internalTeams');
 
             if (! empty($roles)) {
-                $nested->whereHas('roles', fn (Builder $roleQuery) => $roleQuery->whereIn('name', $roles));
-                $hasClause = true;
+                $nested->orWhereHas('roles', fn (Builder $roleQuery) => $roleQuery->whereIn('name', $roles));
             }
 
             if (! empty($permissions)) {
-                if ($hasClause) {
-                    $nested->orWhereHas('permissions', fn (Builder $permQuery) => $permQuery->whereIn('name', $permissions));
-                } else {
-                    $nested->whereHas('permissions', fn (Builder $permQuery) => $permQuery->whereIn('name', $permissions));
-                }
+                $nested->orWhereHas('permissions', fn (Builder $permQuery) => $permQuery->whereIn('name', $permissions));
             }
         });
     }
@@ -94,7 +89,8 @@ class LegacySupportAccessAdapter implements SupportAccessAdapterContract
     protected function canManageSupportChats(User $user): bool
     {
         return $this->hasPermission($user, 'tickets.manage')
-            || $user->hasAnyRole((array) config('support_chat.agent_roles', ['administrator', 'it_support', 'support']));
+            || $user->internalTeams()->exists()
+            || $user->hasAnyRole((array) config('support_chat.agent_roles', ['administrator']));
     }
 
     protected function hasPermission(User $user, string $permission): bool

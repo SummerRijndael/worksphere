@@ -19,6 +19,8 @@ class SupportConversation extends Model
 
     public const ASSIGNMENT_STATE_UNASSIGNED = 'unassigned';
 
+    public const ASSIGNMENT_STATE_PENDING = 'pending';
+
     public const ASSIGNMENT_STATE_ASSIGNED = 'assigned';
 
     public const RESOLUTION_MARKER_UNRESOLVED = 'unresolved';
@@ -45,7 +47,11 @@ class SupportConversation extends Model
 
     public const STATUS_WAITING_HUMAN = 'waiting_human';
 
+    public const STATUS_PENDING_ACCEPTANCE = 'pending_acceptance';
+
     public const STATUS_ASSIGNED = 'assigned';
+
+    public const STATUS_WRAP_UP = 'wrap_up';
 
     public const STATUS_RESOLVED = 'resolved';
 
@@ -195,6 +201,14 @@ class SupportConversation extends Model
     public function surveyResponses(): HasMany
     {
         return $this->hasMany(SupportSurveyResponse::class, 'conversation_id');
+    }
+
+    /**
+     * @return HasOne<SupportRoutingQueueEntry>
+     */
+    public function routingQueueEntry(): HasOne
+    {
+        return $this->hasOne(SupportRoutingQueueEntry::class, 'conversation_id');
     }
 
     public function isClosedLike(): bool

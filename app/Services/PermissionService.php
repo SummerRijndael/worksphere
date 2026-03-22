@@ -42,14 +42,28 @@ class PermissionService
         // 1. Global Permissions (Spatie)
         $globalPermissions = $user->getAllPermissions()->pluck('name');
 
-        // 2. Team Permissions are lazily evaluated in the Persona class
+        // 2. Internal Team Permissions (Dynamic from roles)
+        $internalTeamPermissions = [];
+        $internalTeamConfig = config('roles.internal_team_role_permissions', []);
+        
+        if (!empty($internalTeamConfig)) {
+            $user->loadMissing('internalTeams');
+            foreach ($user->internalTeams as $internalTeam) {
+                $role = $internalTeam->pivot->role;
+                if (isset($internalTeamConfig[$role])) {
+                    $internalTeamPermissions = array_merge($internalTeamPermissions, $internalTeamConfig[$role]);
+                }
+            }
+        }
 
-        // 3. Overrides
+        // 3. Team Permissions are lazily evaluated in the Persona class
+
+        // 4. Overrides
         $overrides = $this->getEffectivePermissions($user);
 
         $persona = new \App\Classes\AuthorizationPersona(
             $isSuperAdmin,
-            $globalPermissions,
+            collect($globalPermissions)->concat($internalTeamPermissions)->unique()->values(),
             [],
             [
                 'granted' => $overrides['granted'],

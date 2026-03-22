@@ -13,6 +13,7 @@ use App\Jobs\BroadcastSupportMessageCreated;
 use App\Models\SupportConversation;
 use App\Models\SupportMessage;
 use App\Models\SupportSurveyInvite;
+use App\Jobs\Support\SupportAssignmentTimeoutJob;
 use App\Models\User;
 use App\Services\Support\Access\SupportAccessAdapterResolver;
 use App\Services\AuditService;
@@ -22,6 +23,7 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\UploadedFile;
+use App\Services\Chat\PresenceService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -42,7 +44,9 @@ class SupportConversationService implements SupportConversationServiceContract
         protected SupportHandoffPipeline $handoffPipeline,
         protected SupportChatMediaService $supportChatMediaService,
         protected AuditService $auditService,
-        protected SupportAccessAdapterResolver $supportAccessAdapterResolver
+        protected SupportAccessAdapterResolver $supportAccessAdapterResolver,
+        protected SupportRoutingService $supportRoutingService,
+        protected PresenceService $presenceService
     ) {}
 
     /**
@@ -92,6 +96,10 @@ class SupportConversationService implements SupportConversationServiceContract
         });
 
         $this->processAiForCustomerMessage($conversation->fresh(), $initialMessage);
+        $this->supportRoutingService->enqueueConversation(
+            $conversation->fresh(),
+            reason: 'conversation_opened'
+        );
 
         $this->broadcastConversationChanged($conversation->fresh());
 
@@ -168,6 +176,10 @@ class SupportConversationService implements SupportConversationServiceContract
         if ($body !== '') {
             $this->processAiForCustomerMessage($conversation->fresh(), $body);
         }
+        $this->supportRoutingService->enqueueConversation(
+            $conversation->fresh(),
+            reason: 'customer_message'
+        );
 
         $this->broadcastConversationChanged($conversation->fresh());
 
@@ -183,13 +195,14 @@ class SupportConversationService implements SupportConversationServiceContract
             throw new AuthorizationException('Only support agents can send agent messages.');
         }
 
-        if ($conversation->isClosedLike()) {
+        $isPrivateNote = (bool) ($payload['is_private_note'] ?? false);
+
+        if (! $isPrivateNote && $conversation->isClosedLike()) {
             throw new \InvalidArgumentException('Cannot send agent messages to a resolved/closed conversation.');
         }
 
         $body = trim((string) ($payload['body'] ?? $payload['message'] ?? ''));
         $files = $this->normalizeUploadedFiles($payload['files'] ?? []);
-        $isPrivateNote = (bool) ($payload['is_private_note'] ?? false);
         if ($body === '' && empty($files)) {
             throw new \InvalidArgumentException('Message body or attachment is required.');
         }
@@ -233,9 +246,154 @@ class SupportConversationService implements SupportConversationServiceContract
             ])
         )->save();
 
+        $this->supportRoutingService->markConversationAssigned(
+            $conversation->fresh(),
+            $agent->id,
+            reason: 'agent_message'
+        );
         $this->broadcastConversationChanged($conversation->fresh(), ! $isPrivateNote);
 
         return $message->fresh(['sender', 'media']);
+    }
+
+    public function acceptAssignment(SupportConversation $conversation, User $agent): SupportConversation
+    {
+        if ((int) $conversation->assigned_to !== (int) $agent->id) {
+            throw new \InvalidArgumentException('You are not assigned to this conversation.');
+        }
+
+        if ($conversation->status !== SupportConversation::STATUS_PENDING_ACCEPTANCE) {
+            // Already accepted or in another state
+            return $conversation->fresh(['requester', 'assignee', 'skill']);
+        }
+
+        $conversation->forceFill([
+            'status' => SupportConversation::STATUS_ASSIGNED,
+            'assignment_state' => SupportConversation::ASSIGNMENT_STATE_ASSIGNED,
+        ])->save();
+
+        $acceptMessage = $this->createMessage(
+            conversation: $conversation,
+            senderType: SupportMessage::SENDER_SYSTEM,
+            body: "{$agent->name} accepted the assignment.",
+            senderUserId: $agent->id,
+            metadata: ['type' => 'assignment_accepted'],
+        );
+        $this->broadcastMessageCreated($conversation->fresh(), $acceptMessage->fresh('sender'));
+        $this->broadcastConversationChanged($conversation->fresh());
+
+        return $conversation->fresh(['requester', 'assignee', 'skill']);
+    }
+
+    public function rejectAssignment(SupportConversation $conversation, User $agent, ?string $reason = null): SupportConversation
+    {
+        if ((int) $conversation->assigned_to !== (int) $agent->id) {
+            throw new \InvalidArgumentException('You are not assigned to this conversation.');
+        }
+
+        if ($conversation->status !== SupportConversation::STATUS_PENDING_ACCEPTANCE) {
+            throw new \LogicException('Conversation is not in a pending acceptance state.');
+        }
+
+        $conversation->forceFill([
+            'status' => SupportConversation::STATUS_WAITING_HUMAN,
+            'assigned_to' => null,
+            'assignment_state' => SupportConversation::ASSIGNMENT_STATE_UNASSIGNED,
+        ])->save();
+
+        $this->supportRoutingService->enqueueConversation(
+            $conversation->fresh(),
+            reason: 'assignment_rejected',
+            force: true
+        );
+
+        $rejectMessage = $this->createMessage(
+            conversation: $conversation,
+            senderType: SupportMessage::SENDER_SYSTEM,
+            body: "{$agent->name} declined the assignment" . ($reason ? ": {$reason}" : "."),
+            senderUserId: $agent->id,
+            metadata: [
+                'type' => 'assignment_rejected',
+                'reason' => $reason
+            ],
+        );
+        $this->broadcastMessageCreated($conversation->fresh(), $rejectMessage->fresh('sender'));
+        $this->broadcastConversationChanged($conversation->fresh());
+
+        // Mark agent as unavailable because they rejected/missed an offer
+        $this->presenceService->setSupportStatus($agent, 'unavailable', false);
+
+        return $conversation->fresh(['requester', 'assignee', 'skill']);
+    }
+
+    public function transfer(SupportConversation $conversation, User $actor, array $payload): SupportConversation
+    {
+        if (! $this->supportAccessAdapter()->canAssign($actor, $conversation)) {
+            throw new AuthorizationException('Only support agents can transfer conversations.');
+        }
+
+        $targetSkillId = $payload['support_skill_id'] ?? null;
+        $targetAgentId = $payload['assigned_to'] ?? null;
+
+        if (! $targetSkillId && ! $targetAgentId) {
+            throw new \InvalidArgumentException('Target skill or agent is required for transfer.');
+        }
+
+        $oldAgentName = $conversation->assignee?->name ?? 'None';
+        $transferType = $targetAgentId ? 'agent' : 'skill';
+
+        if ($targetAgentId) {
+            $targetAgent = User::findOrFail($targetAgentId);
+            if (! $this->supportAccessAdapter()->canBeAssignedToConversation($targetAgent, $conversation)) {
+                throw new \InvalidArgumentException('Target agent is not eligible for this conversation.');
+            }
+
+            $conversation->forceFill([
+                'assigned_to' => $targetAgent->id,
+                'status' => SupportConversation::STATUS_PENDING_ACCEPTANCE,
+                'assignment_state' => SupportConversation::ASSIGNMENT_STATE_PENDING,
+            ])->save();
+
+            $body = "{$actor->name} transferred this conversation to {$targetAgent->name}.";
+        } else {
+            $skill = DB::table('support_skills')->where('id', $targetSkillId)->first();
+            if (! $skill) {
+                throw new \InvalidArgumentException('Target skill not found.');
+            }
+
+            $conversation->forceFill([
+                'assigned_to' => null,
+                'support_skill_id' => $skill->id,
+                'status' => SupportConversation::STATUS_WAITING_HUMAN,
+                'assignment_state' => SupportConversation::ASSIGNMENT_STATE_UNASSIGNED,
+            ])->save();
+
+            $this->supportRoutingService->enqueueConversation(
+                $conversation->fresh(),
+                reason: 'manual_transfer',
+                force: true
+            );
+
+            $body = "{$actor->name} transferred this conversation back to the queue ({$skill->name}).";
+        }
+
+        $transferMessage = $this->createMessage(
+            conversation: $conversation,
+            senderType: SupportMessage::SENDER_SYSTEM,
+            body: $body,
+            senderUserId: $actor->id,
+            metadata: [
+                'type' => 'transfer',
+                'transfer_type' => $transferType,
+                'from_agent' => $oldAgentName,
+                'to_skill_id' => $targetSkillId,
+                'to_agent_id' => $targetAgentId
+            ],
+        );
+        $this->broadcastMessageCreated($conversation->fresh(), $transferMessage->fresh('sender'));
+        $this->broadcastConversationChanged($conversation->fresh());
+
+        return $conversation->fresh(['requester', 'assignee', 'skill']);
     }
 
     public function assignConversation(SupportConversation $conversation, User $agent, User $actor): SupportConversation
@@ -251,17 +409,33 @@ class SupportConversationService implements SupportConversationServiceContract
             throw new \InvalidArgumentException('Cannot assign an ended/resolved conversation.');
         }
 
+        $isSelfAssignment = (int) $actor->id === (int) $agent->id;
+        $status = $isSelfAssignment ? SupportConversation::STATUS_ASSIGNED : SupportConversation::STATUS_PENDING_ACCEPTANCE;
+        $assignmentState = $isSelfAssignment ? SupportConversation::ASSIGNMENT_STATE_ASSIGNED : SupportConversation::ASSIGNMENT_STATE_PENDING;
+
         $conversation->forceFill([
             'assigned_to' => $agent->id,
-            'status' => SupportConversation::STATUS_ASSIGNED,
+            'status' => $status,
             'ai_handoff_required' => false,
             'ai_handoff_reason' => null,
         ])->forceFill(
             $this->filterExistingSupportConversationColumns([
                 'chat_state' => SupportConversation::CHAT_STATE_NEW,
-                'assignment_state' => SupportConversation::ASSIGNMENT_STATE_ASSIGNED,
+                'assignment_state' => $assignmentState,
             ])
         )->save();
+
+        if (! $isSelfAssignment) {
+            $timeoutSeconds = max(30, (int) config('support_chat.routing.assignment_timeout_seconds', 60));
+            SupportAssignmentTimeoutJob::dispatch($conversation->id, $agent->id)
+                ->delay(now()->addSeconds($timeoutSeconds));
+        }
+
+        $this->supportRoutingService->markConversationAssigned(
+            $conversation->fresh(),
+            $agent->id,
+            reason: 'manual_assignment'
+        );
 
         $assignmentMessage = $this->createMessage(
             conversation: $conversation,
@@ -284,23 +458,55 @@ class SupportConversationService implements SupportConversationServiceContract
         }
 
         $conversation->forceFill([
-            'status' => SupportConversation::STATUS_RESOLVED,
-            'resolved_at' => now(),
+            'status' => SupportConversation::STATUS_WRAP_UP,
         ])->forceFill(
             $this->filterExistingSupportConversationColumns([
                 'resolution_marker' => SupportConversation::RESOLUTION_MARKER_RESOLVED,
             ])
         )->save();
 
+        $this->supportRoutingService->cancelConversationQueue(
+            $conversation->fresh(),
+            reason: 'resolved'
+        );
+
         $resolutionMessage = $this->createMessage(
             conversation: $conversation,
             senderType: SupportMessage::SENDER_SYSTEM,
-            body: "{$actor->name} marked this conversation as resolved.",
+            body: "{$actor->name} resolved the interaction and started wrap-up.",
             senderUserId: $actor->id,
-            metadata: ['type' => 'resolution'],
+            metadata: ['type' => 'resolution_started'],
         );
         $this->broadcastMessageCreated($conversation->fresh(), $resolutionMessage->fresh('sender'));
 
+        $this->broadcastConversationChanged($conversation->fresh());
+
+        return $conversation->fresh(['requester', 'assignee', 'endedBy', 'skill', 'latestMessage']);
+    }
+
+    public function completeWrapUp(SupportConversation $conversation, User $actor): SupportConversation
+    {
+        if (! $this->supportAccessAdapter()->canResolve($actor, $conversation)) {
+            throw new AuthorizationException('Only support agents can finalize wrap-up.');
+        }
+
+        if ($conversation->status !== SupportConversation::STATUS_WRAP_UP) {
+            throw new \LogicException('Conversation is not in wrap-up state.');
+        }
+
+        $conversation->forceFill([
+            'status' => SupportConversation::STATUS_CLOSED,
+            'closed_at' => now(),
+        ])->save();
+
+        $wrapUpMessage = $this->createMessage(
+            conversation: $conversation,
+            senderType: SupportMessage::SENDER_SYSTEM,
+            body: "{$actor->name} completed the wrap-up.",
+            senderUserId: $actor->id,
+            metadata: ['type' => 'wrap_up_completed'],
+        );
+        $this->broadcastMessageCreated($conversation->fresh(), $wrapUpMessage->fresh('sender'));
         $this->broadcastConversationChanged($conversation->fresh());
 
         return $conversation->fresh(['requester', 'assignee', 'endedBy', 'skill', 'latestMessage']);
@@ -380,8 +586,12 @@ class SupportConversationService implements SupportConversationServiceContract
         }
 
         $conversationUpdates = $this->filterExistingSupportConversationColumns([
-            'status' => SupportConversation::STATUS_CLOSED,
-            'closed_at' => now(),
+            'status' => ($endedByType === 'agent' || $conversation->assigned_to)
+                ? SupportConversation::STATUS_WRAP_UP
+                : SupportConversation::STATUS_CLOSED,
+            'closed_at' => ($endedByType === 'agent' || $conversation->assigned_to)
+                ? null
+                : now(),
             'ended_at' => now(),
             'ended_by_type' => $endedByType,
             'ended_by_user_id' => $endedByUserId,
@@ -396,6 +606,10 @@ class SupportConversationService implements SupportConversationServiceContract
             'ai_handoff_required' => false,
         ]);
         $conversation->forceFill($conversationUpdates)->save();
+        $this->supportRoutingService->cancelConversationQueue(
+            $conversation->fresh(),
+            reason: 'conversation_closed'
+        );
 
         $label = $endedByType === 'agent'
             ? "{$endedByName} (Agent)"
@@ -602,6 +816,21 @@ class SupportConversationService implements SupportConversationServiceContract
                         SupportConversation::STATUS_WAITING_HUMAN,
                     ]);
             }
+        } elseif ($scope === 'waiting') {
+            $query->whereNull('assigned_to')
+                ->whereIn('status', [
+                    SupportConversation::STATUS_OPEN,
+                    SupportConversation::STATUS_WAITING_HUMAN,
+                ]);
+        } elseif ($scope === 'ai') {
+            $query->whereNull('assigned_to')
+                ->where('status', SupportConversation::STATUS_BOT_ACTIVE);
+        } elseif ($scope === 'assigned_all') {
+            $query->whereNotNull('assigned_to')
+                ->whereNotIn('status', [
+                    SupportConversation::STATUS_RESOLVED,
+                    SupportConversation::STATUS_CLOSED
+                ]);
         }
 
         if ($status) {
@@ -646,12 +875,37 @@ class SupportConversationService implements SupportConversationServiceContract
      */
     public function availability(): array
     {
-        $availableAgents = $this->eligibleAgents()->count();
+        $eligibleAgents = $this->eligibleAgents();
+        $availableCount = $eligibleAgents->count();
+
+        // Fetch active chats count per agent
+        $activeChatCounts = SupportConversation::query()
+            ->whereNotNull('assigned_to')
+            ->whereIn('status', [
+                SupportConversation::STATUS_OPEN, 
+                SupportConversation::STATUS_BOT_ACTIVE,
+                SupportConversation::STATUS_WAITING_HUMAN
+            ])
+            ->whereIn('assigned_to', $eligibleAgents->pluck('id'))
+            ->selectRaw('assigned_to, count(*) as count')
+            ->groupBy('assigned_to')
+            ->pluck('count', 'assigned_to');
+
+        $agentsList = $eligibleAgents->map(function ($agent) use ($activeChatCounts) {
+            return [
+                'public_id' => $agent->public_id,
+                'name' => $agent->name,
+                'avatar_thumb_url' => $agent->avatar_thumb_url,
+                'status' => $agent->status,
+                'active_chats' => $activeChatCounts->get($agent->id, 0),
+            ];
+        })->values()->toArray();
 
         return [
-            'available' => $availableAgents > 0,
-            'available_agents' => $availableAgents,
-            'message' => $availableAgents > 0
+            'available' => $availableCount > 0,
+            'available_agents' => $availableCount,
+            'agents' => $agentsList,
+            'message' => $availableCount > 0
                 ? 'Support agents are currently available.'
                 : 'No support agent is available right now, but you can leave a message.',
         ];

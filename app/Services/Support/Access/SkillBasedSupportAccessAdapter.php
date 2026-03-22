@@ -128,7 +128,24 @@ class SkillBasedSupportAccessAdapter implements SupportAccessAdapterContract
             ->where('is_active', true)
             ->get(['support_skill_id', 'membership_role']);
 
-        if ($memberships->isEmpty()) {
+        $teamSkills = [];
+        foreach ($user->internalTeams()->with('supportSkills')->get() as $team) {
+            $roleStr = $team->pivot->role;
+            $mappedRole = match($roleStr) {
+                'manager', 'lead' => 'team_lead',
+                default => 'agent'
+            };
+            foreach ($team->supportSkills as $skill) {
+                $teamSkills[] = [
+                    'support_skill_id' => $skill->id,
+                    'membership_role' => $mappedRole
+                ];
+            }
+        }
+
+        $allMemberships = $memberships->concat($teamSkills);
+
+        if ($allMemberships->isEmpty()) {
             if ($this->allowUnroutedConversationFallback() && $this->legacyAdapter->canViewAny($user)) {
                 return $query->whereNull('support_skill_id');
             }
@@ -136,7 +153,7 @@ class SkillBasedSupportAccessAdapter implements SupportAccessAdapterContract
             return $query->whereRaw('1 = 0');
         }
 
-        $rolesBySkill = $memberships
+        $rolesBySkill = $allMemberships
             ->groupBy('support_skill_id')
             ->map(fn ($rows) => (string) $rows->pluck('membership_role')->last());
 
@@ -191,14 +208,23 @@ class SkillBasedSupportAccessAdapter implements SupportAccessAdapterContract
         if ($conversation && $conversation->support_skill_id) {
             $skillId = (int) $conversation->support_skill_id;
 
-            return $query->whereHas('supportSkillMemberships', function (Builder $membership) use ($skillId): void {
-                $membership
-                    ->where('support_skill_id', $skillId)
-                    ->where('is_active', true);
+            return $query->where(function ($q) use ($skillId) {
+                $q->whereHas('supportSkillMemberships', function (Builder $membership) use ($skillId): void {
+                    $membership
+                        ->where('support_skill_id', $skillId)
+                        ->where('is_active', true);
+                })->orWhereHas('internalTeams', function (Builder $team) use ($skillId): void {
+                    $team->whereHas('supportSkills', function (Builder $skill) use ($skillId): void {
+                        $skill->where('support_skills.id', $skillId);
+                    });
+                });
             });
         }
 
-        return $query->whereHas('supportSkillMemberships', fn (Builder $membership) => $membership->where('is_active', true));
+        return $query->where(function ($q) {
+            $q->whereHas('supportSkillMemberships', fn (Builder $membership) => $membership->where('is_active', true))
+              ->orWhereHas('internalTeams');
+        });
     }
 
     public function canBeAssignedToConversation(User $user, SupportConversation $conversation): bool
@@ -255,10 +281,22 @@ class SkillBasedSupportAccessAdapter implements SupportAccessAdapterContract
 
     protected function hasActiveSkillMembership(User $user, ?int $skillId = null): bool
     {
-        return SupportSkillMembership::query()
+        $hasDirect = SupportSkillMembership::query()
             ->where('user_id', $user->id)
             ->when($skillId !== null, fn (Builder $query) => $query->where('support_skill_id', $skillId))
             ->where('is_active', true)
+            ->exists();
+
+        if ($hasDirect) {
+            return true;
+        }
+
+        return $user->internalTeams()
+            ->when($skillId !== null, function ($query) use ($skillId) {
+                $query->whereHas('supportSkills', function ($skillQuery) use ($skillId) {
+                    $skillQuery->where('support_skills.id', $skillId);
+                });
+            })
             ->exists();
     }
 
@@ -270,7 +308,25 @@ class SkillBasedSupportAccessAdapter implements SupportAccessAdapterContract
             ->where('is_active', true)
             ->value('membership_role');
 
-        return is_string($role) ? $role : null;
+        if (is_string($role)) {
+            return $role;
+        }
+
+        $team = $user->internalTeams()
+            ->whereHas('supportSkills', function ($query) use ($skillId) {
+                $query->where('support_skills.id', $skillId);
+            })
+            ->first();
+
+        if ($team && $team->pivot && $team->pivot->role) {
+            $roleStr = (string) $team->pivot->role;
+            return match($roleStr) {
+                'manager', 'lead' => 'team_lead',
+                default => 'agent'
+            };
+        }
+
+        return null;
     }
 
     protected function roleHasCapability(?string $role, string $capability): bool

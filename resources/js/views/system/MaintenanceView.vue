@@ -1448,13 +1448,13 @@ onUnmounted(() => {
                             <div class="flex flex-col gap-1">
                                 <span
                                     class="text-xs text-[var(--text-secondary)]"
-                                    >IT Support</span
+                                    >Support Staff</span
                                 >
                                 <span
                                     class="text-2xl font-bold text-[var(--text-primary)]"
                                 >
                                     {{
-                                        systemInfo.online_stats?.it_support ?? 0
+                                        systemInfo.online_stats?.support_staff ?? 0
                                     }}
                                 </span>
                             </div>

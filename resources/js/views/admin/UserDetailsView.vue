@@ -18,6 +18,7 @@ import RevokePermissionModal from "@/components/permissions/RevokePermissionModa
 import RenewPermissionModal from "@/components/permissions/RenewPermissionModal.vue";
 import UserStatusPanel from "@/components/admin/UserStatusPanel.vue";
 import TwoFactorEnforcementPanel from "@/components/admin/TwoFactorEnforcementPanel.vue";
+import UserSupportSkillsPanel from "@/components/admin/UserSupportSkillsPanel.vue";
 import Avatar from "@/components/ui/Avatar.vue";
 import {
     User,
@@ -695,10 +696,10 @@ onMounted(async () => {
             ></div>
         </div>
 
-        <div v-else class="space-y-6">
+        <div v-else-if="user" class="space-y-6">
             <!-- User Context Card -->
             <div
-                class="bg-[var(--surface-primary)] rounded-xl border border-[var(--border-muted)] p-6"
+                class="bg-(--surface-primary) rounded-xl border border-(--border-muted) p-6"
             >
                 <div
                     class="flex flex-col md:flex-row items-center md:items-start gap-4 md:gap-6"
@@ -747,15 +748,15 @@ onMounted(async () => {
                                 :class="
                                     user.status === 'active'
                                         ? 'bg-green-100 text-green-900 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800'
-                                        : 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700'
+                                        : 'bg-yellow-100 text-yellow-900 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-800'
                                 "
                             >
-                                {{ user.status }}
+                                {{ getStatusLabel(user.status) }}
                             </Badge>
                         </div>
 
                         <div
-                            class="flex flex-wrap items-center justify-center md:justify-start gap-4 text-sm text-[var(--text-secondary)]"
+                            class="flex flex-wrap items-center justify-center md:justify-start gap-y-1 gap-x-4 text-sm text-[var(--text-secondary)]"
                         >
                             <div class="flex items-center gap-1.5">
                                 <span
@@ -764,14 +765,15 @@ onMounted(async () => {
                                 >
                             </div>
                             <div class="flex items-center gap-1.5">
-                                <Mail class="w-4 h-4" />
+                                <Mail class="w-4 h-4 opacity-70" />
                                 <span>{{ user.email }}</span>
                             </div>
-                            <div class="flex items-center gap-1.5">
-                                <span
-                                    >Joined
-                                    {{ formatDate(user.created_at) }}</span
-                                >
+                            <div
+                                class="flex items-center gap-1.5"
+                                v-if="user.phone"
+                            >
+                                <Smartphone class="w-4 h-4 opacity-70" />
+                                <span>{{ user.phone }}</span>
                             </div>
                             <div
                                 class="flex items-center gap-1.5"
@@ -1759,6 +1761,20 @@ onMounted(async () => {
                         </div>
                     </div>
 
+                    <!-- Support Routing & Skills Section -->
+                    <div
+                        class="bg-[var(--surface-primary)] rounded-xl border border-[var(--border-muted)] overflow-hidden"
+                    >
+                        <div class="p-6">
+                            <UserSupportSkillsPanel 
+                                v-if="user"
+                                :user="user" 
+                                @updated="fetchUser"
+                            />
+                        </div>
+                    </div>
+
+
                     <!-- Permission Overrides -->
                     <div
                         class="bg-[var(--surface-primary)] rounded-xl border border-[var(--border-muted)] overflow-hidden"
@@ -2149,8 +2165,7 @@ onMounted(async () => {
                             <div class="space-y-1">
                                 <label
                                     class="text-xs font-medium text-[var(--text-muted)]"
-                                    >IP Address</label
-                                >
+                                    >IP Address</label>
                                 <p
                                     class="text-sm text-[var(--text-primary)] font-mono"
                                 >
@@ -2164,8 +2179,7 @@ onMounted(async () => {
                             <div class="space-y-1">
                                 <label
                                     class="text-xs font-medium text-[var(--text-muted)]"
-                                    >User Agent</label
-                                >
+                                    >User Agent</label>
                                 <p
                                     class="text-sm text-[var(--text-secondary)] truncate"
                                     :title="
@@ -2188,8 +2202,7 @@ onMounted(async () => {
                             >
                                 <label
                                     class="text-xs font-medium text-[var(--text-muted)]"
-                                    >URL</label
-                                >
+                                    >URL</label>
                                 <p
                                     class="text-sm text-[var(--text-secondary)] font-mono break-all"
                                 >
@@ -2234,8 +2247,7 @@ onMounted(async () => {
                                 >
                                     <label
                                         class="text-xs font-medium text-red-600"
-                                        >Previous Values</label
-                                    >
+                                        >Previous Values</label>
                                     <pre
                                         class="text-xs bg-red-50 dark:bg-red-900/20 p-3 rounded-lg overflow-auto max-h-48 text-red-800 dark:text-red-200"
                                         >{{
@@ -2244,8 +2256,7 @@ onMounted(async () => {
                                                 null,
                                                 2,
                                             )
-                                        }}</pre
-                                    >
+                                        }}</pre>
                                 </div>
                                 <div
                                     v-if="selectedLog.new_values"
@@ -2253,8 +2264,7 @@ onMounted(async () => {
                                 >
                                     <label
                                         class="text-xs font-medium text-green-600"
-                                        >New Values</label
-                                    >
+                                        >New Values</label>
                                     <pre
                                         class="text-xs bg-green-50 dark:bg-green-900/20 p-3 rounded-lg overflow-auto max-h-48 text-green-800 dark:text-green-200"
                                         >{{
@@ -2298,8 +2308,7 @@ onMounted(async () => {
                             <Button
                                 variant="outline"
                                 @click="showLogDetailModal = false"
-                                >Close</Button
-                            >
+                                >Close</Button>
                         </div>
                     </template>
                 </Modal>
@@ -2362,8 +2371,7 @@ onMounted(async () => {
                             <Button
                                 variant="ghost"
                                 @click="showConfirmUpdateModal = false"
-                                >Cancel</Button
-                            >
+                                >Cancel</Button>
                             <Button
                                 variant="primary"
                                 @click="handleConfirmUpdate"
@@ -2375,6 +2383,19 @@ onMounted(async () => {
                     </div>
                 </Modal>
             </div>
+        </div>
+
+        <div v-else class="flex flex-col items-center justify-center py-12 px-4 text-center">
+            <div class="w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center mb-4">
+                <ShieldAlert class="w-8 h-8 text-red-600 dark:text-red-400" />
+            </div>
+            <h3 class="text-lg font-semibold text-(--text-primary) mb-2">User Not Found</h3>
+            <p class="text-(--text-secondary) mb-6 max-w-md">
+                The user you're looking for could not be found or you don't have permission to view their details.
+            </p>
+            <Button @click="router.push('/admin/users')" variant="primary">
+                Return to Directory
+            </Button>
         </div>
 
         <!-- Permission Override Modals -->

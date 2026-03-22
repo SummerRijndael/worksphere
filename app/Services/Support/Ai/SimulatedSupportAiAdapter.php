@@ -32,18 +32,25 @@ class SimulatedSupportAiAdapter implements SupportAiAdapterContract
         }
 
         $isLongComplexCase = mb_strlen($message) >= $minLength;
-        $shouldEscalate = $matchedKeyword !== null || $isLongComplexCase;
+        
+        $explicitHandoff = str_contains($normalized, 'talk to human') || 
+                           str_contains($normalized, 'human agent') || 
+                           str_contains($normalized, 'chat with agent');
+
+        $shouldEscalate = $matchedKeyword !== null || $isLongComplexCase || $explicitHandoff;
 
         if ($shouldEscalate) {
-            $reason = $matchedKeyword !== null
+            $reason = $explicitHandoff ? "User requested human agent" : ($matchedKeyword !== null
                 ? "Detected complex topic: {$matchedKeyword}"
-                : "Detected long/complex case ({$minLength}+ chars)";
+                : "Detected long/complex case ({$minLength}+ chars)");
 
             return [
-                'reply' => 'Thanks for the details. I am routing this to a human support specialist for deeper review.',
+                'reply' => $explicitHandoff 
+                    ? 'I understand. I am connecting you with a human support specialist right now. One moment please.'
+                    : 'Thanks for the details. I am routing this to a human support specialist for deeper review.',
                 'escalate' => true,
                 'reason' => $reason,
-                'confidence' => 0.92,
+                'confidence' => 0.99,
             ];
         }
 
