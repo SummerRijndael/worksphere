@@ -276,6 +276,22 @@ class MaintenanceController extends Controller
     }
 
     /**
+     * Restart ACD Watchdog.
+     */
+    public function restartAcdWatchdog(Request $request): JsonResponse
+    {
+        $result = $this->maintenanceService->restartAcdWatchdog();
+
+        $this->auditService->log(
+            action: AuditAction::AcdWatchdogRestarted,
+            category: AuditCategory::Security,
+            user: $request->user()
+        );
+
+        return response()->json($result);
+    }
+
+    /**
      * Clear old log files.
      */
     public function clearLogs(Request $request): JsonResponse

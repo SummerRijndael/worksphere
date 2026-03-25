@@ -115,6 +115,9 @@ class MaintenanceService
 
             // Online Users
             'online_stats' => $this->getOnlineUserStats(),
+
+            // Support routing daemon health
+            'acd_watchdog' => $this->getAcdWatchdogStatus(),
         ];
     }
 
@@ -124,18 +127,105 @@ class MaintenanceService
     public function getOnlineUserStats(): array
     {
         try {
-            $activeUsers = $this->presenceService->getActiveUsers();
+            $activeUserIds = $this->presenceService->getActiveUserIds();
+
+            if ($activeUserIds === []) {
+                return [
+                    'total' => 0,
+                    'administrators' => 0,
+                    'support_staff' => 0,
+                ];
+            }
+
+            $administratorRole = (string) config('roles.super_admin_role', 'administrator');
 
             return [
-                'total' => $activeUsers->count(),
-                'support_staff' => $activeUsers->filter(fn ($user) => $user->internalTeams->isNotEmpty())->count(),
+                'total' => count($activeUserIds),
+                'administrators' => \App\Models\User::query()
+                    ->whereIn('id', $activeUserIds)
+                    ->whereHas('roles', fn ($query) => $query->where('name', $administratorRole))
+                    ->count(),
+                'support_staff' => \App\Models\User::query()
+                    ->whereIn('id', $activeUserIds)
+                    ->whereHas('internalTeams', function ($teamQuery): void {
+                        $teamQuery
+                            ->where('internal_teams.status', 'active')
+                            ->whereHas('supportSkills');
+                    })
+                    ->count(),
             ];
         } catch (Throwable $e) {
             Log::warning('Failed to get online user stats', ['error' => $e->getMessage()]);
 
             return [
                 'total' => 0,
+                'administrators' => 0,
                 'support_staff' => 0,
+            ];
+        }
+    }
+
+    /**
+     * Get ACD watchdog daemon status.
+     */
+    public function getAcdWatchdogStatus(): array
+    {
+        $engine = config('support_chat.routing.engine', 'database');
+
+        if ($engine !== 'acd') {
+            return [
+                'enabled' => false,
+                'status' => 'disabled',
+                'label' => 'Disabled',
+                'last_seen_at' => null,
+                'seconds_since_heartbeat' => null,
+                'available_agents' => 0,
+                'pending_queue' => 0,
+                'pid' => null,
+            ];
+        }
+
+        try {
+            $lastSeenRaw = Redis::get('acd:watchdog:last_seen');
+            $meta = Redis::hgetall('acd:watchdog:meta');
+            $lastSeen = is_numeric($lastSeenRaw) ? (int) $lastSeenRaw : null;
+            $secondsSinceHeartbeat = $lastSeen ? now()->timestamp - $lastSeen : null;
+
+            $status = 'offline';
+            $label = 'Offline';
+
+            if ($secondsSinceHeartbeat !== null) {
+                if ($secondsSinceHeartbeat <= 15) {
+                    $status = 'alive';
+                    $label = 'Alive';
+                } elseif ($secondsSinceHeartbeat <= 120) {
+                    $status = 'stale';
+                    $label = 'Stale';
+                }
+            }
+
+            return [
+                'enabled' => true,
+                'status' => $status,
+                'label' => $label,
+                'last_seen_at' => $lastSeen ? Carbon::createFromTimestamp($lastSeen)->toIso8601String() : ($meta['updated_at'] ?? null),
+                'seconds_since_heartbeat' => $secondsSinceHeartbeat,
+                'available_agents' => (int) Redis::zcard('acd:agents:available'),
+                'pending_queue' => (int) Redis::zcard('acd:queue:pending'),
+                'pid' => $meta['pid'] ?? null,
+            ];
+        } catch (Throwable $e) {
+            Log::warning('Failed to get ACD watchdog status', ['error' => $e->getMessage()]);
+
+            return [
+                'enabled' => true,
+                'status' => 'offline',
+                'label' => 'Offline',
+                'last_seen_at' => null,
+                'seconds_since_heartbeat' => null,
+                'available_agents' => 0,
+                'pending_queue' => 0,
+                'pid' => null,
             ];
         }
     }
@@ -1326,6 +1416,29 @@ class MaintenanceService
             return [
                 'success' => false,
                 'message' => 'Failed to restart Reverb: '.$e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Restart ACD Watchdog.
+     */
+    public function restartAcdWatchdog(): array
+    {
+        try {
+            $process = Process::path(base_path())->run(PHP_BINARY.' artisan support:acd-watchdog:restart --reason=maintenance');
+            Log::info('ACD watchdog restart signal sent via Process', ['output' => $process->output()]);
+
+            return [
+                'success' => true,
+                'message' => 'ACD watchdog restart signal sent successfully',
+            ];
+        } catch (Throwable $e) {
+            Log::error('Failed to restart ACD watchdog', ['error' => $e->getMessage()]);
+
+            return [
+                'success' => false,
+                'message' => 'Failed to restart ACD watchdog: '.$e->getMessage(),
             ];
         }
     }

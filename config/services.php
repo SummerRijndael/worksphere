@@ -42,10 +42,10 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Twilio SMS Service
+    | Twilio Messaging and Voice
     |--------------------------------------------------------------------------
     |
-    | Used for SMS-based two-factor authentication.
+    | Used for SMS-based two-factor authentication and outbound dialer prep.
     |
     */
 
@@ -54,6 +54,10 @@ return [
         'token' => env('TWILIO_AUTH_TOKEN'),
         'verify_sid' => env('TWILIO_VERIFY_SERVICE_SID'),
         'from' => env('TWILIO_FROM'),
+        'voice_from' => env('TWILIO_VOICE_FROM', env('TWILIO_FROM')),
+        'voice_app_sid' => env('TWILIO_VOICE_APP_SID'),
+        'voice_twiml_url' => env('TWILIO_VOICE_TWIML_URL'),
+        'voice_status_callback_url' => env('TWILIO_VOICE_STATUS_CALLBACK_URL'),
     ],
 
     /*

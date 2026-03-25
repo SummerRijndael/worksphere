@@ -3,11 +3,17 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\Dialer\DialerService;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
 
 class TwilioWebhookController extends Controller
 {
+    public function __construct(
+        protected DialerService $dialerService,
+    ) {}
+
     /**
      * Handle Twilio Debugger Webhook.
      *
@@ -40,5 +46,29 @@ class TwilioWebhookController extends Controller
         ]);
 
         return response()->json(['status' => 'received']);
+    }
+
+    public function handleVoiceStatus(Request $request): Response
+    {
+        $payload = $request->all();
+        $callSid = (string) ($payload['CallSid'] ?? '');
+        $callStatus = (string) ($payload['CallStatus'] ?? '');
+        $durationSeconds = isset($payload['CallDuration']) ? (int) $payload['CallDuration'] : null;
+
+        if ($callSid !== '' && $callStatus !== '') {
+            $call = $this->dialerService->syncProviderStatus('twilio', $callSid, [
+                'status' => $callStatus,
+                'duration_seconds' => $durationSeconds,
+                'callback_payload' => $payload,
+            ]);
+
+            Log::info('Twilio voice status callback processed.', [
+                'call_sid' => $callSid,
+                'call_status' => $callStatus,
+                'matched_call' => $call?->public_id,
+            ]);
+        }
+
+        return response('', 204);
     }
 }

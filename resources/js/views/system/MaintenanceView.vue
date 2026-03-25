@@ -38,6 +38,8 @@ import {
     ChevronRight,
     Users,
     Zap,
+    Copy,
+    Terminal,
 } from "lucide-vue-next";
 import { toast } from "vue-sonner";
 import axios from "axios";
@@ -118,6 +120,16 @@ const systemInfo = ref({
     laravel_cache_metrics: null,
     cpu_model: null,
     disk_model: null,
+    acd_watchdog: {
+        enabled: false,
+        status: "disabled",
+        label: "Disabled",
+        last_seen_at: null,
+        seconds_since_heartbeat: null,
+        available_agents: 0,
+        pending_queue: 0,
+        pid: null,
+    },
 });
 
 const scheduledTasks = ref([]);
@@ -206,7 +218,21 @@ const isRestarting = ref({
     queue: false,
     horizon: false,
     reverb: false,
+    "acd-watchdog": false,
 });
+
+const quickServiceCommands = [
+    {
+        id: "acd-watchdog-debug",
+        label: "ACD watchdog debug",
+        command: "php artisan support:acd-watchdog --debug",
+    },
+    {
+        id: "acd-watchdog-restart",
+        label: "ACD watchdog restart signal",
+        command: "php artisan support:acd-watchdog:restart --reason=maintenance",
+    },
+];
 
 // Reverb Monitoring
 const reverbStats = ref({
@@ -805,6 +831,14 @@ const flushRedis = async () => {
 
 // Restart Services
 const restartService = async (service) => {
+    const serviceLabels = {
+        queue: "Queue workers",
+        horizon: "Horizon",
+        reverb: "Reverb",
+        "acd-watchdog": "ACD watchdog",
+    };
+    const serviceLabel = serviceLabels[service] || service;
+
     isRestarting.value[service] = true;
     try {
         const response = await axios.post(
@@ -812,12 +846,22 @@ const restartService = async (service) => {
         );
         toast.success(
             response.data.message ||
-                `${service.charAt(0).toUpperCase() + service.slice(1)} restart initiated`,
+                `${serviceLabel} restart initiated`,
         );
+        await fetchSystemInfo();
     } catch (error) {
-        toast.error(`Failed to restart ${service}`);
+        toast.error(`Failed to restart ${serviceLabel}`);
     } finally {
         isRestarting.value[service] = false;
+    }
+};
+
+const copyQuickCommand = async (command, label) => {
+    try {
+        await navigator.clipboard.writeText(command);
+        toast.success(`${label} command copied`);
+    } catch {
+        toast.error("Failed to copy command");
     }
 };
 
@@ -1390,10 +1434,10 @@ onUnmounted(() => {
             </div>
         </div>
 
-        <!-- Online Users -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        <!-- Online Users / ACD -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
             <div
-                class="bg-[var(--surface-elevated)] rounded-xl border border-[var(--border-default)] overflow-hidden md:col-span-2"
+                class="bg-[var(--surface-elevated)] rounded-xl border border-[var(--border-default)] overflow-hidden h-full"
             >
                 <div
                     class="p-4 border-b border-[var(--border-default)] flex items-center gap-3"
@@ -1407,7 +1451,7 @@ onUnmounted(() => {
                         Online Users
                     </h3>
                 </div>
-                <div class="p-4">
+                <div class="p-4 h-full">
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div
                             class="p-3 bg-[var(--surface-secondary)] rounded-lg"
@@ -1457,7 +1501,111 @@ onUnmounted(() => {
                                         systemInfo.online_stats?.support_staff ?? 0
                                     }}
                                 </span>
+                                <span
+                                    class="text-xs text-[var(--text-muted)]"
+                                >
+                                    Active internal support teams
+                                </span>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div
+                class="bg-[var(--surface-elevated)] rounded-xl border border-[var(--border-default)] overflow-hidden h-full"
+            >
+                <div
+                    class="p-4 border-b border-[var(--border-default)] flex items-center justify-between"
+                >
+                    <div class="flex items-center gap-3">
+                        <div
+                            class="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center"
+                        >
+                            <Activity class="w-4 h-4 text-cyan-600" />
+                        </div>
+                        <div>
+                            <h3 class="font-medium text-[var(--text-primary)]">
+                                ACD Watchdog
+                            </h3>
+                            <p class="text-xs text-[var(--text-secondary)]">
+                                Support routing daemon health
+                            </p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <Badge
+                            :variant="
+                                systemInfo.acd_watchdog?.status === 'alive'
+                                    ? 'success'
+                                    : systemInfo.acd_watchdog?.status === 'stale'
+                                      ? 'warning'
+                                      : systemInfo.acd_watchdog?.status === 'disabled'
+                                        ? 'secondary'
+                                        : 'danger'
+                            "
+                            class="font-normal"
+                        >
+                            {{ systemInfo.acd_watchdog?.label || "Unknown" }}
+                        </Badge>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            class="h-8 w-8"
+                            @click="restartService('acd-watchdog')"
+                            :disabled="systemInfo.acd_watchdog?.status === 'disabled'"
+                            :loading="isRestarting['acd-watchdog']"
+                        >
+                            <RefreshCw class="w-4 h-4" />
+                        </Button>
+                    </div>
+                </div>
+                <div class="p-4 space-y-4">
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="p-3 bg-[var(--surface-secondary)] rounded-lg">
+                            <div class="flex flex-col gap-1">
+                                <span class="text-xs text-[var(--text-secondary)]">Pending Queue</span>
+                                <span class="text-2xl font-bold text-[var(--text-primary)]">
+                                    {{ systemInfo.acd_watchdog?.pending_queue ?? 0 }}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="p-3 bg-[var(--surface-secondary)] rounded-lg">
+                            <div class="flex flex-col gap-1">
+                                <span class="text-xs text-[var(--text-secondary)]">Available Agents</span>
+                                <span class="text-2xl font-bold text-[var(--text-primary)]">
+                                    {{ systemInfo.acd_watchdog?.available_agents ?? 0 }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-2 text-sm">
+                        <div class="flex items-center justify-between gap-4">
+                            <span class="text-[var(--text-secondary)]">Last heartbeat</span>
+                            <span class="text-[var(--text-primary)] font-medium">
+                                {{
+                                    systemInfo.acd_watchdog?.last_seen_at
+                                        ? formatRelativeTime(systemInfo.acd_watchdog.last_seen_at)
+                                        : "Not available"
+                                }}
+                            </span>
+                        </div>
+                        <div class="flex items-center justify-between gap-4">
+                            <span class="text-[var(--text-secondary)]">Heartbeat age</span>
+                            <span class="text-[var(--text-primary)] font-medium">
+                                {{
+                                    systemInfo.acd_watchdog?.seconds_since_heartbeat !== null &&
+                                    systemInfo.acd_watchdog?.seconds_since_heartbeat !== undefined
+                                        ? `${systemInfo.acd_watchdog.seconds_since_heartbeat}s`
+                                        : "N/A"
+                                }}
+                            </span>
+                        </div>
+                        <div class="flex items-center justify-between gap-4">
+                            <span class="text-[var(--text-secondary)]">Process ID</span>
+                            <span class="text-[var(--text-primary)] font-medium">
+                                {{ systemInfo.acd_watchdog?.pid || "N/A" }}
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -2229,12 +2377,67 @@ onUnmounted(() => {
                             Restart
                         </Button>
                     </div>
+                    <div
+                        class="flex items-center justify-between p-3 bg-[var(--surface-secondary)] rounded-lg"
+                    >
+                        <div>
+                            <p
+                                class="text-sm font-medium text-[var(--text-primary)]"
+                            >
+                                ACD Watchdog
+                            </p>
+                            <p class="text-xs text-[var(--text-muted)]">
+                                Send a graceful restart signal to the in-memory ACD engine
+                            </p>
+                        </div>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            @click="restartService('acd-watchdog')"
+                            :disabled="systemInfo.acd_watchdog?.status === 'disabled'"
+                            :loading="isRestarting['acd-watchdog']"
+                        >
+                            <RefreshCw class="w-4 h-4" />
+                            Restart
+                        </Button>
+                    </div>
+
+                    <div class="p-3 bg-[var(--surface-secondary)] rounded-lg space-y-2.5">
+                        <div class="flex items-center gap-2 text-[var(--text-primary)]">
+                            <Terminal class="w-4 h-4 text-indigo-500" />
+                            <p class="text-sm font-medium">Quick Commands</p>
+                        </div>
+                        <div
+                            v-for="item in quickServiceCommands"
+                            :key="item.id"
+                            class="flex items-center gap-2"
+                        >
+                            <div
+                                class="min-w-0 flex-1 rounded-md border border-[var(--border-default)] bg-[var(--surface-elevated)] px-2.5 py-1.5"
+                            >
+                                <p class="truncate text-[10px] text-[var(--text-muted)]">
+                                    {{ item.label }}
+                                </p>
+                                <p class="truncate font-mono text-[11px] text-[var(--text-primary)]">
+                                    {{ item.command }}
+                                </p>
+                            </div>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                @click="copyQuickCommand(item.command, item.label)"
+                            >
+                                <Copy class="w-4 h-4" />
+                                Copy
+                            </Button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
             <!-- Log Management -->
             <div
-                class="bg-[var(--surface-elevated)] rounded-xl border border-[var(--border-default)] overflow-hidden"
+                class="bg-[var(--surface-elevated)] rounded-xl border border-[var(--border-default)] overflow-hidden flex flex-col h-full"
             >
                 <div
                     class="p-4 border-b border-[var(--border-default)] flex items-center gap-3"
@@ -2248,7 +2451,7 @@ onUnmounted(() => {
                         Log Management
                     </h3>
                 </div>
-                <div class="p-4 space-y-3">
+                <div class="p-4 space-y-3 flex-1">
                     <div
                         class="flex items-center justify-between p-3 bg-[var(--surface-secondary)] rounded-lg"
                     >
@@ -2292,13 +2495,11 @@ onUnmounted(() => {
                     </div>
                 </div>
                 <!-- Log Viewer Action -->
-                <div class="px-4 pb-4">
-                    <p
-                        class="text-sm text-[var(--text-secondary)] mb-4 min-h-[40px]"
-                    >
-                        View application and system logs
-                    </p>
-                    <div class="flex flex-col gap-2">
+                <div class="px-4 py-4 border-t border-[var(--border-default)] mt-auto">
+                    <div class="flex flex-col gap-3">
+                        <p class="text-sm text-[var(--text-secondary)]">
+                            View application and system logs
+                        </p>
                         <Button
                             variant="outline"
                             class="w-full justify-between group"
@@ -3233,12 +3434,12 @@ onUnmounted(() => {
                                     <tr>
                                         <th class="px-4 py-3 w-8">
                                             <Checkbox
-                                                :checked="
+                                                :model-value="
                                                     selectedBackups.length ===
                                                         backups.length &&
                                                     backups.length > 0
                                                 "
-                                                @update:checked="
+                                                @update:modelValue="
                                                     selectAllBackups
                                                 "
                                             />
@@ -3269,12 +3470,12 @@ onUnmounted(() => {
                                     >
                                         <td class="px-4 py-3">
                                             <Checkbox
-                                                :checked="
+                                                :model-value="
                                                     selectedBackups.includes(
                                                         backup.path,
                                                     )
                                                 "
-                                                @update:checked="
+                                                @update:modelValue="
                                                     toggleBackupSelection(
                                                         backup.path,
                                                     )
@@ -3364,13 +3565,13 @@ onUnmounted(() => {
                             >
                                 <div class="absolute top-3 right-3 z-10">
                                     <Checkbox
-                                        :checked="
+                                        :model-value="
                                             selectedBackups.includes(
                                                 backup.path,
                                             )
                                         "
                                         @click.stop
-                                        @update:checked="
+                                        @update:modelValue="
                                             toggleBackupSelection(backup.path)
                                         "
                                     />
