@@ -136,6 +136,7 @@ Route::middleware(['throttle:guest'])->group(function () {
 
     // Webhooks
     Route::post('/webhooks/twilio/debugger', [\App\Http\Controllers\Api\TwilioWebhookController::class, 'handleDebugger']);
+    Route::post('/webhooks/twilio/voice/status', [\App\Http\Controllers\Api\TwilioWebhookController::class, 'handleVoiceStatus']);
     Route::post('/webhooks/google/pubsub', [\App\Http\Controllers\Webhooks\GooglePubSubController::class, 'handle']);
 });
 
@@ -211,6 +212,14 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
         Route::get('/stats', [\App\Http\Controllers\Api\DashboardController::class, 'stats']);
         Route::get('/activity', [\App\Http\Controllers\Api\DashboardController::class, 'activity']);
         Route::get('/charts', [\App\Http\Controllers\Api\DashboardController::class, 'charts']);
+    });
+
+    // Dialer
+    Route::prefix('dialer')->group(function () {
+        Route::get('/bootstrap', [\App\Http\Controllers\Api\DialerController::class, 'bootstrap']);
+        Route::post('/calls', [\App\Http\Controllers\Api\DialerController::class, 'placeCall']);
+        Route::post('/calls/{dialerCall}/hangup', [\App\Http\Controllers\Api\DialerController::class, 'hangup']);
+        Route::post('/calls/{dialerCall}/transfer', [\App\Http\Controllers\Api\DialerController::class, 'transfer']);
     });
 
     // User self-service session management
@@ -737,6 +746,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
         Route::post('/queue/restart', [\App\Http\Controllers\Api\MaintenanceController::class, 'restartQueue']);
         Route::post('/horizon/restart', [\App\Http\Controllers\Api\MaintenanceController::class, 'restartHorizon']);
         Route::post('/reverb/restart', [\App\Http\Controllers\Api\MaintenanceController::class, 'restartReverb']);
+        Route::post('/acd-watchdog/restart', [\App\Http\Controllers\Api\MaintenanceController::class, 'restartAcdWatchdog']);
         Route::get('/reverb/stats', [\App\Http\Controllers\Api\MaintenanceController::class, 'reverbStats']);
         Route::post('/logs/clear', [\App\Http\Controllers\Api\MaintenanceController::class, 'clearLogs']);
         Route::get('/scheduled-tasks', [\App\Http\Controllers\Api\MaintenanceController::class, 'scheduledTasks']);

@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useNavigationStore } from "@/stores/navigation";
 import { useAuthStore } from "@/stores/auth";
+import { useDialerStore } from "@/stores/dialer";
 import { appConfig } from "@/config/app";
 import { cn } from "@/lib/utils";
 import type {
@@ -56,6 +57,7 @@ const route = useRoute();
 const router = useRouter();
 const navStore = useNavigationStore();
 const authStore = useAuthStore();
+const dialerStore = useDialerStore();
 const { currentStatus } = usePresence({ manageLifecycle: false });
 
 // Icon mapping
@@ -160,17 +162,27 @@ function handleItemClick(item: NavigationItem): void {
     }
 }
 
-function openDialerPopup() {
-    const width = 340;
-    const height = 540;
-    const left = window.screenX + (window.outerWidth - width) / 2;
-    const top = window.screenY + (window.outerHeight - height) / 2;
+function openDialerLauncher() {
+    dialerStore.openDialer();
+}
 
-    window.open(
-        "/dialer",
-        "WorkSphereDialer",
-        `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=no,status=no,location=no,toolbar=no,menubar=no`,
-    );
+function setDialerMode(mode: "popup" | "docked") {
+    dialerStore.setLaunchMode(mode);
+}
+
+const dialerTooltip = computed(() =>
+    dialerStore.launchMode === "popup"
+        ? "Phone Dialer (Popup mode)"
+        : "Phone Dialer (Docked mode)",
+);
+
+const isDialerDocked = computed(() => dialerStore.launchMode === "docked");
+
+const isDialerPopup = computed(() => dialerStore.launchMode === "popup");
+
+function openDockedDialer() {
+    dialerStore.setLaunchMode("docked");
+    dialerStore.openDialer();
 }
 
 onMounted(() => {
@@ -691,17 +703,17 @@ onMounted(() => {
             </div>
         </nav>
 
-        <!-- Dialer Quick Action (Demo) -->
+        <!-- Dialer Quick Action -->
         <div :class="cn(showExpanded ? 'px-2.5 mb-1.5' : 'px-1.5 mb-1')">
             <Tooltip
-                content="Phone Dialer (Demo)"
+                :content="dialerTooltip"
                 side="right"
                 :delay-duration="200"
                 :side-offset="10"
                 content-class="font-medium bg-[var(--text-primary)] text-[var(--text-inverse)] border-none shadow-md px-3 py-1.5 text-xs rounded-lg"
             >
                 <button
-                    @click="openDialerPopup"
+                    @click="openDialerLauncher"
                     :class="
                         cn(
                             'group flex items-center rounded-lg transition-all duration-300 border cursor-pointer',
@@ -733,10 +745,55 @@ onMounted(() => {
                         "
                     >
                         Dialer
-                        <span class="text-[10px] opacity-70 ml-1">DEMO</span>
+                    </span>
+                    <span
+                        v-if="showExpanded"
+                        class="ml-auto rounded-md border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-300"
+                    >
+                        {{ isDialerDocked ? "Docked" : "Popup" }}
                     </span>
                 </button>
             </Tooltip>
+
+            <div
+                v-if="showExpanded"
+                class="mt-1.5 grid grid-cols-2 gap-1"
+            >
+                <button
+                    :class="
+                        cn(
+                            'h-7 rounded-md border text-[11px] font-medium transition-colors',
+                            isDialerPopup
+                                ? 'border-emerald-500/35 bg-emerald-500/15 text-emerald-300'
+                                : 'border-[var(--border-muted)] bg-[var(--surface-secondary)] text-[var(--text-muted)] hover:text-[var(--text-primary)]',
+                        )
+                    "
+                    @click="setDialerMode('popup')"
+                >
+                    Popup
+                </button>
+                <button
+                    :class="
+                        cn(
+                            'h-7 rounded-md border text-[11px] font-medium transition-colors',
+                            isDialerDocked
+                                ? 'border-emerald-500/35 bg-emerald-500/15 text-emerald-300'
+                                : 'border-[var(--border-muted)] bg-[var(--surface-secondary)] text-[var(--text-muted)] hover:text-[var(--text-primary)]',
+                        )
+                    "
+                    @click="setDialerMode('docked')"
+                >
+                    Docked
+                </button>
+            </div>
+
+            <button
+                v-if="showExpanded && isDialerPopup"
+                class="mt-1.5 h-7 w-full rounded-md border border-[var(--border-muted)] bg-[var(--surface-secondary)] text-[11px] font-medium text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
+                @click="openDockedDialer"
+            >
+                Open Docked Now
+            </button>
         </div>
 
         <!-- User Section -->

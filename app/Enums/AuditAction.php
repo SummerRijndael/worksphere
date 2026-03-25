@@ -101,6 +101,7 @@ enum AuditAction: string
     case QueueRestarted = 'queue_restarted';
     case HorizonRestarted = 'horizon_restarted';
     case ReverbRestarted = 'reverb_restarted';
+    case AcdWatchdogRestarted = 'acd_watchdog_restarted';
     case BackupStarted = 'backup_started';
     case BackupCompleted = 'backup_completed';
     case BackupFailed = 'backup_failed';
@@ -183,6 +184,7 @@ enum AuditAction: string
             self::QueueRestarted => 'Queue Workers Restarted',
             self::HorizonRestarted => 'Horizon Restarted',
             self::ReverbRestarted => 'Reverb Server Restarted',
+            self::AcdWatchdogRestarted => 'ACD Watchdog Restarted',
             self::BackupStarted => 'Backup Started',
             self::BackupCompleted => 'Backup Completed',
             self::BackupFailed => 'Backup Failed',
@@ -254,6 +256,7 @@ enum AuditAction: string
             self::QueueRestarted => 'refresh-cw',
             self::HorizonRestarted => 'activity',
             self::ReverbRestarted => 'zap',
+            self::AcdWatchdogRestarted => 'refresh-cw',
             self::BackupStarted => 'play',
             self::BackupCompleted => 'check-circle',
             self::BackupFailed => 'alert-triangle',

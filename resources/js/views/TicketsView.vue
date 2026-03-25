@@ -54,6 +54,7 @@ import {
     LayoutGrid,
     LayoutList,
     RotateCw,
+    Info,
 } from "lucide-vue-next";
 
 const toast = useToast();
@@ -711,35 +712,36 @@ function viewTicket(ticketId) {
 
 <template>
     <div>
-        <div class="space-y-6">
+        <div class="space-y-4">
             <!-- Header & Tabs -->
             <div
-                class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between"
+                class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between"
             >
                 <div>
                     <h1
-                        class="text-2xl font-bold tracking-tight text-[var(--text-primary)]"
+                        class="text-xl font-semibold tracking-tight text-[var(--text-primary)]"
                     >
                         Tickets
                     </h1>
-                    <p class="text-[var(--text-secondary)]">
+                    <p class="mt-1 text-sm text-[var(--text-secondary)]">
                         Track and manage support tickets and issues.
                     </p>
                 </div>
-                <div class="flex items-center gap-3">
+                <div class="flex items-center gap-2">
                     <Button
                         variant="outline"
+                        size="sm"
                         @click="refreshData"
                         :disabled="isLoading"
                     >
                         <RotateCw
-                            class="mr-2 h-4 w-4"
+                            class="mr-1.5 h-4 w-4"
                             :class="{ 'animate-spin': isLoading }"
                         />
                         Refresh
                     </Button>
-                    <Button @click="showNewTicketModal = true">
-                        <Plus class="mr-2 h-4 w-4" />
+                    <Button size="sm" @click="showNewTicketModal = true">
+                        <Plus class="mr-1.5 h-4 w-4" />
                         New Ticket
                     </Button>
                 </div>
@@ -747,7 +749,7 @@ function viewTicket(ticketId) {
 
             <!-- View Tabs -->
             <div class="border-b border-[var(--border-default)]">
-                <div class="flex -mb-px space-x-6 overflow-x-auto">
+                <div class="flex -mb-px space-x-4 overflow-x-auto">
                     <!-- All Tickets -->
                     <button
                         @click="activeView = 'all'"
@@ -755,7 +757,7 @@ function viewTicket(ticketId) {
                             activeView === 'all'
                                 ? 'border-[var(--color-primary-500)] text-[var(--color-primary-600)]'
                                 : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-hover)]',
-                            'whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm transition-colors',
+                            'whitespace-nowrap pb-2.5 px-1 border-b-2 text-sm transition-colors',
                         ]"
                     >
                         All Tickets
@@ -768,7 +770,7 @@ function viewTicket(ticketId) {
                             activeView === 'my'
                                 ? 'border-[var(--color-primary-500)] text-[var(--color-primary-600)]'
                                 : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-hover)]',
-                            'whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm transition-colors',
+                            'whitespace-nowrap pb-2.5 px-1 border-b-2 text-sm transition-colors',
                         ]"
                     >
                         My Tickets
@@ -781,7 +783,7 @@ function viewTicket(ticketId) {
                             activeView === 'assigned'
                                 ? 'border-[var(--color-primary-500)] text-[var(--color-primary-600)]'
                                 : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-hover)]',
-                            'whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm transition-colors',
+                            'whitespace-nowrap pb-2.5 px-1 border-b-2 text-sm transition-colors',
                         ]"
                     >
                         Assigned to Me
@@ -794,7 +796,7 @@ function viewTicket(ticketId) {
                             activeView === 'unassigned'
                                 ? 'border-[var(--color-primary-500)] text-[var(--color-primary-600)]'
                                 : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-hover)]',
-                            'whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm transition-colors',
+                            'whitespace-nowrap pb-2.5 px-1 border-b-2 text-sm transition-colors',
                         ]"
                     >
                         Unassigned
@@ -807,7 +809,7 @@ function viewTicket(ticketId) {
                             activeView === 'archived'
                                 ? 'border-[var(--color-primary-500)] text-[var(--color-primary-600)]'
                                 : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-hover)]',
-                            'whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm transition-colors',
+                            'whitespace-nowrap pb-2.5 px-1 border-b-2 text-sm transition-colors',
                         ]"
                     >
                         Archived
@@ -816,8 +818,8 @@ function viewTicket(ticketId) {
             </div>
 
             <!-- Stats Cards -->
-            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <Card padding="lg" class="group">
+            <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <Card padding="md" class="group">
                     <div class="flex items-center justify-between">
                         <div>
                             <p
@@ -826,19 +828,19 @@ function viewTicket(ticketId) {
                                 Total Tickets
                             </p>
                             <p
-                                class="text-3xl font-bold text-[var(--text-primary)] mt-1"
+                                class="mt-0.5 text-2xl font-semibold text-[var(--text-primary)]"
                             >
                                 {{ ticketStats.total }}
                             </p>
                         </div>
                         <div
-                            class="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg"
+                            class="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg"
                         >
-                            <MessageSquare class="h-5 w-5 text-white" />
+                            <MessageSquare class="h-4.5 w-4.5 text-white" />
                         </div>
                     </div>
                 </Card>
-                <Card padding="lg" class="group">
+                <Card padding="md" class="group">
                     <div class="flex items-center justify-between">
                         <div>
                             <p
@@ -847,19 +849,19 @@ function viewTicket(ticketId) {
                                 Open
                             </p>
                             <p
-                                class="text-3xl font-bold text-[var(--text-primary)] mt-1"
+                                class="mt-0.5 text-2xl font-semibold text-[var(--text-primary)]"
                             >
                                 {{ ticketStats.open }}
                             </p>
                         </div>
                         <div
-                            class="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 shadow-lg"
+                            class="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-orange-500 to-orange-600 shadow-lg"
                         >
-                            <AlertCircle class="h-5 w-5 text-white" />
+                            <AlertCircle class="h-4.5 w-4.5 text-white" />
                         </div>
                     </div>
                 </Card>
-                <Card padding="lg" class="group">
+                <Card padding="md" class="group">
                     <div class="flex items-center justify-between">
                         <div>
                             <p
@@ -868,19 +870,19 @@ function viewTicket(ticketId) {
                                 In Progress
                             </p>
                             <p
-                                class="text-3xl font-bold text-[var(--text-primary)] mt-1"
+                                class="mt-0.5 text-2xl font-semibold text-[var(--text-primary)]"
                             >
                                 {{ ticketStats.in_progress }}
                             </p>
                         </div>
                         <div
-                            class="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 shadow-lg"
+                            class="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 to-purple-600 shadow-lg"
                         >
-                            <Clock class="h-5 w-5 text-white" />
+                            <Clock class="h-4.5 w-4.5 text-white" />
                         </div>
                     </div>
                 </Card>
-                <Card padding="lg" class="group">
+                <Card padding="md" class="group">
                     <div class="flex items-center justify-between">
                         <div>
                             <p
@@ -889,92 +891,96 @@ function viewTicket(ticketId) {
                                 Resolved
                             </p>
                             <p
-                                class="text-3xl font-bold text-[var(--text-primary)] mt-1"
+                                class="mt-0.5 text-2xl font-semibold text-[var(--text-primary)]"
                             >
                                 {{ ticketStats.resolved }}
                             </p>
                         </div>
                         <div
-                            class="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-green-500 to-green-600 shadow-lg"
+                            class="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-green-500 to-green-600 shadow-lg"
                         >
-                            <CheckCircle2 class="h-5 w-5 text-white" />
+                            <CheckCircle2 class="h-4.5 w-4.5 text-white" />
                         </div>
                     </div>
                 </Card>
             </div>
 
-            <!-- Legend -->
-            <Card padding="sm" class="bg-[var(--surface-secondary)]">
-                <div
-                    class="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs"
-                >
-                    <span
-                        class="font-medium text-[var(--text-secondary)] uppercase tracking-wider"
-                        >Types:</span
-                    >
-                    <div class="flex flex-wrap items-center gap-2">
-                        <Badge variant="danger" size="xs">Bug</Badge>
-                        <Badge variant="danger" size="xs">Incident</Badge>
-                        <Badge variant="primary" size="xs">Feature</Badge>
-                        <Badge variant="secondary" size="xs">Task</Badge>
-                        <Badge variant="warning" size="xs">Question</Badge>
-                        <Badge variant="success" size="xs">Improvement</Badge>
-                        <Badge variant="info" size="xs">Accounting</Badge>
-                    </div>
-                    <span
-                        class="font-medium text-[var(--text-secondary)] uppercase tracking-wider ml-4"
-                        >Priority:</span
-                    >
-                    <div class="flex flex-wrap items-center gap-2">
-                        <span class="flex items-center gap-1.5"
-                            ><span
-                                class="w-3 h-3 rounded-lg bg-gradient-to-br from-red-500 to-red-600"
-                            ></span>
-                            Critical</span
-                        >
-                        <span class="flex items-center gap-1.5"
-                            ><span
-                                class="w-3 h-3 rounded-lg bg-gradient-to-br from-orange-500 to-orange-600"
-                            ></span>
-                            High</span
-                        >
-                        <span class="flex items-center gap-1.5"
-                            ><span
-                                class="w-3 h-3 rounded-lg bg-gradient-to-br from-yellow-500 to-yellow-600"
-                            ></span>
-                            Medium</span
-                        >
-                        <span class="flex items-center gap-1.5"
-                            ><span
-                                class="w-3 h-3 rounded-lg bg-gradient-to-br from-green-500 to-green-600"
-                            ></span>
-                            Low</span
-                        >
-                    </div>
-                </div>
-            </Card>
-
             <!-- Filters -->
-            <Card padding="md">
-                <div class="flex flex-col lg:flex-row lg:items-center gap-4">
+            <Card padding="sm">
+                <div class="flex flex-col gap-3 lg:flex-row lg:items-center">
                     <!-- Search -->
                     <div class="relative flex-1">
                         <Search
-                            class="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]"
+                            class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]"
                         />
                         <input
                             v-model="searchQuery"
                             type="text"
                             placeholder="Search tickets by title or ID..."
-                            class="h-10 w-full rounded-xl border border-[var(--border-default)] bg-[var(--surface-elevated)] pl-10 pr-4 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--interactive-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--interactive-primary)]/20 transition-all"
+                            class="h-9 w-full rounded-lg border border-[var(--border-default)] bg-[var(--surface-elevated)] pl-9 pr-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--interactive-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--interactive-primary)]/20 transition-all"
                         />
                     </div>
 
                     <!-- Status Filter -->
-                    <div class="flex items-center gap-3">
+                    <div class="flex items-center gap-2">
+                        <Dropdown align="end" :side-offset="8">
+                            <template #trigger>
+                                <button
+                                    type="button"
+                                    class="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border-default)] bg-[var(--surface-elevated)] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
+                                    title="Ticket legend"
+                                >
+                                    <Info class="h-4 w-4" />
+                                </button>
+                            </template>
+
+                            <div class="w-[320px] p-3">
+                                <div class="space-y-3 text-[11px]">
+                                    <div>
+                                        <p class="mb-2 font-medium uppercase tracking-wider text-[var(--text-secondary)]">
+                                            Types
+                                        </p>
+                                        <div class="flex flex-wrap gap-1.5">
+                                            <Badge variant="danger" size="xs">Bug</Badge>
+                                            <Badge variant="danger" size="xs">Incident</Badge>
+                                            <Badge variant="primary" size="xs">Feature</Badge>
+                                            <Badge variant="secondary" size="xs">Task</Badge>
+                                            <Badge variant="warning" size="xs">Question</Badge>
+                                            <Badge variant="success" size="xs">Improvement</Badge>
+                                            <Badge variant="info" size="xs">Accounting</Badge>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <p class="mb-2 font-medium uppercase tracking-wider text-[var(--text-secondary)]">
+                                            Priority
+                                        </p>
+                                        <div class="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs text-[var(--text-primary)]">
+                                            <span class="flex items-center gap-1.5">
+                                                <span class="h-2.5 w-2.5 rounded-full bg-gradient-to-br from-red-500 to-red-600"></span>
+                                                Critical
+                                            </span>
+                                            <span class="flex items-center gap-1.5">
+                                                <span class="h-2.5 w-2.5 rounded-full bg-gradient-to-br from-orange-500 to-orange-600"></span>
+                                                High
+                                            </span>
+                                            <span class="flex items-center gap-1.5">
+                                                <span class="h-2.5 w-2.5 rounded-full bg-gradient-to-br from-yellow-500 to-yellow-600"></span>
+                                                Medium
+                                            </span>
+                                            <span class="flex items-center gap-1.5">
+                                                <span class="h-2.5 w-2.5 rounded-full bg-gradient-to-br from-green-500 to-green-600"></span>
+                                                Low
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </Dropdown>
+
                         <select
                             v-model="statusFilter"
-                            class="h-10 rounded-xl border border-[var(--border-default)] bg-[var(--surface-elevated)] px-3 pr-8 text-sm text-[var(--text-primary)] focus:border-[var(--interactive-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--interactive-primary)]/20 transition-all [&>option]:bg-[var(--surface-elevated)] [&>option]:text-[var(--text-primary)]"
+                            class="h-9 rounded-lg border border-[var(--border-default)] bg-[var(--surface-elevated)] px-3 pr-8 text-sm text-[var(--text-primary)] focus:border-[var(--interactive-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--interactive-primary)]/20 transition-all [&>option]:bg-[var(--surface-elevated)] [&>option]:text-[var(--text-primary)]"
                         >
                             <option
                                 v-for="option in statusOptions"
@@ -988,7 +994,7 @@ function viewTicket(ticketId) {
                         <!-- Priority Filter -->
                         <select
                             v-model="priorityFilter"
-                            class="h-10 rounded-xl border border-[var(--border-default)] bg-[var(--surface-elevated)] px-3 pr-8 text-sm text-[var(--text-primary)] focus:border-[var(--interactive-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--interactive-primary)]/20 transition-all [&>option]:bg-[var(--surface-elevated)] [&>option]:text-[var(--text-primary)]"
+                            class="h-9 rounded-lg border border-[var(--border-default)] bg-[var(--surface-elevated)] px-3 pr-8 text-sm text-[var(--text-primary)] focus:border-[var(--interactive-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--interactive-primary)]/20 transition-all [&>option]:bg-[var(--surface-elevated)] [&>option]:text-[var(--text-primary)]"
                         >
                             <option
                                 v-for="option in priorityOptions"
@@ -1001,11 +1007,11 @@ function viewTicket(ticketId) {
 
                         <!-- View Toggle -->
                         <div
-                            class="flex bg-[var(--surface-secondary)] rounded-lg p-1 ml-2"
+                            class="ml-1 flex rounded-lg bg-[var(--surface-secondary)] p-0.5"
                         >
                             <button
                                 @click="setViewMode('list')"
-                                class="p-1.5 rounded-md transition-all"
+                                class="rounded-md p-1.5 transition-all"
                                 :class="
                                     viewMode === 'list'
                                         ? 'bg-[var(--surface-elevated)] text-[var(--text-primary)] shadow-sm'
@@ -1017,7 +1023,7 @@ function viewTicket(ticketId) {
                             </button>
                             <button
                                 @click="setViewMode('grid')"
-                                class="p-1.5 rounded-md transition-all"
+                                class="rounded-md p-1.5 transition-all"
                                 :class="
                                     viewMode === 'grid'
                                         ? 'bg-[var(--surface-elevated)] text-[var(--text-primary)] shadow-sm'
@@ -1059,10 +1065,10 @@ function viewTicket(ticketId) {
                 <!-- List View -->
                 <div
                     v-if="viewMode === 'list'"
-                    class="max-h-[calc(100vh-420px)] overflow-y-auto"
+                    class="max-h-[calc(100vh-390px)] overflow-y-auto"
                 >
                     <table
-                        class="w-full table-fixed divide-y divide-[var(--border-default)]"
+                        class="w-full table-auto divide-y divide-[var(--border-default)]"
                     >
                         <thead
                             class="bg-[var(--surface-secondary)] sticky top-0 z-10"
@@ -1071,7 +1077,7 @@ function viewTicket(ticketId) {
                                 <th
                                     v-if="activeView !== 'archived'"
                                     scope="col"
-                                    class="pl-6 pr-3 py-3 w-8"
+                                    class="pl-4 pr-2 py-2.5 w-8"
                                 >
                                     <div class="flex items-center">
                                         <input
@@ -1086,41 +1092,41 @@ function viewTicket(ticketId) {
                                 </th>
                                 <th
                                     scope="col"
-                                    class="px-6 py-3 text-left text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider w-auto md:w-[40%]"
+                                    class="w-auto px-4 py-2.5 text-left text-[11px] font-medium uppercase tracking-wider text-[var(--text-secondary)] md:w-[38%] whitespace-nowrap"
                                 >
                                     Ticket
                                 </th>
                                 <th
                                     scope="col"
-                                    class="px-6 py-3 text-left text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider hidden sm:table-cell"
+                                    class="hidden whitespace-nowrap px-4 py-2.5 text-left text-[11px] font-medium uppercase tracking-wider text-[var(--text-secondary)] sm:table-cell"
                                 >
                                     Status
                                 </th>
                                 <th
                                     scope="col"
-                                    class="px-6 py-3 text-left text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider hidden md:table-cell"
+                                    class="hidden whitespace-nowrap px-4 py-2.5 text-left text-[11px] font-medium uppercase tracking-wider text-[var(--text-secondary)] md:table-cell"
                                 >
                                     Submitted By
                                 </th>
                                 <th
                                     scope="col"
-                                    class="px-6 py-3 text-left text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider hidden lg:table-cell"
+                                    class="hidden whitespace-nowrap px-4 py-2.5 text-left text-[11px] font-medium uppercase tracking-wider text-[var(--text-secondary)] lg:table-cell"
                                 >
                                     Assigned To
                                 </th>
                                 <th
                                     scope="col"
-                                    class="px-6 py-3 text-left text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider hidden xl:table-cell"
+                                    class="hidden whitespace-nowrap px-4 py-2.5 text-left text-[11px] font-medium uppercase tracking-wider text-[var(--text-secondary)] 2xl:table-cell"
                                 >
                                     Created
                                 </th>
                                 <th
                                     scope="col"
-                                    class="px-6 py-3 text-left text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider hidden 2xl:table-cell"
+                                    class="hidden whitespace-nowrap px-4 py-2.5 text-left text-[11px] font-medium uppercase tracking-wider text-[var(--text-secondary)] xl:table-cell"
                                 >
                                     Last Updated
                                 </th>
-                                <th scope="col" class="relative px-6 py-3">
+                                <th scope="col" class="relative w-[1%] px-4 py-2.5 whitespace-nowrap">
                                     <span class="sr-only">Actions</span>
                                 </th>
                             </tr>
@@ -1135,7 +1141,7 @@ function viewTicket(ticketId) {
                             >
                                 <td
                                     v-if="activeView !== 'archived'"
-                                    class="pl-3 pr-1 py-2.5 w-8"
+                                    class="pl-2 pr-1 py-2 w-8"
                                 >
                                     <button
                                         @click.stop="toggleSelection(ticket.id)"
@@ -1156,14 +1162,14 @@ function viewTicket(ticketId) {
                                     </button>
                                 </td>
                                 <td
-                                    class="px-6 py-4"
+                                    class="px-4 py-3"
                                     @click="viewTicket(ticket.id)"
                                 >
                                     <div class="flex items-start gap-3">
                                         <!-- Priority Indicator -->
                                         <div
                                             :class="[
-                                                'flex h-6 w-6 shrink-0 items-center justify-center rounded-lg mt-0.5',
+                                                'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md',
                                                 getPriorityConfig(
                                                     ticket.priority,
                                                 ).bgClass,
@@ -1176,7 +1182,7 @@ function viewTicket(ticketId) {
                                                     ).icon
                                                 "
                                                 :class="[
-                                                    'h-3.5 w-3.5',
+                                                    'h-3 w-3',
                                                     getPriorityConfig(
                                                         ticket.priority,
                                                     ).class,
@@ -1187,7 +1193,7 @@ function viewTicket(ticketId) {
                                         <!-- Ticket Info -->
                                         <div class="min-w-0">
                                             <div
-                                                class="flex items-center gap-2 mb-1"
+                                                class="mb-1 flex items-center gap-1.5"
                                             >
                                                 <span
                                                     class="text-[11px] font-mono text-[var(--text-muted)] shrink-0"
@@ -1212,14 +1218,14 @@ function viewTicket(ticketId) {
                                                 </Badge>
                                             </div>
                                             <h3
-                                                class="text-sm font-medium text-[var(--text-primary)] hover:text-[var(--interactive-primary)] transition-colors line-clamp-2"
+                                                class="line-clamp-2 text-sm font-medium text-[var(--text-primary)] transition-colors hover:text-[var(--interactive-primary)]"
                                                 :title="ticket.title"
                                             >
                                                 {{ ticket.title }}
                                             </h3>
 
                                             <!-- Overdue/SLA indicators -->
-                                            <div class="flex gap-2 mt-1">
+                                            <div class="mt-1 flex gap-1.5">
                                                 <Badge
                                                     v-if="ticket.isOverdue"
                                                     variant="danger"
@@ -1247,7 +1253,7 @@ function viewTicket(ticketId) {
 
                                 <!-- Status -->
                                 <td
-                                    class="px-6 py-4 hidden sm:table-cell"
+                                    class="hidden px-4 py-3 sm:table-cell"
                                     @click="viewTicket(ticket.id)"
                                 >
                                     <Badge
@@ -1272,7 +1278,7 @@ function viewTicket(ticketId) {
 
                                 <!-- Submitted By (Reporter) -->
                                 <td
-                                    class="px-6 py-4 hidden md:table-cell"
+                                    class="hidden px-4 py-3 md:table-cell"
                                     @click="viewTicket(ticket.id)"
                                 >
                                     <div
@@ -1293,7 +1299,7 @@ function viewTicket(ticketId) {
                                             class="h-6 w-6 p-1 rounded-full bg-[var(--surface-tertiary)] text-[var(--text-muted)]"
                                         />
                                         <span
-                                            class="text-sm text-[var(--text-secondary)] truncate max-w-[120px]"
+                                            class="max-w-[110px] truncate text-sm text-[var(--text-secondary)]"
                                             >{{
                                                 ticket.reporter?.name ||
                                                 "Unknown"
@@ -1304,7 +1310,7 @@ function viewTicket(ticketId) {
 
                                 <!-- Assigned To -->
                                 <td
-                                    class="px-6 py-4 hidden lg:table-cell"
+                                    class="hidden px-4 py-3 lg:table-cell"
                                     @click="viewTicket(ticket.id)"
                                 >
                                     <div
@@ -1326,7 +1332,7 @@ function viewTicket(ticketId) {
                                             class="h-6 w-6 p-1 rounded-full bg-[var(--surface-tertiary)] text-[var(--text-muted)]"
                                         />
                                         <span
-                                            class="text-sm text-[var(--text-secondary)] truncate max-w-[120px]"
+                                            class="max-w-[110px] truncate text-sm text-[var(--text-secondary)]"
                                             >{{
                                                 ticket.assignee?.name ||
                                                 "Unassigned"
@@ -1337,7 +1343,7 @@ function viewTicket(ticketId) {
 
                                 <!-- Created -->
                                 <td
-                                    class="px-6 py-4 text-sm text-[var(--text-secondary)] whitespace-nowrap hidden xl:table-cell"
+                                    class="hidden whitespace-nowrap px-4 py-3 text-sm text-[var(--text-secondary)] 2xl:table-cell"
                                     @click="viewTicket(ticket.id)"
                                 >
                                     {{ ticket.createdAt }}
@@ -1345,7 +1351,7 @@ function viewTicket(ticketId) {
 
                                 <!-- Updated -->
                                 <td
-                                    class="px-6 py-4 text-sm text-[var(--text-secondary)] whitespace-nowrap hidden 2xl:table-cell"
+                                    class="hidden whitespace-nowrap px-4 py-3 text-sm text-[var(--text-secondary)] xl:table-cell"
                                     @click="viewTicket(ticket.id)"
                                 >
                                     {{ ticket.updatedAt }}
@@ -1436,12 +1442,12 @@ function viewTicket(ticketId) {
                 <!-- Grid View -->
                 <div
                     v-else
-                    class="max-h-[calc(100vh-420px)] overflow-y-auto p-4"
+                    class="max-h-[calc(100vh-390px)] overflow-y-auto p-3"
                 >
                     <!-- Grid Header with Select All -->
                     <div
                         v-if="activeView !== 'archived'"
-                        class="flex items-center gap-3 mb-4 pb-3 border-b border-[var(--border-default)]"
+                        class="mb-3 flex items-center gap-3 border-b border-[var(--border-default)] pb-2.5"
                     >
                         <button
                             @click="toggleSelectAll"
@@ -1460,19 +1466,19 @@ function viewTicket(ticketId) {
 
                     <!-- Grid Items -->
                     <div
-                        class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+                        class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
                     >
                         <div
                             v-for="ticket in filteredTickets"
                             :key="ticket.id"
-                            class="group bg-[var(--surface-secondary)] rounded-xl border border-[var(--border-default)] hover:border-[var(--interactive-primary)]/40 hover:shadow-md transition-all p-4 relative cursor-pointer"
+                            class="group relative cursor-pointer rounded-xl border border-[var(--border-default)] bg-[var(--surface-secondary)] p-3 transition-all hover:border-[var(--interactive-primary)]/40 hover:shadow-md"
                             @click="viewTicket(ticket.id)"
                         >
                             <!-- Checkbox -->
                             <button
                                 v-if="activeView !== 'archived'"
                                 @click.stop="toggleSelection(ticket.id)"
-                                class="absolute top-3 left-3 z-10"
+                                class="absolute left-3 top-3 z-10"
                             >
                                 <CheckSquare
                                     v-if="selectedTickets.includes(ticket.id)"
@@ -1485,7 +1491,7 @@ function viewTicket(ticketId) {
                             </button>
 
                             <!-- Actions Menu -->
-                            <div class="absolute top-2 right-2">
+                            <div class="absolute right-2 top-2">
                                 <Dropdown align="end" @click.stop>
                                     <template #trigger>
                                         <Button
@@ -1523,7 +1529,7 @@ function viewTicket(ticketId) {
                                 :class="activeView !== 'archived' ? 'pl-6' : ''"
                             >
                                 <!-- Header: ID, Type, Status -->
-                                <div class="flex items-center gap-2 mb-2">
+                                <div class="mb-1.5 flex items-center gap-1.5">
                                     <span
                                         class="text-xs font-mono text-[var(--text-muted)]"
                                         >{{ ticket.displayId }}</span
@@ -1539,10 +1545,10 @@ function viewTicket(ticketId) {
                                 </div>
 
                                 <!-- Priority Indicator + Title -->
-                                <div class="flex items-start gap-2 mb-2">
+                                <div class="mb-2 flex items-start gap-2">
                                     <div
                                         :class="[
-                                            'flex h-6 w-6 shrink-0 items-center justify-center rounded-lg mt-0.5',
+                                            'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md',
                                             getPriorityConfig(ticket.priority)
                                                 .bgClass,
                                         ]"
@@ -1554,7 +1560,7 @@ function viewTicket(ticketId) {
                                                 ).icon
                                             "
                                             :class="[
-                                                'h-3.5 w-3.5',
+                                                'h-3 w-3',
                                                 getPriorityConfig(
                                                     ticket.priority,
                                                 ).class,
@@ -1562,14 +1568,14 @@ function viewTicket(ticketId) {
                                         />
                                     </div>
                                     <h3
-                                        class="text-sm font-semibold text-[var(--text-primary)] line-clamp-2"
+                                        class="line-clamp-2 text-sm font-semibold text-[var(--text-primary)]"
                                     >
                                         {{ ticket.title }}
                                     </h3>
                                 </div>
 
                                 <!-- Status Badge -->
-                                <div class="mb-3">
+                                <div class="mb-2.5">
                                     <Badge
                                         :variant="
                                             getStatusConfig(ticket.status)
@@ -1592,34 +1598,34 @@ function viewTicket(ticketId) {
                                         v-if="ticket.isOverdue"
                                         variant="danger"
                                         size="xs"
-                                        class="ml-1"
-                                        >Overdue</Badge
+                                    class="ml-1"
+                                    >Overdue</Badge
                                     >
                                     <Badge
                                         v-if="ticket.slaBreached"
                                         variant="danger"
                                         size="xs"
-                                        class="ml-1"
-                                        >SLA Breached</Badge
+                                    class="ml-1"
+                                    >SLA Breached</Badge
                                     >
                                     <Badge
                                         v-else-if="ticket.isSlaWarning"
                                         variant="warning"
                                         size="xs"
-                                        class="ml-1"
-                                        >SLA Warning</Badge
+                                    class="ml-1"
+                                    >SLA Warning</Badge
                                     >
                                 </div>
 
                                 <!-- Tags -->
                                 <div
                                     v-if="ticket.tags.length"
-                                    class="flex flex-wrap gap-1 mb-3"
+                                    class="mb-2.5 flex flex-wrap gap-1"
                                 >
                                     <span
                                         v-for="tag in ticket.tags.slice(0, 3)"
                                         :key="tag"
-                                        class="px-1.5 py-0.5 text-[10px] rounded bg-[var(--surface-tertiary)] text-[var(--text-muted)]"
+                                    class="rounded bg-[var(--surface-tertiary)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]"
                                     >
                                         {{ tag }}
                                     </span>
@@ -1633,7 +1639,7 @@ function viewTicket(ticketId) {
 
                                 <!-- Footer: Assignee, Comments, Updated -->
                                 <div
-                                    class="flex items-center justify-between text-xs text-[var(--text-muted)] pt-2 border-t border-[var(--border-muted)]"
+                                    class="flex items-center justify-between border-t border-[var(--border-muted)] pt-2 text-xs text-[var(--text-muted)]"
                                 >
                                     <div class="flex items-center gap-1.5">
                                         <Avatar
@@ -1644,7 +1650,7 @@ function viewTicket(ticketId) {
                                             size="xs"
                                         />
                                         <User v-else class="h-3.5 w-3.5" />
-                                        <span class="truncate max-w-[80px]">{{
+                                            <span class="max-w-[72px] truncate">{{
                                             ticket.assignee?.name ||
                                             "Unassigned"
                                         }}</span>
@@ -1705,7 +1711,7 @@ function viewTicket(ticketId) {
             <!-- Pagination -->
             <div
                 v-if="totalItems > 0"
-                class="flex items-center justify-between px-4 py-3 bg-[var(--surface-elevated)] rounded-xl border border-[var(--border-default)]"
+                class="flex items-center justify-between rounded-xl border border-[var(--border-default)] bg-[var(--surface-elevated)] px-4 py-2.5"
             >
                 <div class="flex items-center gap-4">
                     <span class="text-sm text-[var(--text-secondary)]">

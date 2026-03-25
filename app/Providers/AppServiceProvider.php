@@ -119,6 +119,11 @@ class AppServiceProvider extends ServiceProvider
             config('support_chat.ai_adapter', \App\Services\Support\Ai\SimulatedSupportAiAdapter::class)
         );
 
+        $this->app->bind(
+            \App\Contracts\DialerAcdBridgeContract::class,
+            \App\Services\Dialer\Bridges\PreparedDialerAcdBridge::class
+        );
+
         // Content Security Policy Service (Singleton for consistent nonce per request)
         $this->app->singleton(\App\Services\CSPService::class);
     }

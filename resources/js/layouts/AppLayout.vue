@@ -20,11 +20,13 @@ import IncomingCallOverlay from "@/views/chat/components/call/IncomingCallOverla
 import LiveChatWidget from "@/components/support/LiveChatWidget.vue";
 import { useVideoCall } from "@/composables/useVideoCall";
 import { appConfig } from "@/config/app";
+import { useDialerStore } from "@/stores/dialer";
 
 const route = useRoute();
 const router = useRouter();
 const navStore = useNavigationStore();
 const authStore = useAuthStore();
+const dialerStore = useDialerStore();
 
 // Initialize dynamic page title blinking
 usePageTitle();
@@ -63,6 +65,7 @@ const videoCall = useVideoCall();
 
 onMounted(async () => {
     printSecurityWarning();
+    dialerStore.ensureStatusMonitoring();
 
     // Initialize global video call event listeners
     videoCall.setupGlobalListeners();
@@ -90,6 +93,7 @@ function printSecurityWarning() {
 
 onBeforeUnmount(() => {
     authStore.stopAllListeners();
+    dialerStore.stopStatusPolling();
 });
 
 // Watch for 2FA enforcement and redirect to setup page
@@ -258,9 +262,10 @@ function handleRoleChangeLogout() {
 
         <!-- Incoming Call Overlay (call UI opens in standalone popup) -->
         <IncomingCallOverlay />
-        
+
         <!-- Support Chat Widget -->
         <LiveChatWidget v-if="shouldMountLiveChatWidget" hide-launcher />
+
     </div>
 </template>
 
@@ -271,4 +276,5 @@ function handleRoleChangeLogout() {
         width: 100% !important;
     }
 }
+
 </style>
