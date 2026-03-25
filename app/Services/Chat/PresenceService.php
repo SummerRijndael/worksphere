@@ -65,6 +65,7 @@ class PresenceService
             'support_available' => $supportAvailable,
         ], now()->addSeconds(self::OFFLINE_AFTER_SECONDS + 60));
         $this->rememberIndex($userModel->id);
+        $this->updateAcdPresence($userModel->id, $supportAvailable);
 
         $newStatus = $this->presenceStatus($userModel->id);
 
@@ -136,6 +137,15 @@ class PresenceService
         $current = $this->presenceStatus($userModel->id);
         $wasOnline = Cache::forget($cacheKey);
         $this->forgetIndex($userModel->id);
+
+        if ($userModel->support_available || $userModel->support_status !== 'unavailable') {
+            $userModel->update([
+                'support_available' => false,
+                'support_status' => 'unavailable',
+                'support_status_at' => now(),
+            ]);
+            $this->updateAcdPresence($userModel->id, false);
+        }
 
         if ($wasOnline || $current !== 'offline') {
             UserPresenceChanged::dispatch($userModel, 'offline', false, 'offline');
@@ -230,6 +240,7 @@ class PresenceService
         // Persist support status
         $userModel->update([
             'support_status' => $status,
+            'support_status_at' => now(),
             'support_available' => $available,
         ]);
 
@@ -243,6 +254,7 @@ class PresenceService
         ]), now()->addSeconds(self::OFFLINE_AFTER_SECONDS));
 
         $this->rememberIndex($userModel->id);
+        $this->updateAcdPresence($userModel->id, $available);
 
         // Broadcast with global status but updated support info
         $globalStatus = $current['status'] ?? $userModel->presence_preference ?? 'online';
@@ -267,6 +279,7 @@ class PresenceService
         ]), now()->addSeconds(self::OFFLINE_AFTER_SECONDS));
 
         $this->rememberIndex($userModel->id);
+        $this->updateAcdPresence($userModel->id, $available);
 
         $globalStatus = $current['status'] ?? $userModel->presence_preference ?? 'online';
         UserPresenceChanged::dispatch($userModel, $globalStatus, $available, (string) ($current['support_status'] ?? $userModel->support_status));
@@ -474,6 +487,16 @@ class PresenceService
         }
 
         return $prefix;
+    }
+
+    protected function updateAcdPresence(int $userId, bool $available): void
+    {
+        if ($available) {
+            Redis::zadd('acd:agents:available', now()->timestamp, $userId);
+            Redis::expire('acd:agents:available', self::OFFLINE_AFTER_SECONDS + 120);
+        } else {
+            Redis::zrem('acd:agents:available', $userId);
+        }
     }
 
     /**

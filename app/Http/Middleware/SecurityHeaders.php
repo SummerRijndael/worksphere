@@ -76,6 +76,7 @@ class SecurityHeaders
 
         // Allow unsafe-eval in local development for Vue DevTools / Vite HMR
         $scriptSrc = "'self' 'nonce-{$nonce}'";
+        $scriptElemSrc = "'self' 'nonce-{$nonce}'";
         $connectSrc = "'self' https://rtc.live.cloudflare.com"; // Cloudflare Calls Origin
         $styleSrc = "'self' 'unsafe-inline' https://fonts.bunny.net https://fonts.googleapis.com";
         $imgSrc = "'self' data: https: blob: cid:";
@@ -94,6 +95,7 @@ class SecurityHeaders
                 $viteUrl = trim(file_get_contents($hotFile));
                 if ($viteUrl) {
                     $scriptSrc .= " {$viteUrl}";
+                    $scriptElemSrc .= " {$viteUrl}";
                     $styleSrc .= " {$viteUrl}";
                     $fontSrc .= " {$viteUrl}";
                     $connectSrc .= ' ws://'.parse_url($viteUrl, PHP_URL_HOST).':'.parse_url($viteUrl, PHP_URL_PORT);
@@ -121,7 +123,7 @@ class SecurityHeaders
         $policy = [
             "default-src 'self'",
             "script-src {$scriptSrc} 'wasm-unsafe-eval' https://www.google.com https://www.gstatic.com https://www.googletagmanager.com https://www.google-analytics.com https://ssl.google-analytics.com https://cdn.jsdelivr.net https://storage.googleapis.com https://static.cloudflareinsights.com https://cloudflareinsights.com",
-            "script-src-elem {$scriptSrc} https://www.google.com https://www.gstatic.com https://www.googletagmanager.com https://www.google-analytics.com https://ssl.google-analytics.com https://cdn.jsdelivr.net https://storage.googleapis.com https://static.cloudflareinsights.com https://cloudflareinsights.com",
+            "script-src-elem {$scriptElemSrc} https://www.google.com https://www.gstatic.com https://www.googletagmanager.com https://www.google-analytics.com https://ssl.google-analytics.com https://cdn.jsdelivr.net https://storage.googleapis.com https://static.cloudflareinsights.com https://cloudflareinsights.com",
             "style-src {$styleSrc}",
             "font-src {$fontSrc}",
             "img-src {$imgSrc}",

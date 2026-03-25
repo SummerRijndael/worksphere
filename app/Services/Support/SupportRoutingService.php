@@ -10,6 +10,7 @@ use App\Jobs\RouteSupportConversationJob;
 use App\Models\SupportConversation;
 use App\Models\SupportMessage;
 use App\Models\SupportRoutingQueueEntry;
+use App\Models\SupportSkill;
 use App\Models\SupportSkillMembership;
 use App\Models\User;
 use App\Jobs\Support\SupportAssignmentTimeoutJob;
@@ -21,7 +22,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
-class SupportRoutingService
+class SupportRoutingService implements \App\Contracts\SupportRoutingServiceContract
 {
     public function __construct(
         protected SupportAccessAdapterResolver $supportAccessAdapterResolver,
@@ -38,6 +39,7 @@ class SupportRoutingService
         }
 
         $conversation = $conversation->fresh() ?? $conversation;
+        $conversation = $this->prepareConversationForRouting($conversation);
         if (! $this->shouldRouteConversation($conversation, $force)) {
             return null;
         }
@@ -52,9 +54,11 @@ class SupportRoutingService
                 'state' => SupportRoutingQueueEntry::STATE_PENDING,
                 'enqueue_reason' => $reason,
                 'priority' => $this->normalizePriority((string) ($conversation->priority ?? 'normal')),
+                'attempts' => 0,
                 'max_attempts' => max(1, (int) config('support_chat.routing.max_attempts', 20)),
                 'last_error' => null,
                 'next_attempt_at' => now(),
+                'last_routed_at' => null,
                 'assigned_to' => null,
             ])->save();
 
@@ -148,6 +152,26 @@ class SupportRoutingService
         }
 
         return $entries->count();
+    }
+
+    public function triggerImmediateRouting(): void
+    {
+        if (! $this->routingEnabled()) {
+            return;
+        }
+
+        SupportRoutingQueueEntry::query()
+            ->where('state', SupportRoutingQueueEntry::STATE_PENDING)
+            ->where(function (Builder $query): void {
+                $query->whereNull('next_attempt_at')
+                    ->orWhere('next_attempt_at', '>', now());
+            })
+            ->update([
+                'next_attempt_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+        $this->dispatchDueEntries();
     }
 
     public function processQueueEntry(int $queueEntryId): void
@@ -428,6 +452,49 @@ class SupportRoutingService
     protected function routingEnabled(): bool
     {
         return (bool) config('support_chat.routing.enabled', true);
+    }
+
+    protected function prepareConversationForRouting(SupportConversation $conversation): SupportConversation
+    {
+        if (! $this->requiresDefaultSkill($conversation)) {
+            return $conversation;
+        }
+
+        $defaultSkillId = $this->resolveDefaultSkillId();
+        if (! $defaultSkillId) {
+            return $conversation;
+        }
+
+        $updates = ['support_skill_id' => $defaultSkillId];
+        if (Schema::hasColumn('support_conversations', 'routing_scope')) {
+            $updates['routing_scope'] = 'skill';
+        }
+
+        $conversation->forceFill($updates)->save();
+
+        return $conversation->fresh() ?? $conversation;
+    }
+
+    protected function requiresDefaultSkill(SupportConversation $conversation): bool
+    {
+        return (string) config('support_chat.access_adapter', 'legacy') === 'skills'
+            && (bool) config('support_chat.skills.enabled', false)
+            && ! (bool) config('support_chat.skills.allow_unrouted_conversation_fallback', true)
+            && ! $conversation->support_skill_id;
+    }
+
+    protected function resolveDefaultSkillId(): ?int
+    {
+        $preferredSlug = trim((string) config('support_chat.skills.default_skill_slug', 'general-support'));
+
+        return SupportSkill::query()
+            ->where('is_active', true)
+            ->when($preferredSlug !== '', function (Builder $query) use ($preferredSlug): void {
+                $query->orderByRaw('CASE WHEN slug = ? THEN 0 ELSE 1 END', [$preferredSlug]);
+            })
+            ->orderBy('priority')
+            ->orderBy('name')
+            ->value('id');
     }
 
     protected function selectCandidateAgent(SupportConversation $conversation): ?User

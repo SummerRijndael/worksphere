@@ -29,7 +29,10 @@ interface SupportConversationServiceContract
 
     public function assignConversation(SupportConversation $conversation, User $agent, User $actor): SupportConversation;
 
-    public function resolveConversation(SupportConversation $conversation, User $actor): SupportConversation;
+    /**
+     * @param  array<string, mixed>  $options
+     */
+    public function resolveConversation(SupportConversation $conversation, User $actor, array $options = []): SupportConversation;
 
     /**
      * @param  array<string, mixed>  $options
@@ -49,6 +52,13 @@ interface SupportConversationServiceContract
     ): SupportConversation;
 
     public function claimConversationToUser(SupportConversation $conversation, User $user): SupportConversation;
+
+    public function findActiveConversationByReference(string $chatReference, ?User $actor = null, ?string $guestEmail = null): ?SupportConversation;
+
+    /**
+     * @return Collection<int, SupportConversation>
+     */
+    public function customerHistory(User $user, int $limit = 20): Collection;
 
     public function canOperateAsAgent(User $user): bool;
 
@@ -76,5 +86,8 @@ interface SupportConversationServiceContract
      */
     public function transfer(SupportConversation $conversation, User $actor, array $payload): SupportConversation;
 
-    public function completeWrapUp(SupportConversation $conversation, User $actor): SupportConversation;
+    /**
+     * @param  array<string, mixed>  $options
+     */
+    public function completeWrapUp(SupportConversation $conversation, User $actor, array $options = []): SupportConversation;
 }

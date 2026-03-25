@@ -2,11 +2,13 @@
 import { onMounted, onBeforeUnmount, ref } from "vue";
 import { Card, Button, Badge } from "@/components/ui";
 import { Loader2, MessageSquare, Users, AlertCircle, Inbox, Clock, Bot, User as UserIcon } from "lucide-vue-next";
+import DashboardLineChart from "@/components/charts/DashboardLineChart.vue";
 import api from "@/lib/api";
 import { formatDistanceToNow } from "date-fns";
 import { useRouter } from "vue-router";
 import { setSupportRealtimeToken } from "@/echo";
 import { useToast } from "@/composables/useToast";
+import { getSupportStatusColor, getSupportStatusLabel } from "@/composables/usePresence";
 
 const router = useRouter();
 const toast = useToast();
@@ -16,6 +18,7 @@ const metricsLoading = ref(false);
 const availability = ref({
     available: false,
     available_agents: 0,
+    agents: [],
     message: "Checking support availability...",
 });
 const waitingQueue = ref([]);
@@ -25,16 +28,27 @@ const metrics = ref({
     average_wait_time_seconds: 0,
     ai_resolution_rate: 0,
     resolved_today: 0,
-    ai_resolved_today: 0
+    ai_resolved_today: 0,
+    today_trend: {
+        labels: [],
+        incoming_chats: [],
+        resolved_chats: [],
+        peak_hour_label: null,
+        peak_hour_count: 0,
+    },
 });
 const uiTimers = ref({
     last_response_warn_minutes: 5,
     last_response_alert_minutes: 15,
 });
+const liveClockNow = ref(Date.now());
 
 const loadError = ref("");
 let refreshInterval = null;
-let echoChannel = null;
+let supportInboxChannel = null;
+let presenceChannel = null;
+let liveDurationInterval = null;
+let realtimeRefreshTimeout = null;
 
 async function loadMetrics() {
     metricsLoading.value = true;
@@ -53,20 +67,28 @@ async function loadDashboard(showLoading = true) {
     loadError.value = "";
 
     try {
-        const [availabilityResponse, waitingRes, aiRes, assignedRes] = await Promise.all([
+        const [availabilityResponse, waitingRes, aiRes, assignedRes] = await Promise.allSettled([
             api.get("/api/support/chats/availability"),
             api.get("/api/support/chats/inbox", { params: { scope: "waiting", per_page: 50 } }),
             api.get("/api/support/chats/inbox", { params: { scope: "ai", per_page: 50 } }),
             api.get("/api/support/chats/inbox", { params: { scope: "assigned_all", per_page: 50 } }),
         ]);
 
-        availability.value = availabilityResponse.data?.data ?? availability.value;
-        waitingQueue.value = waitingRes.data?.data ?? [];
-        aiQueue.value = aiRes.data?.data ?? [];
-        assignedQueue.value = assignedRes.data?.data ?? [];
+        if (availabilityResponse.status === "fulfilled") {
+            availability.value = availabilityResponse.value.data?.data ?? availability.value;
+        }
+        if (waitingRes.status === "fulfilled") {
+            waitingQueue.value = waitingRes.value.data?.data ?? [];
+        }
+        if (aiRes.status === "fulfilled") {
+            aiQueue.value = aiRes.value.data?.data ?? [];
+        }
+        if (assignedRes.status === "fulfilled") {
+            assignedQueue.value = assignedRes.value.data?.data ?? [];
+        }
 
         // Update realtime token if provided in metadata
-        const meta = waitingRes.data?.meta || {};
+        const meta = waitingRes.status === "fulfilled" ? (waitingRes.value.data?.meta || {}) : {};
         if (meta.realtime?.token) {
             setSupportRealtimeToken(meta.realtime.token, 'agent');
             subscribeToRealtime();
@@ -76,6 +98,22 @@ async function loadDashboard(showLoading = true) {
         }
 
         loadMetrics();
+
+        const failedRequests = [availabilityResponse, waitingRes, aiRes, assignedRes]
+            .filter((result) => result.status === "rejected");
+
+        if (failedRequests.length > 0) {
+            console.warn("[SupportDashboard] Partial dashboard refresh failure.", failedRequests);
+
+            if (
+                availabilityResponse.status === "rejected" &&
+                waitingRes.status === "rejected" &&
+                aiRes.status === "rejected" &&
+                assignedRes.status === "rejected"
+            ) {
+                throw waitingRes.reason || availabilityResponse.reason || aiRes.reason || assignedRes.reason;
+            }
+        }
     } catch (error) {
         console.error("Failed to load support chat dashboard:", error);
         loadError.value = "Unable to load dashboard data. Please refresh.";
@@ -85,23 +123,60 @@ async function loadDashboard(showLoading = true) {
 }
 
 function subscribeToRealtime() {
-    if (echoChannel) return;
-
     const echo = window.Echo;
     if (!echo) return;
 
-    echoChannel = echo.private('support.agent.inbox')
-        .listen('.SupportConversationChanged', (event) => {
-            console.debug('[SupportDashboard] Real-time update received:', event);
-            // Refresh dashboard data without showing full loading state
+    const scheduleRealtimeRefresh = () => {
+        if (realtimeRefreshTimeout) {
+            clearTimeout(realtimeRefreshTimeout);
+        }
+
+        realtimeRefreshTimeout = setTimeout(() => {
             loadDashboard(false);
-        });
+        }, 250);
+    };
+
+    if (!supportInboxChannel) {
+        supportInboxChannel = echo.private('support.agent.inbox')
+            .listen('.SupportConversationChanged', (event) => {
+                console.debug('[SupportDashboard] Support inbox update received:', event);
+                scheduleRealtimeRefresh();
+            });
+    }
+
+    if (!presenceChannel) {
+        presenceChannel = echo.join('online-users')
+            .joining((user) => {
+                console.debug('[SupportDashboard] Presence joining:', user?.public_id);
+                scheduleRealtimeRefresh();
+            })
+            .leaving((user) => {
+                console.debug('[SupportDashboard] Presence leaving:', user?.public_id);
+                scheduleRealtimeRefresh();
+            })
+            .listen('.presence.changed', (event) => {
+                console.debug('[SupportDashboard] Presence update received:', event);
+                scheduleRealtimeRefresh();
+            });
+    }
 }
 
 function unsubscribeFromRealtime() {
-    if (echoChannel && window.Echo) {
+    if (realtimeRefreshTimeout) {
+        clearTimeout(realtimeRefreshTimeout);
+        realtimeRefreshTimeout = null;
+    }
+
+    if (!window.Echo) return;
+
+    if (supportInboxChannel) {
         window.Echo.leave('support.agent.inbox');
-        echoChannel = null;
+        supportInboxChannel = null;
+    }
+
+    if (presenceChannel) {
+        window.Echo.leave('online-users');
+        presenceChannel = null;
     }
 }
 
@@ -109,10 +184,14 @@ onMounted(() => {
     loadDashboard();
     // Fallback polling if realtime fails or for background consistency
     refreshInterval = setInterval(() => loadDashboard(false), 60000);
+    liveDurationInterval = setInterval(() => {
+        liveClockNow.value = Date.now();
+    }, 1000);
 });
 
 onBeforeUnmount(() => {
     if (refreshInterval) clearInterval(refreshInterval);
+    if (liveDurationInterval) clearInterval(liveDurationInterval);
     unsubscribeFromRealtime();
 });
 
@@ -143,8 +222,170 @@ function formatAverageWait(seconds) {
     return `${Math.round(seconds / 60)}m`;
 }
 
-function openChat(publicId) {
-    router.push(`/support/chats/${publicId}`);
+function formatHandleTime(seconds) {
+    if (seconds === null || typeof seconds === "undefined") return "—";
+    if (seconds < 60) return `${Math.round(seconds)}s`;
+
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const remainingSeconds = seconds % 60;
+
+    if (hours > 0) {
+        return `${hours}h ${String(minutes).padStart(2, "0")}m`;
+    }
+
+    if (remainingSeconds === 0) {
+        return `${minutes}m`;
+    }
+
+    return `${minutes}m ${remainingSeconds}s`;
+}
+
+function getLongestChatToneClasses(seconds) {
+    if (seconds === null || typeof seconds === "undefined") {
+        return "text-[var(--text-primary)]";
+    }
+
+    if (seconds >= 2400) {
+        return "animate-pulse text-red-600 dark:text-red-400";
+    }
+
+    if (seconds >= 1800) {
+        return "text-red-600 dark:text-red-400";
+    }
+
+    if (seconds >= 1200) {
+        return "text-orange-600 dark:text-orange-400";
+    }
+
+    if (seconds >= 600) {
+        return "text-amber-600 dark:text-amber-400";
+    }
+
+    return "text-[var(--text-primary)]";
+}
+
+function getLiveLongestActiveChatSeconds(agent) {
+    const workingSinceAt = agent?.working_since_at;
+    if (!workingSinceAt) {
+        return agent?.longest_active_chat_seconds ?? null;
+    }
+
+    const start = new Date(workingSinceAt).getTime();
+    if (Number.isNaN(start)) {
+        return agent?.longest_active_chat_seconds ?? null;
+    }
+
+    const diff = Math.floor((liveClockNow.value - start) / 1000);
+    return diff >= 0 ? diff : 0;
+}
+
+function formatActiveChatsLoad(agent) {
+    const current = Number(agent?.active_chats || 0);
+    const max = Number(agent?.agent_capacity || 0);
+
+    if (max > 0) {
+        return `${current}/${max}`;
+    }
+
+    return `${current}`;
+}
+
+function formatSurveyMetric(agent) {
+    const responses = Number(agent?.survey_responses_today || 0);
+    const average = agent?.survey_csat_average_today;
+
+    if (average !== null && typeof average !== "undefined") {
+        return `${Number(average).toFixed(1)}/5`;
+    }
+
+    if (responses > 0) {
+        return `${responses} resp`;
+    }
+
+    return "—";
+}
+
+function formatSurveySubtext(agent) {
+    const responses = Number(agent?.survey_responses_today || 0);
+    if (responses <= 0) return null;
+    return `${responses} ${responses === 1 ? "response" : "responses"}`;
+}
+
+function shouldShowStatusDuration(status) {
+    return ["available", "working", "break", "lunch", "acw", "bio"].includes(String(status || "").toLowerCase());
+}
+
+function formatStatusDuration(statusAt, status) {
+    if (!statusAt || !shouldShowStatusDuration(status)) return null;
+
+    const start = new Date(statusAt).getTime();
+    if (Number.isNaN(start)) return null;
+
+    const diff = Math.floor((liveClockNow.value - start) / 1000);
+    if (diff < 0) return "00:00";
+
+    const hours = Math.floor(diff / 3600);
+    const minutes = Math.floor((diff % 3600) / 60);
+    const seconds = diff % 60;
+
+    if (hours > 0) {
+        return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+    }
+
+    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function getAgentDisplayStatus(agent) {
+    const baseStatus = String(agent?.support_status || "unavailable").toLowerCase();
+
+    if (baseStatus === "available" && Number(agent?.active_chats || 0) > 0) {
+        return "working";
+    }
+
+    return baseStatus;
+}
+
+function getAgentDisplayStatusAt(agent) {
+    const displayStatus = getAgentDisplayStatus(agent);
+
+    if (displayStatus === "working") {
+        return agent?.working_since_at || agent?.support_status_at || null;
+    }
+
+    return agent?.support_status_at || null;
+}
+
+function conversationIdFor(chat) {
+    if (!chat || typeof chat !== "object") {
+        return "";
+    }
+
+    if (typeof chat.id === "string" && chat.id.trim() !== "") {
+        return chat.id.trim();
+    }
+
+    if (typeof chat.public_id === "string" && chat.public_id.trim() !== "") {
+        return chat.public_id.trim();
+    }
+
+    return "";
+}
+
+function openQueueChat(chat, preferredScope = "all") {
+    const conversationId = conversationIdFor(chat);
+    if (!conversationId) {
+        toast.error("This conversation is missing an ID and cannot be opened yet.");
+        return;
+    }
+
+    router.push({
+        name: "support.inbox",
+        query: {
+            conversation: conversationId,
+            scope: preferredScope,
+        },
+    });
 }
 
 function getStatusColor(status) {
@@ -236,11 +477,9 @@ function getStatusLabel(status) {
             </Card>
         </div>
 
-        <!-- Main Layout with Sidebar -->
-        <div class="flex flex-col xl:flex-row gap-6 items-start">
-            
+        <div class="space-y-6">
             <!-- Queues Grid -->
-            <div class="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 w-full">
+            <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
                 <!-- Waiting Queue -->
                 <Card class="flex flex-col h-[600px] overflow-hidden">
                     <div class="p-4 border-b border-[var(--border-muted)] bg-[var(--surface-secondary)]/50 flex items-center gap-2">
@@ -252,8 +491,8 @@ function getStatusLabel(status) {
                             <Inbox class="h-8 w-8 mb-2 opacity-50" />
                             <p class="text-sm">No chats waiting.</p>
                         </div>
-                        <div v-for="chat in waitingQueue" :key="chat.public_id" 
-                             @click="openChat(chat.public_id)"
+                        <div v-for="(chat, index) in waitingQueue" :key="conversationIdFor(chat) || `waiting-${index}`" 
+                             @click="openQueueChat(chat, 'unassigned')"
                              class="p-3 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-primary)] hover:border-[var(--interactive-primary)] cursor-pointer transition-colors group relative overflow-hidden"
                              :class="{
                                  'border-red-500/50 bg-red-50/10': getSLAStatus(chat) === 'alert',
@@ -300,8 +539,8 @@ function getStatusLabel(status) {
                             <Bot class="h-8 w-8 mb-2 opacity-50" />
                             <p class="text-sm">No active AI chats.</p>
                         </div>
-                        <div v-for="chat in aiQueue" :key="chat.public_id" 
-                             @click="openChat(chat.public_id)"
+                        <div v-for="(chat, index) in aiQueue" :key="conversationIdFor(chat) || `ai-${index}`" 
+                             @click="openQueueChat(chat, 'all')"
                              class="p-3 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-primary)] hover:border-[var(--color-info-500)] cursor-pointer transition-colors group">
                             <div class="flex justify-between items-start mb-2">
                                 <span class="font-medium text-[var(--text-primary)] text-sm truncate pr-2">{{ chat.guest_name || chat.requester?.name || 'Anonymous' }}</span>
@@ -329,8 +568,8 @@ function getStatusLabel(status) {
                             <UserIcon class="h-8 w-8 mb-2 opacity-50" />
                             <p class="text-sm">No assigned chats.</p>
                         </div>
-                        <div v-for="chat in assignedQueue" :key="chat.public_id" 
-                             @click="openChat(chat.public_id)"
+                        <div v-for="(chat, index) in assignedQueue" :key="conversationIdFor(chat) || `assigned-${index}`" 
+                             @click="openQueueChat(chat, 'all')"
                              class="p-3 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-primary)] hover:border-[var(--color-success-500)] cursor-pointer transition-colors group">
                             <div class="flex justify-between items-start mb-2">
                                 <span class="font-medium text-[var(--text-primary)] text-sm truncate pr-2">{{ chat.guest_name || chat.requester?.name || 'Anonymous' }}</span>
@@ -350,41 +589,142 @@ function getStatusLabel(status) {
                 </Card>
             </div>
 
-            <!-- Agent Availability Sidebar -->
-            <Card class="w-full xl:w-72 flex-shrink-0 flex flex-col h-[600px] overflow-hidden">
+            <Card class="overflow-hidden">
+                <div class="flex items-center justify-between border-b border-[var(--border-muted)] bg-[var(--surface-secondary)]/50 p-4">
+                    <div>
+                        <h3 class="font-semibold text-[var(--text-primary)]">Today's Trend</h3>
+                        <p class="text-sm text-[var(--text-secondary)]">
+                            See when inbound chats surged and when closures peaked.
+                        </p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-xs uppercase tracking-wider text-[var(--text-muted)]">Peak Hour</p>
+                        <p class="text-sm font-semibold text-[var(--text-primary)]">
+                            {{ metrics.today_trend.peak_hour_label || "—" }}
+                            <span class="text-[var(--text-secondary)]">
+                                ({{ metrics.today_trend.peak_hour_count || 0 }} chats)
+                            </span>
+                        </p>
+                    </div>
+                </div>
+                <div class="p-4">
+                    <DashboardLineChart
+                        :labels="metrics.today_trend.labels || []"
+                        :datasets="[
+                            {
+                                label: 'New Chats',
+                                data: metrics.today_trend.incoming_chats || [],
+                                borderColor: 'rgb(14, 165, 233)',
+                                backgroundColor: 'rgba(14, 165, 233, 0.12)',
+                            },
+                            {
+                                label: 'Resolved / Closed',
+                                data: metrics.today_trend.resolved_chats || [],
+                                borderColor: 'rgb(34, 197, 94)',
+                                backgroundColor: 'rgba(34, 197, 94, 0.10)',
+                            },
+                        ]"
+                        title="Chats By Hour"
+                        :height="320"
+                    />
+                </div>
+            </Card>
+
+            <!-- Agent Availability Table -->
+            <Card class="overflow-hidden">
                 <div class="p-4 border-b border-[var(--border-muted)] bg-[var(--surface-secondary)]/50 flex items-center justify-between">
                     <div class="flex items-center gap-2">
                         <Users class="h-4 w-4 text-[var(--interactive-primary)]" />
                         <h3 class="font-semibold text-[var(--text-primary)]">Online Agents</h3>
                     </div>
                     <Badge :variant="availability.available ? 'success' : 'secondary'" size="sm">
-                        {{ availability.agents?.length || 0 }}
+                        {{ availability.available_agents || 0 }}
                     </Badge>
                 </div>
-                <div class="flex-1 overflow-y-auto p-3 space-y-3">
-                    <div v-if="!availability.agents || availability.agents.length === 0" class="flex flex-col items-center justify-center py-8 text-[var(--text-muted)] text-center">
-                        <Users class="h-8 w-8 mb-2 opacity-30" />
-                        <p class="text-xs">No active agents right now. Routing will queue or rely on AI.</p>
-                    </div>
-                    <div v-else class="space-y-3">
-                        <div v-for="agent in availability.agents" :key="agent.public_id" class="flex items-center justify-between group">
-                            <div class="flex items-center gap-3 overflow-hidden">
-                                <div class="relative flex-shrink-0">
-                                    <img v-if="agent.avatar_thumb_url" :src="agent.avatar_thumb_url" :alt="agent.name" class="w-8 h-8 rounded-full border border-[var(--border-subtle)] object-cover" />
-                                    <div v-else class="w-8 h-8 rounded-full bg-[var(--surface-tertiary)] text-[var(--text-secondary)] border border-[var(--border-subtle)] flex items-center justify-center text-xs font-semibold">
-                                        {{ agent.name.substring(0, 2).toUpperCase() }}
+                <div v-if="!availability.agents || availability.agents.length === 0" class="flex flex-col items-center justify-center py-10 text-[var(--text-muted)] text-center">
+                    <Users class="h-8 w-8 mb-2 opacity-30" />
+                    <p class="text-sm">No active agents right now. Routing will queue or rely on AI.</p>
+                </div>
+                <div v-else class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-[var(--border-muted)]">
+                        <thead class="bg-[var(--surface-secondary)]/30">
+                            <tr class="text-xs uppercase tracking-wider text-[var(--text-muted)]">
+                                <th class="px-4 py-3 text-left font-semibold">Agent Name</th>
+                                <th class="px-4 py-3 text-center font-semibold">Current Status</th>
+                                <th class="px-4 py-3 text-center font-semibold">Current Active Chats</th>
+                                <th class="px-4 py-3 text-center font-semibold">Longest Active Chat</th>
+                                <th class="px-4 py-3 text-center font-semibold">Completed Today</th>
+                                <th class="px-4 py-3 text-center font-semibold">Missed</th>
+                                <th class="px-4 py-3 text-center font-semibold">Rejected</th>
+                                <th class="px-4 py-3 text-center font-semibold">AHT</th>
+                                <th class="px-4 py-3 text-center font-semibold">Transfers</th>
+                                <th class="px-4 py-3 text-center font-semibold">Survey</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-[var(--border-subtle)] bg-[var(--surface-primary)]">
+                            <tr v-for="agent in availability.agents" :key="agent.public_id" class="hover:bg-[var(--surface-secondary)]/35 transition-colors">
+                                <td class="px-4 py-3">
+                                    <div class="flex items-center gap-3">
+                                        <div class="relative flex-shrink-0">
+                                            <img v-if="agent.avatar_thumb_url" :src="agent.avatar_thumb_url" :alt="agent.name" class="h-9 w-9 rounded-full border border-[var(--border-subtle)] object-cover" />
+                                            <div v-else class="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--surface-tertiary)] text-xs font-semibold text-[var(--text-secondary)]">
+                                                {{ agent.name.substring(0, 2).toUpperCase() }}
+                                            </div>
+                                            <span
+                                                class="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-[var(--surface-primary)]"
+                                                :class="getSupportStatusColor(getAgentDisplayStatus(agent))"
+                                            ></span>
+                                        </div>
+                                        <div class="min-w-0">
+                                            <p class="truncate text-sm font-medium text-[var(--text-primary)]">{{ agent.name }}</p>
+                                        </div>
                                     </div>
-                                    <span class="absolute bottom-0 right-0 w-2.5 h-2.5 bg-[var(--color-success-500)] border-2 border-[var(--surface-primary)] rounded-full"></span>
-                                </div>
-                                <div class="min-w-0 pr-2">
-                                    <p class="text-sm font-medium text-[var(--text-primary)] truncate">{{ agent.name }}</p>
-                                    <p class="text-xs text-[var(--text-secondary)] truncate text-ellipsis overflow-hidden">
-                                        {{ agent.active_chats }} active {{ agent.active_chats === 1 ? 'chat' : 'chats' }}
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                                </td>
+                                <td class="px-4 py-3 text-center">
+                                    <div class="flex items-center justify-center gap-1.5 text-sm text-[var(--text-secondary)]">
+                                        <span>{{ getSupportStatusLabel(getAgentDisplayStatus(agent)) }}</span>
+                                        <template v-if="formatStatusDuration(getAgentDisplayStatusAt(agent), getAgentDisplayStatus(agent))">
+                                            <span class="opacity-40 select-none">•</span>
+                                            <span class="font-mono tabular-nums opacity-80">
+                                                {{ formatStatusDuration(getAgentDisplayStatusAt(agent), getAgentDisplayStatus(agent)) }}
+                                            </span>
+                                        </template>
+                                    </div>
+                                </td>
+                                <td class="px-4 py-3 text-center text-sm font-medium text-[var(--text-primary)]">
+                                    {{ formatActiveChatsLoad(agent) }}
+                                </td>
+                                <td class="px-4 py-3 text-center text-sm font-medium text-[var(--text-primary)]">
+                                    <span :class="getLongestChatToneClasses(getLiveLongestActiveChatSeconds(agent))">
+                                        {{ formatHandleTime(getLiveLongestActiveChatSeconds(agent)) }}
+                                    </span>
+                                </td>
+                                <td class="px-4 py-3 text-center text-sm font-medium text-[var(--text-primary)]">
+                                    {{ agent.completed_today }}
+                                </td>
+                                <td class="px-4 py-3 text-center text-sm font-medium text-[var(--color-warning-600)] dark:text-[var(--color-warning-400)]">
+                                    {{ agent.missed_today || 0 }}
+                                </td>
+                                <td class="px-4 py-3 text-center text-sm font-medium text-red-600 dark:text-red-400">
+                                    {{ agent.rejected_today || 0 }}
+                                </td>
+                                <td class="px-4 py-3 text-center text-sm font-medium text-[var(--text-primary)]">
+                                    {{ formatHandleTime(agent.average_handle_time_seconds) }}
+                                </td>
+                                <td class="px-4 py-3 text-center text-sm font-medium text-[var(--text-primary)]">
+                                    {{ agent.transfers_today }}
+                                </td>
+                                <td class="px-4 py-3 text-center">
+                                    <div class="text-sm font-medium text-[var(--text-primary)]">
+                                        {{ formatSurveyMetric(agent) }}
+                                    </div>
+                                    <div v-if="formatSurveySubtext(agent)" class="text-xs text-[var(--text-secondary)]">
+                                        {{ formatSurveySubtext(agent) }}
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </Card>
         </div>

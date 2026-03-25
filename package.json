@@ -8,7 +8,7 @@
         "test:legacy-sfu": "node scripts/run-legacy-sfu-tests.mjs",
         "vue-tsc": "vue-tsc --noEmit",
         "typecheck:app": "vue-tsc --noEmit -p tsconfig.typecheck.app.json",
-        "start-all": "php artisan storage:link 2>/dev/null && php artisan optimize:clear && concurrently \"npm run dev\" \"php artisan monitor:stream\" \"php artisan serve --host=0.0.0.0\" \"php artisan reverb:start --port=9000 --debug\" \"php artisan schedule:work\" \"php artisan horizon\" --names=\"vite,stream,mcp,serve,reverb,sched,horizon\" --prefix-colors=\"green,gray,red,blue,yellow,magenta,cyan\"",
+        "start-all": "php artisan storage:link 2>/dev/null && php artisan optimize:clear && concurrently \"npm run dev\" \"php artisan monitor:stream\" \"php artisan serve --host=0.0.0.0\" \"php artisan reverb:start --port=9000 --debug\" \"php artisan schedule:work\" \"php artisan horizon\" \"php artisan support:acd-watchdog\" --names=\"vite,stream,mcp,serve,reverb,sched,horizon,acd\" --prefix-colors=\"green,gray,red,blue,yellow,magenta,cyan,white\"",
         "pulse": "while true; do php artisan pulse:check; sleep 5; done"
     },
     "dependencies": {

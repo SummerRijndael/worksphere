@@ -2,6 +2,7 @@
 
 namespace App\Services\Support;
 
+use App\Contracts\SupportRoutingServiceContract;
 use App\Models\SupportConversation;
 use App\Models\SupportSkill;
 use App\Models\SupportSkillMembership;
@@ -12,7 +13,7 @@ use Illuminate\Support\Facades\DB;
 class SupportSkillService
 {
     public function __construct(
-        protected SupportRoutingService $supportRoutingService
+        protected SupportRoutingServiceContract $supportRoutingService
     ) {}
 
     /**

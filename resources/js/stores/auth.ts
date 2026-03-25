@@ -609,6 +609,7 @@ export const useAuthStore = defineStore('auth', () => {
       if (user.value && response.data?.data) {
         user.value.support_available = !!response.data.data.support_available;
         user.value.support_status = response.data.data.status;
+        user.value.support_status_at = response.data.data.support_status_at ?? null;
       }
       return true;
     } catch (error) {

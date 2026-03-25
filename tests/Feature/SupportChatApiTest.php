@@ -5,6 +5,8 @@ namespace Tests\Feature;
 use App\Contracts\SupportSurveyServiceContract;
 use App\Models\SupportConversation;
 use App\Models\SupportMessage;
+use App\Models\SupportSkill;
+use App\Models\SupportSkillMembership;
 use App\Models\SupportSurveyInvite;
 use App\Models\SupportSurveyResponse;
 use App\Models\User;
@@ -23,6 +25,8 @@ class SupportChatApiTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected SupportSkill $skill;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -36,6 +40,29 @@ class SupportChatApiTest extends TestCase
         ] as $permission) {
             Permission::findOrCreate($permission, 'web');
         }
+
+        $this->skill = SupportSkill::create([
+            'name' => 'Core Support',
+            'slug' => 'core-support',
+            'is_active' => true,
+        ]);
+    }
+
+    protected function createSupportAgent(Role $role): User
+    {
+        $agent = User::factory()->create(['status' => 'active']);
+        $agent->assignRole($role);
+
+        SupportSkillMembership::create([
+            'support_skill_id' => $this->skill->id,
+            'user_id' => $agent->id,
+            'membership_role' => 'agent',
+            'is_primary' => true,
+            'is_active' => true,
+            'capacity' => 3,
+        ]);
+
+        return $agent;
     }
 
     public function test_guest_can_open_conversation_and_continue_with_guest_token(): void
@@ -276,6 +303,55 @@ class SupportChatApiTest extends TestCase
             ->postJson('/api/support/chats/claim-guest')
             ->assertOk()
             ->assertJsonPath('data', null);
+    }
+
+    public function test_authenticated_user_can_load_own_support_chat_history(): void
+    {
+        $user = User::factory()->create();
+        $otherUser = User::factory()->create();
+
+        $ownConversation = SupportConversation::create([
+            'requester_user_id' => $user->id,
+            'guest_name' => $user->name,
+            'guest_email' => $user->email,
+            'status' => SupportConversation::STATUS_CLOSED,
+            'priority' => 'normal',
+            'channel' => 'widget',
+            'ai_enabled' => true,
+        ]);
+
+        $latestMessage = SupportMessage::create([
+            'conversation_id' => $ownConversation->id,
+            'sender_type' => SupportMessage::SENDER_AGENT,
+            'body' => 'Your case has been resolved.',
+        ]);
+
+        $ownConversation->forceFill([
+            'last_message_at' => $latestMessage->created_at,
+        ])->save();
+
+        $otherConversation = SupportConversation::create([
+            'requester_user_id' => $otherUser->id,
+            'guest_name' => $otherUser->name,
+            'guest_email' => $otherUser->email,
+            'status' => SupportConversation::STATUS_OPEN,
+            'priority' => 'normal',
+            'channel' => 'widget',
+            'ai_enabled' => true,
+        ]);
+
+        SupportMessage::create([
+            'conversation_id' => $otherConversation->id,
+            'sender_type' => SupportMessage::SENDER_CUSTOMER,
+            'body' => 'This should stay private.',
+        ]);
+
+        $this->actingAs($user)
+            ->getJson('/api/support/chats/history')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $ownConversation->public_id)
+            ->assertJsonPath('data.0.latest_message.body', 'Your case has been resolved.');
     }
 
     public function test_guest_can_fetch_paginated_messages_for_infinite_scroll(): void
@@ -585,8 +661,10 @@ class SupportChatApiTest extends TestCase
             ->assertJsonPath('meta.total', 0);
     }
 
-    public function test_agent_can_view_inbox_assign_reply_and_resolve_conversation(): void
+    public function test_agent_can_view_inbox_assign_reply_and_start_close_out(): void
     {
+        Queue::fake([\App\Jobs\Support\SupportAssignmentTimeoutJob::class]);
+
         $agentRole = Role::findOrCreate('administrator', 'web');
         $agentRole->syncPermissions([
             'support.chats.view',
@@ -595,11 +673,9 @@ class SupportChatApiTest extends TestCase
             'support.chats.resolve',
         ]);
 
-        $agent = User::factory()->create(['status' => 'active']);
-        $agent->assignRole($agentRole);
+        $agent = $this->createSupportAgent($agentRole);
 
-        $secondaryAgent = User::factory()->create(['status' => 'active']);
-        $secondaryAgent->assignRole($agentRole);
+        $secondaryAgent = $this->createSupportAgent($agentRole);
 
         $requester = User::factory()->create();
 
@@ -609,6 +685,7 @@ class SupportChatApiTest extends TestCase
             'priority' => 'normal',
             'channel' => 'widget',
             'ai_enabled' => true,
+            'support_skill_id' => $this->skill->id,
         ]);
 
         SupportMessage::create([
@@ -646,8 +723,8 @@ class SupportChatApiTest extends TestCase
             ]);
 
         $assignResponse->assertOk()
-            ->assertJsonPath('data.status', SupportConversation::STATUS_ASSIGNED)
-            ->assertJsonPath('data.assignment_state', SupportConversation::ASSIGNMENT_STATE_ASSIGNED)
+            ->assertJsonPath('data.status', SupportConversation::STATUS_PENDING_ACCEPTANCE)
+            ->assertJsonPath('data.assignment_state', SupportConversation::ASSIGNMENT_STATE_PENDING)
             ->assertJsonPath('data.assignee.id', $secondaryAgent->public_id);
 
         $replyResponse = $this->actingAs($secondaryAgent)
@@ -662,13 +739,14 @@ class SupportChatApiTest extends TestCase
             ->postJson("/api/support/chats/{$conversation->public_id}/resolve");
 
         $resolveResponse->assertOk()
-            ->assertJsonPath('data.status', SupportConversation::STATUS_RESOLVED)
+            ->assertJsonPath('data.status', SupportConversation::STATUS_WRAP_UP)
             ->assertJsonPath('data.resolution_marker', SupportConversation::RESOLUTION_MARKER_RESOLVED);
 
         $this->assertDatabaseHas('support_conversations', [
             'id' => $conversation->id,
             'assigned_to' => $secondaryAgent->id,
-            'status' => SupportConversation::STATUS_RESOLVED,
+            'status' => SupportConversation::STATUS_WRAP_UP,
+            'resolution_marker' => SupportConversation::RESOLUTION_MARKER_RESOLVED,
         ]);
     }
 
@@ -685,8 +763,7 @@ class SupportChatApiTest extends TestCase
             'support.chats.view',
         ]);
 
-        $agent = User::factory()->create(['status' => 'active']);
-        $agent->assignRole($agentRole);
+        $agent = $this->createSupportAgent($agentRole);
 
         $this->actingAs($agent)
             ->getJson('/api/support/chats/realtime-token')
@@ -696,7 +773,7 @@ class SupportChatApiTest extends TestCase
             ]);
     }
 
-    public function test_resolving_conversation_issues_bundled_csat_and_nps_invites(): void
+    public function test_closing_resolved_conversation_issues_bundled_csat_and_nps_invites(): void
     {
         $agentRole = Role::findOrCreate('administrator', 'web');
         $agentRole->syncPermissions([
@@ -706,8 +783,7 @@ class SupportChatApiTest extends TestCase
             'support.chats.resolve',
         ]);
 
-        $agent = User::factory()->create(['status' => 'active']);
-        $agent->assignRole($agentRole);
+        $agent = $this->createSupportAgent($agentRole);
 
         $requester = User::factory()->create();
         $conversation = SupportConversation::create([
@@ -719,11 +795,19 @@ class SupportChatApiTest extends TestCase
             'ai_enabled' => true,
         ]);
 
+        $this->actingAs($agent)
+            ->postJson("/api/support/chats/agent/{$conversation->public_id}/end")
+            ->assertOk()
+            ->assertJsonPath('data.status', SupportConversation::STATUS_WRAP_UP);
+
         $response = $this->actingAs($agent)
-            ->postJson("/api/support/chats/{$conversation->public_id}/resolve");
+            ->postJson("/api/support/chats/{$conversation->public_id}/wrap-up/complete", [
+                'resolved' => true,
+            ]);
 
         $response->assertOk()
-            ->assertJsonPath('data.status', SupportConversation::STATUS_RESOLVED)
+            ->assertJsonPath('data.status', SupportConversation::STATUS_CLOSED)
+            ->assertJsonPath('data.resolution_marker', SupportConversation::RESOLUTION_MARKER_RESOLVED)
             ->assertJsonPath('meta.survey_invite_bundle.csat.survey_type', SupportSurveyInvite::TYPE_CSAT)
             ->assertJsonPath('meta.survey_invite_bundle.csat.status', SupportSurveyInvite::STATUS_PENDING)
             ->assertJsonPath('meta.survey_invite_bundle.nps.survey_type', SupportSurveyInvite::TYPE_NPS)
@@ -793,8 +877,7 @@ class SupportChatApiTest extends TestCase
             'support.chats.resolve',
         ]);
 
-        $agent = User::factory()->create(['status' => 'active']);
-        $agent->assignRole($agentRole);
+        $agent = $this->createSupportAgent($agentRole);
 
         $conversation = SupportConversation::create([
             'guest_name' => 'Guest',
@@ -813,8 +896,15 @@ class SupportChatApiTest extends TestCase
         ])->assertOk()
             ->assertJsonPath('data.conversation.survey_opt_out', true);
 
+        $this->actingAs($agent)
+            ->postJson("/api/support/chats/agent/{$conversation->public_id}/end")
+            ->assertOk()
+            ->assertJsonPath('data.status', SupportConversation::STATUS_WRAP_UP);
+
         $response = $this->actingAs($agent)
-            ->postJson("/api/support/chats/{$conversation->public_id}/resolve");
+            ->postJson("/api/support/chats/{$conversation->public_id}/wrap-up/complete", [
+                'resolved' => true,
+            ]);
 
         $response->assertOk()
             ->assertJsonPath('meta.survey_invite_bundle.csat', null)
@@ -868,8 +958,7 @@ class SupportChatApiTest extends TestCase
             'support.chats.resolve',
         ]);
 
-        $agent = User::factory()->create(['status' => 'active']);
-        $agent->assignRole($agentRole);
+        $agent = $this->createSupportAgent($agentRole);
         $requester = User::factory()->create();
 
         $conversation = SupportConversation::create([
@@ -884,7 +973,7 @@ class SupportChatApiTest extends TestCase
         $this->actingAs($agent)
             ->postJson("/api/support/chats/agent/{$conversation->public_id}/end")
             ->assertOk()
-            ->assertJsonPath('data.status', SupportConversation::STATUS_CLOSED)
+            ->assertJsonPath('data.status', SupportConversation::STATUS_WRAP_UP)
             ->assertJsonPath('data.chat_state', SupportConversation::CHAT_STATE_ENDED)
             ->assertJsonPath('data.end_reason', SupportConversation::END_REASON_AGENT_ENDED)
             ->assertJsonPath('data.ended_by.type', 'agent')
@@ -892,7 +981,7 @@ class SupportChatApiTest extends TestCase
 
         $this->assertDatabaseHas('support_conversations', [
             'id' => $conversation->id,
-            'status' => SupportConversation::STATUS_CLOSED,
+            'status' => SupportConversation::STATUS_WRAP_UP,
             'chat_state' => SupportConversation::CHAT_STATE_ENDED,
             'end_reason' => SupportConversation::END_REASON_AGENT_ENDED,
             'ended_by_type' => 'agent',
@@ -985,8 +1074,7 @@ class SupportChatApiTest extends TestCase
             'support.chats.resolve',
         ]);
 
-        $agent = User::factory()->create(['status' => 'active']);
-        $agent->assignRole($agentRole);
+        $agent = $this->createSupportAgent($agentRole);
         $requester = User::factory()->create();
 
         $conversation = SupportConversation::create([

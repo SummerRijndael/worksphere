@@ -12,6 +12,7 @@ export interface User {
   presence?: 'online' | 'offline' | 'away' | 'busy' | 'invisible';
   support_available?: boolean;
   support_status?: 'available' | 'break' | 'lunch' | 'acw' | 'bio' | 'unavailable';
+  support_status_at?: string | null;
   roles?: Role[];
   permissions?: Permission[];
   teams?: Team[];

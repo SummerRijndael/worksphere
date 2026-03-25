@@ -12,7 +12,9 @@ use App\Jobs\BroadcastSupportConversationChanged;
 use App\Jobs\BroadcastSupportMessageCreated;
 use App\Models\SupportConversation;
 use App\Models\SupportMessage;
+use App\Models\SupportSkillMembership;
 use App\Models\SupportSurveyInvite;
+use App\Models\SupportSurveyResponse;
 use App\Jobs\Support\SupportAssignmentTimeoutJob;
 use App\Models\User;
 use App\Services\Support\Access\SupportAccessAdapterResolver;
@@ -45,7 +47,7 @@ class SupportConversationService implements SupportConversationServiceContract
         protected SupportChatMediaService $supportChatMediaService,
         protected AuditService $auditService,
         protected SupportAccessAdapterResolver $supportAccessAdapterResolver,
-        protected SupportRoutingService $supportRoutingService,
+        protected \App\Contracts\SupportRoutingServiceContract $supportRoutingService,
         protected PresenceService $presenceService
     ) {}
 
@@ -90,6 +92,24 @@ class SupportConversationService implements SupportConversationServiceContract
                 senderType: SupportMessage::SENDER_CUSTOMER,
                 body: $initialMessage,
                 senderUserId: $actor?->id,
+            );
+
+            $displayName = trim((string) ($actor?->name ?? $payload['guest_name'] ?? ''));
+            $greetingTarget = $displayName !== '' ? $displayName : 'there';
+            $chatReference = $conversation->chat_reference;
+
+            $this->createMessage(
+                conversation: $conversation,
+                senderType: SupportMessage::SENDER_SYSTEM,
+                body: sprintf(
+                    'Welcome, %s. Your chat ID is %s. Keep it handy if you need to return to this conversation while it is still active.',
+                    $greetingTarget,
+                    $chatReference
+                ),
+                metadata: [
+                    'type' => 'chat_reference',
+                    'chat_reference' => $chatReference,
+                ],
             );
 
             return $conversation;
@@ -232,14 +252,20 @@ class SupportConversationService implements SupportConversationServiceContract
         });
         $this->broadcastMessageCreated($conversation->fresh(), $message->fresh(['sender', 'media']), ! $isPrivateNote);
 
+        if ($isPrivateNote) {
+            return $message->fresh(['sender', 'media']);
+        }
+
         $conversation->forceFill([
             'first_response_at' => $conversation->first_response_at ?? now(),
             'assigned_to' => $conversation->assigned_to ?: $agent->id,
-            'status' => $conversation->assigned_to || ! $isPrivateNote
-                ? SupportConversation::STATUS_ASSIGNED
-                : $conversation->status,
+            'status' => SupportConversation::STATUS_ASSIGNED,
             'ai_handoff_required' => false,
         ])->forceFill(
+            $this->filterExistingSupportConversationColumns([
+                'assigned_at' => $conversation->assigned_at ?? now(),
+            ])
+        )->forceFill(
             $this->filterExistingSupportConversationColumns([
                 'chat_state' => SupportConversation::CHAT_STATE_NEW,
                 'assignment_state' => SupportConversation::ASSIGNMENT_STATE_ASSIGNED,
@@ -251,7 +277,7 @@ class SupportConversationService implements SupportConversationServiceContract
             $agent->id,
             reason: 'agent_message'
         );
-        $this->broadcastConversationChanged($conversation->fresh(), ! $isPrivateNote);
+        $this->broadcastConversationChanged($conversation->fresh(), true);
 
         return $message->fresh(['sender', 'media']);
     }
@@ -269,8 +295,12 @@ class SupportConversationService implements SupportConversationServiceContract
 
         $conversation->forceFill([
             'status' => SupportConversation::STATUS_ASSIGNED,
-            'assignment_state' => SupportConversation::ASSIGNMENT_STATE_ASSIGNED,
-        ])->save();
+        ])->forceFill(
+            $this->filterExistingSupportConversationColumns([
+                'assignment_state' => SupportConversation::ASSIGNMENT_STATE_ASSIGNED,
+                'assigned_at' => $conversation->assigned_at ?? now(),
+            ])
+        )->save();
 
         $acceptMessage = $this->createMessage(
             conversation: $conversation,
@@ -298,8 +328,12 @@ class SupportConversationService implements SupportConversationServiceContract
         $conversation->forceFill([
             'status' => SupportConversation::STATUS_WAITING_HUMAN,
             'assigned_to' => null,
-            'assignment_state' => SupportConversation::ASSIGNMENT_STATE_UNASSIGNED,
-        ])->save();
+        ])->forceFill(
+            $this->filterExistingSupportConversationColumns([
+                'assigned_at' => null,
+                'assignment_state' => SupportConversation::ASSIGNMENT_STATE_UNASSIGNED,
+            ])
+        )->save();
 
         $this->supportRoutingService->enqueueConversation(
             $conversation->fresh(),
@@ -351,8 +385,12 @@ class SupportConversationService implements SupportConversationServiceContract
             $conversation->forceFill([
                 'assigned_to' => $targetAgent->id,
                 'status' => SupportConversation::STATUS_PENDING_ACCEPTANCE,
-                'assignment_state' => SupportConversation::ASSIGNMENT_STATE_PENDING,
-            ])->save();
+            ])->forceFill(
+                $this->filterExistingSupportConversationColumns([
+                    'assigned_at' => now(),
+                    'assignment_state' => SupportConversation::ASSIGNMENT_STATE_PENDING,
+                ])
+            )->save();
 
             $body = "{$actor->name} transferred this conversation to {$targetAgent->name}.";
         } else {
@@ -365,8 +403,12 @@ class SupportConversationService implements SupportConversationServiceContract
                 'assigned_to' => null,
                 'support_skill_id' => $skill->id,
                 'status' => SupportConversation::STATUS_WAITING_HUMAN,
-                'assignment_state' => SupportConversation::ASSIGNMENT_STATE_UNASSIGNED,
-            ])->save();
+            ])->forceFill(
+                $this->filterExistingSupportConversationColumns([
+                    'assigned_at' => null,
+                    'assignment_state' => SupportConversation::ASSIGNMENT_STATE_UNASSIGNED,
+                ])
+            )->save();
 
             $this->supportRoutingService->enqueueConversation(
                 $conversation->fresh(),
@@ -420,6 +462,10 @@ class SupportConversationService implements SupportConversationServiceContract
             'ai_handoff_reason' => null,
         ])->forceFill(
             $this->filterExistingSupportConversationColumns([
+                'assigned_at' => now(),
+            ])
+        )->forceFill(
+            $this->filterExistingSupportConversationColumns([
                 'chat_state' => SupportConversation::CHAT_STATE_NEW,
                 'assignment_state' => $assignmentState,
             ])
@@ -451,17 +497,31 @@ class SupportConversationService implements SupportConversationServiceContract
         return $conversation->fresh(['requester', 'assignee', 'endedBy', 'skill', 'latestMessage']);
     }
 
-    public function resolveConversation(SupportConversation $conversation, User $actor): SupportConversation
+    public function resolveConversation(SupportConversation $conversation, User $actor, array $options = []): SupportConversation
     {
         if (! $this->supportAccessAdapter()->canResolve($actor, $conversation)) {
             throw new AuthorizationException('Only support agents can resolve conversations.');
         }
 
+        $resolutionMarker = $this->normalizeResolutionMarker(
+            $options['resolution_marker'] ?? SupportConversation::RESOLUTION_MARKER_RESOLVED
+        );
+
         $conversation->forceFill([
             'status' => SupportConversation::STATUS_WRAP_UP,
         ])->forceFill(
             $this->filterExistingSupportConversationColumns([
-                'resolution_marker' => SupportConversation::RESOLUTION_MARKER_RESOLVED,
+                'chat_state' => SupportConversation::CHAT_STATE_ENDED,
+                'assignment_state' => $conversation->assigned_to
+                    ? SupportConversation::ASSIGNMENT_STATE_ASSIGNED
+                    : SupportConversation::ASSIGNMENT_STATE_UNASSIGNED,
+                'resolution_marker' => $resolutionMarker,
+                'resolved_at' => $resolutionMarker === SupportConversation::RESOLUTION_MARKER_RESOLVED ? now() : null,
+                'ended_at' => $conversation->ended_at ?? now(),
+                'ended_by_type' => 'agent',
+                'ended_by_user_id' => $actor->id,
+                'ended_by_name' => $actor->name,
+                'end_reason' => SupportConversation::END_REASON_AGENT_ENDED,
             ])
         )->save();
 
@@ -470,12 +530,17 @@ class SupportConversationService implements SupportConversationServiceContract
             reason: 'resolved'
         );
 
+        $this->supportRoutingService->triggerImmediateRouting();
+
         $resolutionMessage = $this->createMessage(
             conversation: $conversation,
             senderType: SupportMessage::SENDER_SYSTEM,
-            body: "{$actor->name} resolved the interaction and started wrap-up.",
+            body: "{$actor->name} ended the interaction and opened close-out.",
             senderUserId: $actor->id,
-            metadata: ['type' => 'resolution_started'],
+            metadata: [
+                'type' => 'close_started',
+                'resolution_marker' => $resolutionMarker,
+            ],
         );
         $this->broadcastMessageCreated($conversation->fresh(), $resolutionMessage->fresh('sender'));
 
@@ -484,29 +549,41 @@ class SupportConversationService implements SupportConversationServiceContract
         return $conversation->fresh(['requester', 'assignee', 'endedBy', 'skill', 'latestMessage']);
     }
 
-    public function completeWrapUp(SupportConversation $conversation, User $actor): SupportConversation
+    public function completeWrapUp(SupportConversation $conversation, User $actor, array $options = []): SupportConversation
     {
         if (! $this->supportAccessAdapter()->canResolve($actor, $conversation)) {
-            throw new AuthorizationException('Only support agents can finalize wrap-up.');
+            throw new AuthorizationException('Only support agents can finalize close-out.');
         }
 
         if ($conversation->status !== SupportConversation::STATUS_WRAP_UP) {
-            throw new \LogicException('Conversation is not in wrap-up state.');
+            throw new \LogicException('Conversation is not in close-out state.');
         }
+
+        $resolutionMarker = $this->normalizeResolutionMarker(
+            $options['resolution_marker'] ?? $conversation->resolution_marker
+        );
 
         $conversation->forceFill([
             'status' => SupportConversation::STATUS_CLOSED,
             'closed_at' => now(),
-        ])->save();
+        ])->forceFill(
+            $this->filterExistingSupportConversationColumns([
+                'resolution_marker' => $resolutionMarker,
+                'resolved_at' => $resolutionMarker === SupportConversation::RESOLUTION_MARKER_RESOLVED ? now() : null,
+            ])
+        )->save();
 
-        $wrapUpMessage = $this->createMessage(
+        $closeMessage = $this->createMessage(
             conversation: $conversation,
             senderType: SupportMessage::SENDER_SYSTEM,
-            body: "{$actor->name} completed the wrap-up.",
+            body: "{$actor->name} completed close-out ({$resolutionMarker}).",
             senderUserId: $actor->id,
-            metadata: ['type' => 'wrap_up_completed'],
+            metadata: [
+                'type' => 'close_completed',
+                'resolution_marker' => $resolutionMarker,
+            ],
         );
-        $this->broadcastMessageCreated($conversation->fresh(), $wrapUpMessage->fresh('sender'));
+        $this->broadcastMessageCreated($conversation->fresh(), $closeMessage->fresh('sender'));
         $this->broadcastConversationChanged($conversation->fresh());
 
         return $conversation->fresh(['requester', 'assignee', 'endedBy', 'skill', 'latestMessage']);
@@ -602,6 +679,9 @@ class SupportConversationService implements SupportConversationServiceContract
                 : SupportConversation::ASSIGNMENT_STATE_UNASSIGNED,
             'resolution_marker' => $conversation->resolution_marker
                 ?: SupportConversation::RESOLUTION_MARKER_UNRESOLVED,
+            'resolved_at' => $conversation->resolution_marker === SupportConversation::RESOLUTION_MARKER_RESOLVED
+                ? ($conversation->resolved_at ?? now())
+                : null,
             'end_reason' => $endReason,
             'ai_handoff_required' => false,
         ]);
@@ -610,6 +690,8 @@ class SupportConversationService implements SupportConversationServiceContract
             $conversation->fresh(),
             reason: 'conversation_closed'
         );
+
+        $this->supportRoutingService->triggerImmediateRouting();
 
         $label = $endedByType === 'agent'
             ? "{$endedByName} (Agent)"
@@ -621,7 +703,7 @@ class SupportConversationService implements SupportConversationServiceContract
             body: "{$label} ended this support conversation.",
             senderUserId: $endedByUserId,
             metadata: [
-                'type' => 'conversation_closed',
+                'type' => ($endedByType === 'agent' || $conversation->assigned_to) ? 'close_started' : 'conversation_closed',
                 'ended_by_type' => $endedByType,
                 'ended_by_name' => $endedByName,
                 'end_reason' => $endReason,
@@ -771,6 +853,79 @@ class SupportConversationService implements SupportConversationServiceContract
         return $conversation->fresh(['requester', 'assignee', 'endedBy', 'skill', 'latestMessage.sender', 'latestMessage.media', 'messages.sender', 'messages.media']);
     }
 
+    public function findActiveConversationByReference(string $chatReference, ?User $actor = null, ?string $guestEmail = null): ?SupportConversation
+    {
+        $normalizedReference = SupportConversation::chatReferenceFromPublicId($chatReference);
+        if ($normalizedReference === '') {
+            return null;
+        }
+
+        $query = SupportConversation::query();
+
+        if ($actor) {
+            $query->where('requester_user_id', $actor->id);
+        } else {
+            $normalizedEmail = mb_strtolower(trim((string) $guestEmail));
+            if ($normalizedEmail === '') {
+                return null;
+            }
+
+            $query->whereNull('requester_user_id')
+                ->whereRaw('LOWER(guest_email) = ?', [$normalizedEmail]);
+        }
+
+        $query->whereNotIn('status', [
+            SupportConversation::STATUS_RESOLVED,
+            SupportConversation::STATUS_CLOSED,
+        ]);
+
+        $existingColumns = $this->existingSupportConversationColumns();
+        if (isset($existingColumns['chat_state'])) {
+            $query->where(function (Builder $builder): void {
+                $builder->whereNull('chat_state')
+                    ->orWhere('chat_state', '!=', SupportConversation::CHAT_STATE_ENDED);
+            });
+        }
+        if (isset($existingColumns['ended_at'])) {
+            $query->whereNull('ended_at');
+        }
+
+        $matches = $query
+            ->latest('created_at')
+            ->get()
+            ->filter(fn (SupportConversation $conversation): bool => $conversation->chat_reference === $normalizedReference)
+            ->values();
+
+        if ($matches->count() > 1) {
+            throw new \RuntimeException('Multiple active conversations matched that chat ID.');
+        }
+
+        return $matches->first();
+    }
+
+    public function customerHistory(User $user, int $limit = 20): Collection
+    {
+        $safeLimit = max(1, min(100, $limit));
+
+        return SupportConversation::query()
+            ->with([
+                'requester:id,public_id,name,email',
+                'assignee:id,public_id,name,email',
+                'endedBy:id,public_id,name,email',
+                'skill:id,public_id,name,slug,department',
+                'latestPublicMessage.sender:id,public_id,name,email',
+                'latestPublicMessage.media',
+                'latestMessage.sender:id,public_id,name,email',
+                'latestMessage.media',
+            ])
+            ->where('requester_user_id', $user->id)
+            ->orderByDesc('last_message_at')
+            ->orderByDesc('updated_at')
+            ->orderByDesc('created_at')
+            ->limit($safeLimit)
+            ->get();
+    }
+
     /**
      * @param  array<string, mixed>  $filters
      */
@@ -865,7 +1020,7 @@ class SupportConversationService implements SupportConversationServiceContract
 
         return $query
             ->where('status', 'active')
-            ->select(['id', 'public_id', 'name', 'email', 'status'])
+            ->select(['id', 'public_id', 'name', 'email', 'status', 'support_status', 'support_status_at', 'support_available'])
             ->orderBy('name')
             ->get();
     }
@@ -876,35 +1031,197 @@ class SupportConversationService implements SupportConversationServiceContract
     public function availability(): array
     {
         $eligibleAgents = $this->eligibleAgents();
-        $availableCount = $eligibleAgents->count();
+        $agentIds = $eligibleAgents->pluck('id');
+        $todayStart = now()->startOfDay();
+        $now = now();
+        $defaultAgentCapacity = max(1, (int) config('support_chat.routing.default_agent_capacity', 3));
+        $columns = $this->existingSupportConversationColumns();
+        $hasAssignedAt = isset($columns['assigned_at']);
+        $hasEndedAt = isset($columns['ended_at']);
 
         // Fetch active chats count per agent
-        $activeChatCounts = SupportConversation::query()
+        $activeChatCountsQuery = SupportConversation::query()
             ->whereNotNull('assigned_to')
-            ->whereIn('status', [
-                SupportConversation::STATUS_OPEN, 
-                SupportConversation::STATUS_BOT_ACTIVE,
-                SupportConversation::STATUS_WAITING_HUMAN
-            ])
-            ->whereIn('assigned_to', $eligibleAgents->pluck('id'))
+            ->whereIn('assigned_to', $agentIds)
+            ->whereNotIn('status', [
+                SupportConversation::STATUS_RESOLVED,
+                SupportConversation::STATUS_CLOSED,
+            ]);
+
+        if (Schema::hasColumn('support_conversations', 'chat_state')) {
+            $activeChatCountsQuery->where('chat_state', SupportConversation::CHAT_STATE_NEW);
+        }
+
+        $activeChatCounts = $activeChatCountsQuery
             ->selectRaw('assigned_to, count(*) as count')
             ->groupBy('assigned_to')
             ->pluck('count', 'assigned_to');
 
-        $agentsList = $eligibleAgents->map(function ($agent) use ($activeChatCounts) {
+        $activeConversations = SupportConversation::query()
+            ->whereNotNull('assigned_to')
+            ->whereIn('assigned_to', $agentIds)
+            ->whereNotIn('status', [
+                SupportConversation::STATUS_RESOLVED,
+                SupportConversation::STATUS_CLOSED,
+            ]);
+
+        if (Schema::hasColumn('support_conversations', 'chat_state')) {
+            $activeConversations->where('chat_state', SupportConversation::CHAT_STATE_NEW);
+        }
+
+        $activeConversations = $activeConversations
+            ->get(array_values(array_filter([
+                'assigned_to',
+                $hasAssignedAt ? 'assigned_at' : null,
+                'created_at',
+                'first_response_at',
+            ])))
+            ->groupBy('assigned_to');
+
+        $completedConversations = SupportConversation::query()
+            ->whereNotNull('assigned_to')
+            ->whereIn('assigned_to', $agentIds)
+            ->where(function (Builder $builder) use ($todayStart): void {
+                if ($this->existingSupportConversationColumns()['ended_at'] ?? false) {
+                    $builder->where(function (Builder $endedQuery) use ($todayStart): void {
+                        $endedQuery->whereNotNull('ended_at')
+                            ->where('ended_at', '>=', $todayStart);
+                    })->orWhere(function (Builder $closedQuery) use ($todayStart): void {
+                        $closedQuery->whereNull('ended_at')
+                            ->whereNotNull('closed_at')
+                            ->where('closed_at', '>=', $todayStart);
+                    });
+                    return;
+                }
+
+                $builder->whereNotNull('closed_at')
+                    ->where('closed_at', '>=', $todayStart);
+            })
+            ->get(array_values(array_filter([
+                'assigned_to',
+                $hasAssignedAt ? 'assigned_at' : null,
+                'created_at',
+                'first_response_at',
+                $hasEndedAt ? 'ended_at' : null,
+                'closed_at',
+            ])))
+            ->groupBy('assigned_to');
+
+        $transferMessages = SupportMessage::query()
+            ->where('sender_type', SupportMessage::SENDER_SYSTEM)
+            ->whereNotNull('sender_user_id')
+            ->whereIn('sender_user_id', $agentIds)
+            ->where('created_at', '>=', $todayStart)
+            ->get(['sender_user_id', 'metadata'])
+            ->groupBy('sender_user_id');
+
+        $surveyResponses = SupportSurveyResponse::query()
+            ->whereNotNull('rated_agent_user_id')
+            ->whereIn('rated_agent_user_id', $agentIds)
+            ->where('created_at', '>=', $todayStart)
+            ->get(['rated_agent_user_id', 'survey_type', 'score'])
+            ->groupBy('rated_agent_user_id');
+
+        $skillMemberships = SupportSkillMembership::query()
+            ->whereIn('user_id', $agentIds)
+            ->where('is_active', true)
+            ->get(['user_id', 'capacity', 'is_primary'])
+            ->groupBy('user_id');
+
+        $agentsList = $eligibleAgents->map(function ($agent) use ($activeChatCounts, $activeConversations, $completedConversations, $transferMessages, $surveyResponses, $skillMemberships, $defaultAgentCapacity, $now) {
+            $supportAvailable = $this->presenceService->isSupportAvailable((int) $agent->id);
+            $isOnline = $this->presenceService->isUserActive((int) $agent->id);
+            $activeForAgent = $activeConversations->get($agent->id, collect());
+            $completedForAgent = $completedConversations->get($agent->id, collect());
+            $membershipRows = $skillMemberships->get($agent->id, collect());
+            $primaryCapacity = $membershipRows
+                ->first(fn (SupportSkillMembership $membership) => (bool) $membership->is_primary)?->capacity;
+            $fallbackCapacity = $membershipRows
+                ->pluck('capacity')
+                ->filter(fn ($capacity) => $capacity !== null)
+                ->map(fn ($capacity) => max(1, (int) $capacity))
+                ->max();
+            $agentCapacity = max(1, (int) ($primaryCapacity ?? $fallbackCapacity ?? $defaultAgentCapacity));
+            $handleSeconds = $completedForAgent
+                ->map(function (SupportConversation $conversation): ?int {
+                    $assignedAt = $conversation->assigned_at ?? $conversation->first_response_at ?? $conversation->created_at;
+                    $endedAt = $conversation->ended_at ?? $conversation->closed_at;
+
+                    if (! $assignedAt || ! $endedAt) {
+                        return null;
+                    }
+
+                    return $assignedAt->diffInSeconds($endedAt);
+                })
+                ->filter(fn (?int $seconds): bool => is_int($seconds))
+                ->values();
+            $activeStartedAt = $activeForAgent
+                ->map(fn (SupportConversation $conversation) => $conversation->assigned_at ?? $conversation->first_response_at ?? $conversation->created_at)
+                ->filter()
+                ->values();
+            $workingSinceAt = $activeStartedAt
+                ->sortBy(fn ($startedAt) => $startedAt->getTimestamp())
+                ->first();
+            $longestActiveChatSeconds = $activeStartedAt
+                ->map(fn ($startedAt): int => $startedAt->diffInSeconds($now))
+                ->max();
+            $transfersToday = $transferMessages->get($agent->id, collect())
+                ->filter(fn (SupportMessage $message) => ($message->metadata['type'] ?? null) === 'transfer')
+                ->count();
+            $missedToday = $transferMessages->get($agent->id, collect())
+                ->filter(fn (SupportMessage $message) => 
+                    ($message->metadata['type'] ?? null) === 'assignment_rejected' && 
+                    ($message->metadata['reason'] ?? null) === 'Assignment timed out.'
+                )->count();
+            $rejectedToday = $transferMessages->get($agent->id, collect())
+                ->filter(fn (SupportMessage $message) => 
+                    ($message->metadata['type'] ?? null) === 'assignment_rejected' && 
+                    ($message->metadata['reason'] ?? null) !== 'Assignment timed out.'
+                )->count();
+            $surveyRows = $surveyResponses->get($agent->id, collect());
+            $csatRows = $surveyRows
+                ->where('survey_type', SupportSurveyInvite::TYPE_CSAT)
+                ->values();
+            $surveyCsatAverageToday = $csatRows->isNotEmpty()
+                ? round((float) $csatRows->avg('score'), 2)
+                : null;
+
             return [
                 'public_id' => $agent->public_id,
                 'name' => $agent->name,
                 'avatar_thumb_url' => $agent->avatar_thumb_url,
                 'status' => $agent->status,
+                'is_online' => $isOnline,
+                'support_status' => $agent->support_status ?? 'unavailable',
+                'support_status_at' => $agent->support_status_at?->toISOString(),
+                'support_available' => $supportAvailable,
                 'active_chats' => $activeChatCounts->get($agent->id, 0),
+                'agent_capacity' => $agentCapacity,
+                'working_since_at' => $workingSinceAt?->toISOString(),
+                'longest_active_chat_seconds' => is_numeric($longestActiveChatSeconds)
+                    ? (int) $longestActiveChatSeconds
+                    : null,
+                'completed_today' => $completedForAgent->count(),
+                'average_handle_time_seconds' => $handleSeconds->isNotEmpty()
+                    ? (int) round($handleSeconds->avg())
+                    : null,
+                'transfers_today' => $transfersToday,
+                'missed_today' => $missedToday,
+                'rejected_today' => $rejectedToday,
+                'survey_responses_today' => $surveyRows->count(),
+                'survey_csat_average_today' => $surveyCsatAverageToday,
             ];
-        })->values()->toArray();
+        })->filter(fn (array $agent) => $agent['is_online'])->sortBy([
+            ['support_available', 'desc'],
+            ['active_chats', 'desc'],
+            ['name', 'asc'],
+        ])->values();
+        $availableCount = $agentsList->where('support_available', true)->count();
 
         return [
             'available' => $availableCount > 0,
             'available_agents' => $availableCount,
-            'agents' => $agentsList,
+            'agents' => $agentsList->toArray(),
             'message' => $availableCount > 0
                 ? 'Support agents are currently available.'
                 : 'No support agent is available right now, but you can leave a message.',
@@ -936,9 +1253,11 @@ class SupportConversationService implements SupportConversationServiceContract
             'metadata' => $metadata ?: null,
         ]);
 
-        $conversation->forceFill([
-            'last_message_at' => $message->created_at,
-        ])->save();
+        if (! $isPrivateNote) {
+            $conversation->forceFill([
+                'last_message_at' => $message->created_at,
+            ])->save();
+        }
 
         return $message;
     }
@@ -1051,6 +1370,15 @@ class SupportConversationService implements SupportConversationServiceContract
             'customer', 'guest' => SupportConversation::END_REASON_USER_ENDED,
             default => SupportConversation::END_REASON_SYSTEM_ENDED,
         };
+    }
+
+    protected function normalizeResolutionMarker(mixed $marker): string
+    {
+        $normalized = strtolower(trim((string) ($marker ?? '')));
+
+        return $normalized === SupportConversation::RESOLUTION_MARKER_RESOLVED
+            ? SupportConversation::RESOLUTION_MARKER_RESOLVED
+            : SupportConversation::RESOLUTION_MARKER_UNRESOLVED;
     }
 
     protected function shouldSkipAiAutoReply(SupportConversation $conversation): bool

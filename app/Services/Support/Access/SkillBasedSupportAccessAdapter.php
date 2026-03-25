@@ -229,12 +229,12 @@ class SkillBasedSupportAccessAdapter implements SupportAccessAdapterContract
 
     public function canBeAssignedToConversation(User $user, SupportConversation $conversation): bool
     {
-        if ($this->isGlobalAdmin($user)) {
-            return true;
-        }
-
         if (! $conversation->support_skill_id) {
-            return $this->allowUnroutedConversationFallback() && $this->legacyAdapter->canOperateAsAgent($user);
+            if (! $this->allowUnroutedConversationFallback()) {
+                return false;
+            }
+
+            return $this->hasActiveSkillMembership($user);
         }
 
         $role = $this->membershipRoleForSkill($user, (int) $conversation->support_skill_id);

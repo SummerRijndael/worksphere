@@ -18,6 +18,7 @@ use Laravel\Sanctum\HasApiTokens;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 use Spatie\Permission\Traits\HasRoles;
+use Spatie\Permission\Contracts\Permission as PermissionContract;
 
 class User extends Authenticatable implements HasMedia, MustVerifyEmail, WebAuthnAuthenticatable
 {
@@ -61,6 +62,24 @@ class User extends Authenticatable implements HasMedia, MustVerifyEmail, WebAuth
     }
 
     /**
+     * Determine if the user has the given permission.
+     * Overrides Spatie's method to include internal team permissions.
+     *
+     * @param string|int|PermissionContract $permission
+     * @param string|null $guardName
+     * @return bool
+     */
+    public function hasPermissionTo($permission, $guardName = null): bool
+    {
+        if (is_string($permission)) {
+            return app(\App\Services\PermissionService::class)->hasPermissionWithOverrides($this, $permission);
+        }
+
+        return $this->hasDirectPermission($permission) || $this->hasPermissionViaRole($permission);
+    }
+
+
+    /**
      * The attributes that are mass assignable.
      *
      * @var list<string>
@@ -96,6 +115,7 @@ class User extends Authenticatable implements HasMedia, MustVerifyEmail, WebAuth
         'password_last_updated_at',
         'presence_preference',
         'support_status',
+        'support_status_at',
         'support_available',
         'last_seen_at',
         'registration_fingerprint',
@@ -211,6 +231,7 @@ class User extends Authenticatable implements HasMedia, MustVerifyEmail, WebAuth
             'two_factor_allowed_methods' => 'array',
             'two_factor_enforced_at' => 'datetime',
             'suspended_until' => 'datetime',
+            'support_status_at' => 'datetime',
             'is_password_set' => 'boolean',
             'password_last_updated_at' => 'datetime',
             'last_seen_at' => 'datetime',

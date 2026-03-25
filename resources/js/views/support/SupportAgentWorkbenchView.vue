@@ -9,6 +9,7 @@ import {
     Check,
     ChevronLeft,
     ChevronRight,
+    Clock,
     Globe,
     Hash,
     ImageIcon,
@@ -21,7 +22,6 @@ import {
     Monitor,
     MoreVertical,
     Paperclip,
-    RefreshCw,
     Send,
     Smile,
     Underline,
@@ -33,7 +33,7 @@ import api from "@/lib/api";
 import { useToast } from "@/composables/useToast.ts";
 import { hasSupportRealtimeToken, setSupportRealtimeToken, startEcho } from "@/echo";
 import { createSupportLogger, summarizeError } from "@/utils/supportDebug";
-import { playSupportMessageSound } from "@/utils/supportSound";
+import { playSupportMessageSound, startSupportOfferLoop, stopSupportOfferLoop } from "@/utils/supportSound";
 import { renderSupportRichText } from "@/utils/supportRichText";
 import SupportMessageAttachments from "@/components/support/SupportMessageAttachments.vue";
 import { useAuthStore } from "@/stores/auth";
@@ -63,10 +63,16 @@ interface SupportMessage {
 interface SupportConversationListItem {
     id: string;
     status: string;
+    chat_state?: string | null;
+    resolution_marker?: string | null;
     priority: string;
     created_at: string | null;
     updated_at: string | null;
+    ended_at?: string | null;
+    closed_at?: string | null;
+    assigned_at?: string | null;
     last_message_at?: string | null;
+    first_response_at?: string | null;
     guest_name?: string | null;
     guest_email?: string | null;
     requester?: SupportUserSummary | null;
@@ -83,7 +89,7 @@ interface SupportConversationListItem {
 }
 
 type WorkbenchColumns = 3 | 5;
-type WorkbenchDetailTab = "overview" | "media" | "links";
+type WorkbenchDetailTab = "overview" | "media" | "links" | "notes";
 
 interface SupportAttachment {
     id?: string | number | null;
@@ -168,7 +174,9 @@ const assigningByConversation = ref<Record<string, boolean>>({});
 const completingWrapUpByConversation = ref<Record<string, boolean>>({});
 const resolvingByConversation = ref<Record<string, boolean>>({});
 const endingByConversation = ref<Record<string, boolean>>({});
+const closeResolvedByConversation = ref<Record<string, boolean>>({});
 const composerByConversation = ref<Record<string, string>>({});
+const composerCollapsedByConversation = ref<Record<string, boolean>>({});
 const noteModeByConversation = ref<Record<string, boolean>>({});
 const unreadByConversation = ref<Record<string, number>>({});
 const hasMoreBeforeByConversation = ref<Record<string, boolean>>({});
@@ -229,6 +237,22 @@ const openConversations = computed(() =>
         .map((id) => conversationMap.value.get(id) || null)
         .filter((conversation): conversation is SupportConversationListItem => Boolean(conversation)),
 );
+const activeWorkingConversations = computed(() =>
+    conversations.value.filter((conversation) =>
+        !["wrap_up", "resolved", "closed", "pending_acceptance"].includes(String(conversation.status || "").toLowerCase()),
+    ),
+);
+const activeWorkingChatsCount = computed(() => activeWorkingConversations.value.length);
+const oldestWorkingChatStartedAt = computed(() => {
+    const startedAt = activeWorkingConversations.value
+        .map((conversation) => conversation.first_response_at || conversation.created_at)
+        .filter(Boolean)
+        .map((value) => new Date(String(value)))
+        .filter((value) => !Number.isNaN(value.getTime()))
+        .sort((a, b) => a.getTime() - b.getTime());
+
+    return startedAt[0]?.toISOString() || null;
+});
 
 const focusedConversation = computed<SupportConversationListItem | null>(() => {
     if (focusedConversationId.value) {
@@ -245,6 +269,12 @@ const focusedConversationMessages = computed<SupportMessage[]>(() => {
     const id = focusedConversation.value?.id;
     return id ? panelMessages(id) : [];
 });
+
+const focusedConversationNoteItems = computed<SupportMessage[]>(() =>
+    [...focusedConversationMessages.value]
+        .filter((message) => String(message?.sender_type || "").toLowerCase() === "agent" && Boolean(message?.is_private_note))
+        .sort((a, b) => new Date(b?.created_at || 0).getTime() - new Date(a?.created_at || 0).getTime()),
+);
 
 const focusedConversationAttachmentItems = computed<SidebarAttachmentItem[]>(() => {
     const flattened: SidebarAttachmentItem[] = [];
@@ -543,6 +573,10 @@ function panelMessages(conversationId: string): SupportMessage[] {
     return messagesByConversation.value[conversationId] || [];
 }
 
+function panelVisibleMessages(conversationId: string): SupportMessage[] {
+    return panelMessages(conversationId).filter((message) => !message?.is_private_note);
+}
+
 function panelUnreadCount(conversationId: string): number {
     return Number(unreadByConversation.value[conversationId] || 0);
 }
@@ -654,11 +688,42 @@ function setComposerValue(conversationId: string, value: string): void {
     };
 }
 
-function setNoteMode(conversationId: string, enabled: boolean): void {
+function isComposerCollapsed(conversationId: string): boolean {
+    return Boolean(composerCollapsedByConversation.value[conversationId]);
+}
+
+function setComposerCollapsed(conversationId: string, value: boolean): void {
+    composerCollapsedByConversation.value = {
+        ...composerCollapsedByConversation.value,
+        [conversationId]: value,
+    };
+
+    if (value && openEmojiPickerConversationId.value === conversationId) {
+        openEmojiPickerConversationId.value = null;
+        return;
+    }
+
+    if (!value) {
+        void focusPanelComposer(conversationId);
+    }
+}
+
+function toggleComposerCollapsed(conversationId: string): void {
+    setComposerCollapsed(conversationId, !isComposerCollapsed(conversationId));
+}
+
+async function setNoteMode(conversationId: string, enabled: boolean): Promise<void> {
     noteModeByConversation.value = {
         ...noteModeByConversation.value,
         [conversationId]: enabled,
     };
+
+    if (isComposerCollapsed(conversationId)) {
+        setComposerCollapsed(conversationId, false);
+        return;
+    }
+
+    await focusPanelComposer(conversationId);
 }
 
 function isNoteMode(conversationId: string): boolean {
@@ -742,7 +807,15 @@ function clearPanelSelectedFiles(conversationId: string): void {
 
 function isConversationClosedLike(conversation: SupportConversationListItem): boolean {
     const normalized = String(conversation?.status || "").toLowerCase();
-    return normalized === "resolved" || normalized === "closed" || normalized === "ended";
+    const chatState = String(conversation?.chat_state || "").toLowerCase();
+
+    return chatState === "chat_ended" || normalized === "wrap_up" || normalized === "resolved" || normalized === "closed" || normalized === "ended";
+}
+
+function shouldShowConversationInWorkbench(conversation: Partial<SupportConversationListItem> | null | undefined): boolean {
+    const normalized = String(conversation?.status || "").toLowerCase();
+
+    return normalized !== "resolved" && normalized !== "closed" && normalized !== "ended" && normalized !== "pending_acceptance";
 }
 
 function statusToneClass(status: string): string {
@@ -755,6 +828,10 @@ function statusToneClass(status: string): string {
         return "text-amber-300 border-amber-500/30 bg-amber-500/10";
     }
 
+    if (normalized === "wrap_up") {
+        return "text-amber-300 border-amber-500/30 bg-amber-500/10";
+    }
+
     if (normalized === "resolved" || normalized === "closed" || normalized === "ended") {
         return "text-slate-300 border-slate-500/30 bg-slate-500/10";
     }
@@ -764,16 +841,136 @@ function statusToneClass(status: string): string {
 
 function statusDisplayLabel(status: string): string {
     const normalized = String(status || "open").toLowerCase();
+    if (normalized === "wrap_up") {
+        return "wrap up";
+    }
     if (normalized === "closed") {
-        return "ended";
+        return "closed";
     }
 
     return normalized.replace(/_/g, " ");
 }
 
+function closedConversationNoticeLabel(status: string): string {
+    const normalized = String(status || "").toLowerCase();
+
+    if (normalized === "wrap_up") {
+        return "This conversation is in wrap-up. Internal notes only.";
+    }
+
+    if (normalized === "resolved") {
+        return "This conversation is resolved. Internal notes only.";
+    }
+
+    if (normalized === "closed" || normalized === "ended") {
+        return "This conversation is closed. Internal notes only.";
+    }
+
+    return `This conversation is ${statusDisplayLabel(status)}. Internal notes only.`;
+}
+
+function statusDotClass(status: string): string {
+    const normalized = String(status || "").toLowerCase();
+    if (normalized === "waiting_human" || normalized === "pending_acceptance" || normalized === "wrap_up") {
+        return "bg-amber-400";
+    }
+
+    if (normalized === "bot_active") {
+        return "bg-sky-400";
+    }
+
+    if (normalized === "resolved" || normalized === "closed" || normalized === "ended") {
+        return "bg-slate-400";
+    }
+
+    return "bg-emerald-400";
+}
+
+function conversationHeaderGradientClass(conversation: SupportConversationListItem): string {
+    const normalized = String(conversation?.status || "").toLowerCase();
+
+    if (normalized === "waiting_human" || normalized === "pending_acceptance") {
+        return "from-amber-500/16 via-[var(--surface-primary)] to-[var(--surface-primary)]";
+    }
+
+    if (normalized === "bot_active") {
+        return "from-sky-500/16 via-[var(--surface-primary)] to-[var(--surface-primary)]";
+    }
+
+    if (normalized === "wrap_up") {
+        return "from-orange-500/16 via-[var(--surface-primary)] to-[var(--surface-primary)]";
+    }
+
+    if (normalized === "resolved" || normalized === "closed" || normalized === "ended") {
+        return "from-slate-500/16 via-[var(--surface-primary)] to-[var(--surface-primary)]";
+    }
+
+    return "from-emerald-500/16 via-[var(--surface-primary)] to-[var(--surface-primary)]";
+}
+
+function responseGapBadgeClass(conversationId: string): string {
+    if (acwElapsedSeconds(conversationId) !== null) {
+        return "border-amber-500/30 bg-amber-500/10 text-amber-500";
+    }
+
+    const elapsedSeconds = lastSupportReplyElapsedSeconds(conversationId);
+    if (elapsedSeconds === null) {
+        return "border-[var(--border-muted)] bg-[var(--surface-secondary)]/80 text-[var(--text-secondary)]";
+    }
+
+    const elapsedMinutes = Math.floor(elapsedSeconds / 60);
+    const warnAt = Number(uiTimerSettings.value.last_response_warn_minutes || DEFAULT_UI_TIMER_SETTINGS.last_response_warn_minutes);
+    const alertAt = Number(uiTimerSettings.value.last_response_alert_minutes || DEFAULT_UI_TIMER_SETTINGS.last_response_alert_minutes);
+
+    if (elapsedMinutes >= alertAt) {
+        return "border-rose-500/30 bg-rose-500/10 text-rose-500";
+    }
+
+    if (elapsedMinutes >= warnAt) {
+        return "border-amber-500/30 bg-amber-500/10 text-amber-500";
+    }
+
+    return "border-emerald-500/30 bg-emerald-500/10 text-emerald-500";
+}
+
+function conversationPreviewLine(conversation: SupportConversationListItem): string {
+    const subject = String(conversation?.subject || "").trim();
+    if (subject) {
+        return subject;
+    }
+
+    const latestBody = String(conversation?.latest_message?.body || "")
+        .replace(/\s+/g, " ")
+        .trim();
+    if (latestBody) {
+        return latestBody;
+    }
+
+    if (conversation?.support_skill?.name) {
+        return `Skill: ${conversation.support_skill.name}`;
+    }
+
+    return "Active support conversation";
+}
+
 function shouldShowResolutionBadge(status: string): boolean {
     const normalized = String(status || "").toLowerCase();
-    return normalized === "resolved" || normalized === "closed" || normalized === "ended";
+    return normalized === "wrap_up" || normalized === "resolved" || normalized === "closed" || normalized === "ended";
+}
+
+function isCloseResolved(conversation: SupportConversationListItem): boolean {
+    if (typeof closeResolvedByConversation.value[conversation.id] === "boolean") {
+        return closeResolvedByConversation.value[conversation.id];
+    }
+
+    return String(conversation.resolution_marker || "").toLowerCase() === "resolved";
+}
+
+function setCloseResolved(conversationId: string, value: boolean): void {
+    closeResolvedByConversation.value = {
+        ...closeResolvedByConversation.value,
+        [conversationId]: value,
+    };
 }
 
 function messageRowClass(message: SupportMessage): string {
@@ -859,6 +1056,32 @@ function customerNameFromMessage(message: SupportMessage): string {
     return message?.sender?.name || "Customer";
 }
 
+function parseIsoTimestamp(value: string | null | undefined): number | null {
+    if (!value) {
+        return null;
+    }
+
+    const ts = new Date(value).getTime();
+    return Number.isFinite(ts) ? ts : null;
+}
+
+function conversationEndedAtMs(conversation: SupportConversationListItem | null | undefined): number | null {
+    if (!conversation) {
+        return null;
+    }
+
+    return parseIsoTimestamp(conversation.ended_at || conversation.closed_at || null);
+}
+
+function conversationLiveTimerReferenceMs(conversation: SupportConversationListItem | null | undefined): number {
+    const endedAtMs = conversationEndedAtMs(conversation);
+    if (endedAtMs !== null) {
+        return Math.min(liveClockNow.value, endedAtMs);
+    }
+
+    return liveClockNow.value;
+}
+
 function conversationDurationSeconds(conversation: SupportConversationListItem | null | undefined): number {
     const createdAt = conversation?.created_at || null;
     if (!createdAt) {
@@ -870,7 +1093,7 @@ function conversationDurationSeconds(conversation: SupportConversationListItem |
         return 0;
     }
 
-    return Math.max(0, Math.floor((liveClockNow.value - startedAtMs) / 1000));
+    return Math.max(0, Math.floor((conversationLiveTimerReferenceMs(conversation) - startedAtMs) / 1000));
 }
 
 function conversationDurationLabel(conversation: SupportConversationListItem | null | undefined): string {
@@ -934,6 +1157,7 @@ function latestSupportReplyAtForConversation(conversationId: string): string | n
 }
 
 function lastSupportReplyElapsedSeconds(conversationId: string): number | null {
+    const conversation = conversationMap.value.get(conversationId);
     const lastSupportReplyAt = latestSupportReplyAtForConversation(conversationId);
     if (!lastSupportReplyAt) {
         return null;
@@ -944,10 +1168,33 @@ function lastSupportReplyElapsedSeconds(conversationId: string): number | null {
         return null;
     }
 
-    return Math.max(0, Math.floor((liveClockNow.value - repliedAtMs) / 1000));
+    return Math.max(0, Math.floor((conversationLiveTimerReferenceMs(conversation) - repliedAtMs) / 1000));
+}
+
+function acwElapsedSeconds(conversationId: string): number | null {
+    const conversation = conversationMap.value.get(conversationId);
+    if (!conversation || String(conversation.status || "").toLowerCase() !== "wrap_up") {
+        return null;
+    }
+
+    const endedAtMs = conversationEndedAtMs(conversation);
+    if (endedAtMs === null) {
+        return null;
+    }
+
+    return Math.max(0, Math.floor((liveClockNow.value - endedAtMs) / 1000));
+}
+
+function secondaryTimerPrefix(conversationId: string): string {
+    return acwElapsedSeconds(conversationId) !== null ? "ACW" : "Gap";
 }
 
 function responseGapLabel(conversationId: string): string {
+    const acwSeconds = acwElapsedSeconds(conversationId);
+    if (acwSeconds !== null) {
+        return formatElapsedCounter(acwSeconds);
+    }
+
     const elapsedSeconds = lastSupportReplyElapsedSeconds(conversationId);
     if (elapsedSeconds === null) {
         return "Awaiting first reply";
@@ -957,6 +1204,10 @@ function responseGapLabel(conversationId: string): string {
 }
 
 function responseGapToneClass(conversationId: string): string {
+    if (acwElapsedSeconds(conversationId) !== null) {
+        return "text-amber-500";
+    }
+
     const elapsedSeconds = lastSupportReplyElapsedSeconds(conversationId);
     if (elapsedSeconds === null) {
         return "text-[var(--text-muted)]";
@@ -1240,6 +1491,12 @@ function removeConversationFromWorkbench(conversationId: string): void {
         composerByConversation.value = nextComposer;
     }
 
+    if (composerCollapsedByConversation.value[conversationId] !== undefined) {
+        const nextComposerCollapsed = { ...composerCollapsedByConversation.value };
+        delete nextComposerCollapsed[conversationId];
+        composerCollapsedByConversation.value = nextComposerCollapsed;
+    }
+
     if (noteModeByConversation.value[conversationId]) {
         const nextNoteMode = { ...noteModeByConversation.value };
         delete nextNoteMode[conversationId];
@@ -1283,7 +1540,7 @@ function upsertConversationInList(
     patch: Partial<SupportConversationListItem> & { id: string },
     options: { moveToTop?: boolean } = {},
 ): void {
-    if (patch.status && isConversationClosedLike(patch as SupportConversationListItem)) {
+    if (!shouldShowConversationInWorkbench(patch)) {
         removeConversationFromWorkbench(patch.id);
         return;
     }
@@ -1314,6 +1571,10 @@ function upsertConversationInList(
 
 function patchConversationFromMessage(conversationId: string, message: SupportMessage): void {
     if (!conversationId || !message?.id) {
+        return;
+    }
+
+    if (message.is_private_note) {
         return;
     }
 
@@ -1492,12 +1753,10 @@ function openPanelFilePicker(conversationId: string): void {
         return;
     }
 
-    const conversation = conversationMap.value.get(conversationId);
-    if (conversation && isConversationClosedLike(conversation)) {
-        return;
-    }
-
     openEmojiPickerConversationId.value = null;
+    if (isComposerCollapsed(conversationId)) {
+        setComposerCollapsed(conversationId, false);
+    }
     panelFileInputRefs[conversationId]?.click();
 }
 
@@ -1537,11 +1796,6 @@ function removePanelFile(conversationId: string, index: number): void {
 
 function appendPanelEmoji(conversationId: string, emoji: string): void {
     if (!conversationId || !emoji || sendingByConversation.value[conversationId]) {
-        return;
-    }
-
-    const conversation = conversationMap.value.get(conversationId);
-    if (conversation && isConversationClosedLike(conversation)) {
         return;
     }
 
@@ -1592,9 +1846,8 @@ function togglePanelEmojiPicker(conversationId: string): void {
         return;
     }
 
-    const conversation = conversationMap.value.get(conversationId);
-    if (conversation && isConversationClosedLike(conversation)) {
-        return;
+    if (isComposerCollapsed(conversationId)) {
+        setComposerCollapsed(conversationId, false);
     }
 
     if (openEmojiPickerConversationId.value === conversationId) {
@@ -1724,11 +1977,15 @@ async function resolveConversation(conversationId: string): Promise<void> {
         const response = await api.post(`/api/support/chats/${conversationId}/resolve`);
         applyRealtimeMeta(response?.data?.meta);
 
-        removeConversationFromWorkbench(conversationId);
+        const payload = extractConversationPayload(response?.data);
+        if (payload) {
+            upsertConversationInList(payload, { moveToTop: true });
+            setCloseResolved(conversationId, true);
+        }
         await loadConversations({ silent: true, refreshPanelMessages: false });
-        toast.success("Resolved", "Conversation marked as resolved.");
+        toast.success("Close started", "Conversation moved to close-out as resolved.");
     } catch (error: any) {
-        toast.error(error?.response?.data?.message || "Failed to resolve conversation.");
+        toast.error(error?.response?.data?.message || "Failed to start close-out.");
     } finally {
         setResolving(conversationId, false);
     }
@@ -1744,9 +2001,12 @@ async function endConversation(conversationId: string): Promise<void> {
         const response = await api.post(`/api/support/chats/agent/${conversationId}/end`);
         applyRealtimeMeta(response?.data?.meta);
 
-        removeConversationFromWorkbench(conversationId);
+        const payload = extractConversationPayload(response?.data);
+        if (payload) {
+            upsertConversationInList(payload, { moveToTop: true });
+        }
         await loadConversations({ silent: true, refreshPanelMessages: false });
-        toast.success("Ended", "Conversation ended.");
+        toast.success("Close started", "Conversation moved to close-out.");
     } catch (error: any) {
         toast.error(error?.response?.data?.message || "Failed to end conversation.");
     } finally {
@@ -2032,10 +2292,12 @@ function handleRealtimeConversationChanged(event: any): void {
     }
 
     if (!conversationMap.value.has(conversationId)) {
+        // New conversation we don't know about — refresh to pull it in
         scheduleSilentInboxRefresh();
         return;
     }
 
+    // Apply lightweight local patch — no full refetch needed
     upsertConversationInList(
         {
             id: conversationId,
@@ -2051,8 +2313,6 @@ function handleRealtimeConversationChanged(event: any): void {
         },
         { moveToTop: false },
     );
-
-    scheduleSilentInboxRefresh();
 
     if (nextStatus === "pending_acceptance" && event?.assigned_to === authStore.user?.public_id) {
         const existing = pendingAssignments.value.find(c => c.id === conversationId);
@@ -2325,7 +2585,7 @@ async function loadConversations(
         const rows = Array.isArray(response?.data?.data)
             ? (response.data.data as SupportConversationListItem[])
             : [];
-        const visibleRows = rows.filter((conversation) => !isConversationClosedLike(conversation) && conversation.status !== 'pending_acceptance');
+        const visibleRows = rows.filter((conversation) => shouldShowConversationInWorkbench(conversation));
         conversations.value = visibleRows;
         pendingAssignments.value = rows.filter((conversation) => conversation.status === 'pending_acceptance')
             .map(c => ({ ...c, _receivedAt: Date.now() }));
@@ -2365,10 +2625,6 @@ async function sendPanelMessage(conversationId: string): Promise<void> {
     }
 
     const conversation = conversationMap.value.get(conversationId);
-    if (conversation && isConversationClosedLike(conversation)) {
-        return;
-    }
-
     setSending(conversationId, true);
     const sendAsInternalNote = isNoteMode(conversationId) || (!!conversation && isConversationClosedLike(conversation));
     const previousBody = String(composerByConversation.value[conversationId] || "");
@@ -2420,7 +2676,6 @@ async function sendPanelMessage(conversationId: string): Promise<void> {
                 trackUnread: false,
             });
         }
-        await focusPanelComposer(conversationId);
     } catch (error: any) {
         const message = error?.response?.data?.message || "Failed to send message.";
         toast.error(message);
@@ -2428,9 +2683,9 @@ async function sendPanelMessage(conversationId: string): Promise<void> {
         if (previousFiles.length > 0) {
             setPanelSelectedFiles(conversationId, previousFiles);
         }
-        await focusPanelComposer(conversationId);
     } finally {
         setSending(conversationId, false);
+        await focusPanelComposer(conversationId);
     }
 }
 
@@ -2476,8 +2731,33 @@ async function rejectAssignment(conversationId: string): Promise<void> {
     }
 }
 
+async function handleAutoRejectAssignment(conversationId: string): Promise<void> {
+    if (!conversationId) return;
+    
+    try {
+        await api.post(`/api/support/chats/${conversationId}/reject`, {
+            reason: "Auto-rejected due to inactivity (60s timeout)"
+        });
+    } catch (e) {
+        // Ignore errors for auto-rejection (might have been accepted/rejected elsewhere)
+    }
+    
+    pendingAssignments.value = pendingAssignments.value.filter(c => c.id !== conversationId);
+    
+    // Change agent status to unavailable as requested
+    if (authStore.user?.support_status !== 'unavailable') {
+        await authStore.updateSupportPresence('unavailable');
+        toast.warning("Chat offer expired. Your status has been set to Unavailable.");
+    }
+}
+
 function openTransferModal(conversationId: string): void {
     if (!conversationId) return;
+    const conversation = conversationMap.value.get(conversationId);
+    if (!conversation || String(conversation.status || "").toLowerCase() === "wrap_up") {
+        toast.info("Transfer unavailable", "Wrap-up conversations cannot be transferred.");
+        return;
+    }
     transferConversationId.value = conversationId;
     isTransferModalOpen.value = true;
 }
@@ -2498,7 +2778,12 @@ async function completeWrapUp(conversationId: string): Promise<void> {
 
     completingWrapUpByConversation.value[conversationId] = true;
     try {
-        const response = await api.post(`/api/support/chats/${conversationId}/wrap-up/complete`);
+        const conversation = conversationMap.value.get(conversationId);
+        const resolved = conversation ? isCloseResolved(conversation) : false;
+        const response = await api.post(`/api/support/chats/${conversationId}/wrap-up/complete`, {
+            resolved,
+        });
+        applyRealtimeMeta(response?.data?.meta);
         const conversationPayload = extractConversationPayload(response.data);
         if (conversationPayload) {
             upsertConversationInList(conversationPayload, { moveToTop: true });
@@ -2509,10 +2794,14 @@ async function completeWrapUp(conversationId: string): Promise<void> {
         if (focusedConversationId.value === conversationId) {
             focusedConversationId.value = openConversationIds.value[0] || null;
         }
-        
-        toast.success("Wrap-up completed.");
+
+        const nextCloseResolved = { ...closeResolvedByConversation.value };
+        delete nextCloseResolved[conversationId];
+        closeResolvedByConversation.value = nextCloseResolved;
+
+        toast.success("Closed", resolved ? "Conversation closed as resolved." : "Conversation closed as unresolved.");
     } catch (error: any) {
-        toast.error(error?.response?.data?.message || "Failed to complete wrap-up.");
+        toast.error(error?.response?.data?.message || "Failed to close conversation.");
     } finally {
         completingWrapUpByConversation.value[conversationId] = false;
     }
@@ -2549,6 +2838,14 @@ async function handleComposerKeydown(event: KeyboardEvent, conversationId: strin
 function handleEchoConnected(): void {
     supportLogger.info("realtime.echo.connected", "Received echo:connected for support workbench.");
     void subscribeSupportRealtime();
+}
+
+function persistColumns(value: WorkbenchColumns): void {
+    try {
+        localStorage.setItem("support_workbench_columns", String(value));
+    } catch {
+        // Ignore
+    }
 }
 
 watch(columns, (value) => {
@@ -2592,6 +2889,33 @@ watch(conversations, (rows) => {
     }
 });
 
+watch(liveClockNow, (nowMs) => {
+    if (pendingAssignments.value.length === 0) return;
+    
+    const now = nowMs;
+    for (const assignment of [...pendingAssignments.value]) {
+        const receivedAt = assignment._receivedAt || now;
+        const elapsed = (now - receivedAt) / 1000;
+        
+        if (elapsed >= 60) {
+            void handleAutoRejectAssignment(assignment.id);
+        }
+    }
+});
+
+watch(
+    () => pendingAssignments.value.length,
+    (count) => {
+        if (count > 0) {
+            startSupportOfferLoop();
+            return;
+        }
+
+        stopSupportOfferLoop();
+    },
+    { immediate: true },
+);
+
 onMounted(async () => {
     startLiveCounterTicker();
     await loadConversations();
@@ -2622,6 +2946,7 @@ onBeforeUnmount(() => {
     }
 
     stopLiveCounterTicker();
+    stopSupportOfferLoop();
 
     for (const picker of panelEmojiPickerInstances.values()) {
         if (picker?.parentNode) {
@@ -2638,7 +2963,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-    <div class="flex h-screen min-h-0 bg-(--surface-primary)">
+    <div class="flex h-screen min-h-0 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.08),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(16,185,129,0.08),transparent_26%),var(--surface-primary)]">
         <!-- Persistent Left Sidebar -->
         <aside
             class="hidden min-h-0 shrink-0 flex-col border-r border-(--border-muted) bg-(--surface-secondary)/15 transition-all duration-300 ease-in-out lg:flex"
@@ -2648,20 +2973,24 @@ onBeforeUnmount(() => {
         >
             <!-- Sidebar Top: Presence & Identity -->
             <div class="flex shrink-0 items-center border-b border-(--border-muted)/50" :class="!isLeftSidebarExpanded ? 'p-3 justify-center' : 'p-3'">
-                <SupportStatusSelector :collapsed="!isLeftSidebarExpanded" />
+                <SupportStatusSelector
+                    :collapsed="!isLeftSidebarExpanded"
+                    :active-chats-count="activeWorkingChatsCount"
+                    :working-since-at="oldestWorkingChatStartedAt"
+                />
             </div>
 
             <!-- Sidebar Middle: Core Actions & Sync Status -->
             <div class="flex min-h-0 flex-1 flex-col items-center gap-0 overflow-y-auto py-0">
                 <!-- Syncing Indicator -->
                 <div 
-                    v-if="isLoadingList || isRefreshingList" 
+                    v-if="isLoadingList" 
                     class="flex items-center justify-center rounded-lg border border-(--border-default) bg-(--surface-primary) transition-all px-3 py-2"
                     :class="!isLeftSidebarExpanded ? 'w-10 h-10 p-0' : 'w-full mx-3 gap-2 h-10'"
                     title="Syncing..."
                 >
                     <Loader2 class="h-4 w-4 animate-spin text-(--text-secondary)" />
-                    <span v-if="isLeftSidebarExpanded" class="text-xs font-semibold text-(--text-secondary)">Syncing</span>
+                    <span v-if="isLeftSidebarExpanded" class="text-xs font-semibold text-(--text-secondary)">Loading</span>
                 </div>
 
 
@@ -2727,9 +3056,9 @@ onBeforeUnmount(() => {
 
                         <!-- Tabs & Detailed Info -->
                         <section class="flex min-h-0 flex-1 flex-col gap-3">
-                            <div class="grid grid-cols-3 gap-1 rounded-lg border border-(--border-default) bg-(--surface-secondary)/20 p-1">
+                            <div class="grid grid-cols-4 gap-1 rounded-lg border border-(--border-default) bg-(--surface-secondary)/20 p-1">
                                 <button
-                                    v-for="tab in (['overview', 'media', 'links'] as WorkbenchDetailTab[])"
+                                    v-for="tab in (['overview', 'media', 'links', 'notes'] as WorkbenchDetailTab[])"
                                     :key="tab"
                                     type="button"
                                     class="h-8 rounded-md text-[10px] font-bold capitalize transition-all"
@@ -2741,6 +3070,9 @@ onBeforeUnmount(() => {
                                     {{ tab }}
                                     <span v-if="tab === 'media' && focusedConversationAttachmentItems.length > 0" class="ml-1 opacity-60">
                                         {{ focusedConversationAttachmentItems.length }}
+                                    </span>
+                                    <span v-else-if="tab === 'notes' && focusedConversationNoteItems.length > 0" class="ml-1 opacity-60">
+                                        {{ focusedConversationNoteItems.length }}
                                     </span>
                                 </button>
                             </div>
@@ -2825,6 +3157,47 @@ onBeforeUnmount(() => {
                                         </div>
                                     </button>
                                 </div>
+
+                                <div v-else-if="detailsTab === 'notes'" class="space-y-2">
+                                    <div
+                                        v-if="focusedConversationNoteItems.length === 0"
+                                        class="rounded-xl border border-dashed border-(--border-muted) p-6 text-center"
+                                    >
+                                        <AlertCircle class="mx-auto h-6 w-6 text-(--text-muted)/40" />
+                                        <p class="mt-2 text-[11px] text-(--text-muted)">No internal notes yet.</p>
+                                    </div>
+                                    <article
+                                        v-for="note in focusedConversationNoteItems"
+                                        :key="note.id"
+                                        class="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5"
+                                    >
+                                        <div class="flex items-center gap-2">
+                                            <Avatar
+                                                :src="note.sender?.avatar_url"
+                                                :thumb-url="note.sender?.avatar_thumb_url"
+                                                :alt="note.sender?.name || 'Agent'"
+                                                :fallback="(note.sender?.name || 'A').charAt(0)"
+                                                :color="note.sender?.avatar_color || 'var(--surface-tertiary)'"
+                                                size="xs"
+                                            />
+                                            <div class="min-w-0">
+                                                <p class="truncate text-[11px] font-semibold text-(--text-primary)">{{ note.sender?.name || 'Agent' }}</p>
+                                                <p class="text-[10px] text-(--text-muted)">{{ formatRelativeTime(note.created_at) }}</p>
+                                            </div>
+                                        </div>
+                                        <div class="mt-2 break-words text-[11px] text-(--text-primary)">
+                                            <div v-if="messageHasBody(note)" class="support-rich-content" v-html="messageHtml(note)"></div>
+                                            <span v-else>Internal note (no text)</span>
+                                        </div>
+                                        <SupportMessageAttachments
+                                            v-if="Array.isArray(note.attachments) && note.attachments.length > 0"
+                                            class="mt-2"
+                                            :attachments="note.attachments"
+                                            tone="note"
+                                            compact
+                                        />
+                                    </article>
+                                </div>
                             </div>
                         </section>
                     </div>
@@ -2849,10 +3222,10 @@ onBeforeUnmount(() => {
         </aside>
 
         <!-- Main Content Area -->
-        <main class="flex min-w-0 flex-1 flex-col overflow-hidden p-3 pt-0">
+        <main class="flex min-w-0 flex-1 flex-col overflow-hidden p-3 pt-3">
                 <section class="min-h-0 flex-1 overflow-hidden">
                     <div v-if="openConversations.length === 0" class="flex h-full items-center justify-center">
-                        <Card class="w-full max-w-md border border-[var(--border-muted)] bg-[var(--surface-secondary)] p-8 text-center">
+                        <Card class="w-full max-w-md border border-[var(--border-muted)] bg-[var(--surface-primary)]/88 p-8 text-center shadow-sm backdrop-blur">
                             <MessageSquare class="mx-auto h-10 w-10 text-[var(--text-muted)]" />
                             <p class="mt-3 text-base font-medium text-[var(--text-primary)]">
                                 No live panels yet
@@ -2869,19 +3242,22 @@ onBeforeUnmount(() => {
                                 v-for="conversation in openConversations"
                                 :key="conversation.id"
                                 padding="none"
-                                class="flex h-full min-h-0 shrink-0 flex-1 flex-col overflow-hidden border bg-[var(--surface-secondary)]"
+                                class="flex h-full min-h-0 shrink-0 flex-1 flex-col overflow-hidden border bg-[var(--surface-secondary)]/92 backdrop-blur"
                                 :class="[
                                     isFocusedConversation(conversation.id)
-                                        ? 'border-[var(--border-default)] shadow-[inset_0_0_0_1px_var(--border-default)]'
+                                        ? 'border-[var(--border-default)] shadow-[0_16px_32px_-24px_rgba(15,23,42,0.6),inset_0_0_0_1px_var(--border-default)]'
                                         : 'border-[var(--border-muted)]',
-                                    'min-w-0'
+                                    'min-w-0 rounded-[1.35rem]'
                                 ]"
                             >
                             <header
-                                class="border-b border-[var(--border-muted)] bg-[var(--surface-primary)]/65"
+                                class="relative overflow-hidden border-b border-[var(--border-muted)]"
                                 :class="isDenseGrid ? 'px-2 py-1.5' : 'px-2.5 py-2'"
                             >
-                                <div class="flex items-start justify-between gap-1.5">
+                                <div class="absolute inset-0 bg-gradient-to-br" :class="conversationHeaderGradientClass(conversation)"></div>
+                                <div class="absolute -right-6 top-0 h-16 w-16 rounded-full bg-white/30 blur-3xl"></div>
+
+                                <div class="relative flex items-start justify-between gap-1.5">
                                     <div class="flex min-w-0 items-center gap-2">
                                         <Avatar
                                             :src="conversation.requester?.avatar_url || undefined"
@@ -2889,19 +3265,14 @@ onBeforeUnmount(() => {
                                             :alt="customerName(conversation)"
                                             :fallback="customerName(conversation).slice(0, 1).toUpperCase()"
                                             :color="conversation.requester?.avatar_color || 'var(--surface-tertiary)'"
-                                            size="xs"
+                                            size="sm"
                                         />
                                         <div class="min-w-0">
                                             <p class="truncate font-semibold text-[var(--text-primary)]" :class="isDenseGrid ? 'text-[13px]' : 'text-[13px]'">
                                                 {{ customerName(conversation) }}
                                             </p>
-                                            <p class="truncate text-[var(--text-secondary)]" :class="isDenseGrid ? 'text-[10px]' : 'text-[10px]'">
+                                            <p class="truncate text-[var(--text-secondary)]/90" :class="isDenseGrid ? 'text-[10px]' : 'text-[10px]'">
                                                 {{ conversation.requester?.email || conversation.guest_email || "No email" }}
-                                            </p>
-                                            <p class="truncate text-[9px] text-[var(--text-muted)]">
-                                                <span>Dur {{ conversationDurationLabel(conversation) }}</span>
-                                                <span class="mx-1">·</span>
-                                                <span :class="responseGapToneClass(conversation.id)">Gap {{ responseGapLabel(conversation.id) }}</span>
                                             </p>
                                         </div>
                                     </div>
@@ -2925,7 +3296,6 @@ onBeforeUnmount(() => {
                                                     :disabled="
                                                         sendingByConversation[conversation.id] ||
                                                         assigningByConversation[conversation.id] ||
-                                                        resolvingByConversation[conversation.id] ||
                                                         endingByConversation[conversation.id]
                                                     "
                                                 >
@@ -2962,25 +3332,44 @@ onBeforeUnmount(() => {
                                             <DropdownItem v-else disabled>
                                                 End unavailable
                                             </DropdownItem>
-                                            <DropdownItem
-                                                v-if="canResolveConversation(conversation.id)"
-                                                :disabled="resolvingByConversation[conversation.id]"
-                                                destructive
-                                                @select="resolveConversation(conversation.id)"
-                                            >
-                                                {{ resolvingByConversation[conversation.id] ? "Resolving..." : "Resolve conversation" }}
-                                            </DropdownItem>
-                                            <DropdownItem v-else disabled>
-                                                Resolve unavailable
-                                            </DropdownItem>
                                             <DropdownSeparator v-if="isAssignedToCurrentUser(conversation.id)" />
                                             <DropdownItem
-                                                v-if="isAssignedToCurrentUser(conversation.id)"
+                                                v-if="isAssignedToCurrentUser(conversation.id) && conversation.status !== 'wrap_up'"
                                                 @select="openTransferModal(conversation.id)"
                                             >
                                                 Transfer chat
                                             </DropdownItem>
                                         </Dropdown>
+                                    </div>
+                                </div>
+
+                                <div class="relative mt-2.5 space-y-2">
+                                    <p class="line-clamp-1 text-[11px] text-[var(--text-secondary)]">
+                                        {{ conversationPreviewLine(conversation) }}
+                                    </p>
+
+                                    <div class="flex flex-wrap items-center gap-1.5">
+                                        <span class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-default)] bg-[var(--surface-primary)]/80 px-2 py-1 text-[10px] font-medium text-[var(--text-primary)] backdrop-blur">
+                                            <span class="h-2 w-2 rounded-full" :class="statusDotClass(conversation.status)"></span>
+                                            {{ statusDisplayLabel(conversation.status) }}
+                                        </span>
+                                        <span class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-default)] bg-[var(--surface-primary)]/80 px-2 py-1 text-[10px] font-medium text-[var(--text-primary)] backdrop-blur">
+                                            <Clock class="h-3 w-3 text-[var(--text-muted)]" />
+                                            Dur {{ conversationDurationLabel(conversation) }}
+                                        </span>
+                                        <span
+                                            class="inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[10px] font-medium backdrop-blur"
+                                            :class="responseGapBadgeClass(conversation.id)"
+                                        >
+                                            {{ secondaryTimerPrefix(conversation.id) }} {{ responseGapLabel(conversation.id) }}
+                                        </span>
+                                        <span
+                                            v-if="conversation.support_skill?.name"
+                                            class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-default)] bg-[var(--surface-primary)]/80 px-2 py-1 text-[10px] font-medium text-[var(--text-secondary)] backdrop-blur"
+                                        >
+                                            <Hash class="h-3 w-3 text-[var(--text-muted)]" />
+                                            {{ conversation.support_skill.name }}
+                                        </span>
                                     </div>
                                 </div>
                             </header>
@@ -3008,16 +3397,16 @@ onBeforeUnmount(() => {
                                 </div>
 
                                 <div
-                                    v-else-if="panelMessages(conversation.id).length === 0"
+                                    v-else-if="panelVisibleMessages(conversation.id).length === 0"
                                     class="flex items-center justify-center py-8 text-xs text-[var(--text-secondary)]"
                                 >
-                                    No messages yet.
+                                    No customer-visible messages yet.
                                 </div>
 
                                 <div v-else class="flex min-h-full flex-col justify-end">
                                     <div :class="isDenseGrid ? 'space-y-1' : 'space-y-1.5'">
                                         <div
-                                            v-for="message in panelMessages(conversation.id)"
+                                            v-for="message in panelVisibleMessages(conversation.id)"
                                             :key="message.id"
                                             :id="`support-workbench-message-${conversation.id}-${message.id}`"
                                             class="flex"
@@ -3079,42 +3468,80 @@ onBeforeUnmount(() => {
                             >
                                 <div class="space-y-1.5" @click.stop>
                                     <div v-if="isConversationClosedLike(conversation)" class="px-1 py-0.5 text-xs text-[var(--text-secondary)] italic">
-                                        This conversation is {{ statusDisplayLabel(conversation.status) }}. Internal notes only.
+                                        {{ closedConversationNoticeLabel(conversation.status) }}
                                     </div>
-                                    <div class="flex items-center gap-1 px-0.5" :class="isDenseGrid ? 'pb-0.5' : ''">
+                                    <div class="flex items-center justify-between gap-2 px-0.5" :class="isDenseGrid ? 'pb-0.5' : ''">
+                                        <div class="flex items-center gap-1">
+                                            <template v-if="!isConversationClosedLike(conversation)">
+                                                <button
+                                                    type="button"
+                                                    class="rounded-full font-semibold transition-colors"
+                                                    :class="[
+                                                        isDenseGrid ? 'px-1.5 py-0.5 text-[9px]' : 'px-2 py-0.5 text-[9px]',
+                                                        !isNoteMode(conversation.id)
+                                                            ? 'bg-[var(--interactive-primary)]/10 text-[var(--interactive-primary)]'
+                                                            : 'text-[var(--text-secondary)] hover:bg-[var(--surface-secondary)]'
+                                                    ]"
+                                                    :disabled="sendingByConversation[conversation.id]"
+                                                    @click="setNoteMode(conversation.id, false)"
+                                                >
+                                                    Reply
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    class="inline-flex items-center gap-1 rounded-full font-semibold transition-colors"
+                                                    :class="[
+                                                        isDenseGrid ? 'px-1.5 py-0.5 text-[9px]' : 'px-2 py-0.5 text-[9px]',
+                                                        isNoteMode(conversation.id)
+                                                            ? 'bg-amber-500/10 text-amber-600 dark:text-amber-300'
+                                                            : 'text-[var(--text-secondary)] hover:bg-[var(--surface-secondary)]'
+                                                    ]"
+                                                    :disabled="sendingByConversation[conversation.id]"
+                                                    @click="setNoteMode(conversation.id, true)"
+                                                >
+                                                    <AlertCircle class="h-3 w-3" />
+                                                    {{ isDenseGrid ? "Note" : "Internal Note" }}
+                                                </button>
+                                            </template>
+                                            <span
+                                                v-else
+                                                class="inline-flex items-center gap-1 rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300"
+                                            >
+                                                <AlertCircle class="h-3 w-3" />
+                                                Notes only
+                                            </span>
+                                        </div>
                                         <button
-                                            v-if="!isConversationClosedLike(conversation)"
                                             type="button"
-                                            class="rounded-full font-semibold transition-colors"
-                                            :class="[
-                                                isDenseGrid ? 'px-1.5 py-0.5 text-[9px]' : 'px-2 py-0.5 text-[9px]',
-                                                !isNoteMode(conversation.id)
-                                                    ? 'bg-[var(--interactive-primary)]/10 text-[var(--interactive-primary)]'
-                                                    : 'text-[var(--text-secondary)] hover:bg-[var(--surface-secondary)]'
-                                            ]"
+                                            class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-secondary)] hover:text-[var(--text-primary)]"
                                             :disabled="sendingByConversation[conversation.id]"
-                                            @click="setNoteMode(conversation.id, false)"
+                                            @click="toggleComposerCollapsed(conversation.id)"
                                         >
-                                            Reply
-                                        </button>
-                                        <button
-                                            type="button"
-                                            class="inline-flex items-center gap-1 rounded-full font-semibold transition-colors"
-                                            :class="[
-                                                isDenseGrid ? 'px-1.5 py-0.5 text-[9px]' : 'px-2 py-0.5 text-[9px]',
-                                                isNoteMode(conversation.id)
-                                                    ? 'bg-amber-500/10 text-amber-600 dark:text-amber-300'
-                                                    : 'text-[var(--text-secondary)] hover:bg-[var(--surface-secondary)]'
-                                            ]"
-                                            :disabled="sendingByConversation[conversation.id]"
-                                            @click="setNoteMode(conversation.id, true)"
-                                        >
-                                            <AlertCircle class="h-3 w-3" />
-                                            {{ isDenseGrid ? "Note" : "Internal Note" }}
+                                            <ChevronRight class="h-3 w-3 transition-transform" :class="isComposerCollapsed(conversation.id) ? '' : 'rotate-90'" />
+                                            {{ isComposerCollapsed(conversation.id) ? "Expand composer" : "Collapse composer" }}
                                         </button>
                                     </div>
 
                                     <div
+                                        v-if="isComposerCollapsed(conversation.id)"
+                                        class="rounded-lg border border-dashed border-[var(--border-default)] bg-[var(--surface-primary)]/70 px-3 py-2 text-xs text-[var(--text-secondary)]"
+                                    >
+                                        <div class="flex items-center justify-between gap-3">
+                                            <span class="truncate">
+                                                {{
+                                                    (composerByConversation[conversation.id] || '').trim()
+                                                        ? `Draft: ${(composerByConversation[conversation.id] || '').trim().slice(0, 72)}`
+                                                        : 'Composer collapsed'
+                                                }}
+                                            </span>
+                                            <span v-if="panelSelectedFiles(conversation.id).length > 0" class="shrink-0 text-[var(--text-muted)]">
+                                                {{ panelSelectedFiles(conversation.id).length }} file<span v-if="panelSelectedFiles(conversation.id).length !== 1">s</span>
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div
+                                        v-else
                                         class="rounded-lg border"
                                         :class="(isNoteMode(conversation.id) || isConversationClosedLike(conversation))
                                             ? 'border-amber-500/30 bg-amber-500/5'
@@ -3127,6 +3554,16 @@ onBeforeUnmount(() => {
                                             multiple
                                             @change="handlePanelFileSelection(conversation.id, $event)"
                                         />
+
+                                        <div
+                                            v-if="isNoteMode(conversation.id) || isConversationClosedLike(conversation)"
+                                            class="flex items-center justify-between gap-2 border-b border-amber-500/20 bg-amber-500/8 px-2 py-1 text-[10px] font-medium text-amber-700 dark:text-amber-300"
+                                        >
+                                            <span class="inline-flex items-center gap-1">
+                                                <AlertCircle class="h-3 w-3" />
+                                                Internal note. Only teammates can see this.
+                                            </span>
+                                        </div>
 
                                         <div
                                             v-if="panelSelectedFiles(conversation.id).length > 0"
@@ -3302,19 +3739,6 @@ onBeforeUnmount(() => {
                                                 <Send v-else class="mr-1 h-4 w-4" />
                                                 <span>{{ (isNoteMode(conversation.id) || isConversationClosedLike(conversation)) ? "Add Note" : "Send" }}</span>
                                             </Button>
-
-                                            <Button
-                                                v-if="conversation.status === 'wrap_up'"
-                                                size="sm"
-                                                variant="outline"
-                                                class="ml-2 h-9 px-3 text-xs font-bold border-emerald-500/50 text-emerald-600 hover:bg-emerald-50"
-                                                :disabled="completingWrapUpByConversation[conversation.id]"
-                                                @click="completeWrapUp(conversation.id)"
-                                            >
-                                                <Loader2 v-if="completingWrapUpByConversation[conversation.id]" class="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                                                <Check v-else class="mr-1.5 h-3.5 w-3.5" />
-                                                Complete Wrap-up
-                                            </Button>
                                         </div>
 
                                         <div
@@ -3326,6 +3750,32 @@ onBeforeUnmount(() => {
                                                 class="support-workbench-emoji-mount"
                                             ></div>
                                         </div>
+                                    </div>
+                                    <div
+                                        v-if="conversation.status === 'wrap_up'"
+                                        class="flex items-center justify-end gap-2 pt-1"
+                                    >
+                                        <label class="inline-flex items-center gap-1.5 text-[11px] font-medium text-[var(--text-secondary)]">
+                                            <input
+                                                type="checkbox"
+                                                class="h-3.5 w-3.5 rounded border-[var(--border-default)] text-emerald-600 focus:ring-emerald-500"
+                                                :checked="isCloseResolved(conversation)"
+                                                :disabled="completingWrapUpByConversation[conversation.id]"
+                                                @change="setCloseResolved(conversation.id, ($event.target as HTMLInputElement).checked)"
+                                            />
+                                            Resolved
+                                        </label>
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            class="h-9 px-3 text-xs font-bold border-emerald-500/50 text-emerald-600 hover:bg-emerald-50"
+                                            :disabled="completingWrapUpByConversation[conversation.id]"
+                                            @click="completeWrapUp(conversation.id)"
+                                        >
+                                            <Loader2 v-if="completingWrapUpByConversation[conversation.id]" class="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                                            <Check v-else class="mr-1.5 h-3.5 w-3.5" />
+                                            Close Chat
+                                        </Button>
                                     </div>
                                 </div>
                             </footer>

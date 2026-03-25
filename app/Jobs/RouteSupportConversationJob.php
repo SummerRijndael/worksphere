@@ -2,7 +2,8 @@
 
 namespace App\Jobs;
 
-use App\Services\Support\SupportRoutingService;
+use App\Contracts\SupportRoutingServiceContract;
+use App\Models\SupportRoutingQueueEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -21,7 +22,7 @@ class RouteSupportConversationJob implements ShouldQueue
         $this->onQueue((string) config('support_chat.routing.queue', 'chats'));
     }
 
-    public function handle(SupportRoutingService $routingService): void
+    public function handle(SupportRoutingServiceContract $routingService): void
     {
         $routingService->processQueueEntry($this->queueEntryId);
     }

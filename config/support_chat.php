@@ -43,6 +43,7 @@ return [
         'enabled' => env('SUPPORT_SKILLS_ENABLED', false),
         'allow_legacy_fallback' => env('SUPPORT_SKILLS_ALLOW_LEGACY_FALLBACK', true),
         'allow_unrouted_conversation_fallback' => env('SUPPORT_SKILLS_ALLOW_UNROUTED_FALLBACK', true),
+        'default_skill_slug' => env('SUPPORT_DEFAULT_SKILL_SLUG', 'general-support'),
         'global_admin_roles' => ['administrator'],
         'global_admin_permissions' => ['tickets.manage'],
 
@@ -148,6 +149,7 @@ return [
     */
     'routing' => [
         'enabled' => env('SUPPORT_ROUTING_ENABLED', true),
+        'engine' => env('SUPPORT_ROUTING_ENGINE', 'database'), // 'database' or 'acd'
         'queue' => env('SUPPORT_ROUTING_QUEUE', env('SUPPORT_CHAT_JOBS_QUEUE', 'chats')),
         'default_agent_capacity' => (int) env('SUPPORT_ROUTING_DEFAULT_AGENT_CAPACITY', 3),
         'max_attempts' => (int) env('SUPPORT_ROUTING_MAX_ATTEMPTS', 20),

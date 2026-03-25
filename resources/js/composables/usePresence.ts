@@ -5,7 +5,7 @@ import echo, { isConnected, reconnect, disconnect, isEchoAvailable } from '@/ech
 import api from '@/lib/api';
 
 type PresenceStatus = 'online' | 'away' | 'busy' | 'offline' | 'invisible';
-type SupportPresenceStatus = 'available' | 'break' | 'lunch' | 'acw' | 'bio' | 'unavailable';
+type SupportPresenceStatus = 'available' | 'working' | 'break' | 'lunch' | 'acw' | 'bio' | 'unavailable';
 type ConnectionHealth = 'healthy' | 'degraded' | 'disconnected' | 'unknown';
 
 interface PresenceUser {
@@ -15,6 +15,7 @@ interface PresenceUser {
     avatar?: string;
     status: PresenceStatus;
     support_status?: SupportPresenceStatus;
+    support_status_at?: string | null;
     support_available?: boolean;
     lastSeen: number;
 }
@@ -297,6 +298,7 @@ export function usePresence(options: UsePresenceOptions = {}) {
             ...user,
             status: status || user.status || existing.status || 'offline',
             support_status: user.support_status || existing.support_status,
+            support_status_at: typeof user.support_status_at !== 'undefined' ? user.support_status_at : existing.support_status_at,
             support_available: typeof user.support_available !== 'undefined' ? user.support_available : existing.support_available,
             lastSeen: Date.now() // Reset timer on any update/whisper
         });
@@ -324,6 +326,9 @@ export function usePresence(options: UsePresenceOptions = {}) {
                     }
                     if (data.support_status) {
                         authStore.user.support_status = data.support_status;
+                    }
+                    if (typeof data.support_status_at !== 'undefined') {
+                        authStore.user.support_status_at = data.support_status_at;
                     }
                 }
             });
@@ -636,6 +641,7 @@ export function getUserPresence(publicId: string): PresenceUser | undefined {
 export function getSupportStatusColor(status: SupportPresenceStatus): string {
     const colors: Record<SupportPresenceStatus, string> = {
         available: 'bg-green-500',
+        working: 'bg-sky-500',
         break: 'bg-amber-500',
         lunch: 'bg-blue-500',
         acw: 'bg-purple-500',
@@ -651,10 +657,11 @@ export function getSupportStatusColor(status: SupportPresenceStatus): string {
 export function getSupportStatusLabel(status: SupportPresenceStatus): string {
     const labels: Record<SupportPresenceStatus, string> = {
         available: 'Available',
+        working: 'Working',
         break: 'Break',
         lunch: 'Lunch',
         acw: 'ACW',
-        bio: 'Bio',
+        bio: 'Bio Break',
         unavailable: 'Unavailable',
     };
     return labels[status] || (status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Unknown');
