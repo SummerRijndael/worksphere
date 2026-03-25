@@ -67,7 +67,7 @@ Schedule::job(new \App\Jobs\ProcessTicketRemindersJob)
 
 // Sweep support routing queue and recover stale routing locks.
 Schedule::call(function () {
-    app(\App\Services\Support\SupportRoutingService::class)->dispatchDueEntries();
+    app(\App\Contracts\SupportRoutingServiceContract::class)->dispatchDueEntries();
 })
     ->everyMinute()
     ->name('support-routing-sweep')

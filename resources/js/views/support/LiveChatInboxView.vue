@@ -1,5 +1,6 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import {
     Filter,
     MoreVertical,
@@ -25,6 +26,7 @@ import {
     User,
     Hash,
     FileText,
+    Check,
     Loader2,
 } from 'lucide-vue-next';
 import {
@@ -50,6 +52,7 @@ import { renderSupportRichText } from '@/utils/supportRichText';
 const toast = useToast();
 const authStore = useAuthStore();
 const supportLogger = createSupportLogger('Inbox');
+const route = useRoute();
 
 const SUPPORT_INBOX_SCOPE_STORAGE_KEY = 'worksphere.support.inbox.scope';
 const SUPPORT_INBOX_LEFT_WIDTH_STORAGE_KEY = 'worksphere.support.inbox.left_sidebar_width';
@@ -83,6 +86,25 @@ function readStoredInboxScope() {
     }
 
     return normalizeInboxScope(window.localStorage.getItem(SUPPORT_INBOX_SCOPE_STORAGE_KEY));
+}
+
+function readRequestedInboxScope() {
+    const raw = Array.isArray(route.query.scope) ? route.query.scope[0] : route.query.scope;
+    if (typeof raw !== 'string' || raw.trim() === '') {
+        return null;
+    }
+
+    return normalizeInboxScope(raw);
+}
+
+function readRequestedConversationId() {
+    const raw = Array.isArray(route.query.conversation) ? route.query.conversation[0] : route.query.conversation;
+    if (typeof raw !== 'string') {
+        return null;
+    }
+
+    const normalized = raw.trim();
+    return normalized !== '' ? normalized : null;
 }
 
 function readStoredWidth(storageKey, fallback) {
@@ -132,6 +154,7 @@ const unreadMessageCount = ref(0);
 const pendingOutgoingMessages = ref([]);
 const unsafeMessageIds = ref(new Set());
 const showEmojiPicker = ref(false);
+const isComposerCollapsed = ref(false);
 const sendCooldownSeconds = ref(0);
 const liveClockNow = ref(Date.now());
 const uiTimerSettings = ref({ ...DEFAULT_UI_TIMER_SETTINGS });
@@ -145,6 +168,7 @@ const isSending = ref(false);
 const isAssigning = ref(false);
 const isResolving = ref(false);
 const isEnding = ref(false);
+const closeResolved = ref(false);
 const activeSidebarResize = ref(null);
 const leftSidebarWidth = ref(readStoredWidth(SUPPORT_INBOX_LEFT_WIDTH_STORAGE_KEY, DEFAULT_LEFT_SIDEBAR_WIDTH));
 const rightSidebarWidth = ref(readStoredWidth(SUPPORT_INBOX_RIGHT_WIDTH_STORAGE_KEY, DEFAULT_RIGHT_SIDEBAR_WIDTH));
@@ -350,7 +374,10 @@ const activeConversationStatus = computed(() => String(
     || activeConversation.value?.status
     || 'open'
 ).toLowerCase());
-const isConversationResolvedLike = computed(() => ['resolved', 'closed'].includes(activeConversationStatus.value));
+const isConversationResolvedLike = computed(() => {
+    const chatState = String(activeConversation.value?.chat_state || '').toLowerCase();
+    return chatState === 'chat_ended' || ['wrap_up', 'resolved', 'closed'].includes(activeConversationStatus.value);
+});
 const isConversationAssigned = computed(() => {
     const assignee = activeConversation.value?.assignee || {};
     return Boolean(assignee.id || assignee.public_id || assignee.name);
@@ -372,26 +399,18 @@ const assignmentStateLabel = computed(() => {
 
     return 'Awaiting agent';
 });
-const resolveActionLabel = computed(() => {
-    if (activeConversationStatus.value === 'closed') {
-        return 'Closed';
-    }
-    if (activeConversationStatus.value === 'resolved') {
-        return 'Resolved';
-    }
-
-    return 'Mark Resolved';
-});
 const endActionLabel = computed(() => {
     if (activeConversationStatus.value === 'closed') {
         return 'Already closed';
     }
+    if (activeConversationStatus.value === 'wrap_up') {
+        return 'Close started';
+    }
 
     return 'End conversation';
 });
-const canResolveActiveConversation = computed(() => Boolean(activeConversationId.value) && !isConversationResolvedLike.value);
 const canAssignActiveConversation = computed(() => Boolean(activeConversationId.value) && !isConversationResolvedLike.value);
-const canEndActiveConversation = computed(() => Boolean(activeConversationId.value) && activeConversationStatus.value !== 'closed');
+const canEndActiveConversation = computed(() => Boolean(activeConversationId.value) && !isConversationResolvedLike.value);
 const conversationStartedSummary = computed(() => {
     const createdAt = activeConversation.value?.created_at || null;
     return {
@@ -573,8 +592,7 @@ const pendingMessagesForActiveConversation = computed(() => {
 });
 
 const composerDisabled = computed(() => {
-    const status = activeConversation.value?.status;
-    return !activeConversation.value || status === 'resolved' || status === 'closed';
+    return !activeConversation.value || isConversationResolvedLike.value;
 });
 const isSendCoolingDown = computed(() => sendCooldownSeconds.value > 0);
 
@@ -1090,6 +1108,10 @@ function patchConversationFromMessage(conversationId, message, options = {}) {
         return;
     }
 
+    if (message.is_private_note) {
+        return;
+    }
+
     applyConversationSnapshot({
         id: conversationId,
         latest_message: message,
@@ -1296,7 +1318,20 @@ function toggleEmojiPicker() {
         return;
     }
 
+    if (isComposerCollapsed.value) {
+        isComposerCollapsed.value = false;
+    }
     showEmojiPicker.value = !showEmojiPicker.value;
+}
+
+function toggleComposerCollapsed() {
+    isComposerCollapsed.value = !isComposerCollapsed.value;
+    if (isComposerCollapsed.value) {
+        showEmojiPicker.value = false;
+        return;
+    }
+
+    void focusComposerTextarea();
 }
 
 function handleGlobalPointerDown(event) {
@@ -1333,12 +1368,18 @@ function getConversationInitials(chat) {
 }
 
 function getStatusLabel(status) {
+    if (status === 'wrap_up') {
+        return 'close';
+    }
+
     return (status || 'open').replace(/_/g, ' ');
 }
 
 function getStatusClasses(status) {
     switch (status) {
         case 'waiting_human':
+            return 'text-amber-500';
+        case 'wrap_up':
             return 'text-amber-500';
         case 'assigned':
             return 'text-blue-500';
@@ -1357,6 +1398,8 @@ function getStatusIcon(status) {
     switch (status) {
         case 'waiting_human':
             return Clock;
+        case 'wrap_up':
+            return Clock;
         case 'resolved':
         case 'closed':
             return CheckCircle2;
@@ -1371,6 +1414,9 @@ function getStatusIcon(status) {
 }
 
 function statusBadgeVariant(status) {
+    if (status === 'wrap_up') {
+        return 'warning';
+    }
     if (status === 'resolved' || status === 'closed') {
         return 'secondary';
     }
@@ -1881,34 +1927,45 @@ async function loadConversations(options = {}) {
             last_page: conversationPagination.value.lastPage,
         });
 
-        const existing = conversations.value.find((chat) => chat.id === activeConversationId.value);
-        if (!existing) {
-            activeConversationId.value = conversations.value[0]?.id || null;
-        }
+        const requestedConversationHandled = !append
+            ? await syncConversationFromRoute({
+                loadMessages: true,
+                withLoading: !silent,
+            })
+            : false;
 
         if (!append) {
-            if (activeConversationId.value) {
-                const shouldLoadMessages = !activeConversation.value
-                    || activeConversation.value.id !== activeConversationId.value
-                    || conversationMessages.value.length === 0;
-                const shouldSyncSelectedConversation = syncActiveConversation
-                    || shouldLoadMessages
-                    || !activeConversation.value
-                    || activeConversation.value.id !== activeConversationId.value;
+            if (!requestedConversationHandled) {
+                const existing = conversations.value.find((chat) => chat.id === activeConversationId.value);
+                if (!existing) {
+                    activeConversationId.value = conversations.value[0]?.id || null;
+                }
 
-                if (shouldSyncSelectedConversation) {
-                    await fetchConversation(activeConversationId.value, {
-                        loadMessages: shouldLoadMessages,
-                        withLoading: !silent && shouldLoadMessages,
-                    });
+                if (activeConversationId.value) {
+                    const shouldLoadMessages = !activeConversation.value
+                        || activeConversation.value.id !== activeConversationId.value
+                        || conversationMessages.value.length === 0;
+                    const shouldSyncSelectedConversation = syncActiveConversation
+                        || shouldLoadMessages
+                        || !activeConversation.value
+                        || activeConversation.value.id !== activeConversationId.value;
+
+                    if (shouldSyncSelectedConversation) {
+                        await fetchConversation(activeConversationId.value, {
+                            loadMessages: shouldLoadMessages,
+                            withLoading: !silent && shouldLoadMessages,
+                        });
+                    } else {
+                        await subscribeSupportRealtime();
+                    }
                 } else {
+                    activeConversation.value = null;
+                    conversationMessages.value = [];
+                    clearCustomerTypingIndicator();
+                    clearUnreadMarker();
                     await subscribeSupportRealtime();
                 }
             } else {
-                activeConversation.value = null;
-                conversationMessages.value = [];
-                clearCustomerTypingIndicator();
-                clearUnreadMarker();
                 await subscribeSupportRealtime();
             }
         } else {
@@ -1946,6 +2003,33 @@ function mergeConversations(existing, incoming) {
     return merged;
 }
 
+async function syncConversationFromRoute(options = {}) {
+    const requestedConversationId = readRequestedConversationId();
+    if (!requestedConversationId) {
+        return false;
+    }
+
+    if (
+        requestedConversationId === activeConversationId.value
+        && activeConversation.value?.id === requestedConversationId
+    ) {
+        return true;
+    }
+
+    activeConversationId.value = requestedConversationId;
+
+    try {
+        await fetchConversation(requestedConversationId, {
+            loadMessages: options.loadMessages !== false,
+            withLoading: options.withLoading !== false,
+        });
+    } catch {
+        return false;
+    }
+
+    return activeConversation.value?.id === requestedConversationId;
+}
+
 async function loadMoreConversations() {
     await loadConversations({ append: true });
 }
@@ -1975,6 +2059,9 @@ async function fetchConversation(conversationId, options = {}) {
         const response = await api.get(`/api/support/chats/agent/${conversationId}`);
         applyRealtimeMeta(response.data?.meta);
         activeConversation.value = response.data?.data || null;
+        if (activeConversation.value?.id) {
+            applyConversationSnapshot(activeConversation.value);
+        }
         selectedAgentId.value = activeConversation.value?.assignee?.id || selectedAgentId.value;
 
         if (shouldLoadMessages) {
@@ -2233,6 +2320,9 @@ function openComposerFilePicker() {
         return;
     }
 
+    if (isComposerCollapsed.value) {
+        isComposerCollapsed.value = false;
+    }
     showEmojiPicker.value = false;
     composerFileInput.value?.click();
 }
@@ -2368,40 +2458,12 @@ async function assignToCurrentUser() {
     }
 
     if (!canAssignActiveConversation.value) {
-        toast.error('Unavailable', 'Resolved conversations cannot be reassigned.');
+        toast.error('Unavailable', 'Closed or close-out conversations cannot be reassigned.');
         return;
     }
 
     selectedAgentId.value = authStore.user.public_id;
     await assignConversation(authStore.user.public_id);
-}
-
-async function resolveConversation() {
-    if (!activeConversationId.value || isResolving.value || !canResolveActiveConversation.value) {
-        return;
-    }
-
-    isResolving.value = true;
-
-    try {
-        supportLogger.info('conversation.resolve.start', 'Resolving support conversation.', {
-            conversation_id: activeConversationId.value,
-        });
-        const response = await api.post(`/api/support/chats/${activeConversationId.value}/resolve`);
-        applyRealtimeMeta(response.data?.meta);
-        toast.success('Resolved', 'Conversation marked as resolved.');
-        await fetchConversation(activeConversationId.value);
-        await loadConversations();
-        supportLogger.info('conversation.resolve.success', 'Support conversation resolved.', {
-            conversation_id: activeConversationId.value,
-        });
-    } catch (error) {
-        supportLogger.error('conversation.resolve.failure', 'Failed to resolve support conversation.', summarizeError(error));
-        console.error('Failed to resolve support conversation:', error);
-        toast.error('Error', error.response?.data?.message || 'Failed to resolve conversation.');
-    } finally {
-        isResolving.value = false;
-    }
 }
 
 async function endConversation() {
@@ -2417,7 +2479,7 @@ async function endConversation() {
         });
         const response = await api.post(`/api/support/chats/agent/${activeConversationId.value}/end`);
         applyRealtimeMeta(response.data?.meta);
-        toast.success('Conversation ended', 'Conversation marked as closed.');
+        toast.success('Close started', 'Conversation moved to close-out.');
         await fetchConversation(activeConversationId.value);
         await loadConversations();
         supportLogger.info('conversation.end.success', 'Support conversation ended from inbox.', {
@@ -2429,6 +2491,38 @@ async function endConversation() {
         toast.error('Error', error.response?.data?.message || 'Failed to end conversation.');
     } finally {
         isEnding.value = false;
+    }
+}
+
+async function completeCloseConversation() {
+    if (!activeConversationId.value || isResolving.value || activeConversationStatus.value !== 'wrap_up') {
+        return;
+    }
+
+    isResolving.value = true;
+
+    try {
+        supportLogger.info('conversation.close.start', 'Finalizing support close-out.', {
+            conversation_id: activeConversationId.value,
+            resolved: closeResolved.value,
+        });
+        const response = await api.post(`/api/support/chats/${activeConversationId.value}/wrap-up/complete`, {
+            resolved: closeResolved.value,
+        });
+        applyRealtimeMeta(response.data?.meta);
+        toast.success('Closed', closeResolved.value ? 'Conversation closed as resolved.' : 'Conversation closed as unresolved.');
+        await fetchConversation(activeConversationId.value);
+        await loadConversations();
+        supportLogger.info('conversation.close.success', 'Support close-out finalized.', {
+            conversation_id: activeConversationId.value,
+            resolved: closeResolved.value,
+        });
+    } catch (error) {
+        supportLogger.error('conversation.close.failure', 'Failed to finalize support close-out.', summarizeError(error));
+        console.error('Failed to finalize support close-out:', error);
+        toast.error('Error', error.response?.data?.message || 'Failed to close conversation.');
+    } finally {
+        isResolving.value = false;
     }
 }
 
@@ -2475,11 +2569,57 @@ watch(activeConversationId, () => {
     detailsSidebarTab.value = 'overview';
 });
 
+watch(
+    () => [route.query.scope, route.query.conversation],
+    async () => {
+        const requestedScope = readRequestedInboxScope();
+        if (requestedScope && requestedScope !== activeTab.value) {
+            activeTab.value = requestedScope;
+            return;
+        }
+
+        const requestedConversationId = readRequestedConversationId();
+        if (!requestedConversationId) {
+            return;
+        }
+
+        if (
+            requestedConversationId === activeConversationId.value
+            && activeConversation.value?.id === requestedConversationId
+        ) {
+            return;
+        }
+
+        const existing = conversations.value.find((chat) => chat.id === requestedConversationId);
+        if (existing) {
+            await selectConversation(requestedConversationId);
+            return;
+        }
+
+        await syncConversationFromRoute({
+            loadMessages: true,
+            withLoading: true,
+        });
+    },
+);
+
+watch(
+    () => activeConversation.value?.resolution_marker,
+    (value) => {
+        closeResolved.value = String(value || '').toLowerCase() === 'resolved';
+    },
+    { immediate: true },
+);
+
 onMounted(async () => {
     supportLogger.info('lifecycle.mounted', 'Support inbox view mounted.');
     startLiveCounterTicker();
     leftSidebarWidth.value = clampLeftSidebarWidth(leftSidebarWidth.value);
     rightSidebarWidth.value = clampRightSidebarWidth(rightSidebarWidth.value);
+    const requestedScope = readRequestedInboxScope();
+    if (requestedScope) {
+        activeTab.value = requestedScope;
+    }
     await Promise.all([refreshRealtimeToken(), loadAgents(), loadConversations()]);
     window.addEventListener('echo:connected', handleEchoConnected);
     window.addEventListener('pointerdown', handleGlobalPointerDown);
@@ -2736,10 +2876,6 @@ onBeforeUnmount(() => {
                                     {{ isEnding ? 'Ending...' : 'End conversation' }}
                                 </DropdownItem>
                                 <DropdownItem v-else disabled>{{ endActionLabel }}</DropdownItem>
-                                <DropdownItem v-if="canResolveActiveConversation" :disabled="isResolving" destructive @select="resolveConversation">
-                                    {{ isResolving ? 'Resolving...' : 'Resolve conversation' }}
-                                </DropdownItem>
-                                <DropdownItem v-else disabled>{{ resolveActionLabel }}</DropdownItem>
                             </Dropdown>
                         </div>
                     </div>
@@ -2980,9 +3116,33 @@ onBeforeUnmount(() => {
                         >
                             <AlertCircle class="w-3 h-3" /> Internal Note
                         </button>
+                        <button
+                            type="button"
+                            class="ml-auto inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-secondary)] hover:text-[var(--text-primary)]"
+                            :disabled="isSending"
+                            @click="toggleComposerCollapsed"
+                        >
+                            <ChevronDown class="h-3.5 w-3.5 transition-transform" :class="isComposerCollapsed ? '-rotate-90' : 'rotate-0'" />
+                            {{ isComposerCollapsed ? 'Expand composer' : 'Collapse composer' }}
+                        </button>
                     </div>
 
                     <div
+                        v-if="isComposerCollapsed"
+                        class="rounded-xl border border-dashed border-[var(--border-default)] bg-[var(--surface-primary)]/80 px-3 py-2 text-xs text-[var(--text-secondary)]"
+                    >
+                        <div class="flex items-center justify-between gap-3">
+                            <span class="truncate">
+                                {{ newMessage.trim() ? `Draft: ${newMessage.trim().slice(0, 96)}` : 'Composer collapsed' }}
+                            </span>
+                            <span v-if="selectedComposerFiles.length > 0" class="shrink-0 text-[var(--text-muted)]">
+                                {{ selectedComposerFiles.length }} file<span v-if="selectedComposerFiles.length !== 1">s</span>
+                            </span>
+                        </div>
+                    </div>
+
+                    <div
+                        v-else
                         class="rounded-xl border shadow-sm transition-all"
                         :class="[
                             isNoteMode ? 'bg-amber-500/5 border-amber-500/30' : 'bg-[var(--surface-secondary)] border-[var(--border-default)]',
@@ -3154,9 +3314,34 @@ onBeforeUnmount(() => {
                                     ×
                                 </button>
                             </span>
+                            </div>
                         </div>
                     </div>
-                </div>
+                    <div
+                        v-if="activeConversationStatus === 'wrap_up'"
+                        class="mt-2 flex items-center justify-end gap-3 rounded-xl border border-[var(--border-default)]/50 bg-[var(--surface-primary)]/70 px-2 py-2"
+                    >
+                        <label class="inline-flex items-center gap-2 text-[12px] font-medium text-[var(--text-secondary)]">
+                            <input
+                                v-model="closeResolved"
+                                type="checkbox"
+                                class="h-3.5 w-3.5 rounded border-[var(--border-default)] text-emerald-600 focus:ring-emerald-500"
+                                :disabled="isResolving"
+                            />
+                            Resolved
+                        </label>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            class="h-9 px-3 text-[12px] font-semibold border-emerald-500/40 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+                            :disabled="isResolving"
+                            @click="completeCloseConversation"
+                        >
+                            <Loader2 v-if="isResolving" class="h-4 w-4 mr-1.5 animate-spin" />
+                            <Check v-else class="h-4 w-4 mr-1.5" />
+                            Close Chat
+                        </Button>
+                    </div>
             </template>
         </div>
 
@@ -3247,7 +3432,7 @@ onBeforeUnmount(() => {
                                     Assign Conversation
                                 </Button>
                                 <p v-if="!canAssignActiveConversation" class="text-[10px] text-[var(--text-muted)]">
-                                    Assignment is disabled for resolved/closed conversations.
+                                    Assignment is disabled for closed or close-out conversations.
                                 </p>
                             </div>
                         </div>

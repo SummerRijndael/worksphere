@@ -76,6 +76,7 @@ class SupportConversation extends Model
         'subject',
         'source_url',
         'assigned_to',
+        'assigned_at',
         'support_skill_id',
         'routing_scope',
         'ai_enabled',
@@ -106,6 +107,7 @@ class SupportConversation extends Model
             'ai_handoff_required' => 'boolean',
             'support_skill_id' => 'integer',
             'metadata' => 'array',
+            'assigned_at' => 'datetime',
             'survey_opt_out_at' => 'datetime',
             'last_message_at' => 'datetime',
             'first_response_at' => 'datetime',
@@ -129,6 +131,28 @@ class SupportConversation extends Model
     public function getRouteKeyName(): string
     {
         return 'public_id';
+    }
+
+    public function getChatReferenceAttribute(): string
+    {
+        return self::chatReferenceFromPublicId((string) $this->public_id);
+    }
+
+    public static function chatReferenceFromPublicId(?string $publicId): string
+    {
+        $normalized = self::normalizeChatReference($publicId);
+        if ($normalized === '') {
+            return '';
+        }
+
+        return substr($normalized, -6);
+    }
+
+    public static function normalizeChatReference(?string $value): string
+    {
+        $normalized = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', trim((string) $value)) ?? '');
+
+        return $normalized;
     }
 
     /**
@@ -177,6 +201,16 @@ class SupportConversation extends Model
     public function latestMessage(): HasOne
     {
         return $this->hasOne(SupportMessage::class, 'conversation_id')->latestOfMany('created_at');
+    }
+
+    /**
+     * @return HasOne<SupportMessage>
+     */
+    public function latestPublicMessage(): HasOne
+    {
+        return $this->hasOne(SupportMessage::class, 'conversation_id')
+            ->where('is_private_note', false)
+            ->latestOfMany('created_at');
     }
 
     /**

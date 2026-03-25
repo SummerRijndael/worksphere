@@ -61,15 +61,19 @@ class SupportInboxController extends Controller
 
         $now = now();
         $since = $now->copy()->subDay();
+        $todayStart = $now->copy()->startOfDay();
 
         // Average Wait Time (last 24h)
         // Calculated for conversations that were assigned to a human agent
-        $avgWaitTimeSeconds = SupportConversation::query()
+        $waitDurations = SupportConversation::query()
             ->whereNotNull('first_response_at')
             ->where('created_at', '>=', $since)
             ->whereNotNull('assigned_to')
-            ->selectRaw('AVG(TIMESTAMPDIFF(SECOND, created_at, first_response_at)) as avg_wait')
-            ->value('avg_wait') ?: 0;
+            ->get(['created_at', 'first_response_at'])
+            ->map(fn (SupportConversation $conversation): int => $conversation->created_at->diffInSeconds($conversation->first_response_at));
+        $avgWaitTimeSeconds = $waitDurations->isNotEmpty()
+            ? (int) round($waitDurations->avg())
+            : 0;
 
         // AI Resolution Rate (last 24h)
         // Resolved by AI = Resolved/Closed AND never assigned to a human
@@ -85,6 +89,31 @@ class SupportInboxController extends Controller
             ->count();
 
         $aiResolutionRate = $totalResolved > 0 ? ($aiResolved / $totalResolved) * 100 : 0;
+        $hourLabels = collect(range(0, 23))
+            ->map(fn (int $hour) => str_pad((string) $hour, 2, '0', STR_PAD_LEFT).':00')
+            ->values();
+        $incomingChatsByHour = array_fill(0, 24, 0);
+        $resolvedChatsByHour = array_fill(0, 24, 0);
+
+        SupportConversation::query()
+            ->where('created_at', '>=', $todayStart)
+            ->get(['created_at'])
+            ->each(function (SupportConversation $conversation) use (&$incomingChatsByHour): void {
+                $hour = (int) $conversation->created_at?->format('G');
+                $incomingChatsByHour[$hour] = ($incomingChatsByHour[$hour] ?? 0) + 1;
+            });
+
+        SupportConversation::query()
+            ->whereNotNull('closed_at')
+            ->where('closed_at', '>=', $todayStart)
+            ->get(['closed_at'])
+            ->each(function (SupportConversation $conversation) use (&$resolvedChatsByHour): void {
+                $hour = (int) $conversation->closed_at?->format('G');
+                $resolvedChatsByHour[$hour] = ($resolvedChatsByHour[$hour] ?? 0) + 1;
+            });
+
+        $peakCount = max($incomingChatsByHour);
+        $peakHourIndex = array_search($peakCount, $incomingChatsByHour, true);
 
         return response()->json([
             'data' => [
@@ -92,6 +121,13 @@ class SupportInboxController extends Controller
                 'ai_resolution_rate' => round((float) $aiResolutionRate, 1),
                 'resolved_today' => $totalResolved,
                 'ai_resolved_today' => $aiResolved,
+                'today_trend' => [
+                    'labels' => $hourLabels->all(),
+                    'incoming_chats' => $incomingChatsByHour,
+                    'resolved_chats' => $resolvedChatsByHour,
+                    'peak_hour_label' => is_int($peakHourIndex) ? $hourLabels[$peakHourIndex] : null,
+                    'peak_hour_count' => $peakCount,
+                ],
             ],
         ]);
     }
@@ -396,19 +432,9 @@ class SupportInboxController extends Controller
     {
         $this->authorize('resolve', $conversation);
 
-        $conversation = $this->supportService->resolveConversation($conversation, $request->user());
-        $surveyBundle = [
-            SupportSurveyInvite::TYPE_CSAT => null,
-            SupportSurveyInvite::TYPE_NPS => null,
-        ];
-        try {
-            $surveyBundle = $this->supportSurveyService->issuePostResolutionSurveyBundle($conversation, $request->user());
-        } catch (\Throwable $exception) {
-            Log::warning('[SupportInbox] Failed to issue post-resolution survey bundle.', [
-                'conversation' => $conversation->public_id,
-                'error' => $exception->getMessage(),
-            ]);
-        }
+        $conversation = $this->supportService->resolveConversation($conversation, $request->user(), [
+            'resolution_marker' => SupportConversation::RESOLUTION_MARKER_RESOLVED,
+        ]);
 
         $conversation->load([
             'requester:id,public_id,name,email',
@@ -422,11 +448,14 @@ class SupportInboxController extends Controller
         ]);
 
         return response()->json([
-            'message' => 'Conversation resolved successfully.',
+            'message' => 'Conversation moved to close-out.',
             'data' => new SupportConversationResource($conversation, includePrivateNotes: true),
             'meta' => [
                 'realtime' => $this->supportRealtimeService->agentRealtimeMeta($request->user(), $conversation->public_id),
-                'survey_invite_bundle' => $this->serializeSurveyInviteBundle($surveyBundle, $request),
+                'survey_invite_bundle' => $this->serializeSurveyInviteBundle([
+                    SupportSurveyInvite::TYPE_CSAT => null,
+                    SupportSurveyInvite::TYPE_NPS => null,
+                ], $request),
             ],
         ]);
     }
@@ -484,11 +513,40 @@ class SupportInboxController extends Controller
     {
         $this->authorize('resolve', $conversation);
 
-        $conversation = $this->supportService->completeWrapUp($conversation, $request->user());
+        $validated = $request->validate([
+            'resolved' => ['nullable', 'boolean'],
+        ]);
+
+        $resolutionMarker = ($validated['resolved'] ?? false)
+            ? SupportConversation::RESOLUTION_MARKER_RESOLVED
+            : SupportConversation::RESOLUTION_MARKER_UNRESOLVED;
+
+        $conversation = $this->supportService->completeWrapUp($conversation, $request->user(), [
+            'resolution_marker' => $resolutionMarker,
+        ]);
+
+        $surveyBundle = [
+            SupportSurveyInvite::TYPE_CSAT => null,
+            SupportSurveyInvite::TYPE_NPS => null,
+        ];
+        if ($resolutionMarker === SupportConversation::RESOLUTION_MARKER_RESOLVED) {
+            try {
+                $surveyBundle = $this->supportSurveyService->issuePostResolutionSurveyBundle($conversation, $request->user());
+            } catch (\Throwable $exception) {
+                Log::warning('[SupportInbox] Failed to issue post-close survey bundle.', [
+                    'conversation' => $conversation->public_id,
+                    'error' => $exception->getMessage(),
+                ]);
+            }
+        }
 
         return response()->json([
-            'message' => 'Wrap-up completed.',
+            'message' => 'Conversation closed successfully.',
             'data' => new SupportConversationResource($conversation->load(['requester', 'assignee', 'skill']), includePrivateNotes: true),
+            'meta' => [
+                'realtime' => $this->supportRealtimeService->agentRealtimeMeta($request->user(), $conversation->public_id),
+                'survey_invite_bundle' => $this->serializeSurveyInviteBundle($surveyBundle, $request),
+            ],
         ]);
     }
 
@@ -505,10 +563,15 @@ class SupportInboxController extends Controller
 
         $presenceService->setSupportStatus($request->user(), $status, $isAvailable);
 
+        if ($isAvailable) {
+            app(\App\Contracts\SupportRoutingServiceContract::class)->triggerImmediateRouting();
+        }
+
         return response()->json([
             'message' => 'Support presence updated.',
             'data' => [
                 'status' => $status,
+                'support_status_at' => $request->user()->fresh()->support_status_at?->toISOString(),
                 'support_available' => $isAvailable,
             ],
         ]);
@@ -617,6 +680,8 @@ class SupportInboxController extends Controller
             'assignee:id,public_id,name,email',
             'endedBy:id,public_id,name,email',
             'skill:id,public_id,name,slug,department',
+            'latestPublicMessage.sender:id,public_id,name,email',
+            'latestPublicMessage.media',
             'latestMessage.sender:id,public_id,name,email',
             'latestMessage.media',
             'messages' => function ($query) use ($includePrivateNotes): void {

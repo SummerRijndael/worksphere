@@ -21,13 +21,20 @@ class SupportConversationResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        $latestMessage = $this->whenLoaded('latestMessage');
-        if ($latestMessage && ! $this->includePrivateNotes && $latestMessage->is_private_note) {
+        $latestMessage = null;
+        if ($this->resource->relationLoaded('latestPublicMessage')) {
+            $latestMessage = $this->resource->getRelation('latestPublicMessage');
+        } elseif ($this->resource->relationLoaded('latestMessage')) {
+            $latestMessage = $this->resource->getRelation('latestMessage');
+        }
+
+        if ($latestMessage && $latestMessage->is_private_note) {
             $latestMessage = null;
         }
 
         return [
             'id' => $this->public_id,
+            'chat_reference' => $this->chat_reference,
             'status' => $this->status,
             'chat_state' => $this->chat_state,
             'assignment_state' => $this->assignment_state,
@@ -78,6 +85,7 @@ class SupportConversationResource extends JsonResource
                 return SupportMessageResource::collection($messages);
             }),
             'metadata' => $this->metadata ?? (object) [],
+            'assigned_at' => $this->assigned_at?->toISOString(),
             'last_message_at' => $this->last_message_at?->toISOString(),
             'first_response_at' => $this->first_response_at?->toISOString(),
             'resolved_at' => $this->resolved_at?->toISOString(),

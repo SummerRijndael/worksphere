@@ -104,6 +104,17 @@ class AppServiceProvider extends ServiceProvider
         );
 
         $this->app->bind(
+            \App\Contracts\SupportRoutingServiceContract::class,
+            function ($app) {
+                $engine = config('support_chat.routing.engine', 'database');
+                if ($engine === 'acd') {
+                    return $app->make(\App\Services\Support\AcdSupportRoutingService::class);
+                }
+                return $app->make(\App\Services\Support\SupportRoutingService::class);
+            }
+        );
+
+        $this->app->bind(
             \App\Contracts\SupportAiAdapterContract::class,
             config('support_chat.ai_adapter', \App\Services\Support\Ai\SimulatedSupportAiAdapter::class)
         );

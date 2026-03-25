@@ -55,6 +55,8 @@ class UserResource extends JsonResource
                 'status' => $this->status,
                 'status_reason' => $this->status_reason,
                 'suspended_until' => $this->suspended_until?->toISOString(),
+                'support_status' => $this->support_status ?? 'unavailable',
+                'support_status_at' => $this->support_status_at?->toISOString(),
                 'support_available' => app(\App\Services\Chat\PresenceService::class)->isSupportAvailable($this->id),
                 'preferences' => $this->preferences ?? [],
                 'email_verified' => $this->hasVerifiedEmail(),

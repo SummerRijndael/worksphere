@@ -38,6 +38,10 @@ const isFullscreen = computed(
 const isFixedLayout = computed(
     () => route.meta.layoutFixed || isFullscreen.value,
 );
+const shouldMountLiveChatWidget = computed(() => {
+    const routeName = String(route.name || "");
+    return !routeName.startsWith("support.");
+});
 
 const sidebarWidth = computed(() => {
     if (isFullscreen.value) return "0px";
@@ -256,7 +260,7 @@ function handleRoleChangeLogout() {
         <IncomingCallOverlay />
         
         <!-- Support Chat Widget -->
-        <LiveChatWidget hide-launcher />
+        <LiveChatWidget v-if="shouldMountLiveChatWidget" hide-launcher />
     </div>
 </template>
 

@@ -41,6 +41,30 @@ class SupportChatController extends Controller
         ]);
     }
 
+    public function history(Request $request): JsonResponse
+    {
+        $actor = $this->resolveActor($request);
+
+        if (! $actor) {
+            return response()->json([
+                'data' => [],
+            ]);
+        }
+
+        $limit = (int) $request->integer('limit', 20);
+        $conversations = $this->supportService->customerHistory($actor, $limit);
+        $includePrivateNotes = $this->supportService->canOperateAsAgent($actor);
+
+        return response()->json([
+            'data' => $conversations
+                ->map(fn (SupportConversation $conversation) => (new SupportConversationResource(
+                    $conversation,
+                    includePrivateNotes: $includePrivateNotes
+                ))->toArray($request))
+                ->values(),
+        ]);
+    }
+
     public function store(Request $request): JsonResponse
     {
         $actor = $this->resolveActor($request);
@@ -176,16 +200,18 @@ class SupportChatController extends Controller
             SupportSurveyInvite::TYPE_CSAT => null,
             SupportSurveyInvite::TYPE_NPS => null,
         ];
-        try {
-            $surveyBundle = $this->supportSurveyService->issuePostResolutionSurveyBundle(
-                $conversation,
-                $actor && $this->supportService->canOperateAsAgent($actor) ? $actor : null
-            );
-        } catch (\Throwable $exception) {
-            Log::warning('[SupportChat] Failed to issue post-close survey bundle.', [
-                'conversation' => $conversation->public_id,
-                'error' => $exception->getMessage(),
-            ]);
+        if ($conversation->status === SupportConversation::STATUS_CLOSED) {
+            try {
+                $surveyBundle = $this->supportSurveyService->issuePostResolutionSurveyBundle(
+                    $conversation,
+                    $actor && $this->supportService->canOperateAsAgent($actor) ? $actor : null
+                );
+            } catch (\Throwable $exception) {
+                Log::warning('[SupportChat] Failed to issue post-close survey bundle.', [
+                    'conversation' => $conversation->public_id,
+                    'error' => $exception->getMessage(),
+                ]);
+            }
         }
 
         $includePrivateNotes = $actor ? $this->supportService->canOperateAsAgent($actor) : false;
@@ -534,6 +560,82 @@ class SupportChatController extends Controller
         return $response;
     }
 
+    public function lookup(Request $request): JsonResponse
+    {
+        $actor = $this->resolveActor($request);
+
+        $rules = [
+            'chat_reference' => ['required', 'string', 'max:32'],
+        ];
+        if (! $actor) {
+            $rules['guest_email'] = ['required', 'email', 'max:255'];
+        }
+
+        $validated = $request->validate($rules);
+        $chatReference = SupportConversation::chatReferenceFromPublicId((string) $validated['chat_reference']);
+
+        try {
+            $conversation = $this->supportService->findActiveConversationByReference(
+                $chatReference,
+                $actor,
+                $validated['guest_email'] ?? null
+            );
+        } catch (\RuntimeException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+            ], 409);
+        }
+
+        if (! $conversation) {
+            $matchingConversation = SupportConversation::query()
+                ->when($actor, function ($query) use ($actor): void {
+                    $query->where('requester_user_id', $actor?->id);
+                }, function ($query) use ($validated): void {
+                    $query->whereNull('requester_user_id')
+                        ->whereRaw('LOWER(guest_email) = ?', [mb_strtolower(trim((string) ($validated['guest_email'] ?? '')))]);
+                })
+                ->latest('created_at')
+                ->get()
+                ->first(fn (SupportConversation $item): bool => $item->chat_reference === $chatReference);
+
+            if ($matchingConversation && ($matchingConversation->isClosedLike() || ! empty($matchingConversation->ended_at))) {
+                return response()->json([
+                    'message' => 'That chat has already been ended and can no longer be reopened.',
+                ], 409);
+            }
+
+            return response()->json([
+                'message' => 'No active support conversation matched that chat ID.',
+            ], 404);
+        }
+
+        $includePrivateNotes = $actor ? $this->supportService->canOperateAsAgent($actor) : false;
+        $conversation = $this->hydrateConversation($conversation, $includePrivateNotes);
+
+        $response = response()->json([
+            'message' => 'Support conversation found.',
+            'data' => new SupportConversationResource(
+                $conversation,
+                includePrivateNotes: $includePrivateNotes,
+                exposeGuestToken: ! $actor && ! empty($conversation->guest_token)
+            ),
+            'meta' => [
+                'availability' => $this->supportService->availability(),
+                'realtime' => $this->supportRealtimeService->conversationRealtimeMeta(
+                    $conversation,
+                    $actor,
+                    ! $actor ? (string) $conversation->guest_token : null
+                ),
+            ],
+        ]);
+
+        if (! $actor) {
+            $response->withCookie($this->guestSessionService->issueForConversation($conversation, $request));
+        }
+
+        return $response;
+    }
+
     public function resume(Request $request): JsonResponse
     {
         $actor = $this->resolveActor($request);
@@ -653,6 +755,8 @@ class SupportChatController extends Controller
             'skill:id,public_id,name,slug,department',
             'latestMessage.sender:id,public_id,name,email',
             'latestMessage.media',
+            'latestPublicMessage.sender:id,public_id,name,email',
+            'latestPublicMessage.media',
             'messages' => function ($query) use ($includePrivateNotes): void {
                 if (! $includePrivateNotes) {
                     $query->where('is_private_note', false);

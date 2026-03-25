@@ -22,6 +22,7 @@ class UserPresenceChanged implements ShouldBroadcastNow
 
     public bool $available;
     public ?string $supportStatus;
+    public ?string $supportStatusAt;
 
     /**
      * Create a new event instance.
@@ -36,6 +37,7 @@ class UserPresenceChanged implements ShouldBroadcastNow
         $this->status = $status;
         $this->available = $available;
         $this->supportStatus = $supportStatus ?? $user->support_status;
+        $this->supportStatusAt = $user->support_status_at?->toISOString();
         $this->lastSeen = now()->timestamp;
     }
 
@@ -77,6 +79,7 @@ class UserPresenceChanged implements ShouldBroadcastNow
             'status' => $this->status,
             'support_available' => $this->available,
             'support_status' => $this->supportStatus,
+            'support_status_at' => $this->supportStatusAt,
             'last_seen' => $this->lastSeen,
             'name' => $this->user->name,
             'avatar_thumb_url' => $this->user->avatar_thumb_url,

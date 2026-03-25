@@ -118,6 +118,10 @@ class TicketPolicy
         }
 
         // Support Staff: Must be assignee or have manage permission
+        if ($ticket->assigned_to === $user->id) {
+            return true;
+        }
+
         if ($user->hasPermissionTo('tickets.close') || $user->hasPermissionTo('tickets.manage')) {
             return true;
         }

@@ -382,11 +382,13 @@ class TicketController extends Controller
      */
     public function changeStatus(Request $request, Ticket $ticket): JsonResponse
     {
-        $this->authorize('close', $ticket);
-
         $validated = $request->validate([
             'status' => 'required|string|in:open,in_progress,resolved,closed',
         ]);
+
+        // Closing/resolving requires the 'close' policy; reopening or starting work only requires 'update'
+        $isClosingAction = in_array($validated['status'], ['resolved', 'closed']);
+        $this->authorize($isClosingAction ? 'close' : 'update', $ticket);
 
         $status = TicketStatus::from($validated['status']);
         $ticket = $this->ticketService->changeStatus($ticket, $status);

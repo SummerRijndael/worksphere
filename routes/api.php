@@ -90,6 +90,9 @@ Route::middleware(['throttle:guest'])->group(function () {
             ->middleware('throttle:sensitive')
             ->whereUlid('conversation');
         Route::get('/resume', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'resume']);
+        Route::get('/history', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'history']);
+        Route::post('/lookup', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'lookup'])
+            ->middleware('throttle:sensitive');
         Route::post('/resume/clear', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'clearResume'])
             ->middleware('throttle:sensitive');
         Route::post('/', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'store'])
@@ -968,10 +971,9 @@ Route::middleware(['auth:sanctum', 'throttle:api', '2fa.enforce', 'demo'])->grou
             Route::put('/{ticket}/assign', [\App\Http\Controllers\Api\TicketController::class, 'assign']);
         });
 
-        // Status change (requires tickets.close)
-        Route::middleware('permission:tickets.close')->group(function () {
-            Route::put('/{ticket}/status', [\App\Http\Controllers\Api\TicketController::class, 'changeStatus']);
-        });
+        // Status change: controller policy handles open/in_progress vs resolved/closed gates
+        Route::put('/{ticket}/status', [\App\Http\Controllers\Api\TicketController::class, 'changeStatus']);
+
 
         // Internal notes (requires tickets.internal_notes)
         Route::middleware('permission:tickets.internal_notes')->group(function () {

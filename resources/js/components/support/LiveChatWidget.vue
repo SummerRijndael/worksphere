@@ -16,6 +16,8 @@ import {
     Loader2,
     ChevronsDown,
     Headset,
+    Copy,
+    Search,
 } from 'lucide-vue-next';
 import { Avatar, Button } from '@/components/ui';
 import LinkPreview from '@/components/LinkPreview.vue';
@@ -94,6 +96,7 @@ const isLoadingSurvey = ref(false);
 const isSubmittingSurvey = ref(false);
 const isUpdatingSurveyPreference = ref(false);
 const isEndingConversation = ref(false);
+const isLookingUpChatReference = ref(false);
 const showRecaptchaChallenge = ref(false);
 const pendingConversationStartMessage = ref('');
 const activeSurvey = ref({
@@ -111,6 +114,10 @@ const surveyDraft = ref({
 const leadForm = ref({
     name: '',
     email: '',
+});
+const resumeLookupForm = ref({
+    chat_reference: '',
+    guest_email: '',
 });
 
 let availabilityTimer = null;
@@ -191,6 +198,8 @@ const storageKey = computed(() => {
 const AGENT_ONLY_EVENT_TYPES = new Set([
     'resolution_started',
     'wrap_up_completed',
+    'close_started',
+    'close_completed',
     'assignment',
     'assignment_accepted',
     'assignment_rejected',
@@ -229,6 +238,7 @@ const mappedMessages = computed(() => {
             id: message.id,
             type,
             content: message.body || '',
+            metadata: message.metadata || {},
             firstUrl: extractFirstUrl(message.body || ''),
             avatarUrl: message.sender?.avatar_url || message.sender?.avatar || null,
             avatarThumbUrl: message.sender?.avatar_thumb_url || null,
@@ -283,6 +293,7 @@ const isConversationClosed = computed(() => ['resolved', 'closed'].includes(conv
 const showConversationHeaderMeta = computed(() => {
     return viewState.value === 'chat' && Boolean(activeConversation.value?.id);
 });
+const activeChatReference = computed(() => conversationChatReference(activeConversation.value));
 
 const activeAssigneeName = computed(() => {
     const value = activeConversation.value?.assignee?.name;
@@ -396,6 +407,28 @@ const surveyCanSubmit = computed(() => {
     return true;
 });
 
+function normalizeChatReference(value) {
+    return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+function conversationChatReference(conversation) {
+    const explicitReference = normalizeChatReference(conversation?.chat_reference);
+    if (explicitReference) {
+        return explicitReference;
+    }
+
+    const normalizedId = normalizeChatReference(conversation?.id);
+    if (normalizedId.length >= 6) {
+        return normalizedId.slice(-6);
+    }
+
+    return normalizedId;
+}
+
+function messageChatReference(message) {
+    return normalizeChatReference(message?.metadata?.chat_reference);
+}
+
 const toggleChat = () => {
     chatStore.toggleChat();
 };
@@ -450,6 +483,7 @@ function upsertHistoryRecord(record) {
 
     filtered.unshift({
         id: record.id,
+        chat_reference: record.chat_reference || '',
         token: persistedToken,
         status: record.status || 'open',
         last_message: record.last_message || '',
@@ -626,6 +660,20 @@ function handleGlobalPointerDown(event) {
 
 function statusLabel(status) {
     return (status || 'open').replace(/_/g, ' ');
+}
+
+async function copyChatReference(reference) {
+    const normalizedReference = normalizeChatReference(reference);
+    if (!normalizedReference) {
+        return;
+    }
+
+    try {
+        await navigator.clipboard.writeText(normalizedReference);
+        toast.success('Chat ID copied to clipboard');
+    } catch {
+        toast.error('Failed to copy chat ID to clipboard');
+    }
 }
 
 function userDisplayName() {
@@ -1164,6 +1212,7 @@ function syncConversationToHistory(conversation) {
 
     const record = {
         id: conversation.id,
+        chat_reference: conversationChatReference(conversation),
         token: activeGuestToken.value,
         status: conversation.status,
         last_message: conversation.latest_message?.body || '',
@@ -1563,6 +1612,31 @@ async function loadOlderMessages() {
 async function loadConversationHistory() {
     isLoadingHistory.value = true;
 
+    if (isAuthenticated.value) {
+        try {
+            const response = await api.get('/api/support/chats/history');
+            const conversations = Array.isArray(response.data?.data) ? response.data.data : [];
+
+            historyItems.value = conversations.map((conversation) => ({
+                id: conversation.id,
+                chat_reference: conversation.chat_reference || conversationChatReference(conversation),
+                token: '',
+                last_message: conversation.latest_message?.body || 'No messages yet',
+                updated_at: conversation.last_message_at || conversation.updated_at || conversation.created_at,
+                status: conversation.status || 'open',
+                guest_name: conversation.guest_name || currentUser.value?.name || '',
+                guest_email: conversation.guest_email || currentUser.value?.email || '',
+            }));
+        } catch (error) {
+            supportLogger.warn('history.load.failure', 'Failed to load authenticated support conversation history.', summarizeError(error));
+            historyItems.value = [];
+        } finally {
+            isLoadingHistory.value = false;
+        }
+
+        return;
+    }
+
     const records = readHistoryRecords();
     if (records.length === 0) {
         historyItems.value = [];
@@ -1584,6 +1658,7 @@ async function loadConversationHistory() {
 
         const item = {
             id: conversation.id,
+            chat_reference: conversation.chat_reference || conversationChatReference(conversation),
             token: record.token || '',
             last_message: conversation.latest_message?.body || 'No messages yet',
             updated_at: conversation.last_message_at || conversation.updated_at || conversation.created_at,
@@ -1673,6 +1748,8 @@ async function selectConversation(item) {
 
     activeConversation.value = conversation;
     activeGuestToken.value = token;
+    resumeLookupForm.value.chat_reference = conversationChatReference(conversation);
+    resumeLookupForm.value.guest_email = conversation.guest_email || resumeLookupForm.value.guest_email || '';
     clearAgentTypingIndicator();
     clearUnreadMarker();
     await subscribeSupportRealtime();
@@ -1733,6 +1810,8 @@ async function openConversationWithMessage(initialMessage, options = {}) {
         const token = response.data?.data?.guest_token || '';
         activeConversation.value = conversation;
         activeGuestToken.value = token;
+        resumeLookupForm.value.chat_reference = conversationChatReference(conversation);
+        resumeLookupForm.value.guest_email = conversation.guest_email || userEmail();
         resetSurveyState();
         await loadConversationMessages(conversation.id, token);
         clearAgentTypingIndicator();
@@ -1837,6 +1916,8 @@ async function resumeGuestConversation() {
 
         activeConversation.value = conversation;
         activeGuestToken.value = conversation.guest_token || '';
+        resumeLookupForm.value.chat_reference = conversationChatReference(conversation);
+        resumeLookupForm.value.guest_email = conversation.guest_email || resumeLookupForm.value.guest_email || '';
         resetSurveyState();
         await loadConversationMessages(conversation.id, activeGuestToken.value);
         clearAgentTypingIndicator();
@@ -1858,6 +1939,60 @@ async function resumeGuestConversation() {
         // Silent fallback to regular guest start flow.
     } finally {
         isResumingConversation.value = false;
+    }
+}
+
+async function lookupConversationByReference() {
+    if (isAuthenticated.value || isLookingUpChatReference.value) {
+        return;
+    }
+
+    const chatReference = normalizeChatReference(resumeLookupForm.value.chat_reference).slice(-6);
+    const guestEmail = String(resumeLookupForm.value.guest_email || leadForm.value.email || '').trim();
+
+    if (!chatReference || !guestEmail) {
+        toast.error('Details required', 'Enter the chat ID and guest email to resume a conversation.');
+        return;
+    }
+
+    isLookingUpChatReference.value = true;
+
+    try {
+        const response = await api.post('/api/support/chats/lookup', {
+            chat_reference: chatReference,
+            guest_email: guestEmail,
+        });
+        applyRealtimeMeta(response.data?.meta);
+
+        const conversation = response.data?.data || null;
+        if (!conversation?.id) {
+            throw new Error('Conversation lookup did not return a conversation.');
+        }
+
+        activeConversation.value = conversation;
+        activeGuestToken.value = response.data?.data?.guest_token || conversation.guest_token || '';
+        leadForm.value = {
+            name: conversation.guest_name || leadForm.value.name,
+            email: conversation.guest_email || guestEmail,
+        };
+        resumeLookupForm.value.chat_reference = conversationChatReference(conversation);
+        resumeLookupForm.value.guest_email = conversation.guest_email || guestEmail;
+        resetSurveyState();
+        clearAgentTypingIndicator();
+        clearUnreadMarker();
+        await loadConversationMessages(conversation.id, activeGuestToken.value);
+        syncConversationToHistory(conversation);
+        await subscribeSupportRealtime();
+        await loadConversationSurvey(conversation.id, activeGuestToken.value);
+        await loadConversationHistory();
+        viewState.value = 'chat';
+        await scrollToBottom(false);
+        await focusComposerInput();
+        toast.success('Chat restored', `You’re back in chat ${conversationChatReference(conversation)}.`);
+    } catch (error) {
+        toast.error('Unable to resume chat', error?.response?.data?.message || 'Check the chat ID and email, then try again.');
+    } finally {
+        isLookingUpChatReference.value = false;
     }
 }
 
@@ -1989,6 +2124,15 @@ watch(
         }
     },
     { immediate: true },
+);
+
+watch(
+    () => leadForm.value.email,
+    (email) => {
+        if (!resumeLookupForm.value.guest_email) {
+            resumeLookupForm.value.guest_email = String(email || '');
+        }
+    },
 );
 
 watch(
@@ -2141,6 +2285,19 @@ onBeforeUnmount(() => {
                                 <p class="truncate text-[9.5px] leading-[1.2] text-[var(--text-secondary)]">
                                     {{ talkingToLabel }}
                                 </p>
+                                <div v-if="activeChatReference" class="mt-1 flex items-center gap-1.5">
+                                    <span class="inline-flex items-center rounded-full border border-[var(--border-default)] bg-[var(--surface-primary)] px-2 py-0.5 text-[9.5px] font-semibold tracking-[0.08em] text-[var(--text-primary)]">
+                                        Chat ID {{ activeChatReference }}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        class="inline-flex h-5 w-5 items-center justify-center rounded-md border border-[var(--border-default)] bg-[var(--surface-primary)] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
+                                        title="Copy chat ID"
+                                        @click.stop="copyChatReference(activeChatReference)"
+                                    >
+                                        <Copy class="h-3 w-3" />
+                                    </button>
+                                </div>
                             </div>
                         </div>
                         <div class="flex items-center gap-1">
@@ -2184,6 +2341,54 @@ onBeforeUnmount(() => {
                                 <History class="w-4 h-4 mr-2" />
                                 View previous chats
                             </Button>
+                        </div>
+
+                        <div
+                            v-if="!isAuthenticated"
+                            class="w-full rounded-2xl border border-[var(--border-default)] bg-[var(--surface-secondary)]/60 p-3 text-left shadow-sm"
+                        >
+                            <div class="flex items-start gap-2.5">
+                                <div class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[var(--interactive-primary)]/12 text-[var(--interactive-primary)]">
+                                    <Search class="h-4 w-4" />
+                                </div>
+                                <div class="min-w-0">
+                                    <p class="text-sm font-semibold text-[var(--text-primary)]">Resume with chat ID</p>
+                                    <p class="mt-1 text-[11px] leading-5 text-[var(--text-secondary)]">
+                                        Use the chat ID and guest email from your earlier conversation. Ended chats cannot be reopened.
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="mt-3 space-y-2">
+                                <div class="rounded-xl border border-[var(--border-default)] bg-[var(--surface-primary)] px-3 py-2">
+                                    <input
+                                        v-model="resumeLookupForm.chat_reference"
+                                        type="text"
+                                        inputmode="text"
+                                        maxlength="12"
+                                        placeholder="Chat ID"
+                                        class="w-full bg-transparent text-sm uppercase tracking-[0.18em] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
+                                        @keydown.enter="lookupConversationByReference"
+                                    />
+                                </div>
+                                <div class="rounded-xl border border-[var(--border-default)] bg-[var(--surface-primary)] px-3 py-2">
+                                    <input
+                                        v-model="resumeLookupForm.guest_email"
+                                        type="email"
+                                        placeholder="Guest email"
+                                        class="w-full bg-transparent text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
+                                        @keydown.enter="lookupConversationByReference"
+                                    />
+                                </div>
+                                <Button
+                                    class="h-10 w-full rounded-xl text-sm font-semibold"
+                                    :disabled="isLookingUpChatReference || !resumeLookupForm.chat_reference || !resumeLookupForm.guest_email"
+                                    @click="lookupConversationByReference"
+                                >
+                                    <Loader2 v-if="isLookingUpChatReference" class="mr-2 h-4 w-4 animate-spin" />
+                                    <Search v-else class="mr-2 h-4 w-4" />
+                                    Resume chat
+                                </Button>
+                            </div>
                         </div>
                     </div>
 
@@ -2233,8 +2438,8 @@ onBeforeUnmount(() => {
                     </div>
 
                     <!-- History View (For Auth Users) -->
-                    <div v-else-if="viewState === 'history'" class="flex-1 flex flex-col p-3 bg-[var(--surface-secondary)]/30">
-                        <div class="flex justify-between items-center mb-3 px-1.5">
+                    <div v-else-if="viewState === 'history'" class="flex min-h-0 flex-1 flex-col p-3 bg-[var(--surface-secondary)]/30">
+                        <div class="mb-3 flex shrink-0 items-center justify-between px-1.5">
                             <h3 class="font-bold text-[var(--text-primary)]">Previous Chats</h3>
                             <Button variant="ghost" size="sm" @click="startNewChat" class="h-8 text-[var(--interactive-primary)] hover:text-[var(--interactive-hover)]">
                                 <PlusCircle class="w-4 h-4 mr-1.5" />
@@ -2247,7 +2452,7 @@ onBeforeUnmount(() => {
                             Loading conversations...
                         </div>
 
-                        <div v-else class="space-y-2 overflow-y-auto pr-1">
+                        <div v-else class="flex-1 min-h-0 space-y-2 overflow-y-auto pr-1">
                             <div 
                                 v-for="item in historyItems" 
                                 :key="item.id"
@@ -2255,7 +2460,7 @@ onBeforeUnmount(() => {
                                 class="p-3 bg-[var(--surface-primary)] rounded-lg border border-[var(--border-default)] hover:border-[var(--interactive-primary)] cursor-pointer transition-all shadow-sm"
                             >
                                 <div class="flex justify-between items-start mb-1">
-                                    <span class="text-xs font-bold text-[var(--text-primary)]">Support #{{ item.id?.slice(-6) }}</span>
+                                    <span class="text-xs font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]">Chat ID {{ item.chat_reference || conversationChatReference(item) }}</span>
                                     <span class="text-[10px] text-[var(--text-muted)]">{{ formatRelativeTime(item.updated_at) }}</span>
                                 </div>
                                 <p class="text-xs text-[var(--text-secondary)] line-clamp-1 truncate">{{ item.last_message }}</p>
@@ -2328,6 +2533,16 @@ onBeforeUnmount(() => {
                                             class="support-rich-content break-words text-center"
                                             v-html="messageContentHtml(message)"
                                         ></div>
+                                        <div v-if="messageChatReference(message)" class="mt-2 flex justify-center">
+                                            <button
+                                                type="button"
+                                                class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-default)] bg-[var(--surface-primary)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-primary)] transition-colors hover:bg-[var(--surface-tertiary)]"
+                                                @click="copyChatReference(messageChatReference(message))"
+                                            >
+                                                <Copy class="h-3 w-3" />
+                                                Copy chat ID
+                                            </button>
+                                        </div>
                                     </div>
                                     <span class="mt-1 text-[10px] text-[var(--text-muted)]">{{ message.time }}</span>
                                 </div>
