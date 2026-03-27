@@ -219,6 +219,9 @@ class AppServiceProvider extends ServiceProvider
             RateLimiter::for('guest', $noLimit);
             RateLimiter::for('sensitive', $noLimit);
             RateLimiter::for('support-realtime-auth', $noLimit);
+            RateLimiter::for('support-widget-read', $noLimit);
+            RateLimiter::for('support-widget-action', $noLimit);
+            RateLimiter::for('support-widget-open', $noLimit);
             RateLimiter::for('password-reset', $noLimit);
             RateLimiter::for('login', $noLimit);
             RateLimiter::for('signaling', $noLimit);
@@ -246,6 +249,21 @@ class AppServiceProvider extends ServiceProvider
         // Support channel auth can burst during reconnects and multi-channel subscribe flows.
         RateLimiter::for('support-realtime-auth', function (Request $request) {
             return Limit::perMinute(120)->by('support-realtime-auth:'.($request->user()?->id ?: $request->ip()));
+        });
+
+        // Public support widget read traffic can burst during resume/history/realtime sync.
+        RateLimiter::for('support-widget-read', function (Request $request) {
+            return Limit::perMinute(120)->by('support-widget-read:'.($request->user()?->id ?: $request->ip()));
+        });
+
+        // Public support widget actions should be roomier than generic "sensitive" flows.
+        RateLimiter::for('support-widget-action', function (Request $request) {
+            return Limit::perMinute(40)->by('support-widget-action:'.($request->user()?->id ?: $request->ip()));
+        });
+
+        // Starting new widget conversations is still stricter than ordinary widget reads.
+        RateLimiter::for('support-widget-open', function (Request $request) {
+            return Limit::perMinute(12)->by('support-widget-open:'.($request->user()?->id ?: $request->ip()));
         });
 
         // Rate limiter for password reset

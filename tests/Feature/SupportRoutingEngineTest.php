@@ -58,6 +58,39 @@ class SupportRoutingEngineTest extends TestCase
         ]);
     }
 
+    public function test_auto_routing_hard_caps_agent_capacity_at_five_even_when_configured_higher(): void
+    {
+        config()->set('support_chat.routing.default_agent_capacity', 9);
+        config()->set('support_chat.workbench.max_panels', 5);
+        config()->set('support_chat.routing.require_online_agent', false);
+        config()->set('support_chat.routing.require_support_available', false);
+
+        $agent = User::factory()->create(['status' => 'active']);
+        $agent->givePermissionTo('support.chats.reply');
+
+        for ($i = 1; $i <= 5; $i++) {
+            SupportConversation::create([
+                'guest_name' => "Busy Guest {$i}",
+                'guest_email' => "busy-{$i}@example.test",
+                'status' => SupportConversation::STATUS_ASSIGNED,
+                'priority' => 'normal',
+                'channel' => 'widget',
+                'assigned_to' => $agent->id,
+                'ai_enabled' => true,
+            ]);
+        }
+
+        $response = $this->postJson('/api/support/chats', [
+            'guest_name' => 'Queue Guest',
+            'guest_email' => 'queue-limit@example.test',
+            'initial_message' => 'Critical outage with human escalation needed.',
+        ]);
+
+        $response->assertStatus(201)
+            ->assertJsonPath('data.status', SupportConversation::STATUS_WAITING_HUMAN)
+            ->assertJsonPath('data.assignee', null);
+    }
+
     public function test_conversation_stays_pending_when_no_eligible_agents_are_available(): void
     {
         $response = $this->postJson('/api/support/chats', [
@@ -113,4 +146,3 @@ class SupportRoutingEngineTest extends TestCase
         ]);
     }
 }
-

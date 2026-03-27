@@ -88,7 +88,6 @@ interface SupportConversationListItem {
     source_url?: string | null;
 }
 
-type WorkbenchColumns = 3 | 5;
 type WorkbenchDetailTab = "overview" | "media" | "links" | "notes";
 
 interface SupportAttachment {
@@ -124,6 +123,7 @@ const TOKEN_REFRESH_INTERVAL_MS = 240_000;
 const DETAILS_FOCUS_THROTTLE_MS = 220;
 const DETAILS_SKELETON_MS = 180;
 const MAX_ATTACHABLE_FILES = 10;
+const WORKBENCH_HARD_MAX_PANELS = 5;
 const isDevMode = import.meta.env.DEV;
 const DEFAULT_UI_TIMER_SETTINGS = {
     tick_ms: 1000,
@@ -135,7 +135,8 @@ const DEFAULT_UI_TIMER_SETTINGS = {
 const conversations = ref<SupportConversationListItem[]>([]);
 const openConversationIds = ref<string[]>([]);
 const focusedConversationId = ref<string | null>(null);
-const columns = ref<WorkbenchColumns>(3);
+const workbenchMaxPanels = ref<number>(WORKBENCH_HARD_MAX_PANELS);
+const agentPanelCapacity = ref<number>(WORKBENCH_HARD_MAX_PANELS);
 const detailsTab = ref<WorkbenchDetailTab>("overview");
 const leftSidebarCollapsed = ref(false);
 const isLeftSidebarHovered = ref(false);
@@ -211,8 +212,16 @@ let supportRealtimeSubscribePending = false;
 let supportRealtimeTokenHydratePromise: Promise<boolean> | null = null;
 let liveCounterTicker: ReturnType<typeof setInterval> | null = null;
 
-const maxOpenPanels = computed(() => (columns.value === 5 ? 5 : 3));
-const isDenseGrid = computed(() => columns.value === 5);
+const maxOpenPanels = computed(() =>
+    Math.max(
+        1,
+        Math.min(
+            WORKBENCH_HARD_MAX_PANELS,
+            Math.min(workbenchMaxPanels.value, agentPanelCapacity.value),
+        ),
+    ),
+);
+const isDenseGrid = computed(() => maxOpenPanels.value >= WORKBENCH_HARD_MAX_PANELS);
 const detailsSidebarWidthClass = computed(() => (isDenseGrid.value ? "w-[236px]" : "w-[278px]"));
 const panelGridScrollerClass = computed(() => "h-full min-w-0 overflow-hidden");
 
@@ -559,6 +568,27 @@ function applyUiTimerMeta(meta: any): void {
     if (didTickMsChange) {
         startLiveCounterTicker();
     }
+}
+
+function normalizeWorkbenchPanelLimit(value: unknown, fallback = WORKBENCH_HARD_MAX_PANELS): number {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) {
+        return Math.max(1, Math.min(WORKBENCH_HARD_MAX_PANELS, fallback));
+    }
+
+    return Math.max(1, Math.min(WORKBENCH_HARD_MAX_PANELS, Math.floor(parsed)));
+}
+
+function applyWorkbenchMeta(meta: any): void {
+    const workbenchMeta = meta?.workbench || {};
+    const nextMaxPanels = normalizeWorkbenchPanelLimit(workbenchMeta.max_panels, workbenchMaxPanels.value);
+    workbenchMaxPanels.value = nextMaxPanels;
+
+    const nextAgentCapacity = normalizeWorkbenchPanelLimit(
+        workbenchMeta.agent_capacity ?? workbenchMeta.effective_panel_limit,
+        agentPanelCapacity.value,
+    );
+    agentPanelCapacity.value = Math.min(nextMaxPanels, nextAgentCapacity);
 }
 
 function messageHtml(message: SupportMessage): string {
@@ -931,26 +961,6 @@ function responseGapBadgeClass(conversationId: string): string {
     }
 
     return "border-emerald-500/30 bg-emerald-500/10 text-emerald-500";
-}
-
-function conversationPreviewLine(conversation: SupportConversationListItem): string {
-    const subject = String(conversation?.subject || "").trim();
-    if (subject) {
-        return subject;
-    }
-
-    const latestBody = String(conversation?.latest_message?.body || "")
-        .replace(/\s+/g, " ")
-        .trim();
-    if (latestBody) {
-        return latestBody;
-    }
-
-    if (conversation?.support_skill?.name) {
-        return `Skill: ${conversation.support_skill.name}`;
-    }
-
-    return "Active support conversation";
 }
 
 function shouldShowResolutionBadge(status: string): boolean {
@@ -1624,6 +1634,7 @@ function extractConversationPayload(responseData: any): SupportConversationListI
 
 function applyRealtimeMeta(meta: any): void {
     applyUiTimerMeta(meta);
+    applyWorkbenchMeta(meta);
     const token = meta?.realtime?.token;
     if (typeof token === "string" && token.trim() !== "") {
         setSupportRealtimeToken(token.trim(), "agent");
@@ -1957,8 +1968,6 @@ async function assignConversationToCurrentUser(conversationId: string): Promise<
         if (payload) {
             upsertConversationInList(payload, { moveToTop: false });
         }
-
-        await loadConversations({ silent: true, refreshPanelMessages: false });
         toast.success("Assigned", "Conversation assigned to you.");
     } catch (error: any) {
         toast.error(error?.response?.data?.message || "Failed to assign conversation.");
@@ -1982,7 +1991,6 @@ async function resolveConversation(conversationId: string): Promise<void> {
             upsertConversationInList(payload, { moveToTop: true });
             setCloseResolved(conversationId, true);
         }
-        await loadConversations({ silent: true, refreshPanelMessages: false });
         toast.success("Close started", "Conversation moved to close-out as resolved.");
     } catch (error: any) {
         toast.error(error?.response?.data?.message || "Failed to start close-out.");
@@ -2005,7 +2013,6 @@ async function endConversation(conversationId: string): Promise<void> {
         if (payload) {
             upsertConversationInList(payload, { moveToTop: true });
         }
-        await loadConversations({ silent: true, refreshPanelMessages: false });
         toast.success("Close started", "Conversation moved to close-out.");
     } catch (error: any) {
         toast.error(error?.response?.data?.message || "Failed to end conversation.");
@@ -2285,15 +2292,26 @@ function handleRealtimeConversationChanged(event: any): void {
         return;
     }
 
+    const currentUserId = String(authStore.user?.public_id || "");
+    const assignedTo = String(event?.assigned_to || "");
     const nextStatus = String(event?.status || "").toLowerCase();
     if (nextStatus === "resolved" || nextStatus === "closed") {
         removeConversationFromWorkbench(conversationId);
+        pendingAssignments.value = pendingAssignments.value.filter((conversation) => conversation.id !== conversationId);
         return;
     }
 
     if (!conversationMap.value.has(conversationId)) {
-        // New conversation we don't know about — refresh to pull it in
-        scheduleSilentInboxRefresh();
+        // Only refetch if this event may affect the current agent's workbench.
+        if (currentUserId && assignedTo === currentUserId) {
+            scheduleSilentInboxRefresh();
+        }
+        return;
+    }
+
+    if (currentUserId && assignedTo && assignedTo !== currentUserId) {
+        removeConversationFromWorkbench(conversationId);
+        pendingAssignments.value = pendingAssignments.value.filter((conversation) => conversation.id !== conversationId);
         return;
     }
 
@@ -2314,7 +2332,7 @@ function handleRealtimeConversationChanged(event: any): void {
         { moveToTop: false },
     );
 
-    if (nextStatus === "pending_acceptance" && event?.assigned_to === authStore.user?.public_id) {
+    if (nextStatus === "pending_acceptance" && assignedTo === currentUserId) {
         const existing = pendingAssignments.value.find(c => c.id === conversationId);
         if (!existing) {
             const conversation = conversationMap.value.get(conversationId) || {
@@ -2361,8 +2379,8 @@ async function subscribeSupportRealtime(): Promise<void> {
                 echo.leave(supportRealtimeInboxChannelName);
             }
 
-            const inboxChannel = echo.private("support.agent.inbox").listen(".SupportConversationChanged", () => {
-                scheduleSilentInboxRefresh();
+            const inboxChannel = echo.private("support.agent.inbox").listen(".SupportConversationChanged", (event: any) => {
+                handleRealtimeConversationChanged(event);
             });
 
             if ((inboxChannel as any).subscription) {
@@ -2840,16 +2858,7 @@ function handleEchoConnected(): void {
     void subscribeSupportRealtime();
 }
 
-function persistColumns(value: WorkbenchColumns): void {
-    try {
-        localStorage.setItem("support_workbench_columns", String(value));
-    } catch {
-        // Ignore
-    }
-}
-
-watch(columns, (value) => {
-    persistColumns(value);
+watch(maxOpenPanels, () => {
     ensureOpenConversations();
     void subscribeSupportRealtime();
 });
@@ -2972,7 +2981,7 @@ onBeforeUnmount(() => {
             @mouseleave="handleLeftSidebarMouseLeave"
         >
             <!-- Sidebar Top: Presence & Identity -->
-            <div class="flex shrink-0 items-center border-b border-(--border-muted)/50" :class="!isLeftSidebarExpanded ? 'p-3 justify-center' : 'p-3'">
+            <div class="flex shrink-0 items-center border-b border-(--border-muted)/50" :class="!isLeftSidebarExpanded ? 'p-2 justify-center' : 'p-2'">
                 <SupportStatusSelector
                     :collapsed="!isLeftSidebarExpanded"
                     :active-chats-count="activeWorkingChatsCount"
@@ -2995,7 +3004,7 @@ onBeforeUnmount(() => {
 
 
                 <!-- Details Content Section (only when expanded) -->
-                <div v-if="isLeftSidebarExpanded" class="flex w-full flex-1 flex-col px-3 pt-2 overflow-y-auto">
+                <div v-if="isLeftSidebarExpanded" class="flex w-full flex-1 flex-col px-2.5 pt-1.5 overflow-y-auto">
                     <div v-if="!focusedConversationDisplay" class="rounded-xl border border-dashed border-(--border-muted) p-6 text-center">
                         <MessageSquare class="mx-auto h-8 w-8 text-(--text-muted)/50" />
                         <p class="mt-2 text-xs font-medium text-(--text-muted)">Select a conversation to view detailed insights.</p>
@@ -3014,11 +3023,11 @@ onBeforeUnmount(() => {
                     </div>
                     
                     <div v-else class="space-y-4">
-                        <section class="relative overflow-hidden rounded-2xl border border-(--border-default) bg-(--surface-primary) p-5 shadow-sm ring-1 ring-black/5">
+                        <section class="relative overflow-hidden rounded-xl border border-(--border-default) bg-(--surface-primary) p-3.5 shadow-sm ring-1 ring-black/5">
                             <!-- Subtle Background Glow -->
                             <div class="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-(--brand)/5 blur-3xl"></div>
                             
-                            <div class="relative flex items-center gap-4">
+                            <div class="relative flex items-center gap-3">
                                 <Avatar
                                     :src="focusedConversationDisplay.avatar_url"
                                     :thumb-url="focusedConversationDisplay.avatar_thumb_url"
@@ -3026,10 +3035,10 @@ onBeforeUnmount(() => {
                                     :fallback="focusedConversationDisplay.name.slice(0, 1).toUpperCase()"
                                     :color="focusedConversationDisplay.avatar_color || 'var(--surface-tertiary)'"
                                     size="lg"
-                                    class="h-12 w-12 rounded-xl ring-2 ring-(--surface-primary) shadow-sm"
+                                    class="h-10 w-10 rounded-lg ring-2 ring-(--surface-primary) shadow-sm"
                                 />
                                 <div class="min-w-0 flex-1">
-                                    <h3 class="truncate text-base font-bold tracking-tight text-(--text-primary)">
+                                    <h3 class="truncate text-sm font-bold tracking-tight text-(--text-primary)">
                                         {{ focusedConversationDisplay.name }}
                                     </h3>
                                     <p class="truncate text-xs font-medium text-(--text-secondary) opacity-80">
@@ -3038,16 +3047,16 @@ onBeforeUnmount(() => {
                                 </div>
                             </div>
                             
-                            <div class="mt-4 flex flex-wrap items-center gap-2">
+                            <div class="mt-2.5 flex flex-wrap items-center gap-1.5">
                                 <Badge
                                     v-if="shouldShowResolutionBadge(focusedConversationDisplay.status)"
                                     variant="outline"
                                     size="sm"
-                                    :class="[statusToneClass(focusedConversationDisplay.status), 'px-2 py-0.5 font-bold uppercase tracking-wider text-[9px]']"
+                                    :class="[statusToneClass(focusedConversationDisplay.status), 'px-1.5 py-0.5 font-bold uppercase tracking-wider text-[9px]']"
                                 >
                                     {{ statusDisplayLabel(focusedConversationDisplay.status) }}
                                 </Badge>
-                                <span class="inline-flex items-center gap-1 rounded-md border border-(--border-muted)/30 bg-(--surface-secondary)/40 px-2 py-0.5 text-[10px] font-bold text-(--text-secondary)">
+                                <span class="inline-flex items-center gap-1 rounded-md border border-(--border-muted)/30 bg-(--surface-secondary)/40 px-1.5 py-0.5 text-[9px] font-bold text-(--text-secondary)">
                                     <Hash class="h-2.5 w-2.5 opacity-50" />
                                     {{ focusedConversationDisplay.id.slice(-6) }}
                                 </span>
@@ -3252,7 +3261,7 @@ onBeforeUnmount(() => {
                             >
                             <header
                                 class="relative overflow-hidden border-b border-[var(--border-muted)]"
-                                :class="isDenseGrid ? 'px-2 py-1.5' : 'px-2.5 py-2'"
+                                :class="isDenseGrid ? 'px-1.5 py-1' : 'px-2 py-1.5'"
                             >
                                 <div class="absolute inset-0 bg-gradient-to-br" :class="conversationHeaderGradientClass(conversation)"></div>
                                 <div class="absolute -right-6 top-0 h-16 w-16 rounded-full bg-white/30 blur-3xl"></div>
@@ -3343,32 +3352,24 @@ onBeforeUnmount(() => {
                                     </div>
                                 </div>
 
-                                <div class="relative mt-2.5 space-y-2">
-                                    <p class="line-clamp-1 text-[11px] text-[var(--text-secondary)]">
-                                        {{ conversationPreviewLine(conversation) }}
-                                    </p>
-
+                                <div class="relative mt-1.5 space-y-1.5">
                                     <div class="flex flex-wrap items-center gap-1.5">
-                                        <span class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-default)] bg-[var(--surface-primary)]/80 px-2 py-1 text-[10px] font-medium text-[var(--text-primary)] backdrop-blur">
+                                        <span
+                                            v-if="String(conversation.status || '').toLowerCase() !== 'assigned'"
+                                            class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-default)] bg-[var(--surface-primary)]/80 px-1.5 py-0.5 text-[9px] font-medium text-[var(--text-primary)] backdrop-blur"
+                                        >
                                             <span class="h-2 w-2 rounded-full" :class="statusDotClass(conversation.status)"></span>
                                             {{ statusDisplayLabel(conversation.status) }}
                                         </span>
-                                        <span class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-default)] bg-[var(--surface-primary)]/80 px-2 py-1 text-[10px] font-medium text-[var(--text-primary)] backdrop-blur">
+                                        <span class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-default)] bg-[var(--surface-primary)]/80 px-1.5 py-0.5 text-[9px] font-medium text-[var(--text-primary)] backdrop-blur">
                                             <Clock class="h-3 w-3 text-[var(--text-muted)]" />
                                             Dur {{ conversationDurationLabel(conversation) }}
                                         </span>
                                         <span
-                                            class="inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[10px] font-medium backdrop-blur"
+                                            class="inline-flex items-center gap-1.5 rounded-full border px-1.5 py-0.5 text-[9px] font-medium backdrop-blur"
                                             :class="responseGapBadgeClass(conversation.id)"
                                         >
                                             {{ secondaryTimerPrefix(conversation.id) }} {{ responseGapLabel(conversation.id) }}
-                                        </span>
-                                        <span
-                                            v-if="conversation.support_skill?.name"
-                                            class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-default)] bg-[var(--surface-primary)]/80 px-2 py-1 text-[10px] font-medium text-[var(--text-secondary)] backdrop-blur"
-                                        >
-                                            <Hash class="h-3 w-3 text-[var(--text-muted)]" />
-                                            {{ conversation.support_skill.name }}
                                         </span>
                                     </div>
                                 </div>

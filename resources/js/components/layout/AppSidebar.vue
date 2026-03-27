@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useNavigationStore } from "@/stores/navigation";
 import { useAuthStore } from "@/stores/auth";
-import { useDialerStore } from "@/stores/dialer";
+import { useNotificationsStore } from "@/stores/notifications";
 import { appConfig } from "@/config/app";
 import { cn } from "@/lib/utils";
 import type {
@@ -15,6 +15,7 @@ import type {
 
 import { usePresence } from "@/composables/usePresence.ts";
 import {
+    Button,
     Avatar,
     Tooltip,
     Dropdown,
@@ -23,11 +24,14 @@ import {
     DropdownLabel,
 } from "@/components/ui";
 import StatusSelector from "@/components/ui/StatusSelector.vue";
+import ThemeToggle from "@/components/common/ThemeToggle.vue";
+import NotificationItem from "@/components/ui/NotificationItem.vue";
 import {
     LayoutDashboard,
     BarChart3,
     FolderKanban,
     Bell,
+    Loader2,
     Settings,
     Pin,
     PinOff,
@@ -48,16 +52,14 @@ import {
     Plus,
     BookOpen,
     Calendar,
-    Phone,
     Video,
 } from "lucide-vue-next";
-// DialerModal removed in favor of popup window
 
 const route = useRoute();
 const router = useRouter();
 const navStore = useNavigationStore();
 const authStore = useAuthStore();
-const dialerStore = useDialerStore();
+const notificationsStore = useNotificationsStore();
 const { currentStatus } = usePresence({ manageLifecycle: false });
 
 // Icon mapping
@@ -151,6 +153,12 @@ const showExpanded = computed(
         isHovered.value ||
         navStore.isMobileSidebarOpen,
 );
+const isCompactRail = computed(
+    () =>
+        navStore.isSidebarCollapsed &&
+        !isHovered.value &&
+        !navStore.isMobileSidebarOpen,
+);
 
 function handleItemClick(item: NavigationItem): void {
     if (navStore.hasChildren(item) && !showExpanded.value) {
@@ -162,31 +170,15 @@ function handleItemClick(item: NavigationItem): void {
     }
 }
 
-function openDialerLauncher() {
-    dialerStore.openDialer();
-}
-
-function setDialerMode(mode: "popup" | "docked") {
-    dialerStore.setLaunchMode(mode);
-}
-
-const dialerTooltip = computed(() =>
-    dialerStore.launchMode === "popup"
-        ? "Phone Dialer (Popup mode)"
-        : "Phone Dialer (Docked mode)",
-);
-
-const isDialerDocked = computed(() => dialerStore.launchMode === "docked");
-
-const isDialerPopup = computed(() => dialerStore.launchMode === "popup");
-
-function openDockedDialer() {
-    dialerStore.setLaunchMode("docked");
-    dialerStore.openDialer();
-}
-
 onMounted(() => {
     navStore.fetchNavigation();
+    notificationsStore.fetchNotifications(true);
+    notificationsStore.fetchUnreadCount();
+    notificationsStore.startRealtimeListeners();
+});
+
+onUnmounted(() => {
+    notificationsStore.stopRealtimeListeners();
 });
 </script>
 
@@ -703,165 +695,187 @@ onMounted(() => {
             </div>
         </nav>
 
-        <!-- Dialer Quick Action -->
-        <div :class="cn(showExpanded ? 'px-2.5 mb-1.5' : 'px-1.5 mb-1')">
-            <Tooltip
-                :content="dialerTooltip"
-                side="right"
-                :delay-duration="200"
-                :side-offset="10"
-                content-class="font-medium bg-[var(--text-primary)] text-[var(--text-inverse)] border-none shadow-md px-3 py-1.5 text-xs rounded-lg"
-            >
-                <button
-                    @click="openDialerLauncher"
-                    :class="
-                        cn(
-                            'group flex items-center rounded-lg transition-all duration-300 border cursor-pointer',
-                            'bg-emerald-500/5 border-emerald-500/10 hover:border-emerald-500/30 hover:bg-emerald-500/10',
-                            'text-emerald-600 dark:text-emerald-400',
-                            !showExpanded
-                                ? 'justify-center p-0 w-9 h-9 mx-auto rounded-md'
-                                : 'w-full px-2.5 py-1.5 gap-2.5',
-                        )
-                    "
-                >
-                    <Phone
-                        :class="
-                            cn(
-                                'shrink-0',
-                                showExpanded ? 'h-4 w-4' : 'h-3.5 w-3.5',
-                            )
-                        "
-                        stroke-width="2.5"
-                    />
-                    <span
-                        :class="
-                            cn(
-                                'text-[12.5px] font-semibold truncate transition-all duration-300',
-                                !showExpanded
-                                    ? 'max-w-0 opacity-0'
-                                    : 'max-w-[200px] opacity-100',
-                            )
-                        "
-                    >
-                        Dialer
-                    </span>
-                    <span
-                        v-if="showExpanded"
-                        class="ml-auto rounded-md border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-300"
-                    >
-                        {{ isDialerDocked ? "Docked" : "Popup" }}
-                    </span>
-                </button>
-            </Tooltip>
-
+        <!-- Unified User Context Bar -->
+        <div :class="cn(!isCompactRail ? 'p-2.5 mt-auto' : 'px-1.5 pb-1.5 pt-1 mt-auto')">
             <div
-                v-if="showExpanded"
-                class="mt-1.5 grid grid-cols-2 gap-1"
+                :class="
+                    cn(
+                        'flex',
+                        !isCompactRail
+                            ? 'items-center gap-1.5'
+                            : 'flex-col items-center gap-1',
+                    )
+                "
             >
-                <button
-                    :class="
-                        cn(
-                            'h-7 rounded-md border text-[11px] font-medium transition-colors',
-                            isDialerPopup
-                                ? 'border-emerald-500/35 bg-emerald-500/15 text-emerald-300'
-                                : 'border-[var(--border-muted)] bg-[var(--surface-secondary)] text-[var(--text-muted)] hover:text-[var(--text-primary)]',
-                        )
-                    "
-                    @click="setDialerMode('popup')"
+                <Dropdown
+                    align="start"
+                    side="top"
+                    :side-offset="12"
+                    :class="cn(!isCompactRail ? 'min-w-0 flex-1' : '')"
                 >
-                    Popup
-                </button>
-                <button
-                    :class="
-                        cn(
-                            'h-7 rounded-md border text-[11px] font-medium transition-colors',
-                            isDialerDocked
-                                ? 'border-emerald-500/35 bg-emerald-500/15 text-emerald-300'
-                                : 'border-[var(--border-muted)] bg-[var(--surface-secondary)] text-[var(--text-muted)] hover:text-[var(--text-primary)]',
-                        )
-                    "
-                    @click="setDialerMode('docked')"
-                >
-                    Docked
-                </button>
-            </div>
-
-            <button
-                v-if="showExpanded && isDialerPopup"
-                class="mt-1.5 h-7 w-full rounded-md border border-[var(--border-muted)] bg-[var(--surface-secondary)] text-[11px] font-medium text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
-                @click="openDockedDialer"
-            >
-                Open Docked Now
-            </button>
-        </div>
-
-        <!-- User Section -->
-        <div :class="cn(showExpanded ? 'p-2.5 mt-auto' : 'px-1.5 pb-1.5 pt-1 mt-auto')">
-            <Dropdown align="start" side="top" :side-offset="12" class="w-full">
-                <template #trigger>
-                    <button
-                        :class="
-                            cn(
-                                'flex w-full items-center rounded-lg p-1.5 transition-colors duration-200',
-                                'hover:bg-[var(--surface-secondary)] active:scale-[0.98]',
-                                'cursor-pointer',
-                                !showExpanded
-                                    ? 'justify-center gap-0 p-0 w-8 h-8 mx-auto'
-                                    : 'gap-2.5',
-                            )
-                        "
-                    >
-                        <div class="relative">
-                            <Avatar
-                                :src="authStore.avatarUrl"
-                                :fallback="authStore.initials"
-                                :status="currentStatus"
-                                size="sm"
-                                class="rounded-md"
-                            />
-                        </div>
-
-                        <div
+                    <template #trigger>
+                        <button
                             :class="
                                 cn(
-                                    'flex-1 text-left min-w-0 transition-all duration-300 ease-in-out overflow-hidden whitespace-nowrap',
-                                    !showExpanded
-                                        ? 'max-w-0 opacity-0'
-                                        : 'max-w-[200px] opacity-100',
+                                    'flex w-full items-center rounded-lg p-1.5 transition-colors duration-200 cursor-pointer',
+                                    'hover:bg-[var(--surface-secondary)] active:scale-[0.98]',
+                                    isCompactRail
+                                        ? 'justify-center gap-0 p-0 h-9 w-9'
+                                        : 'gap-2',
                                 )
                             "
                         >
-                            <p
-                                class="text-[12.5px] font-medium text-[var(--text-primary)] truncate leading-tight"
-                            >
-                                {{ authStore.displayName }}
-                            </p>
-                            <p
-                                class="text-[11px] text-[var(--text-muted)] truncate"
-                            ></p>
-                        </div>
-                    </button>
-                </template>
+                            <div class="relative">
+                                <Avatar
+                                    :src="authStore.avatarUrl"
+                                    :fallback="authStore.initials"
+                                    :status="currentStatus"
+                                    size="sm"
+                                    class="rounded-md"
+                                />
+                            </div>
 
-                <DropdownLabel>Status</DropdownLabel>
-                <StatusSelector size="sm" />
-                <DropdownSeparator />
-                <DropdownLabel>Account</DropdownLabel>
-                <DropdownItem @select="navigate('/profile')">
-                    <User class="h-4 w-4" />
-                    <span>Profile</span>
-                </DropdownItem>
-                <DropdownItem @select="navigate('/settings')">
-                    <Settings class="h-4 w-4" />
-                    <span>Settings</span>
-                </DropdownItem>
-                <DropdownSeparator />
-                <DropdownItem destructive @select="handleLogout">
-                    <LogOut class="h-4 w-4" />
-                    <span>Log out</span>
-                </DropdownItem>
-            </Dropdown>
+                            <div
+                                :class="
+                                    cn(
+                                        'flex-1 min-w-0 text-left overflow-hidden whitespace-nowrap transition-all duration-300 ease-in-out',
+                                        isCompactRail
+                                            ? 'max-w-0 opacity-0'
+                                            : 'max-w-[200px] opacity-100',
+                                    )
+                                "
+                            >
+                                <p
+                                    class="truncate text-[12.5px] font-medium leading-tight text-[var(--text-primary)]"
+                                >
+                                    {{ authStore.displayName }}
+                                </p>
+                            </div>
+                        </button>
+                    </template>
+
+                    <DropdownLabel>Status</DropdownLabel>
+                    <StatusSelector size="sm" />
+                    <DropdownSeparator />
+                    <DropdownLabel>Account</DropdownLabel>
+                    <DropdownItem @select="navigate('/profile')">
+                        <User class="h-4 w-4" />
+                        <span>Profile</span>
+                    </DropdownItem>
+                    <DropdownItem @select="navigate('/settings')">
+                        <Settings class="h-4 w-4" />
+                        <span>Settings</span>
+                    </DropdownItem>
+                    <DropdownSeparator />
+                    <DropdownItem destructive @select="handleLogout">
+                        <LogOut class="h-4 w-4" />
+                        <span>Log out</span>
+                    </DropdownItem>
+                </Dropdown>
+
+                <div class="shrink-0">
+                    <ThemeToggle />
+                </div>
+
+                <Dropdown align="start" side="top" :side-offset="12">
+                    <template #trigger>
+                        <button
+                            class="relative flex h-9 w-9 items-center justify-center rounded-lg text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-secondary)] hover:text-[var(--text-primary)]"
+                        >
+                            <Bell class="h-4 w-4 shrink-0" />
+                            <span
+                                v-if="notificationsStore.unreadCount > 0"
+                                class="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--color-error)] px-1 text-[10px] font-bold text-white"
+                            >
+                                {{
+                                    notificationsStore.unreadCount > 9
+                                        ? "9+"
+                                        : notificationsStore.unreadCount
+                                }}
+                            </span>
+                        </button>
+                    </template>
+
+                    <div
+                        class="w-80 overflow-hidden rounded-xl bg-[var(--surface-elevated)] shadow-xl ring-1 ring-black/5 dark:ring-white/10 sm:w-96"
+                    >
+                        <div
+                            class="flex items-center justify-between border-b border-[var(--border-default)] bg-[var(--surface-secondary)]/50 px-4 py-3 backdrop-blur-sm"
+                        >
+                            <span class="font-semibold text-[var(--text-primary)]">
+                                Notifications
+                            </span>
+                            <button
+                                v-if="notificationsStore.unreadCount > 0"
+                                class="text-xs font-semibold text-[var(--interactive-primary)] transition-colors hover:text-[var(--interactive-primary-hover)]"
+                                @click="notificationsStore.markAllRead"
+                            >
+                                Mark all read
+                            </button>
+                        </div>
+
+                        <div
+                            class="max-h-[28rem] overflow-y-auto overscroll-contain scrollbar-thin scrollbar-track-transparent scrollbar-thumb-[var(--border-default)]"
+                        >
+                            <div
+                                v-if="
+                                    notificationsStore.isLoading &&
+                                    notificationsStore.notifications.length === 0
+                                "
+                                class="flex flex-col items-center justify-center py-8 text-[var(--text-muted)]"
+                            >
+                                <Loader2 class="mb-2 h-6 w-6 animate-spin opacity-60" />
+                                <span class="text-xs">Loading...</span>
+                            </div>
+
+                            <div
+                                v-else-if="
+                                    notificationsStore.notifications.length === 0
+                                "
+                                class="flex flex-col items-center justify-center px-4 py-12 text-center"
+                            >
+                                <div
+                                    class="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--surface-secondary)]"
+                                >
+                                    <Bell class="h-6 w-6 text-[var(--text-muted)]" />
+                                </div>
+                                <p
+                                    class="text-sm font-medium text-[var(--text-primary)]"
+                                >
+                                    No notifications
+                                </p>
+                                <p class="mt-1 text-xs text-[var(--text-secondary)]">
+                                    We'll let you know when something arrives.
+                                </p>
+                            </div>
+
+                            <template v-else>
+                                <NotificationItem
+                                    v-for="notification in notificationsStore.notifications"
+                                    :key="notification.id"
+                                    :notification="notification"
+                                    @read="notificationsStore.markAsRead"
+                                />
+
+                                <div
+                                    v-if="notificationsStore.hasMore"
+                                    class="p-2 text-center"
+                                >
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        class="w-full text-xs text-[var(--text-muted)]"
+                                        :loading="notificationsStore.isLoading"
+                                        @click="notificationsStore.fetchNotifications()"
+                                    >
+                                        Load older notifications
+                                    </Button>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </Dropdown>
+            </div>
         </div>
     </aside>
 </template>

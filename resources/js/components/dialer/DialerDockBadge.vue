@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
-import { ChevronLeft, ChevronRight, Phone, PhoneOff } from "lucide-vue-next";
+import {
+    ChevronLeft,
+    ChevronRight,
+    ExternalLink,
+    Phone,
+    PhoneOff,
+} from "lucide-vue-next";
 import { toast } from "vue-sonner";
 import { useDialerStore } from "@/stores/dialer";
 
@@ -20,12 +26,16 @@ const activeCall = computed(() => dialerStore.activeCall);
 const hasActiveCall = computed(() => Boolean(activeCall.value));
 
 const panelLabel = computed(() =>
-    dialerStore.isDockedOpen ? "Hide dialer" : "Show dialer",
+    dialerStore.launchMode === "popup"
+        ? "Open popup dialer"
+        : dialerStore.isDockedOpen
+          ? "Hide dialer"
+          : "Show dialer",
 );
 
 const callName = computed(() => {
     if (!activeCall.value) {
-        return "Dialer dock";
+        return "Dialer";
     }
     return activeCall.value.contact_name || activeCall.value.to_number;
 });
@@ -70,7 +80,7 @@ function durationLabel(): string {
 
 const subtitle = computed(() => {
     if (!activeCall.value) {
-        return dialerStore.isDockedOpen ? "Ready for calls" : "Dock hidden";
+        return "Ready for calls";
     }
     return `${activeCall.value.status_label} · ${durationLabel()}`;
 });
@@ -108,7 +118,7 @@ onUnmounted(() => {
 <template>
     <div :class="containerClass">
         <div
-            class="flex items-center gap-2 rounded-xl border border-white/10 bg-black/55 px-2 py-1.5 shadow-xl shadow-black/35 backdrop-blur-md"
+            class="flex items-center gap-2 rounded-xl border border-white/10 bg-black px-2 py-1.5 shadow-xl shadow-black/35"
         >
             <button
                 type="button"
@@ -116,8 +126,15 @@ onUnmounted(() => {
                 :title="panelLabel"
                 @click="toggleDock"
             >
+                <ExternalLink
+                    v-if="dialerStore.launchMode === 'popup'"
+                    class="h-4 w-4"
+                />
                 <ChevronRight v-if="dialerStore.isDockedOpen" class="h-4 w-4" />
-                <ChevronLeft v-else class="h-4 w-4" />
+                <ChevronLeft
+                    v-else-if="dialerStore.launchMode === 'docked'"
+                    class="h-4 w-4"
+                />
             </button>
 
             <div class="min-w-0 w-[180px]">

@@ -78,13 +78,13 @@ async function loadDashboard(showLoading = true) {
             availability.value = availabilityResponse.value.data?.data ?? availability.value;
         }
         if (waitingRes.status === "fulfilled") {
-            waitingQueue.value = waitingRes.value.data?.data ?? [];
+            waitingQueue.value = sortWaitingQueue(waitingRes.value.data?.data ?? []);
         }
         if (aiRes.status === "fulfilled") {
-            aiQueue.value = aiRes.value.data?.data ?? [];
+            aiQueue.value = sortAiQueue(aiRes.value.data?.data ?? []);
         }
         if (assignedRes.status === "fulfilled") {
-            assignedQueue.value = assignedRes.value.data?.data ?? [];
+            assignedQueue.value = sortAssignedQueue(assignedRes.value.data?.data ?? []);
         }
 
         // Update realtime token if provided in metadata
@@ -198,6 +198,87 @@ onBeforeUnmount(() => {
 function formatWaitTime(dateString) {
     if (!dateString) return "Unknown";
     return formatDistanceToNow(new Date(dateString), { addSuffix: true });
+}
+
+function parseTimestamp(value) {
+    if (typeof value !== "string" || value.trim() === "") return null;
+    const timestamp = new Date(value).getTime();
+    return Number.isNaN(timestamp) ? null : timestamp;
+}
+
+function formatLiveDurationFrom(value) {
+    const timestamp = parseTimestamp(value);
+    if (timestamp === null) return "00:00";
+
+    const diff = Math.max(0, Math.floor((liveClockNow.value - timestamp) / 1000));
+    const hours = Math.floor(diff / 3600);
+    const minutes = Math.floor((diff % 3600) / 60);
+    const seconds = diff % 60;
+
+    if (hours > 0) {
+        return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+    }
+
+    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function customerDisplayName(chat) {
+    return chat?.guest_name || chat?.requester?.name || "Anonymous";
+}
+
+function conversationSubject(chat) {
+    return chat?.subject || "No subject";
+}
+
+function assigneeName(chat) {
+    return chat?.assignee?.name || "Unassigned";
+}
+
+function queuePosition(chat) {
+    const value = Number(chat?.queue?.position ?? chat?.queue_position ?? 0);
+    return Number.isFinite(value) && value > 0 ? Math.floor(value) : null;
+}
+
+function compareTimestampAsc(a, b) {
+    const aTime = parseTimestamp(a) ?? Number.MAX_SAFE_INTEGER;
+    const bTime = parseTimestamp(b) ?? Number.MAX_SAFE_INTEGER;
+    return aTime - bTime;
+}
+
+function sortWaitingQueue(items) {
+    return [...items].sort((a, b) => {
+        const aPosition = queuePosition(a) ?? Number.MAX_SAFE_INTEGER;
+        const bPosition = queuePosition(b) ?? Number.MAX_SAFE_INTEGER;
+        if (aPosition !== bPosition) return aPosition - bPosition;
+
+        return compareTimestampAsc(waitingSinceAt(a), waitingSinceAt(b));
+    });
+}
+
+function sortAiQueue(items) {
+    return [...items].sort((a, b) => compareTimestampAsc(aiAssistingSinceAt(a), aiAssistingSinceAt(b)));
+}
+
+function sortAssignedQueue(items) {
+    return [...items].sort((a, b) => compareTimestampAsc(assignedSinceAt(a), assignedSinceAt(b)));
+}
+
+function queuePositionLabel(chat) {
+    const position = queuePosition(chat);
+    if (!position) return "In queue";
+    return position === 1 ? "Next in queue" : `Queue #${position}`;
+}
+
+function waitingSinceAt(chat) {
+    return chat?.timers?.waiting_since_at || chat?.metadata?.waiting_for_agent_since || chat?.created_at || null;
+}
+
+function aiAssistingSinceAt(chat) {
+    return chat?.timers?.ai_assisting_since_at || chat?.metadata?.ai_assisting_since || chat?.created_at || null;
+}
+
+function assignedSinceAt(chat) {
+    return chat?.timers?.assigned_since_at || chat?.assigned_at || chat?.first_response_at || chat?.created_at || null;
 }
 
 function getSLAStatus(chat) {
@@ -430,7 +511,7 @@ function getStatusLabel(status) {
 
         <!-- Top Metrics -->
         <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
-            <Card class="p-5 space-y-2 border-l-4 border-l-[var(--color-primary-500)]">
+            <Card class="p-3 space-y-1 border-l-4 border-l-[var(--color-primary-500)]">
                 <div class="flex items-center justify-between">
                     <Users class="h-5 w-5 text-[var(--interactive-primary)]" />
                     <Badge :variant="availability.available ? 'success' : 'warning'" size="sm">
@@ -441,7 +522,7 @@ function getStatusLabel(status) {
                 <p class="text-2xl font-semibold text-[var(--text-primary)]">{{ availability.available_agents }}</p>
             </Card>
 
-            <Card class="p-5 space-y-2 border-l-4 border-l-[var(--color-warning-500)]">
+            <Card class="p-3 space-y-1 border-l-4 border-l-[var(--color-warning-500)]">
                 <div class="flex items-center justify-between">
                     <Clock class="h-5 w-5 text-[var(--color-warning-500)]" />
                     <Badge variant="warning" size="sm">Last 24h</Badge>
@@ -455,7 +536,7 @@ function getStatusLabel(status) {
                 </div>
             </Card>
 
-            <Card class="p-5 space-y-2 border-l-4 border-l-[var(--color-info-500)]">
+            <Card class="p-3 space-y-1 border-l-4 border-l-[var(--color-info-500)]">
                 <div class="flex items-center justify-between">
                     <Bot class="h-5 w-5 text-[var(--color-info-500)]" />
                     <Badge variant="info" size="sm">Automation</Badge>
@@ -467,7 +548,7 @@ function getStatusLabel(status) {
                 </div>
             </Card>
 
-            <Card class="p-5 space-y-2 border-l-4 border-l-[var(--color-success-500)]">
+            <Card class="p-3 space-y-1 border-l-4 border-l-[var(--color-success-500)]">
                 <div class="flex items-center justify-between">
                     <Inbox class="h-5 w-5 text-[var(--color-success-500)]" />
                     <Badge variant="success" size="sm">Resolved</Badge>
@@ -481,76 +562,101 @@ function getStatusLabel(status) {
             <!-- Queues Grid -->
             <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
                 <!-- Waiting Queue -->
-                <Card class="flex flex-col h-[600px] overflow-hidden">
-                    <div class="p-4 border-b border-[var(--border-muted)] bg-[var(--surface-secondary)]/50 flex items-center gap-2">
-                        <AlertCircle class="h-4 w-4 text-[var(--color-warning-500)]" />
-                        <h3 class="font-semibold text-[var(--text-primary)]">Waiting for Agent ({{ waitingQueue.length }})</h3>
+                <Card class="flex h-[600px] flex-col overflow-hidden border-[var(--border-default)] bg-[var(--surface-primary)]">
+                    <div class="flex items-center justify-between border-b border-[var(--border-muted)] px-2.5 py-2">
+                        <div class="flex items-center gap-2">
+                            <div class="flex h-7 w-7 items-center justify-center rounded-full bg-amber-500/15">
+                                <AlertCircle class="h-4 w-4 text-amber-600 dark:text-amber-300" />
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-semibold text-[var(--text-primary)]">Waiting for Agent</h3>
+                                <p class="text-[11px] text-[var(--text-secondary)]">Queued chats awaiting human pickup</p>
+                            </div>
+                        </div>
+                        <Badge variant="warning" size="sm">{{ waitingQueue.length }}</Badge>
                     </div>
-                    <div class="flex-1 overflow-y-auto p-2 space-y-2">
+                    <div class="flex-1 space-y-1 overflow-y-auto p-1.5">
                         <div v-if="waitingQueue.length === 0" class="flex flex-col items-center justify-center py-12 text-[var(--text-muted)]">
                             <Inbox class="h-8 w-8 mb-2 opacity-50" />
                             <p class="text-sm">No chats waiting.</p>
                         </div>
-                        <div v-for="(chat, index) in waitingQueue" :key="conversationIdFor(chat) || `waiting-${index}`" 
-                             @click="openQueueChat(chat, 'unassigned')"
-                             class="p-3 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-primary)] hover:border-[var(--interactive-primary)] cursor-pointer transition-colors group relative overflow-hidden"
-                             :class="{
-                                 'border-red-500/50 bg-red-50/10': getSLAStatus(chat) === 'alert',
-                                 'border-amber-500/50 bg-amber-50/10': getSLAStatus(chat) === 'warn'
-                             }">
-                            <!-- SLA Indicators -->
-                            <div v-if="getSLAStatus(chat) !== 'normal'" 
-                                 class="absolute top-0 right-0 h-1" 
-                                 :class="getSLAStatus(chat) === 'alert' ? 'bg-red-500 w-full' : 'bg-amber-500 w-1/2'">
-                            </div>
-
-                            <div class="flex justify-between items-start mb-2">
-                                <span class="font-medium text-[var(--text-primary)] text-sm truncate pr-2">{{ chat.guest_name || chat.requester?.name || 'Anonymous' }}</span>
-                                <Badge :variant="getStatusColor(chat.status)" size="sm">{{ getStatusLabel(chat.status) }}</Badge>
-                            </div>
-                            <p class="text-xs text-[var(--text-secondary)] truncate mb-2">{{ chat.subject || 'No subject' }}</p>
-                            <div class="flex items-center text-xs text-[var(--text-muted)] justify-between">
-                                <div class="flex items-center gap-1 font-medium" 
-                                     :class="{
-                                         'text-red-600 dark:text-red-400': getSLAStatus(chat) === 'alert',
-                                         'text-amber-600 dark:text-amber-400': getSLAStatus(chat) === 'warn',
-                                         'text-[var(--color-warning-600)] dark:text-[var(--color-warning-400)]': getSLAStatus(chat) === 'normal'
-                                     }">
-                                    <Clock class="h-3 w-3" />
-                                    <span>{{ formatWaitTime(chat.created_at) }}</span>
-                                </div>
-                                <div v-if="getSLAStatus(chat) === 'alert'" class="flex items-center gap-1 text-red-600 font-bold">
-                                    <AlertCircle class="h-3 w-3" />
-                                    <span>SLA Breach</span>
+                        <div
+                            v-for="(chat, index) in waitingQueue"
+                            :key="conversationIdFor(chat) || `waiting-${index}`"
+                            @click="openQueueChat(chat, 'waiting')"
+                            class="group cursor-pointer rounded-lg border border-amber-500/20 bg-[var(--surface-primary)] p-2 shadow-[0_8px_20px_rgba(15,23,42,0.04)] transition-all hover:-translate-y-0.5 hover:border-amber-500/50"
+                            :class="{
+                                'ring-1 ring-red-500/40': getSLAStatus(chat) === 'alert',
+                                'ring-1 ring-amber-500/40': getSLAStatus(chat) === 'warn'
+                            }"
+                        >
+                            <div class="mb-2 flex items-start justify-between gap-2">
+                                <p class="truncate pr-2 text-sm font-semibold text-[var(--text-primary)]">{{ customerDisplayName(chat) }}</p>
+                                <div class="flex shrink-0 items-center gap-1">
+                                    <Badge :variant="getStatusColor(chat.status)" size="sm">{{ getStatusLabel(chat.status) }}</Badge>
+                                    <Badge variant="outline" size="sm">{{ queuePositionLabel(chat) }}</Badge>
                                 </div>
                             </div>
+                            <p class="mb-2 truncate text-xs text-[var(--text-secondary)]">{{ conversationSubject(chat) }}</p>
+                            <div class="grid grid-cols-2 gap-1.5 text-[11px]">
+                                <div class="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-secondary)]/60 px-1.5 py-1">
+                                    <p class="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Waiting</p>
+                                    <p class="font-mono text-[var(--text-primary)]">{{ formatLiveDurationFrom(waitingSinceAt(chat)) }}</p>
+                                </div>
+                                <div class="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-secondary)]/60 px-1.5 py-1">
+                                    <p class="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Last Update</p>
+                                    <p class="truncate text-[var(--text-primary)]">{{ formatWaitTime(chat.last_message_at || chat.updated_at) }}</p>
+                                </div>
+                            </div>
+                            <p
+                                v-if="getSLAStatus(chat) !== 'normal'"
+                                class="mt-2 text-[11px] font-medium"
+                                :class="getSLAStatus(chat) === 'alert' ? 'text-red-600 dark:text-red-400' : 'text-amber-600 dark:text-amber-400'"
+                            >
+                                {{ getSLAStatus(chat) === 'alert' ? 'SLA breach risk: urgent follow-up needed.' : 'SLA warning: nearing response threshold.' }}
+                            </p>
                         </div>
                     </div>
                 </Card>
 
                 <!-- AI Handled Queue -->
-                <Card class="flex flex-col h-[600px] overflow-hidden">
-                    <div class="p-4 border-b border-[var(--border-muted)] bg-[var(--surface-secondary)]/50 flex items-center gap-2">
-                        <Bot class="h-4 w-4 text-[var(--color-info-500)]" />
-                        <h3 class="font-semibold text-[var(--text-primary)]">Handled by AI ({{ aiQueue.length }})</h3>
+                <Card class="flex h-[600px] flex-col overflow-hidden border-[var(--border-default)] bg-[var(--surface-primary)]">
+                    <div class="flex items-center justify-between border-b border-[var(--border-muted)] px-2.5 py-2">
+                        <div class="flex items-center gap-2">
+                            <div class="flex h-7 w-7 items-center justify-center rounded-full bg-sky-500/15">
+                                <Bot class="h-4 w-4 text-sky-600 dark:text-sky-300" />
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-semibold text-[var(--text-primary)]">Handled by AI</h3>
+                                <p class="text-[11px] text-[var(--text-secondary)]">Chats currently guided by automation</p>
+                            </div>
+                        </div>
+                        <Badge variant="info" size="sm">{{ aiQueue.length }}</Badge>
                     </div>
-                    <div class="flex-1 overflow-y-auto p-2 space-y-2">
+                    <div class="flex-1 space-y-1 overflow-y-auto p-1.5">
                         <div v-if="aiQueue.length === 0" class="flex flex-col items-center justify-center py-12 text-[var(--text-muted)]">
                             <Bot class="h-8 w-8 mb-2 opacity-50" />
                             <p class="text-sm">No active AI chats.</p>
                         </div>
-                        <div v-for="(chat, index) in aiQueue" :key="conversationIdFor(chat) || `ai-${index}`" 
-                             @click="openQueueChat(chat, 'all')"
-                             class="p-3 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-primary)] hover:border-[var(--color-info-500)] cursor-pointer transition-colors group">
-                            <div class="flex justify-between items-start mb-2">
-                                <span class="font-medium text-[var(--text-primary)] text-sm truncate pr-2">{{ chat.guest_name || chat.requester?.name || 'Anonymous' }}</span>
+                        <div
+                            v-for="(chat, index) in aiQueue"
+                            :key="conversationIdFor(chat) || `ai-${index}`"
+                            @click="openQueueChat(chat, 'ai')"
+                            class="group cursor-pointer rounded-lg border border-sky-500/20 bg-[var(--surface-primary)] p-2 shadow-[0_8px_20px_rgba(15,23,42,0.04)] transition-all hover:-translate-y-0.5 hover:border-sky-500/45"
+                        >
+                            <div class="mb-2 flex items-start justify-between gap-2">
+                                <p class="truncate pr-2 text-sm font-semibold text-[var(--text-primary)]">{{ customerDisplayName(chat) }}</p>
                                 <Badge variant="info" size="sm">Auto-pilot</Badge>
                             </div>
-                            <p class="text-xs text-[var(--text-secondary)] truncate mb-2">{{ chat.subject || 'No subject' }}</p>
-                            <div class="flex items-center text-xs text-[var(--text-muted)] justify-between">
-                                <div class="flex items-center gap-1">
-                                    <Clock class="h-3 w-3" />
-                                    <span>{{ formatWaitTime(chat.created_at) }}</span>
+                            <p class="mb-2 truncate text-xs text-[var(--text-secondary)]">{{ conversationSubject(chat) }}</p>
+                            <div class="grid grid-cols-2 gap-1.5 text-[11px]">
+                                <div class="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-secondary)]/60 px-1.5 py-1">
+                                    <p class="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">AI Assisting</p>
+                                    <p class="font-mono text-[var(--text-primary)]">{{ formatLiveDurationFrom(aiAssistingSinceAt(chat)) }}</p>
+                                </div>
+                                <div class="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-secondary)]/60 px-1.5 py-1">
+                                    <p class="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Last Update</p>
+                                    <p class="truncate text-[var(--text-primary)]">{{ formatWaitTime(chat.last_message_at || chat.updated_at) }}</p>
                                 </div>
                             </div>
                         </div>
@@ -558,30 +664,45 @@ function getStatusLabel(status) {
                 </Card>
 
                 <!-- Assigned Queue -->
-                <Card class="flex flex-col h-[600px] overflow-hidden">
-                    <div class="p-4 border-b border-[var(--border-muted)] bg-[var(--surface-secondary)]/50 flex items-center gap-2">
-                        <UserIcon class="h-4 w-4 text-[var(--color-success-500)]" />
-                        <h3 class="font-semibold text-[var(--text-primary)]">Assigned Chats ({{ assignedQueue.length }})</h3>
+                <Card class="flex h-[600px] flex-col overflow-hidden border-[var(--border-default)] bg-[var(--surface-primary)]">
+                    <div class="flex items-center justify-between border-b border-[var(--border-muted)] px-2.5 py-2">
+                        <div class="flex items-center gap-2">
+                            <div class="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500/15">
+                                <UserIcon class="h-4 w-4 text-emerald-600 dark:text-emerald-300" />
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-semibold text-[var(--text-primary)]">Assigned Chats</h3>
+                                <p class="text-[11px] text-[var(--text-secondary)]">Conversations currently owned by agents</p>
+                            </div>
+                        </div>
+                        <Badge variant="success" size="sm">{{ assignedQueue.length }}</Badge>
                     </div>
-                    <div class="flex-1 overflow-y-auto p-2 space-y-2">
+                    <div class="flex-1 space-y-1 overflow-y-auto p-1.5">
                         <div v-if="assignedQueue.length === 0" class="flex flex-col items-center justify-center py-12 text-[var(--text-muted)]">
                             <UserIcon class="h-8 w-8 mb-2 opacity-50" />
                             <p class="text-sm">No assigned chats.</p>
                         </div>
-                        <div v-for="(chat, index) in assignedQueue" :key="conversationIdFor(chat) || `assigned-${index}`" 
-                             @click="openQueueChat(chat, 'all')"
-                             class="p-3 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-primary)] hover:border-[var(--color-success-500)] cursor-pointer transition-colors group">
-                            <div class="flex justify-between items-start mb-2">
-                                <span class="font-medium text-[var(--text-primary)] text-sm truncate pr-2">{{ chat.guest_name || chat.requester?.name || 'Anonymous' }}</span>
+                        <div
+                            v-for="(chat, index) in assignedQueue"
+                            :key="conversationIdFor(chat) || `assigned-${index}`"
+                            @click="openQueueChat(chat, 'all')"
+                            class="group cursor-pointer rounded-lg border border-emerald-500/20 bg-[var(--surface-primary)] p-2 shadow-[0_8px_20px_rgba(15,23,42,0.04)] transition-all hover:-translate-y-0.5 hover:border-emerald-500/45"
+                        >
+                            <div class="mb-2 flex items-start justify-between gap-2">
+                                <p class="truncate pr-2 text-sm font-semibold text-[var(--text-primary)]">{{ customerDisplayName(chat) }}</p>
                                 <div class="flex flex-col items-end gap-1">
-                                    <Badge variant="success" size="sm">Active</Badge>
+                                    <Badge variant="success" size="sm">Assigned</Badge>
                                 </div>
                             </div>
-                            <p class="text-xs text-[var(--text-secondary)] truncate mb-2">{{ chat.subject || 'No subject' }}</p>
-                            <div class="flex items-center justify-between mt-2 pt-2 border-t border-[var(--border-subtle)]">
-                                <div class="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
-                                    <Users class="h-3 w-3" />
-                                    <span>{{ chat.assignee?.name || 'Loading...' }}</span>
+                            <p class="mb-2 truncate text-xs text-[var(--text-secondary)]">{{ conversationSubject(chat) }}</p>
+                            <div class="grid grid-cols-2 gap-1.5 text-[11px]">
+                                <div class="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-secondary)]/60 px-1.5 py-1">
+                                    <p class="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Assigned To</p>
+                                    <p class="truncate text-[var(--text-primary)]">{{ assigneeName(chat) }}</p>
+                                </div>
+                                <div class="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-secondary)]/60 px-1.5 py-1">
+                                    <p class="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Assigned For</p>
+                                    <p class="font-mono text-[var(--text-primary)]">{{ formatLiveDurationFrom(assignedSinceAt(chat)) }}</p>
                                 </div>
                             </div>
                         </div>
@@ -590,7 +711,7 @@ function getStatusLabel(status) {
             </div>
 
             <Card class="overflow-hidden">
-                <div class="flex items-center justify-between border-b border-[var(--border-muted)] bg-[var(--surface-secondary)]/50 p-4">
+                <div class="flex items-center justify-between border-b border-[var(--border-muted)] bg-[var(--surface-secondary)]/50 p-3">
                     <div>
                         <h3 class="font-semibold text-[var(--text-primary)]">Today's Trend</h3>
                         <p class="text-sm text-[var(--text-secondary)]">
@@ -607,7 +728,7 @@ function getStatusLabel(status) {
                         </p>
                     </div>
                 </div>
-                <div class="p-4">
+                <div class="p-3">
                     <DashboardLineChart
                         :labels="metrics.today_trend.labels || []"
                         :datasets="[
@@ -632,7 +753,7 @@ function getStatusLabel(status) {
 
             <!-- Agent Availability Table -->
             <Card class="overflow-hidden">
-                <div class="p-4 border-b border-[var(--border-muted)] bg-[var(--surface-secondary)]/50 flex items-center justify-between">
+                <div class="px-3 py-2.5 border-b border-[var(--border-muted)] bg-[var(--surface-secondary)]/50 flex items-center justify-between">
                     <div class="flex items-center gap-2">
                         <Users class="h-4 w-4 text-[var(--interactive-primary)]" />
                         <h3 class="font-semibold text-[var(--text-primary)]">Online Agents</h3>

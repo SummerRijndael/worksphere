@@ -72,42 +72,49 @@ Route::middleware(['throttle:guest'])->group(function () {
         ->middleware('throttle:sensitive');
 
     // Public Live Support Chats (Widget)
-    Route::prefix('support/chats')->group(function () {
-        Route::get('/availability', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'availability']);
+    Route::withoutMiddleware(['throttle:guest'])->prefix('support/chats')->group(function () {
+        Route::get('/availability', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'availability'])
+            ->middleware('throttle:support-widget-read');
         Route::post('/link/unfurl', [\App\Http\Controllers\Api\LinkUnfurlController::class, 'unfurl'])
-            ->middleware('throttle:sensitive');
+            ->middleware('throttle:support-widget-action');
         Route::get('/surveys/{token}', [\App\Http\Controllers\Api\Support\SupportSurveyController::class, 'showByToken'])
+            ->middleware('throttle:support-widget-read')
             ->where('token', '[A-Za-z0-9]{40,128}');
         Route::post('/surveys/{token}', [\App\Http\Controllers\Api\Support\SupportSurveyController::class, 'submitByToken'])
-            ->middleware('throttle:sensitive')
+            ->middleware('throttle:support-widget-action')
             ->where('token', '[A-Za-z0-9]{40,128}');
         Route::get('/{conversation}/survey', [\App\Http\Controllers\Api\Support\SupportSurveyController::class, 'showForConversation'])
+            ->middleware('throttle:support-widget-read')
             ->whereUlid('conversation');
         Route::post('/{conversation}/survey', [\App\Http\Controllers\Api\Support\SupportSurveyController::class, 'submitForConversation'])
-            ->middleware('throttle:sensitive')
+            ->middleware('throttle:support-widget-action')
             ->whereUlid('conversation');
         Route::post('/{conversation}/survey-preference', [\App\Http\Controllers\Api\Support\SupportSurveyController::class, 'updatePreference'])
-            ->middleware('throttle:sensitive')
+            ->middleware('throttle:support-widget-action')
             ->whereUlid('conversation');
-        Route::get('/resume', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'resume']);
-        Route::get('/history', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'history']);
+        Route::get('/resume', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'resume'])
+            ->middleware('throttle:support-widget-read');
+        Route::get('/history', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'history'])
+            ->middleware('throttle:support-widget-read');
         Route::post('/lookup', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'lookup'])
-            ->middleware('throttle:sensitive');
+            ->middleware('throttle:support-widget-action');
         Route::post('/resume/clear', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'clearResume'])
-            ->middleware('throttle:sensitive');
+            ->middleware('throttle:support-widget-action');
         Route::post('/', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'store'])
-            ->middleware('throttle:sensitive');
+            ->middleware('throttle:support-widget-open');
         Route::get('/{conversation}', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'show'])
+            ->middleware('throttle:support-widget-read')
             ->whereUlid('conversation');
         Route::get('/{conversation}/messages', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'messages'])
+            ->middleware('throttle:support-widget-read')
             ->whereUlid('conversation');
         Route::post('/{conversation}/typing', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'typing'])
             ->whereUlid('conversation');
         Route::post('/{conversation}/end', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'endConversation'])
-            ->middleware('throttle:sensitive')
+            ->middleware('throttle:support-widget-action')
             ->whereUlid('conversation');
         Route::post('/{conversation}/messages', [\App\Http\Controllers\Api\Support\SupportChatController::class, 'storeCustomerMessage'])
-            ->middleware('throttle:sensitive')
+            ->middleware('throttle:support-widget-action')
             ->whereUlid('conversation');
     });
 

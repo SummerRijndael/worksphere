@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Events\SystemMetricsUpdated;
 use App\Services\MaintenanceService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class StreamSystemMetrics extends Command
@@ -40,26 +41,39 @@ class StreamSystemMetrics extends Command
     /**
      * Execute the console command.
      */
-    public function handle(): void
+    public function handle(): int
     {
+        $lock = Cache::lock('maintenance:stream:system-metrics', 70);
+        if (! $lock->get()) {
+            $this->line('System metrics stream already running; skipping duplicate instance.');
+
+            return self::SUCCESS;
+        }
+
         $this->info('Starting system metrics stream...');
 
-        // Run for slightly less than 60 seconds to allow overlap with scheduler
+        // Run slightly under 60s; scheduler will trigger fresh instance every minute.
         $endTime = time() + 58;
 
-        while (time() < $endTime) {
-            try {
-                $metrics = $this->getMetrics();
+        try {
+            while (time() < $endTime) {
+                try {
+                    $metrics = $this->getMetrics();
 
-                SystemMetricsUpdated::dispatch($metrics);
+                    SystemMetricsUpdated::dispatch($metrics);
 
-                // Sleep for 5 seconds
-                sleep(5);
-            } catch (\Exception $e) {
-                Log::error('Error streaming metrics: '.$e->getMessage());
-                sleep(5);
+                    // Sleep for 5 seconds
+                    sleep(5);
+                } catch (\Throwable $e) {
+                    Log::error('Error streaming metrics: '.$e->getMessage());
+                    sleep(5);
+                }
             }
+        } finally {
+            optional($lock)->release();
         }
+
+        return self::SUCCESS;
     }
 
     /**

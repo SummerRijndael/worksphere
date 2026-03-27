@@ -7,6 +7,13 @@
     "mcp": true,
     "sail": false,
     "skills": [
+        "laravel-best-practices",
+        "configuring-horizon",
+        "pulse-development",
+        "scout-development",
+        "socialite-development",
+        "echo-vue-development",
+        "echo-development",
         "tailwindcss-development"
     ]
 }

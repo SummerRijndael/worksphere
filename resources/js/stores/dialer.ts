@@ -26,6 +26,7 @@ export const useDialerStore = defineStore("dialer", () => {
     const lastSyncedAt = ref<number | null>(null);
     const isStatusMonitoring = ref(false);
     let pollTimer: ReturnType<typeof setTimeout> | null = null;
+    let storageListenerAttached = false;
 
     function getPublicId(): string {
         try {
@@ -43,19 +44,27 @@ export const useDialerStore = defineStore("dialer", () => {
         return `worksphere_dialer_mode_${getPublicId()}`;
     }
 
+    function getModeFromRawPreference(raw: string | null): DialerLaunchMode | null {
+        if (!raw) return null;
+        try {
+            const parsed = JSON.parse(raw);
+            if (
+                parsed?.launchMode === "popup" ||
+                parsed?.launchMode === "docked"
+            ) {
+                return parsed.launchMode;
+            }
+            return null;
+        } catch {
+            return null;
+        }
+    }
+
     function loadPreference(): void {
         if (typeof window === "undefined") return;
-
-        try {
-            const raw = localStorage.getItem(getStorageKey());
-            if (!raw) return;
-
-            const parsed = JSON.parse(raw);
-            if (parsed?.launchMode === "popup" || parsed?.launchMode === "docked") {
-                launchMode.value = parsed.launchMode;
-            }
-        } catch {
-            // Ignore malformed preferences and fall back to defaults.
+        const mode = getModeFromRawPreference(localStorage.getItem(getStorageKey()));
+        if (mode) {
+            launchMode.value = mode;
         }
     }
 
@@ -212,6 +221,27 @@ export const useDialerStore = defineStore("dialer", () => {
         }
     }
 
+    function handleStorageSync(event: StorageEvent): void {
+        if (typeof window === "undefined") return;
+        if (event.storageArea !== localStorage) return;
+        if (event.key !== getStorageKey()) return;
+
+        const mode = getModeFromRawPreference(event.newValue);
+        if (!mode || mode === launchMode.value) {
+            return;
+        }
+
+        launchMode.value = mode;
+        if (mode === "popup") {
+            isDockedOpen.value = false;
+            stopStatusPolling();
+            return;
+        }
+
+        isDockedOpen.value = true;
+        startStatusPolling();
+    }
+
     async function hangupActiveCall(): Promise<boolean> {
         if (!activeCall.value || !activeCall.value.can_hangup || isHangingUp.value) {
             return false;
@@ -230,6 +260,10 @@ export const useDialerStore = defineStore("dialer", () => {
     }
 
     loadPreference();
+    if (typeof window !== "undefined" && !storageListenerAttached) {
+        window.addEventListener("storage", handleStorageSync);
+        storageListenerAttached = true;
+    }
 
     watch(launchMode, () => {
         savePreference();

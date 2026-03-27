@@ -119,16 +119,26 @@ const resumeLookupForm = ref({
     chat_reference: '',
     guest_email: '',
 });
+const queueWaitClock = ref(Date.now());
 
 let availabilityTimer = null;
+let queueWaitTimer = null;
 let realtimeTokenRefreshTimer = null;
 let realtimeSubscriptionRetryTimer = null;
+let waitingQueueRefreshTimer = null;
+let waitingQueueRefreshInFlight = false;
 let supportRealtimeChannelName = '';
 let typingResetTimer = null;
 let typingDebounceTimer = null;
 let lastTypingSentAt = 0;
 let supportRealtimeRetryAttempts = 0;
 let sendCooldownTimer = null;
+let widgetBootstrapPromise = null;
+let lastWidgetBootstrapAt = 0;
+let availabilityLoadPromise = null;
+let historyLoadPromise = null;
+let lastAvailabilityLoadAt = 0;
+let lastHistoryLoadAt = 0;
 
 async function focusComposerInput() {
     if (!chatStore.isOpen || viewState.value !== 'chat') {
@@ -196,6 +206,7 @@ const storageKey = computed(() => {
 
 // Event types that should only be shown to agents, not customers
 const AGENT_ONLY_EVENT_TYPES = new Set([
+    'assignment_auto',
     'resolution_started',
     'wrap_up_completed',
     'close_started',
@@ -288,8 +299,12 @@ const pendingMessagesForActiveConversation = computed(() => {
         }));
 });
 
-const conversationStatus = computed(() => activeConversation.value?.status || null);
-const isConversationClosed = computed(() => ['resolved', 'closed'].includes(conversationStatus.value));
+const conversationStatus = computed(() => String(activeConversation.value?.status || '').toLowerCase());
+const conversationChatState = computed(() => String(activeConversation.value?.chat_state || '').toLowerCase());
+const isConversationClosed = computed(() => {
+    return conversationChatState.value === 'chat_ended'
+        || ['wrap_up', 'resolved', 'closed', 'ended'].includes(conversationStatus.value);
+});
 const showConversationHeaderMeta = computed(() => {
     return viewState.value === 'chat' && Boolean(activeConversation.value?.id);
 });
@@ -324,9 +339,47 @@ const talkingToLabel = computed(() => {
     return 'Talking to: Support Bot';
 });
 
+const waitingForAgentNotice = computed(() => {
+    if (!activeConversation.value || isConversationClosed.value) {
+        return '';
+    }
+
+    if (conversationStatus.value !== 'waiting_human') {
+        return '';
+    }
+
+    if (activeConversation.value?.assignee?.id || activeConversation.value?.assigned_to) {
+        return '';
+    }
+
+    const metadata = activeConversation.value?.metadata || {};
+    const queuePositionRaw = activeConversation.value?.queue?.position ?? activeConversation.value?.queue_position ?? null;
+    const queuePosition = Number.isFinite(Number(queuePositionRaw)) && Number(queuePositionRaw) > 0
+        ? Math.floor(Number(queuePositionRaw))
+        : null;
+    const queueLabel = queuePosition !== null
+        ? (queuePosition === 1 ? 'You are next in queue.' : `You are number ${queuePosition} in queue.`)
+        : 'You are in queue.';
+    const waitingSinceRaw = metadata.waiting_for_agent_since || activeConversation.value?.created_at || null;
+    const waitingSinceDate = waitingSinceRaw ? new Date(waitingSinceRaw) : null;
+    const waitingSinceMs = waitingSinceDate ? waitingSinceDate.getTime() : Number.NaN;
+    const waitedMinutes = Number.isFinite(waitingSinceMs)
+        ? Math.max(0, Math.floor((queueWaitClock.value - waitingSinceMs) / 60000))
+        : 0;
+
+    if (waitedMinutes >= 30) {
+        return `${queueLabel} Thank you for waiting. It appears no support specialist is available right now, but you may leave a message and our team will follow up as soon as possible.`;
+    }
+
+    return `All support specialists are currently assisting other customers. ${queueLabel} The next available specialist will assist you shortly.`;
+});
 const starterHint = computed(() => {
+    if (waitingForAgentNotice.value) {
+        return waitingForAgentNotice.value;
+    }
+
     if (isConversationClosed.value) {
-        return 'This conversation is resolved. Start a new conversation to continue.';
+        return 'This conversation has ended. Start a new conversation to continue.';
     }
 
     if (!availability.value.available) {
@@ -1425,7 +1478,19 @@ async function subscribeSupportRealtime() {
     supportRealtimeChannelName = channelName;
 }
 
-async function loadAvailability() {
+async function loadAvailability(options = {}) {
+    const force = options.force === true;
+    const now = Date.now();
+
+    if (!force && availabilityLoadPromise) {
+        return availabilityLoadPromise;
+    }
+
+    if (!force && lastAvailabilityLoadAt && now - lastAvailabilityLoadAt < 2000) {
+        return availability.value;
+    }
+
+    availabilityLoadPromise = (async () => {
     isLoadingAvailability.value = true;
     try {
         const response = await api.get('/api/support/chats/availability');
@@ -1438,6 +1503,53 @@ async function loadAvailability() {
         };
     } finally {
         isLoadingAvailability.value = false;
+        lastAvailabilityLoadAt = Date.now();
+    }
+        return availability.value;
+    })().finally(() => {
+        availabilityLoadPromise = null;
+    });
+
+    return availabilityLoadPromise;
+}
+
+async function refreshWaitingQueueStatus() {
+    if (waitingQueueRefreshInFlight) {
+        return;
+    }
+
+    const conversationId = activeConversation.value?.id;
+    if (!conversationId || isConversationClosed.value) {
+        return;
+    }
+
+    if (conversationStatus.value !== 'waiting_human') {
+        return;
+    }
+
+    if (activeConversation.value?.assignee?.id || activeConversation.value?.assigned_to) {
+        return;
+    }
+
+    waitingQueueRefreshInFlight = true;
+    try {
+        const refreshed = await fetchConversation(conversationId, activeGuestToken.value, {
+            withLoading: false,
+            applyRealtimeMeta: true,
+            loadMessages: false,
+        });
+
+        if (refreshed) {
+            activeConversation.value = {
+                ...activeConversation.value,
+                ...refreshed,
+            };
+            syncConversationToHistory(activeConversation.value);
+        }
+    } catch {
+        // Silent refresh; best-effort queue position update.
+    } finally {
+        waitingQueueRefreshInFlight = false;
     }
 }
 
@@ -1609,7 +1721,19 @@ async function loadOlderMessages() {
     }
 }
 
-async function loadConversationHistory() {
+async function loadConversationHistory(options = {}) {
+    const force = options.force === true;
+    const now = Date.now();
+
+    if (!force && historyLoadPromise) {
+        return historyLoadPromise;
+    }
+
+    if (!force && lastHistoryLoadAt && now - lastHistoryLoadAt < 2000) {
+        return historyItems.value;
+    }
+
+    historyLoadPromise = (async () => {
     isLoadingHistory.value = true;
 
     if (isAuthenticated.value) {
@@ -1632,52 +1756,83 @@ async function loadConversationHistory() {
             historyItems.value = [];
         } finally {
             isLoadingHistory.value = false;
+            lastHistoryLoadAt = Date.now();
         }
 
-        return;
+        return historyItems.value;
     }
 
     const records = readHistoryRecords();
     if (records.length === 0) {
         historyItems.value = [];
         isLoadingHistory.value = false;
+        lastHistoryLoadAt = Date.now();
+        return historyItems.value;
+    }
+
+    const activeId = activeConversation.value?.id || null;
+    historyItems.value = records.map((record) => {
+        if (activeId && record.id === activeId && activeConversation.value) {
+            return {
+                id: activeConversation.value.id,
+                chat_reference: activeConversation.value.chat_reference || conversationChatReference(activeConversation.value),
+                token: activeGuestToken.value || record.token || '',
+                last_message: activeConversation.value.latest_message?.body || record.last_message || 'No messages yet',
+                updated_at: activeConversation.value.last_message_at || activeConversation.value.updated_at || record.updated_at,
+                status: activeConversation.value.status || record.status || 'open',
+                guest_name: activeConversation.value.guest_name || record.guest_name || '',
+                guest_email: activeConversation.value.guest_email || record.guest_email || '',
+            };
+        }
+
+        return {
+            id: record.id,
+            chat_reference: record.chat_reference || '',
+            token: record.token || '',
+            last_message: record.last_message || 'No messages yet',
+            updated_at: record.updated_at,
+            status: record.status || 'open',
+            guest_name: record.guest_name || '',
+            guest_email: record.guest_email || '',
+        };
+    });
+    isLoadingHistory.value = false;
+    lastHistoryLoadAt = Date.now();
+    return historyItems.value;
+    })().finally(() => {
+        historyLoadPromise = null;
+    });
+
+    return historyLoadPromise;
+}
+
+async function bootstrapWidgetSession(options = {}) {
+    const force = options.force === true;
+    const now = Date.now();
+
+    if (!force && widgetBootstrapPromise) {
+        return widgetBootstrapPromise;
+    }
+
+    if (!force && lastWidgetBootstrapAt && now - lastWidgetBootstrapAt < 15000) {
         return;
     }
 
-    const invalidRecordIds = [];
-    const items = (await Promise.all(records.map(async (record) => {
-        const conversation = await fetchConversation(record.id, record.token || '', {
-            withLoading: false,
-            applyRealtimeMeta: false,
-            loadMessages: false,
-        });
-        if (!conversation) {
-            invalidRecordIds.push(record.id);
-            return null;
+    widgetBootstrapPromise = (async () => {
+        await loadAvailability();
+        await resumeGuestConversation();
+        await loadConversationHistory();
+
+        if (!isAuthenticated.value && activeConversation.value?.id && chatStore.isOpen) {
+            viewState.value = 'chat';
         }
 
-        const item = {
-            id: conversation.id,
-            chat_reference: conversation.chat_reference || conversationChatReference(conversation),
-            token: record.token || '',
-            last_message: conversation.latest_message?.body || 'No messages yet',
-            updated_at: conversation.last_message_at || conversation.updated_at || conversation.created_at,
-            status: conversation.status || 'open',
-            guest_name: conversation.guest_name || record.guest_name || '',
-            guest_email: conversation.guest_email || record.guest_email || '',
-        };
+        lastWidgetBootstrapAt = Date.now();
+    })().finally(() => {
+        widgetBootstrapPromise = null;
+    });
 
-        upsertHistoryRecord(item);
-        return item;
-    }))).filter(Boolean);
-
-    if (invalidRecordIds.length > 0) {
-        const invalidSet = new Set(invalidRecordIds);
-        writeHistoryRecords(records.filter((record) => !invalidSet.has(record.id)));
-    }
-
-    historyItems.value = items;
-    isLoadingHistory.value = false;
+    return widgetBootstrapPromise;
 }
 
 function goToForm() {
@@ -2073,12 +2228,7 @@ watch(
             return;
         }
 
-        await loadAvailability();
-        await resumeGuestConversation();
-        await loadConversationHistory();
-        if (!isAuthenticated.value && activeConversation.value?.id) {
-            viewState.value = 'chat';
-        }
+        await bootstrapWidgetSession();
         await scrollToBottom(false);
     },
 );
@@ -2106,7 +2256,9 @@ watch(
             email: currentUser.value?.email || '',
         };
 
-        await loadConversationHistory();
+        if (chatStore.isOpen || claimedConversation?.id) {
+            await loadConversationHistory();
+        }
 
         if (claimedConversation?.id) {
             activeConversation.value = claimedConversation;
@@ -2163,15 +2315,24 @@ watch(
 
 onMounted(async () => {
     supportLogger.info('lifecycle.mounted', 'Support live chat widget mounted.');
-    await loadAvailability();
-    await resumeGuestConversation();
-    await loadConversationHistory();
     window.addEventListener('echo:connected', handleEchoConnected);
     window.addEventListener('pointerdown', handleGlobalPointerDown);
+
+    if (chatStore.isOpen) {
+        await bootstrapWidgetSession();
+    }
 
     availabilityTimer = setInterval(() => {
         loadAvailability();
     }, 60000);
+
+    queueWaitTimer = setInterval(() => {
+        queueWaitClock.value = Date.now();
+    }, 1000);
+
+    waitingQueueRefreshTimer = setInterval(() => {
+        refreshWaitingQueueStatus();
+    }, 10000);
 
     realtimeTokenRefreshTimer = setInterval(async () => {
         if (!activeConversation.value?.id) {
@@ -2201,6 +2362,16 @@ onBeforeUnmount(() => {
     if (availabilityTimer) {
         clearInterval(availabilityTimer);
         availabilityTimer = null;
+    }
+
+    if (queueWaitTimer) {
+        clearInterval(queueWaitTimer);
+        queueWaitTimer = null;
+    }
+
+    if (waitingQueueRefreshTimer) {
+        clearInterval(waitingQueueRefreshTimer);
+        waitingQueueRefreshTimer = null;
     }
 
     if (realtimeTokenRefreshTimer) {
@@ -2676,6 +2847,13 @@ onBeforeUnmount(() => {
                             </div>
 
                             <div
+                                v-if="waitingForAgentNotice"
+                                class="mb-3 rounded-lg border border-amber-300/70 bg-amber-50/90 px-3 py-2 text-xs leading-relaxed text-amber-900 dark:border-amber-600/40 dark:bg-amber-950/30 dark:text-amber-200"
+                            >
+                                {{ waitingForAgentNotice }}
+                            </div>
+
+                            <div
                                 v-if="showSurveyPanel"
                                 class="mb-3 rounded-xl border border-slate-300/85 bg-white/92 p-3 shadow-[0_1px_0_rgba(15,23,42,0.05)] ring-1 ring-slate-200/70 dark:border-[var(--border-default)] dark:bg-[var(--surface-secondary)]/60 dark:shadow-none dark:ring-transparent"
                             >
@@ -2800,7 +2978,7 @@ onBeforeUnmount(() => {
                                         ref="composerInputRef"
                                         v-model="newMessage"
                                         type="text" 
-                                        :placeholder="isConversationClosed ? 'Conversation resolved. Start a new chat.' : 'Write a message...'"
+                                        :placeholder="isConversationClosed ? 'This chat has ended. Start a new conversation.' : 'Write a message...'"
                                         :disabled="isConversationClosed || isSendCoolingDown"
                                         class="w-full bg-transparent border-none text-sm leading-5 focus:outline-none focus:ring-0 focus:ring-offset-0 focus-visible:ring-0 focus-visible:outline-none text-[var(--text-primary)] placeholder:text-slate-400 dark:placeholder:text-[var(--text-muted)] h-8"
                                         @keydown.enter="sendMessage"

@@ -1775,17 +1775,71 @@ class MaintenanceService
      */
     public function getPhpInfo(): array
     {
+        $uploadMaxFilesize = ini_get('upload_max_filesize');
+        $postMaxSize = ini_get('post_max_size');
+        $uploadMaxFilesizeBytes = $this->parseIniSizeToBytes($uploadMaxFilesize);
+        $postMaxSizeBytes = $this->parseIniSizeToBytes($postMaxSize);
+
+        $effectiveUploadLimitBytes = match (true) {
+            $uploadMaxFilesizeBytes === null && $postMaxSizeBytes === null => null,
+            $uploadMaxFilesizeBytes === null => $postMaxSizeBytes,
+            $postMaxSizeBytes === null => $uploadMaxFilesizeBytes,
+            default => min($uploadMaxFilesizeBytes, $postMaxSizeBytes),
+        };
+
         return [
             'version' => phpversion(),
             'interface' => php_sapi_name(),
             'memory_limit' => ini_get('memory_limit'),
             'max_execution_time' => ini_get('max_execution_time'),
             'max_input_time' => ini_get('max_input_time'),
-            'post_max_size' => ini_get('post_max_size'),
-            'upload_max_filesize' => ini_get('upload_max_filesize'),
+            'post_max_size' => $postMaxSize,
+            'post_max_size_bytes' => $postMaxSizeBytes,
+            'post_max_size_human' => $postMaxSizeBytes !== null ? $this->formatBytes($postMaxSizeBytes) : 'Unlimited',
+            'upload_max_filesize' => $uploadMaxFilesize,
+            'upload_max_filesize_bytes' => $uploadMaxFilesizeBytes,
+            'upload_max_filesize_human' => $uploadMaxFilesizeBytes !== null ? $this->formatBytes($uploadMaxFilesizeBytes) : 'Unlimited',
+            'effective_upload_limit_bytes' => $effectiveUploadLimitBytes,
+            'effective_upload_limit_human' => $effectiveUploadLimitBytes !== null ? $this->formatBytes($effectiveUploadLimitBytes) : 'Unlimited',
             'opcache_enabled' => function_exists('opcache_get_status') && opcache_get_status() !== false,
             'extensions' => get_loaded_extensions(),
         ];
+    }
+
+    /**
+     * Parse php.ini shorthand sizes (e.g., 2M, 512K, 1G) into bytes.
+     */
+    private function parseIniSizeToBytes(string|false $value): ?int
+    {
+        if ($value === false) {
+            return null;
+        }
+
+        $normalized = trim((string) $value);
+        if ($normalized === '' || $normalized === '-1') {
+            return null;
+        }
+
+        if (is_numeric($normalized)) {
+            return (int) $normalized;
+        }
+
+        if (! preg_match('/^\s*(\d+(?:\.\d+)?)\s*([KMGTP])B?\s*$/i', $normalized, $matches)) {
+            return null;
+        }
+
+        $baseValue = (float) $matches[1];
+        $unit = strtoupper($matches[2]);
+        $exponent = match ($unit) {
+            'K' => 1,
+            'M' => 2,
+            'G' => 3,
+            'T' => 4,
+            'P' => 5,
+            default => 0,
+        };
+
+        return (int) round($baseValue * (1024 ** $exponent));
     }
 
     /**
@@ -2457,6 +2511,106 @@ class MaintenanceService
             $results['reverb_server']['message'] = $e->getMessage();
         }
 
+        // 9. Laravel Horizon daemon health
+        $results['horizon'] = $this->getHorizonHealthStatus();
+
         return $results;
+    }
+
+    /**
+     * Get Horizon daemon health status from Redis heartbeats.
+     */
+    private function getHorizonHealthStatus(): array
+    {
+        $horizonConfigured = (bool) config('database.redis.horizon');
+
+        $result = [
+            'name' => 'Laravel Horizon',
+            'configured' => $horizonConfigured,
+            'status' => 'Unknown',
+            'latency' => null,
+            'message' => null,
+            'active_masters' => 0,
+            'total_masters' => 0,
+            'last_seen_at' => null,
+            'seconds_since_heartbeat' => null,
+        ];
+
+        if (! $horizonConfigured) {
+            $result['status'] = 'Not Configured';
+            $result['message'] = 'Redis horizon connection is not configured.';
+
+            return $result;
+        }
+
+        try {
+            $probeStartedAt = microtime(true);
+            $connection = Redis::connection('horizon');
+            $nowTs = now()->timestamp;
+            $heartbeatWindowSeconds = 14;
+
+            $activeMasters = $connection->zrevrangebyscore(
+                'masters',
+                '+inf',
+                (string) ($nowTs - $heartbeatWindowSeconds),
+            );
+
+            $latestHeartbeat = $connection->zrevrangebyscore(
+                'masters',
+                '+inf',
+                '-inf',
+                ['withscores' => true, 'limit' => [0, 1]],
+            );
+
+            $latestHeartbeatTs = null;
+            if (is_array($latestHeartbeat) && $latestHeartbeat !== []) {
+                $firstEntryScore = reset($latestHeartbeat);
+                if (is_numeric($firstEntryScore)) {
+                    $latestHeartbeatTs = (int) $firstEntryScore;
+                }
+            }
+
+            $totalMasters = (int) $connection->zcard('masters');
+            $activeMasterCount = is_array($activeMasters) ? count($activeMasters) : 0;
+            $secondsSinceHeartbeat = $latestHeartbeatTs ? max(0, $nowTs - $latestHeartbeatTs) : null;
+
+            $result['latency'] = round((microtime(true) - $probeStartedAt) * 1000);
+            $result['active_masters'] = $activeMasterCount;
+            $result['total_masters'] = $totalMasters;
+            $result['last_seen_at'] = $latestHeartbeatTs
+                ? Carbon::createFromTimestamp($latestHeartbeatTs)->toIso8601String()
+                : null;
+            $result['seconds_since_heartbeat'] = $secondsSinceHeartbeat;
+
+            if ($activeMasterCount > 0) {
+                $result['status'] = 'Operational';
+                $result['message'] = $activeMasterCount === 1
+                    ? '1 active Horizon master detected.'
+                    : "{$activeMasterCount} active Horizon masters detected.";
+
+                return $result;
+            }
+
+            if ($totalMasters > 0) {
+                $result['status'] = 'Crashed';
+                $result['message'] = $secondsSinceHeartbeat !== null
+                    ? "Heartbeat stale ({$secondsSinceHeartbeat}s ago)."
+                    : 'Stale Horizon metadata found without active masters.';
+
+                return $result;
+            }
+
+            $result['status'] = 'Turned Off';
+            $result['message'] = 'No active Horizon master supervisors.';
+
+            return $result;
+        } catch (Throwable $e) {
+            Log::warning('Failed to get Horizon health status', ['error' => $e->getMessage()]);
+
+            $result['status'] = 'Unreachable';
+            $result['message'] = 'Unable to read Horizon heartbeat from Redis.';
+
+            return $result;
+        }
     }
 }

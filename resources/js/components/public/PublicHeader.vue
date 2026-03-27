@@ -27,15 +27,15 @@ const authStore = useAuthStore();
 
                 <!-- Desktop Navigation -->
                 <nav class="hidden md:flex items-center gap-8">
-                    <a href="#services" class="text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
+                    <RouterLink :to="{ path: '/', hash: '#services' }" class="text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
                         Services
-                    </a>
-                    <a v-if="appConfig.features.publicPricingEnabled" href="#pricing" class="text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
+                    </RouterLink>
+                    <RouterLink v-if="appConfig.features.publicPricingEnabled" :to="{ path: '/', hash: '#pricing' }" class="text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
                         Pricing
-                    </a>
-                    <a href="#reviews" class="text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
+                    </RouterLink>
+                    <RouterLink :to="{ path: '/', hash: '#reviews' }" class="text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
                         Reviews
-                    </a>
+                    </RouterLink>
                     <RouterLink to="/public/support" class="text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
                         Support
                     </RouterLink>
@@ -84,15 +84,15 @@ const authStore = useAuthStore();
             <Transition name="slide-up">
                 <div v-if="mobileMenuOpen" class="md:hidden py-4 border-t border-[var(--border-default)]">
                     <nav class="flex flex-col gap-2">
-                        <a href="#services" class="px-3 py-2 text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)] rounded-lg transition-colors" @click="mobileMenuOpen = false">
+                        <RouterLink :to="{ path: '/', hash: '#services' }" class="px-3 py-2 text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)] rounded-lg transition-colors" @click="mobileMenuOpen = false">
                             Services
-                        </a>
-                    <a v-if="appConfig.features.publicPricingEnabled" href="#pricing" class="px-3 py-2 text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)] rounded-lg transition-colors" @click="mobileMenuOpen = false">
+                        </RouterLink>
+                        <RouterLink v-if="appConfig.features.publicPricingEnabled" :to="{ path: '/', hash: '#pricing' }" class="px-3 py-2 text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)] rounded-lg transition-colors" @click="mobileMenuOpen = false">
                             Pricing
-                        </a>
-                        <a href="#reviews" class="px-3 py-2 text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)] rounded-lg transition-colors" @click="mobileMenuOpen = false">
+                        </RouterLink>
+                        <RouterLink :to="{ path: '/', hash: '#reviews' }" class="px-3 py-2 text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)] rounded-lg transition-colors" @click="mobileMenuOpen = false">
                             Reviews
-                        </a>
+                        </RouterLink>
                         <RouterLink to="/public/support" class="px-3 py-2 text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)] rounded-lg transition-colors" @click="mobileMenuOpen = false">
                             Support
                         </RouterLink>

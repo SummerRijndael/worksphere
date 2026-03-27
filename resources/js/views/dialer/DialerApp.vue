@@ -1,5 +1,13 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import DialerPanel from "@/components/dialer/DialerPanel.vue";
+import { useBeforeUnloadGuard } from "@/composables/useBeforeUnloadGuard";
+import { useDialerStore } from "@/stores/dialer";
+
+const dialerStore = useDialerStore();
+const hasActiveDialerCall = computed(() => Boolean(dialerStore.activeCall));
+
+useBeforeUnloadGuard(hasActiveDialerCall);
 </script>
 
 <template>

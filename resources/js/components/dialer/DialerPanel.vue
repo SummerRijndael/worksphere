@@ -14,6 +14,7 @@ import {
 } from "lucide-vue-next";
 import api from "@/lib/api";
 import Button from "@/components/ui/Button.vue";
+import { Switch } from "@/components/ui";
 import { toast } from "vue-sonner";
 import { useDialerStore } from "@/stores/dialer";
 
@@ -78,10 +79,16 @@ const props = withDefaults(
     },
 );
 
+const isDockedCompact = computed(
+    () => props.embedded && dialerStore.launchMode === "docked",
+);
+
 const panelCardClass = computed(() =>
-    props.embedded
-        ? "w-full rounded-xl border border-white/10 bg-black/45 p-2.5 shadow-xl shadow-emerald-900/20 backdrop-blur-xl"
-        : "mx-auto w-full max-w-[380px] rounded-xl border border-white/10 bg-black/45 p-2.5 shadow-2xl shadow-emerald-900/20 backdrop-blur-xl",
+    isDockedCompact.value
+        ? "w-full rounded-xl border border-white/10 bg-black p-2 shadow-xl shadow-emerald-900/20 flex max-h-[calc(100vh-6rem)] min-h-[480px] flex-col overflow-hidden"
+        : props.embedded
+          ? "w-full rounded-xl border border-white/10 bg-black p-2.5 shadow-xl shadow-emerald-900/20"
+        : "mx-auto w-full max-w-[380px] rounded-xl border border-white/10 bg-black p-2.5 shadow-2xl shadow-emerald-900/20",
 );
 
 const isLoading = ref(true);
@@ -118,6 +125,23 @@ const acdPipe = computed(() => bootstrap.value?.acd_pipe ?? null);
 const canDial = computed(() => {
     const value = normalizeDialInput(phoneNumber.value);
     return value.length >= 8 && !activeCall.value && !isCalling.value;
+});
+
+const isPopupMode = computed({
+    get: () => dialerStore.launchMode === "popup",
+    set: (enabled: boolean) => {
+        const targetMode = enabled ? "popup" : "docked";
+        if (dialerStore.launchMode === targetMode) {
+            return;
+        }
+
+        dialerStore.setLaunchMode(targetMode);
+
+        // For embedded/header usage, apply the mode change immediately.
+        if (props.embedded) {
+            dialerStore.openDialer();
+        }
+    },
 });
 
 function normalizeDialInput(value: string): string {
@@ -369,7 +393,8 @@ onUnmounted(() => {
 
 <template>
     <div :class="panelCardClass">
-            <div class="mb-2 flex items-start justify-between gap-2">
+            <div :class="isDockedCompact ? 'min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-0.5' : ''">
+            <div :class="isDockedCompact ? 'mb-1.5 flex items-start justify-between gap-2' : 'mb-2 flex items-start justify-between gap-2'">
                 <div class="min-w-0">
                     <div class="flex items-center gap-1.5">
                         <div class="flex h-6 w-6 items-center justify-center rounded-md bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-500/30">
@@ -377,7 +402,7 @@ onUnmounted(() => {
                         </div>
                         <p class="truncate text-[13px] font-semibold text-white">WorkSphere Dialer</p>
                     </div>
-                    <p class="mt-0.5 truncate text-[11px] text-slate-300/80">
+                    <p :class="isDockedCompact ? 'mt-0.5 truncate text-[10px] text-slate-300/75' : 'mt-0.5 truncate text-[11px] text-slate-300/80'">
                         {{ adapter?.message || "Loading adapter status..." }}
                     </p>
                 </div>
@@ -386,7 +411,7 @@ onUnmounted(() => {
                 </Button>
             </div>
 
-            <div class="mb-2 flex flex-wrap gap-1.5 text-[10px]">
+            <div :class="isDockedCompact ? 'mb-1.5 flex flex-wrap gap-1 text-[10px]' : 'mb-2 flex flex-wrap gap-1.5 text-[10px]'">
                 <span class="rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-slate-200">
                     {{ adapter?.label || "Adapter" }}
                 </span>
@@ -404,7 +429,23 @@ onUnmounted(() => {
                 </button>
             </div>
 
-            <div v-if="activeCall" class="mb-2 rounded-lg border border-emerald-500/30 bg-emerald-500/8 p-2.5">
+            <div :class="isDockedCompact ? 'mb-1.5 flex items-center justify-between rounded-md border border-white/10 bg-white/[0.03] px-2 py-1' : 'mb-2 flex items-center justify-between rounded-md border border-white/10 bg-white/[0.03] px-2 py-1.5'">
+                <span
+                    class="text-[10px] font-medium transition-colors"
+                    :class="!isPopupMode ? 'text-emerald-300' : 'text-slate-400'"
+                >
+                    Docked
+                </span>
+                <Switch v-model="isPopupMode" size="sm" />
+                <span
+                    class="text-[10px] font-medium transition-colors"
+                    :class="isPopupMode ? 'text-emerald-300' : 'text-slate-400'"
+                >
+                    Popup
+                </span>
+            </div>
+
+            <div v-if="activeCall" :class="isDockedCompact ? 'mb-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/8 p-2' : 'mb-2 rounded-lg border border-emerald-500/30 bg-emerald-500/8 p-2.5'">
                 <div class="mb-1.5 flex items-center justify-between">
                     <div class="min-w-0">
                         <p class="truncate text-[13px] font-medium text-white">
@@ -448,7 +489,7 @@ onUnmounted(() => {
                 </div>
             </div>
 
-            <div class="rounded-lg border border-white/10 bg-white/[0.03] p-2.5">
+            <div :class="isDockedCompact ? 'rounded-lg border border-white/10 bg-white/[0.03] p-2' : 'rounded-lg border border-white/10 bg-white/[0.03] p-2.5'">
                 <label class="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-300">To</label>
                 <input
                     :value="phoneNumber"
@@ -456,42 +497,42 @@ onUnmounted(() => {
                     inputmode="tel"
                     autocomplete="off"
                     placeholder="+639171234567"
-                    class="mb-1.5 h-9 w-full rounded-md border border-white/10 bg-black/35 px-2.5 text-[13px] text-white placeholder:text-slate-500 focus:border-emerald-500/50 focus:outline-none"
+                    :class="isDockedCompact ? 'mb-1 h-8 w-full rounded-md border border-white/10 bg-black/35 px-2 text-[12px] text-white placeholder:text-slate-500 focus:border-emerald-500/50 focus:outline-none' : 'mb-1.5 h-9 w-full rounded-md border border-white/10 bg-black/35 px-2.5 text-[13px] text-white placeholder:text-slate-500 focus:border-emerald-500/50 focus:outline-none'"
                     @input="onPhoneInput"
                 />
 
-                <div class="mb-1.5 grid grid-cols-2 gap-1.5">
+                <div :class="isDockedCompact ? 'mb-1 grid grid-cols-2 gap-1' : 'mb-1.5 grid grid-cols-2 gap-1.5'">
                     <input
                         v-model="contactName"
                         type="text"
                         placeholder="Contact name (optional)"
-                        class="h-8 rounded-md border border-white/10 bg-black/30 px-2.5 text-[11px] text-white placeholder:text-slate-500 focus:border-emerald-500/50 focus:outline-none"
+                        :class="isDockedCompact ? 'h-7 rounded-md border border-white/10 bg-black/30 px-2 text-[10px] text-white placeholder:text-slate-500 focus:border-emerald-500/50 focus:outline-none' : 'h-8 rounded-md border border-white/10 bg-black/30 px-2.5 text-[11px] text-white placeholder:text-slate-500 focus:border-emerald-500/50 focus:outline-none'"
                     />
                     <input
                         v-model="notes"
                         type="text"
                         placeholder="Call note (optional)"
-                        class="h-8 rounded-md border border-white/10 bg-black/30 px-2.5 text-[11px] text-white placeholder:text-slate-500 focus:border-emerald-500/50 focus:outline-none"
+                        :class="isDockedCompact ? 'h-7 rounded-md border border-white/10 bg-black/30 px-2 text-[10px] text-white placeholder:text-slate-500 focus:border-emerald-500/50 focus:outline-none' : 'h-8 rounded-md border border-white/10 bg-black/30 px-2.5 text-[11px] text-white placeholder:text-slate-500 focus:border-emerald-500/50 focus:outline-none'"
                     />
                 </div>
 
-                <p class="text-[10px] text-slate-400">{{ bootstrap?.composer?.input_hint || "" }}</p>
-                <p class="mb-2 text-[9px] text-slate-500">Keyboard: numpad digits/symbols, `Enter` to dial/hang up, `Backspace` to delete.</p>
+                <p :class="isDockedCompact ? 'text-[9px] text-slate-400' : 'text-[10px] text-slate-400'">{{ bootstrap?.composer?.input_hint || "" }}</p>
+                <p v-if="!isDockedCompact" class="mb-2 text-[9px] text-slate-500">Keyboard: numpad digits/symbols, `Enter` to dial/hang up, `Backspace` to delete.</p>
 
-                <div class="mb-2 grid grid-cols-3 gap-1.5">
+                <div :class="isDockedCompact ? 'mb-1.5 grid grid-cols-3 gap-1' : 'mb-2 grid grid-cols-3 gap-1.5'">
                     <button
                         v-for="key in keypad"
                         :key="key.main"
                         type="button"
-                        class="rounded-md border border-white/10 bg-black/35 py-1.5 text-center text-white transition hover:border-emerald-500/40 hover:bg-emerald-500/10"
+                        :class="isDockedCompact ? 'rounded-md border border-white/10 bg-black/35 py-1 text-center text-white transition hover:border-emerald-500/40 hover:bg-emerald-500/10' : 'rounded-md border border-white/10 bg-black/35 py-1.5 text-center text-white transition hover:border-emerald-500/40 hover:bg-emerald-500/10'"
                         @click="addDigit(key.main)"
                     >
-                        <div class="text-[15px] font-semibold leading-none">{{ key.main }}</div>
-                        <div v-if="key.sub" class="mt-0.5 text-[8px] tracking-[0.12em] text-slate-400">{{ key.sub }}</div>
+                        <div :class="isDockedCompact ? 'text-[14px] font-semibold leading-none' : 'text-[15px] font-semibold leading-none'">{{ key.main }}</div>
+                        <div v-if="key.sub" :class="isDockedCompact ? 'mt-0.5 text-[7px] tracking-[0.1em] text-slate-400' : 'mt-0.5 text-[8px] tracking-[0.12em] text-slate-400'">{{ key.sub }}</div>
                     </button>
                 </div>
 
-                <div class="flex items-center gap-1.5">
+                <div :class="isDockedCompact ? 'flex items-center gap-1' : 'flex items-center gap-1.5'">
                     <Button variant="ghost" size="icon-sm" :disabled="!phoneNumber" @click="removeDigit">
                         <Delete class="h-4 w-4" />
                     </Button>
@@ -513,7 +554,7 @@ onUnmounted(() => {
                 </div>
             </div>
 
-            <div class="mt-2 rounded-lg border border-white/10 bg-white/[0.03]">
+            <div :class="isDockedCompact ? 'mt-1.5 flex min-h-0 flex-1 flex-col rounded-lg border border-white/10 bg-white/[0.03]' : 'mt-2 rounded-lg border border-white/10 bg-white/[0.03]'">
                 <div class="flex items-center justify-between border-b border-white/10 px-2.5 py-1.5">
                     <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-300">Recent Calls</p>
                     <span class="text-[10px] text-slate-400">{{ bootstrap?.recent_calls?.pagination?.total ?? 0 }}</span>
@@ -524,7 +565,7 @@ onUnmounted(() => {
                 <div v-else-if="recentCalls.length === 0" class="px-2.5 py-4 text-center text-[11px] text-slate-400">
                     No recent calls.
                 </div>
-                <div v-else class="max-h-40 space-y-1 overflow-y-auto p-1.5">
+                <div v-else :class="isDockedCompact ? 'min-h-0 flex-1 space-y-1 overflow-y-auto p-1.5' : 'max-h-40 space-y-1 overflow-y-auto p-1.5'">
                     <div
                         v-for="call in recentCalls"
                         :key="call.id"
@@ -549,8 +590,9 @@ onUnmounted(() => {
                     </div>
                 </div>
             </div>
+            </div>
 
-            <div class="mt-2 flex items-center justify-between text-[10px] text-slate-400">
+            <div :class="isDockedCompact ? 'mt-1.5 flex items-center justify-between text-[9px] text-slate-400' : 'mt-2 flex items-center justify-between text-[10px] text-slate-400'">
                 <span class="inline-flex items-center gap-1">
                     <CheckCircle2 v-if="adapter?.ready" class="h-3 w-3 text-emerald-400" />
                     <AlertTriangle v-else class="h-3 w-3 text-amber-400" />

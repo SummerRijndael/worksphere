@@ -52,7 +52,7 @@ return [
             'team_lead' => ['view_queue', 'reply', 'assign', 'resolve', 'monitor'],
             'sme' => ['view_queue', 'reply', 'assign', 'resolve'],
             'qa' => ['view_queue', 'reply', 'resolve'],
-            'agent' => ['reply'],
+            'agent' => ['view_queue', 'reply', 'resolve'],
         ],
     ],
 
@@ -160,6 +160,19 @@ return [
         'require_online_agent' => (bool) env('SUPPORT_ROUTING_REQUIRE_ONLINE', true),
         'require_support_available' => (bool) env('SUPPORT_ROUTING_REQUIRE_AVAILABLE', true),
         'assignment_timeout_seconds' => (int) env('SUPPORT_ASSIGNMENT_TIMEOUT', 60),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Workbench UI
+    |--------------------------------------------------------------------------
+    |
+    | The workbench currently supports up to 5 simultaneous chat panels.
+    | Keep this at 5 (or lower) unless the UI is explicitly redesigned.
+    |
+    */
+    'workbench' => [
+        'max_panels' => (int) env('SUPPORT_WORKBENCH_MAX_PANELS', 5),
     ],
 
     /*

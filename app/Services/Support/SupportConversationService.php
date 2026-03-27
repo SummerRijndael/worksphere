@@ -12,6 +12,7 @@ use App\Jobs\BroadcastSupportConversationChanged;
 use App\Jobs\BroadcastSupportMessageCreated;
 use App\Models\SupportConversation;
 use App\Models\SupportMessage;
+use App\Models\SupportRoutingQueueEntry;
 use App\Models\SupportSkillMembership;
 use App\Models\SupportSurveyInvite;
 use App\Models\SupportSurveyResponse;
@@ -221,6 +222,10 @@ class SupportConversationService implements SupportConversationServiceContract
             throw new \InvalidArgumentException('Cannot send agent messages to a resolved/closed conversation.');
         }
 
+        if (! $isPrivateNote && ! $conversation->assigned_to) {
+            $this->assertAgentHasCapacity($agent, $conversation);
+        }
+
         $body = trim((string) ($payload['body'] ?? $payload['message'] ?? ''));
         $files = $this->normalizeUploadedFiles($payload['files'] ?? []);
         if ($body === '' && empty($files)) {
@@ -261,6 +266,7 @@ class SupportConversationService implements SupportConversationServiceContract
             'assigned_to' => $conversation->assigned_to ?: $agent->id,
             'status' => SupportConversation::STATUS_ASSIGNED,
             'ai_handoff_required' => false,
+            'metadata' => $this->withoutWaitingForAgentMetadata($conversation),
         ])->forceFill(
             $this->filterExistingSupportConversationColumns([
                 'assigned_at' => $conversation->assigned_at ?? now(),
@@ -295,6 +301,7 @@ class SupportConversationService implements SupportConversationServiceContract
 
         $conversation->forceFill([
             'status' => SupportConversation::STATUS_ASSIGNED,
+            'metadata' => $this->withoutWaitingForAgentMetadata($conversation),
         ])->forceFill(
             $this->filterExistingSupportConversationColumns([
                 'assignment_state' => SupportConversation::ASSIGNMENT_STATE_ASSIGNED,
@@ -305,9 +312,9 @@ class SupportConversationService implements SupportConversationServiceContract
         $acceptMessage = $this->createMessage(
             conversation: $conversation,
             senderType: SupportMessage::SENDER_SYSTEM,
-            body: "{$agent->name} accepted the assignment.",
+            body: "{$agent->name} joined the chat.",
             senderUserId: $agent->id,
-            metadata: ['type' => 'assignment_accepted'],
+            metadata: ['type' => 'agent_joined'],
         );
         $this->broadcastMessageCreated($conversation->fresh(), $acceptMessage->fresh('sender'));
         $this->broadcastConversationChanged($conversation->fresh());
@@ -328,6 +335,7 @@ class SupportConversationService implements SupportConversationServiceContract
         $conversation->forceFill([
             'status' => SupportConversation::STATUS_WAITING_HUMAN,
             'assigned_to' => null,
+            'metadata' => $this->withWaitingForAgentMetadata($conversation),
         ])->forceFill(
             $this->filterExistingSupportConversationColumns([
                 'assigned_at' => null,
@@ -382,9 +390,12 @@ class SupportConversationService implements SupportConversationServiceContract
                 throw new \InvalidArgumentException('Target agent is not eligible for this conversation.');
             }
 
+            $this->assertAgentHasCapacity($targetAgent, $conversation);
+
             $conversation->forceFill([
                 'assigned_to' => $targetAgent->id,
                 'status' => SupportConversation::STATUS_PENDING_ACCEPTANCE,
+                'metadata' => $this->withoutWaitingForAgentMetadata($conversation),
             ])->forceFill(
                 $this->filterExistingSupportConversationColumns([
                     'assigned_at' => now(),
@@ -403,6 +414,7 @@ class SupportConversationService implements SupportConversationServiceContract
                 'assigned_to' => null,
                 'support_skill_id' => $skill->id,
                 'status' => SupportConversation::STATUS_WAITING_HUMAN,
+                'metadata' => $this->withWaitingForAgentMetadata($conversation),
             ])->forceFill(
                 $this->filterExistingSupportConversationColumns([
                     'assigned_at' => null,
@@ -451,6 +463,8 @@ class SupportConversationService implements SupportConversationServiceContract
             throw new \InvalidArgumentException('Cannot assign an ended/resolved conversation.');
         }
 
+        $this->assertAgentHasCapacity($agent, $conversation);
+
         $isSelfAssignment = (int) $actor->id === (int) $agent->id;
         $status = $isSelfAssignment ? SupportConversation::STATUS_ASSIGNED : SupportConversation::STATUS_PENDING_ACCEPTANCE;
         $assignmentState = $isSelfAssignment ? SupportConversation::ASSIGNMENT_STATE_ASSIGNED : SupportConversation::ASSIGNMENT_STATE_PENDING;
@@ -460,6 +474,7 @@ class SupportConversationService implements SupportConversationServiceContract
             'status' => $status,
             'ai_handoff_required' => false,
             'ai_handoff_reason' => null,
+            'metadata' => $this->withoutWaitingForAgentMetadata($conversation),
         ])->forceFill(
             $this->filterExistingSupportConversationColumns([
                 'assigned_at' => now(),
@@ -913,6 +928,7 @@ class SupportConversationService implements SupportConversationServiceContract
                 'assignee:id,public_id,name,email',
                 'endedBy:id,public_id,name,email',
                 'skill:id,public_id,name,slug,department',
+                'routingQueueEntry',
                 'latestPublicMessage.sender:id,public_id,name,email',
                 'latestPublicMessage.media',
                 'latestMessage.sender:id,public_id,name,email',
@@ -972,14 +988,28 @@ class SupportConversationService implements SupportConversationServiceContract
                     ]);
             }
         } elseif ($scope === 'waiting') {
-            $query->whereNull('assigned_to')
-                ->whereIn('status', [
-                    SupportConversation::STATUS_OPEN,
-                    SupportConversation::STATUS_WAITING_HUMAN,
-                ]);
+            $query->where(function (Builder $waitingScope): void {
+                $waitingScope->where(function (Builder $unassignedWaiting): void {
+                    $unassignedWaiting->whereNull('assigned_to')
+                        ->whereIn('status', [
+                            SupportConversation::STATUS_OPEN,
+                            SupportConversation::STATUS_WAITING_HUMAN,
+                        ]);
+                })->orWhere('status', SupportConversation::STATUS_PENDING_ACCEPTANCE);
+            });
         } elseif ($scope === 'ai') {
             $query->whereNull('assigned_to')
-                ->where('status', SupportConversation::STATUS_BOT_ACTIVE);
+                ->where(function (Builder $aiScope): void {
+                    $aiScope->where('status', SupportConversation::STATUS_BOT_ACTIVE)
+                        ->orWhere(function (Builder $legacyAiScope): void {
+                            $legacyAiScope->where('status', SupportConversation::STATUS_OPEN)
+                                ->where('ai_enabled', true)
+                                ->where(function (Builder $handoffFlag): void {
+                                    $handoffFlag->whereNull('ai_handoff_required')
+                                        ->orWhere('ai_handoff_required', false);
+                                });
+                        });
+                });
         } elseif ($scope === 'assigned_all') {
             $query->whereNotNull('assigned_to')
                 ->whereNotIn('status', [
@@ -1002,7 +1032,60 @@ class SupportConversationService implements SupportConversationServiceContract
             });
         }
 
-        return $query->paginate($safePerPage);
+        $paginator = $query->paginate($safePerPage);
+        $this->attachInboxQueueTelemetry($paginator->getCollection());
+
+        return $paginator;
+    }
+
+    /**
+     * @param  Collection<int, SupportConversation>  $conversations
+     */
+    protected function attachInboxQueueTelemetry(Collection $conversations): void
+    {
+        if ($conversations->isEmpty()) {
+            return;
+        }
+
+        $conversationIds = $conversations
+            ->pluck('id')
+            ->filter(fn ($id) => is_numeric($id))
+            ->map(fn ($id) => (int) $id)
+            ->values();
+
+        if ($conversationIds->isEmpty()) {
+            return;
+        }
+
+        $entriesByConversation = SupportRoutingQueueEntry::query()
+            ->whereIn('conversation_id', $conversationIds->all())
+            ->get(['conversation_id', 'state', 'created_at', 'next_attempt_at'])
+            ->keyBy('conversation_id');
+
+        $positionByConversation = SupportRoutingQueueEntry::query()
+            ->whereIn('state', [
+                SupportRoutingQueueEntry::STATE_PENDING,
+                SupportRoutingQueueEntry::STATE_ROUTING,
+            ])
+            ->orderBy('priority')
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->get(['conversation_id'])
+            ->pluck('conversation_id')
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->flip()
+            ->map(fn (int $index) => $index + 1);
+
+        foreach ($conversations as $conversation) {
+            $conversationId = (int) $conversation->id;
+            $entry = $entriesByConversation->get($conversationId);
+
+            $conversation->setAttribute('queue_state', $entry?->state);
+            $conversation->setAttribute('queue_entered_at', $entry?->created_at);
+            $conversation->setAttribute('queue_next_attempt_at', $entry?->next_attempt_at);
+            $conversation->setAttribute('queue_position', $positionByConversation->get($conversationId));
+        }
     }
 
     public function canOperateAsAgent(User $user): bool
@@ -1034,7 +1117,7 @@ class SupportConversationService implements SupportConversationServiceContract
         $agentIds = $eligibleAgents->pluck('id');
         $todayStart = now()->startOfDay();
         $now = now();
-        $defaultAgentCapacity = max(1, (int) config('support_chat.routing.default_agent_capacity', 3));
+        $defaultAgentCapacity = $this->defaultAgentCapacity();
         $columns = $this->existingSupportConversationColumns();
         $hasAssignedAt = isset($columns['assigned_at']);
         $hasEndedAt = isset($columns['ended_at']);
@@ -1139,9 +1222,9 @@ class SupportConversationService implements SupportConversationServiceContract
             $fallbackCapacity = $membershipRows
                 ->pluck('capacity')
                 ->filter(fn ($capacity) => $capacity !== null)
-                ->map(fn ($capacity) => max(1, (int) $capacity))
+                ->map(fn ($capacity) => $this->clampAgentCapacity((int) $capacity))
                 ->max();
-            $agentCapacity = max(1, (int) ($primaryCapacity ?? $fallbackCapacity ?? $defaultAgentCapacity));
+            $agentCapacity = $this->clampAgentCapacity((int) ($primaryCapacity ?? $fallbackCapacity ?? $defaultAgentCapacity));
             $handleSeconds = $completedForAgent
                 ->map(function (SupportConversation $conversation): ?int {
                     $assignedAt = $conversation->assigned_at ?? $conversation->first_response_at ?? $conversation->created_at;
@@ -1224,7 +1307,26 @@ class SupportConversationService implements SupportConversationServiceContract
             'agents' => $agentsList->toArray(),
             'message' => $availableCount > 0
                 ? 'Support agents are currently available.'
-                : 'No support agent is available right now, but you can leave a message.',
+                : 'All support specialists are currently assisting other customers. You can leave a message and we will follow up as soon as possible.',
+        ];
+    }
+
+    public function workbenchCapacity(User $agent): array
+    {
+        $maxPanels = $this->workbenchMaxPanels();
+        $hardCap = $this->hardChatCap();
+        $agentCapacity = $this->resolveAgentCapacity($agent);
+        $activeChats = $this->activeAssignedChatsCount($agent->id);
+        $availableSlots = max(0, $agentCapacity - $activeChats);
+        $effectivePanelLimit = max(1, min($maxPanels, $agentCapacity));
+
+        return [
+            'max_panels' => $maxPanels,
+            'hard_cap' => $hardCap,
+            'agent_capacity' => $agentCapacity,
+            'active_chats' => $activeChats,
+            'available_slots' => $availableSlots,
+            'effective_panel_limit' => $effectivePanelLimit,
         ];
     }
 
@@ -1298,7 +1400,7 @@ class SupportConversationService implements SupportConversationServiceContract
         $escalate = (bool) ($decision['escalate'] ?? false);
         if ($escalate) {
             $availability = $this->availability();
-            $meta = is_array($conversation->metadata) ? $conversation->metadata : [];
+            $meta = $this->withWaitingForAgentMetadata($conversation);
             $meta['availability'] = $availability;
 
             $conversation->forceFill([
@@ -1317,7 +1419,7 @@ class SupportConversationService implements SupportConversationServiceContract
                 $availabilityMessage = $this->createMessage(
                     conversation: $conversation,
                     senderType: SupportMessage::SENDER_SYSTEM,
-                    body: (string) $availability['message'],
+                    body: $this->waitingForAgentCustomerMessage($conversation),
                     metadata: ['type' => 'availability'],
                 );
                 $this->broadcastMessageCreated($conversation->fresh(), $availabilityMessage->fresh('sender'));
@@ -1326,15 +1428,28 @@ class SupportConversationService implements SupportConversationServiceContract
             return;
         }
 
+        $aiAssistMetadata = $this->withAiAssistingMetadata($conversation);
+
         if ($conversation->status === SupportConversation::STATUS_OPEN) {
             $conversation->forceFill([
                 'status' => SupportConversation::STATUS_BOT_ACTIVE,
+                'metadata' => $aiAssistMetadata,
             ])->forceFill(
                 $this->filterExistingSupportConversationColumns([
                     'chat_state' => SupportConversation::CHAT_STATE_NEW,
                     'assignment_state' => SupportConversation::ASSIGNMENT_STATE_UNASSIGNED,
                 ])
             )->save();
+            return;
+        }
+
+        if ($conversation->status === SupportConversation::STATUS_BOT_ACTIVE) {
+            $currentMetadata = is_array($conversation->metadata) ? $conversation->metadata : [];
+            if ($currentMetadata !== $aiAssistMetadata) {
+                $conversation->forceFill([
+                    'metadata' => $aiAssistMetadata,
+                ])->save();
+            }
         }
     }
 
@@ -1398,6 +1513,231 @@ class SupportConversationService implements SupportConversationServiceContract
                 SupportConversation::STATUS_CLOSED,
             ], true)
         );
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function withWaitingForAgentMetadata(SupportConversation $conversation): array
+    {
+        $metadata = is_array($conversation->metadata) ? $conversation->metadata : [];
+        if (empty($metadata['waiting_for_agent_since'])) {
+            $metadata['waiting_for_agent_since'] = now()->toIso8601String();
+        }
+        unset($metadata['ai_assisting_since']);
+
+        return $metadata;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function withAiAssistingMetadata(SupportConversation $conversation): array
+    {
+        $metadata = is_array($conversation->metadata) ? $conversation->metadata : [];
+        if (empty($metadata['ai_assisting_since'])) {
+            $metadata['ai_assisting_since'] = now()->toIso8601String();
+        }
+        unset($metadata['waiting_for_agent_since']);
+
+        return $metadata;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    protected function withoutWaitingForAgentMetadata(SupportConversation $conversation): ?array
+    {
+        $metadata = is_array($conversation->metadata) ? $conversation->metadata : [];
+        unset($metadata['waiting_for_agent_since']);
+        unset($metadata['ai_assisting_since']);
+
+        return $metadata !== [] ? $metadata : null;
+    }
+
+    protected function waitingForAgentCustomerMessage(SupportConversation $conversation): string
+    {
+        $metadata = is_array($conversation->metadata) ? $conversation->metadata : [];
+        $waitingSinceRaw = $metadata['waiting_for_agent_since'] ?? null;
+
+        $waitingSince = null;
+        if (is_string($waitingSinceRaw) && trim($waitingSinceRaw) !== '') {
+            try {
+                $waitingSince = \Illuminate\Support\Carbon::parse($waitingSinceRaw);
+            } catch (\Throwable) {
+                $waitingSince = null;
+            }
+        }
+
+        $queuePosition = $conversation->getAttribute('queue_position');
+        if (! is_numeric($queuePosition)) {
+            $queuePosition = $this->resolveQueuePositionForConversation($conversation);
+        }
+        $queuePosition = is_numeric($queuePosition) ? max(1, (int) $queuePosition) : null;
+
+        if ($waitingSince && $waitingSince->diffInMinutes(now()) >= 30) {
+            if ($queuePosition !== null) {
+                return "Thank you for waiting. You are currently number {$queuePosition} in queue. It appears no support specialist is available right now, but you may leave a message and our team will follow up as soon as possible.";
+            }
+
+            return 'Thank you for waiting. It appears no support specialist is available right now, but you may leave a message and our team will follow up as soon as possible.';
+        }
+
+        if ($queuePosition !== null) {
+            return "All support specialists are currently assisting other customers. You are number {$queuePosition} in queue, and the next available specialist will assist you shortly.";
+        }
+
+        return 'All support specialists are currently assisting other customers. You are in queue, and the next available specialist will assist you shortly.';
+    }
+
+    protected function resolveQueuePositionForConversation(SupportConversation $conversation): ?int
+    {
+        $entry = SupportRoutingQueueEntry::query()
+            ->where('conversation_id', $conversation->id)
+            ->whereIn('state', [
+                SupportRoutingQueueEntry::STATE_PENDING,
+                SupportRoutingQueueEntry::STATE_ROUTING,
+            ])
+            ->first(['id', 'priority', 'created_at']);
+
+        if ($entry) {
+            return SupportRoutingQueueEntry::query()
+                ->whereIn('state', [
+                    SupportRoutingQueueEntry::STATE_PENDING,
+                    SupportRoutingQueueEntry::STATE_ROUTING,
+                ])
+                ->where(function (Builder $query) use ($entry): void {
+                    $query->where('priority', '<', $entry->priority)
+                        ->orWhere(function (Builder $samePriority) use ($entry): void {
+                            $samePriority->where('priority', $entry->priority)
+                                ->where(function (Builder $sameCreated) use ($entry): void {
+                                    $sameCreated->where('created_at', '<', $entry->created_at)
+                                        ->orWhere(function (Builder $sameInstant) use ($entry): void {
+                                            $sameInstant->where('created_at', $entry->created_at)
+                                                ->where('id', '<=', $entry->id);
+                                        });
+                                });
+                        });
+                })
+                ->count();
+        }
+
+        if (
+            $conversation->status !== SupportConversation::STATUS_WAITING_HUMAN
+            || $conversation->assigned_to
+        ) {
+            return null;
+        }
+
+        $fallbackQuery = SupportConversation::query()
+            ->whereNull('assigned_to')
+            ->where('status', SupportConversation::STATUS_WAITING_HUMAN)
+            ->where(function (Builder $query) use ($conversation): void {
+                $query->where('created_at', '<', $conversation->created_at)
+                    ->orWhere(function (Builder $sameCreatedAt) use ($conversation): void {
+                        $sameCreatedAt->where('created_at', $conversation->created_at)
+                            ->where('id', '<=', $conversation->id);
+                    });
+            });
+
+        $columns = $this->existingSupportConversationColumns();
+        if (isset($columns['chat_state'])) {
+            $fallbackQuery->where(function (Builder $query): void {
+                $query->whereNull('chat_state')
+                    ->orWhere('chat_state', '!=', SupportConversation::CHAT_STATE_ENDED);
+            });
+        }
+        if (isset($columns['ended_at'])) {
+            $fallbackQuery->whereNull('ended_at');
+        }
+
+        return $fallbackQuery->count();
+    }
+
+    protected function hardChatCap(): int
+    {
+        return max(1, min(5, (int) config('support_chat.workbench.max_panels', 5)));
+    }
+
+    protected function workbenchMaxPanels(): int
+    {
+        return max(1, min($this->hardChatCap(), (int) config('support_chat.workbench.max_panels', 5)));
+    }
+
+    protected function clampAgentCapacity(int $capacity): int
+    {
+        return max(1, min($this->hardChatCap(), $capacity));
+    }
+
+    protected function defaultAgentCapacity(): int
+    {
+        return $this->clampAgentCapacity((int) config('support_chat.routing.default_agent_capacity', 3));
+    }
+
+    protected function resolveAgentCapacity(User $agent, ?SupportConversation $conversation = null): int
+    {
+        $defaultCapacity = $this->defaultAgentCapacity();
+        $skillId = $conversation?->support_skill_id ? (int) $conversation->support_skill_id : null;
+
+        if ($skillId) {
+            $skillCapacity = SupportSkillMembership::query()
+                ->where('user_id', $agent->id)
+                ->where('support_skill_id', $skillId)
+                ->where('is_active', true)
+                ->value('capacity');
+
+            return $skillCapacity !== null
+                ? $this->clampAgentCapacity((int) $skillCapacity)
+                : $defaultCapacity;
+        }
+
+        $memberships = SupportSkillMembership::query()
+            ->where('user_id', $agent->id)
+            ->where('is_active', true)
+            ->get(['capacity', 'is_primary']);
+
+        $primaryCapacity = $memberships
+            ->first(fn (SupportSkillMembership $membership) => (bool) $membership->is_primary && $membership->capacity !== null)?->capacity;
+        $fallbackCapacity = $memberships
+            ->pluck('capacity')
+            ->filter(fn ($capacity) => $capacity !== null)
+            ->map(fn ($capacity) => $this->clampAgentCapacity((int) $capacity))
+            ->max();
+
+        return $this->clampAgentCapacity((int) ($primaryCapacity ?? $fallbackCapacity ?? $defaultCapacity));
+    }
+
+    protected function activeAssignedChatsCount(int $agentId, ?int $exceptConversationId = null): int
+    {
+        $query = SupportConversation::query()
+            ->where('assigned_to', $agentId)
+            ->whereNotIn('status', [
+                SupportConversation::STATUS_RESOLVED,
+                SupportConversation::STATUS_CLOSED,
+            ]);
+
+        if (Schema::hasColumn('support_conversations', 'chat_state')) {
+            $query->where('chat_state', SupportConversation::CHAT_STATE_NEW);
+        }
+
+        if ($exceptConversationId) {
+            $query->where('id', '!=', $exceptConversationId);
+        }
+
+        return (int) $query->count();
+    }
+
+    protected function assertAgentHasCapacity(User $agent, ?SupportConversation $conversation = null): void
+    {
+        $effectiveCapacity = $this->resolveAgentCapacity($agent, $conversation);
+        $excludeConversationId = ($conversation && (int) $conversation->assigned_to === (int) $agent->id)
+            ? (int) $conversation->id
+            : null;
+        $activeChats = $this->activeAssignedChatsCount((int) $agent->id, $excludeConversationId);
+
+        if ($activeChats >= $effectiveCapacity) {
+            throw new \InvalidArgumentException("{$agent->name} is already at the maximum of {$effectiveCapacity} active chats.");
+        }
     }
 
     /**
