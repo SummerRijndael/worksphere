@@ -517,7 +517,27 @@ class SupportChatApiTest extends TestCase
         $response->assertStatus(201)
             ->assertJsonPath('data.status', SupportConversation::STATUS_WAITING_HUMAN)
             ->assertJsonPath('data.ai_handoff_required', true)
-            ->assertJsonPath('data.metadata.availability.available', false);
+            ->assertJsonPath('data.metadata.availability.available', false)
+            ->assertJsonPath('data.queue.position', 1);
+
+        $conversationId = (string) $response->json('data.id');
+        $guestToken = (string) $response->json('data.guest_token');
+
+        $show = $this->getJson("/api/support/chats/{$conversationId}?guest_token={$guestToken}")
+            ->assertOk()
+            ->assertJsonPath('data.queue.position', 1)
+            ->assertJsonPath('data.status', SupportConversation::STATUS_WAITING_HUMAN);
+
+        $this->assertNotEmpty((string) $show->json('data.timers.waiting_since_at'));
+
+        $messages = collect($show->json('data.messages', []));
+        $this->assertTrue(
+            $messages->contains(function (array $message): bool {
+                return ($message['sender_type'] ?? null) === SupportMessage::SENDER_SYSTEM
+                    && str_contains((string) ($message['body'] ?? ''), 'number 1 in queue');
+            }),
+            'Expected waiting notice to include queue position.'
+        );
     }
 
     public function test_assigned_conversation_no_longer_gets_ai_auto_replies(): void
@@ -659,6 +679,101 @@ class SupportChatApiTest extends TestCase
             ->getJson('/api/support/chats/inbox?scope=mine')
             ->assertOk()
             ->assertJsonPath('meta.total', 0);
+    }
+
+    public function test_agent_inbox_scope_mine_exposes_workbench_capacity_meta_capped_to_five(): void
+    {
+        config()->set('support_chat.routing.default_agent_capacity', 9);
+        config()->set('support_chat.workbench.max_panels', 5);
+
+        $agentRole = Role::findOrCreate('administrator', 'web');
+        $agentRole->syncPermissions([
+            'support.chats.view',
+            'support.chats.reply',
+            'support.chats.assign',
+            'support.chats.resolve',
+        ]);
+
+        $agent = $this->createSupportAgent($agentRole);
+        SupportSkillMembership::query()
+            ->where('user_id', $agent->id)
+            ->where('support_skill_id', $this->skill->id)
+            ->update(['capacity' => 9, 'is_primary' => true]);
+
+        for ($i = 1; $i <= 2; $i++) {
+            SupportConversation::create([
+                'guest_name' => "Active Guest {$i}",
+                'guest_email' => "active-{$i}@example.test",
+                'status' => SupportConversation::STATUS_ASSIGNED,
+                'priority' => 'normal',
+                'channel' => 'widget',
+                'ai_enabled' => true,
+                'support_skill_id' => $this->skill->id,
+                'assigned_to' => $agent->id,
+            ]);
+        }
+
+        $this->actingAs($agent)
+            ->getJson('/api/support/chats/inbox?scope=mine')
+            ->assertOk()
+            ->assertJsonPath('meta.workbench.max_panels', 5)
+            ->assertJsonPath('meta.workbench.hard_cap', 5)
+            ->assertJsonPath('meta.workbench.agent_capacity', 5)
+            ->assertJsonPath('meta.workbench.active_chats', 2)
+            ->assertJsonPath('meta.workbench.available_slots', 3)
+            ->assertJsonPath('meta.workbench.effective_panel_limit', 5);
+    }
+
+    public function test_manual_assignment_rejects_when_target_agent_already_has_five_active_chats(): void
+    {
+        config()->set('support_chat.routing.default_agent_capacity', 9);
+        config()->set('support_chat.workbench.max_panels', 5);
+
+        $agentRole = Role::findOrCreate('administrator', 'web');
+        $agentRole->syncPermissions([
+            'support.chats.view',
+            'support.chats.reply',
+            'support.chats.assign',
+            'support.chats.resolve',
+        ]);
+
+        $manager = $this->createSupportAgent($agentRole);
+        $assignee = $this->createSupportAgent($agentRole);
+
+        SupportSkillMembership::query()
+            ->where('user_id', $assignee->id)
+            ->where('support_skill_id', $this->skill->id)
+            ->update(['capacity' => 9, 'is_primary' => true]);
+
+        for ($i = 1; $i <= 5; $i++) {
+            SupportConversation::create([
+                'guest_name' => "Busy Guest {$i}",
+                'guest_email' => "busy-{$i}@example.test",
+                'status' => SupportConversation::STATUS_ASSIGNED,
+                'priority' => 'normal',
+                'channel' => 'widget',
+                'ai_enabled' => true,
+                'support_skill_id' => $this->skill->id,
+                'assigned_to' => $assignee->id,
+            ]);
+        }
+
+        $conversation = SupportConversation::create([
+            'guest_name' => 'Queue Guest',
+            'guest_email' => 'queue@example.test',
+            'status' => SupportConversation::STATUS_WAITING_HUMAN,
+            'priority' => 'normal',
+            'channel' => 'widget',
+            'ai_enabled' => true,
+            'support_skill_id' => $this->skill->id,
+        ]);
+
+        $this->actingAs($manager)
+            ->postJson("/api/support/chats/{$conversation->public_id}/assign", [
+                'agent_public_id' => $assignee->public_id,
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('message', "{$assignee->name} is already at the maximum of 5 active chats.");
     }
 
     public function test_agent_can_view_inbox_assign_reply_and_start_close_out(): void

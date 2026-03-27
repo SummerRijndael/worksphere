@@ -753,6 +753,7 @@ class SupportChatController extends Controller
             'assignee:id,public_id,name,email',
             'endedBy:id,public_id,name,email',
             'skill:id,public_id,name,slug,department',
+            'routingQueueEntry',
             'latestMessage.sender:id,public_id,name,email',
             'latestMessage.media',
             'latestPublicMessage.sender:id,public_id,name,email',

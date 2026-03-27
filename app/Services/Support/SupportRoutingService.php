@@ -279,23 +279,6 @@ class SupportRoutingService implements \App\Contracts\SupportRoutingServiceContr
                 SupportAssignmentTimeoutJob::dispatch($conversation->id, $agent->id)
                     ->delay(now()->addSeconds($timeoutSeconds));
 
-
-                $message = SupportMessage::query()->create([
-                    'conversation_id' => $conversation->id,
-                    'sender_type' => SupportMessage::SENDER_SYSTEM,
-                    'sender_user_id' => null,
-                    'body' => "Conversation is being assigned to {$agent->name} (Waiting for acceptance).",
-                    'metadata' => [
-                        'type' => 'assignment_auto',
-                        'agent_id' => $agent->public_id,
-                        'agent_name' => $agent->name,
-                    ],
-                ]);
-
-                $conversation->forceFill([
-                    'last_message_at' => $message->created_at,
-                ])->save();
-
                 $entry->forceFill([
                     'state' => SupportRoutingQueueEntry::STATE_ASSIGNED,
                     'assigned_to' => $agent->id,
@@ -307,7 +290,6 @@ class SupportRoutingService implements \App\Contracts\SupportRoutingServiceContr
                 return [
                     'status' => 'assigned',
                     'conversation_id' => $conversation->id,
-                    'message_id' => $message->id,
                 ];
             });
 
@@ -330,15 +312,11 @@ class SupportRoutingService implements \App\Contracts\SupportRoutingServiceContr
             $conversation = SupportConversation::query()
                 ->with('assignee:id,public_id')
                 ->find((int) $result['conversation_id']);
-            $message = SupportMessage::query()
-                ->with(['sender:id,public_id,name,email', 'media'])
-                ->find((int) $result['message_id']);
 
-            if (! $conversation || ! $message) {
+            if (! $conversation) {
                 return;
             }
 
-            $this->broadcastMessageCreated($conversation, $message);
             $this->broadcastConversationChanged($conversation);
         } catch (\Throwable $exception) {
             Log::warning('[SupportRouting] Failed processing queue entry.', [
@@ -540,7 +518,7 @@ class SupportRoutingService implements \App\Contracts\SupportRoutingServiceContr
             }
 
             $userId = (int) $candidate->id;
-            $capacity = max(1, (int) ($capacities[$userId] ?? config('support_chat.routing.default_agent_capacity', 3)));
+            $capacity = $this->clampAgentCapacity((int) ($capacities[$userId] ?? $this->defaultAgentCapacity()));
             $load = (int) ($loads[$userId] ?? 0);
 
             if ($load >= $capacity) {
@@ -587,7 +565,7 @@ class SupportRoutingService implements \App\Contracts\SupportRoutingServiceContr
      */
     protected function capacityByUser(SupportConversation $conversation, array $userIds): array
     {
-        $defaultCapacity = max(1, (int) config('support_chat.routing.default_agent_capacity', 3));
+        $defaultCapacity = $this->defaultAgentCapacity();
         $capacities = array_fill_keys($userIds, $defaultCapacity);
 
         if (! $conversation->support_skill_id || $userIds === []) {
@@ -603,10 +581,25 @@ class SupportRoutingService implements \App\Contracts\SupportRoutingServiceContr
         foreach ($memberships as $membership) {
             $userId = (int) $membership->user_id;
             $capacity = (int) ($membership->capacity ?? $defaultCapacity);
-            $capacities[$userId] = max(1, $capacity);
+            $capacities[$userId] = $this->clampAgentCapacity($capacity);
         }
 
         return $capacities;
+    }
+
+    protected function hardChatCap(): int
+    {
+        return max(1, min(5, (int) config('support_chat.workbench.max_panels', 5)));
+    }
+
+    protected function clampAgentCapacity(int $capacity): int
+    {
+        return max(1, min($this->hardChatCap(), $capacity));
+    }
+
+    protected function defaultAgentCapacity(): int
+    {
+        return $this->clampAgentCapacity((int) config('support_chat.routing.default_agent_capacity', 3));
     }
 
     protected function broadcastConversationChanged(SupportConversation $conversation): void

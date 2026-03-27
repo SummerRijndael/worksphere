@@ -19,14 +19,17 @@ import MiniChatLauncher from "@/components/minichat/MiniChatLauncher.vue";
 import IncomingCallOverlay from "@/views/chat/components/call/IncomingCallOverlay.vue";
 import LiveChatWidget from "@/components/support/LiveChatWidget.vue";
 import { useVideoCall } from "@/composables/useVideoCall";
+import { useBeforeUnloadGuard } from "@/composables/useBeforeUnloadGuard";
 import { appConfig } from "@/config/app";
 import { useDialerStore } from "@/stores/dialer";
+import { useVideoCallStore } from "@/stores/videocall";
 
 const route = useRoute();
 const router = useRouter();
 const navStore = useNavigationStore();
 const authStore = useAuthStore();
 const dialerStore = useDialerStore();
+const videoCallStore = useVideoCallStore();
 
 // Initialize dynamic page title blinking
 usePageTitle();
@@ -44,6 +47,9 @@ const shouldMountLiveChatWidget = computed(() => {
     const routeName = String(route.name || "");
     return !routeName.startsWith("support.");
 });
+const hasActiveCall = computed(
+    () => Boolean(videoCallStore.isCallActive || dialerStore.activeCall),
+);
 
 const sidebarWidth = computed(() => {
     if (isFullscreen.value) return "0px";
@@ -62,6 +68,8 @@ const mainStyles = computed(() => ({
 // We add a delay to ensure session cookies are fully propagated after login/2FA
 // Video call singleton — set up global event listeners once
 const videoCall = useVideoCall();
+
+useBeforeUnloadGuard(hasActiveCall);
 
 onMounted(async () => {
     printSecurityWarning();

@@ -77,6 +77,18 @@ interface SupportConversationServiceContract
      */
     public function availability(): array;
 
+    /**
+     * @return array{
+     *     max_panels:int,
+     *     hard_cap:int,
+     *     agent_capacity:int,
+     *     active_chats:int,
+     *     available_slots:int,
+     *     effective_panel_limit:int
+     * }
+     */
+    public function workbenchCapacity(User $agent): array;
+
     public function acceptAssignment(SupportConversation $conversation, User $agent): SupportConversation;
 
     public function rejectAssignment(SupportConversation $conversation, User $agent, ?string $reason = null): SupportConversation;

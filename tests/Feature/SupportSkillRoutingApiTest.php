@@ -301,4 +301,132 @@ class SupportSkillRoutingApiTest extends TestCase
         $this->assertSame(SupportRoutingQueueEntry::STATE_PENDING, $entry->state);
         $this->assertNull($entry->last_error);
     }
+
+    public function test_skill_based_agent_can_finalize_wrap_up_close_out(): void
+    {
+        config()->set('support_chat.access_adapter', 'skills');
+        config()->set('support_chat.skills.enabled', true);
+        config()->set('support_chat.skills.allow_legacy_fallback', false);
+        config()->set('support_chat.skills.allow_unrouted_conversation_fallback', false);
+
+        $skill = SupportSkill::create([
+            'name' => 'General Support',
+            'slug' => 'general-support',
+            'is_active' => true,
+            'priority' => 10,
+        ]);
+
+        $agent = User::factory()->create(['status' => 'active']);
+
+        SupportSkillMembership::create([
+            'support_skill_id' => $skill->id,
+            'user_id' => $agent->id,
+            'membership_role' => 'agent',
+            'is_primary' => true,
+            'is_active' => true,
+        ]);
+
+        $conversation = SupportConversation::create([
+            'guest_name' => 'Guest',
+            'guest_email' => 'guest@example.test',
+            'status' => SupportConversation::STATUS_WRAP_UP,
+            'chat_state' => SupportConversation::CHAT_STATE_ENDED,
+            'assignment_state' => SupportConversation::ASSIGNMENT_STATE_ASSIGNED,
+            'resolution_marker' => SupportConversation::RESOLUTION_MARKER_UNRESOLVED,
+            'assigned_to' => $agent->id,
+            'support_skill_id' => $skill->id,
+            'priority' => 'normal',
+            'channel' => 'widget',
+            'ai_enabled' => true,
+        ]);
+
+        $this->actingAs($agent)
+            ->postJson("/api/support/chats/{$conversation->public_id}/wrap-up/complete", [
+                'resolved' => true,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.status', SupportConversation::STATUS_CLOSED)
+            ->assertJsonPath('data.resolution_marker', SupportConversation::RESOLUTION_MARKER_RESOLVED);
+    }
+
+    public function test_skill_based_agent_can_view_waiting_and_ai_inbox_scopes(): void
+    {
+        config()->set('support_chat.access_adapter', 'skills');
+        config()->set('support_chat.skills.enabled', true);
+        config()->set('support_chat.skills.allow_legacy_fallback', false);
+        config()->set('support_chat.skills.allow_unrouted_conversation_fallback', false);
+        config()->set('support_chat.skills.role_capabilities.agent', ['view_queue', 'reply', 'resolve']);
+
+        $skill = SupportSkill::create([
+            'name' => 'General Support',
+            'slug' => 'general-support',
+            'is_active' => true,
+            'priority' => 10,
+        ]);
+
+        $agent = User::factory()->create(['status' => 'active']);
+
+        SupportSkillMembership::create([
+            'support_skill_id' => $skill->id,
+            'user_id' => $agent->id,
+            'membership_role' => 'agent',
+            'is_primary' => true,
+            'is_active' => true,
+        ]);
+
+        $requester = User::factory()->create(['status' => 'active']);
+
+        $waitingConversation = SupportConversation::create([
+            'requester_user_id' => $requester->id,
+            'status' => SupportConversation::STATUS_WAITING_HUMAN,
+            'support_skill_id' => $skill->id,
+            'assigned_to' => null,
+            'priority' => 'normal',
+            'channel' => 'widget',
+            'ai_enabled' => true,
+        ]);
+
+        $pendingConversation = SupportConversation::create([
+            'requester_user_id' => $requester->id,
+            'status' => SupportConversation::STATUS_PENDING_ACCEPTANCE,
+            'support_skill_id' => $skill->id,
+            'assigned_to' => $agent->id,
+            'priority' => 'normal',
+            'channel' => 'widget',
+            'ai_enabled' => true,
+        ]);
+
+        $aiConversation = SupportConversation::create([
+            'requester_user_id' => $requester->id,
+            'status' => SupportConversation::STATUS_BOT_ACTIVE,
+            'support_skill_id' => $skill->id,
+            'assigned_to' => null,
+            'priority' => 'normal',
+            'channel' => 'widget',
+            'ai_enabled' => true,
+        ]);
+
+        $waitingResponse = $this->actingAs($agent)
+            ->getJson('/api/support/chats/inbox?scope=waiting&per_page=50')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 2)
+            ->assertJsonFragment(['id' => $waitingConversation->public_id])
+            ->assertJsonFragment(['id' => $pendingConversation->public_id]);
+
+        $waitingPayload = collect($waitingResponse->json('data', []))
+            ->firstWhere('id', $waitingConversation->public_id);
+        $this->assertNotNull($waitingPayload);
+        $this->assertNotEmpty((string) ($waitingPayload['timers']['waiting_since_at'] ?? ''));
+
+        $aiResponse = $this->actingAs($agent)
+            ->getJson('/api/support/chats/inbox?scope=ai&per_page=50')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonFragment(['id' => $aiConversation->public_id]);
+
+        $aiPayload = collect($aiResponse->json('data', []))
+            ->firstWhere('id', $aiConversation->public_id);
+        $this->assertNotNull($aiPayload);
+        $this->assertNotEmpty((string) ($aiPayload['timers']['ai_assisting_since_at'] ?? ''));
+    }
 }

@@ -2780,9 +2780,17 @@ function cleanup() {
 // ============================================================================
 
 async function initializeCall() {
-    window.addEventListener("beforeunload", () => {
-        if (callState.value !== "ended") {
+    window.addEventListener("beforeunload", (event) => {
+        if (
+            callState.value !== "ended" &&
+            callState.value !== "idle" &&
+            callState.value !== "error"
+        ) {
+            event.preventDefault();
+            event.returnValue =
+                "A call is currently active. Reloading or leaving this page will disconnect the call.";
             endCall("hangup");
+            return event.returnValue;
         }
     });
 

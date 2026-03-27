@@ -105,7 +105,7 @@ class AcdSupportRoutingService extends SupportRoutingService
             }
 
             $userId = (int) $candidate->id;
-            $capacity = max(1, (int) ($capacities[$userId] ?? config('support_chat.routing.default_agent_capacity', 3)));
+            $capacity = $this->clampAgentCapacity((int) ($capacities[$userId] ?? $this->defaultAgentCapacity()));
             $load = (int) ($loads[$userId] ?? 0);
 
             if ($load >= $capacity) {

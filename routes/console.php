@@ -94,8 +94,16 @@ Schedule::command('email:sync-watchdog')
     ->onOneServer();
 
 // Schedule maintenance tasks streaming
-Schedule::command('maintenance:stream-cache-stats')->everyMinute()->runInBackground();
-Schedule::command('monitor:stream')->everyMinute()->runInBackground();
+Schedule::command('maintenance:stream-cache-stats')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->onOneServer()
+    ->runInBackground();
+Schedule::command('monitor:stream')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->onOneServer()
+    ->runInBackground();
 
 // Scheduled Daily Backup (Queued on 'heavy') at 1 AM
 Schedule::job(new \App\Jobs\CreateSystemBackup('both'), 'heavy')

@@ -159,8 +159,8 @@ async function handleStatusChange(status) {
                 class="group flex items-center transition-all duration-200"
                 :class="[
                     collapsed 
-                        ? 'justify-center rounded-2xl border border-(--border-default)/70 bg-(--surface-primary)/80 p-2 shadow-sm hover:border-(--border-default) hover:bg-(--surface-primary)'
-                        : `w-full gap-2.5 rounded-2xl border p-2 text-left backdrop-blur ${statusVisualClasses.shell}`
+                        ? 'justify-center rounded-xl border border-(--border-default)/70 bg-(--surface-primary)/80 p-1.5 shadow-sm hover:border-(--border-default) hover:bg-(--surface-primary)'
+                        : `w-full gap-2 rounded-xl border p-1.5 text-left backdrop-blur ${statusVisualClasses.shell}`
                 ]"
                 :title="collapsed ? (durationLabel ? `${currentOption.label} (${durationLabel})` : currentOption.label) : ''"
             >
@@ -169,10 +169,10 @@ async function handleStatusChange(status) {
                         :src="authStore.user?.avatar_url"
                         :fallback="authStore.user?.name?.slice(0, 1).toUpperCase()"
                         size="sm"
-                        class="h-9 w-9 rounded-xl ring-2 ring-white/80 shadow-sm dark:ring-(--surface-primary)"
+                        class="h-8 w-8 rounded-lg ring-2 ring-white/80 shadow-sm dark:ring-(--surface-primary)"
                     />
                     <span 
-                        class="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white dark:border-(--surface-primary)"
+                        class="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white dark:border-(--surface-primary)"
                         :class="currentOption.color"
                     />
                 </div>
@@ -181,34 +181,34 @@ async function handleStatusChange(status) {
                     <div class="min-w-0 flex-1">
                         <div class="flex items-center justify-between gap-2">
                             <div class="min-w-0">
-                                <span class="block truncate text-[13px] font-semibold leading-none text-(--text-primary)">
+                                <span class="block truncate text-[12px] font-semibold leading-none text-(--text-primary)">
                                     {{ authStore.user?.name }}
                                 </span>
-                                <p class="mt-1 truncate text-[10px] leading-none font-medium text-(--text-secondary)">
+                                <p class="mt-0.5 truncate text-[9px] leading-none font-medium text-(--text-secondary)">
                                     {{ presenceHeadline }}
                                 </p>
                             </div>
-                            <div :class="['inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-xl', statusVisualClasses.iconWrap]">
-                                <component :is="currentStatusIcon" class="h-3.5 w-3.5" />
+                            <div :class="['inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg', statusVisualClasses.iconWrap]">
+                                <component :is="currentStatusIcon" class="h-3 w-3" />
                             </div>
                         </div>
 
-                        <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
-                            <span :class="['inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]', statusVisualClasses.badge]">
+                        <div class="mt-1 flex flex-wrap items-center gap-1">
+                            <span :class="['inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em]', statusVisualClasses.badge]">
                                 <span class="h-2 w-2 rounded-full" :class="currentOption.color"></span>
                                 {{ currentOption.label }}
                             </span>
 
                             <span
                                 v-if="durationLabel"
-                                class="inline-flex w-[5.75rem] items-center justify-center gap-1 rounded-full border border-(--border-default)/70 bg-white/70 px-2.5 py-0.5 text-[10px] font-medium leading-none tabular-nums text-(--text-secondary) dark:bg-(--surface-primary)/60"
+                                class="inline-flex w-[5.2rem] items-center justify-center gap-1 rounded-full border border-(--border-default)/70 bg-white/70 px-2 py-0.5 text-[9px] font-medium leading-none tabular-nums text-(--text-secondary) dark:bg-(--surface-primary)/60"
                             >
-                                <Clock class="h-3 w-3" />
+                                <Clock class="h-2.5 w-2.5" />
                                 <span class="font-mono">{{ durationLabel }}</span>
                             </span>
                         </div>
                     </div>
-                    <ChevronDown class="h-4 w-4 shrink-0 text-(--text-muted) transition-transform group-hover:translate-y-[1px] group-hover:text-(--text-secondary)" />
+                    <ChevronDown class="h-3.5 w-3.5 shrink-0 text-(--text-muted) transition-transform group-hover:translate-y-[1px] group-hover:text-(--text-secondary)" />
                 </template>
             </button>
         </template>

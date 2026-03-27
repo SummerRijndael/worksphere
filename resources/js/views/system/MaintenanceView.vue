@@ -3015,6 +3015,70 @@ onUnmounted(() => {
                                 </span>
                             </div>
                         </div>
+
+                        <div class="h-px bg-[var(--border-default)]"></div>
+
+                        <!-- Horizon -->
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <Server class="w-4 h-4 text-[var(--text-muted)]" />
+                                <div class="flex flex-col">
+                                    <span
+                                        class="text-sm font-medium text-[var(--text-primary)]"
+                                        >Laravel Horizon</span
+                                    >
+                                    <span
+                                        v-if="externalServices.horizon?.message"
+                                        class="text-xs"
+                                        :class="
+                                            externalServices.horizon?.status ===
+                                                'Crashed' ||
+                                            externalServices.horizon?.status ===
+                                                'Unreachable'
+                                                ? 'text-[var(--color-error)]'
+                                                : 'text-[var(--text-muted)]'
+                                        "
+                                        >{{
+                                            externalServices.horizon.message
+                                        }}</span
+                                    >
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span
+                                    v-if="externalServices.horizon?.latency"
+                                    class="text-xs text-[var(--text-muted)]"
+                                    >{{
+                                        externalServices.horizon.latency
+                                    }}ms</span
+                                >
+                                <span
+                                    class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+                                    :class="{
+                                        'bg-green-500/10 text-green-500':
+                                            externalServices.horizon?.status ===
+                                            'Operational',
+                                        'bg-red-500/10 text-red-500':
+                                            externalServices.horizon?.status ===
+                                                'Crashed' ||
+                                            externalServices.horizon?.status ===
+                                                'Error' ||
+                                            externalServices.horizon?.status ===
+                                                'Unreachable',
+                                        'bg-yellow-500/10 text-yellow-500':
+                                            externalServices.horizon?.status ===
+                                                'Turned Off' ||
+                                            externalServices.horizon?.status ===
+                                                'Not Configured',
+                                        'bg-gray-500/10 text-gray-500':
+                                            externalServices.horizon?.status ===
+                                            'Unknown',
+                                    }"
+                                >
+                                    {{ externalServices.horizon?.status }}
+                                </span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -3089,12 +3153,53 @@ onUnmounted(() => {
                             >
                                 <span
                                     class="text-sm text-[var(--text-secondary)]"
-                                    >Upload Max</span
+                                    >Upload Max Filesize</span
+                                >
+                                <div class="text-right">
+                                    <span
+                                        class="block text-sm font-medium text-[var(--text-primary)]"
+                                        >{{ phpConfiguration.upload_max_filesize }}</span
+                                    >
+                                    <span
+                                        v-if="
+                                            phpConfiguration.upload_max_filesize_human
+                                        "
+                                        class="block text-[11px] text-[var(--text-muted)]"
+                                        >{{ phpConfiguration.upload_max_filesize_human }}</span
+                                    >
+                                </div>
+                            </div>
+                            <div
+                                class="flex justify-between items-center p-2 bg-[var(--surface-secondary)] rounded-lg"
+                            >
+                                <span
+                                    class="text-sm text-[var(--text-secondary)]"
+                                    >POST Max Size</span
+                                >
+                                <div class="text-right">
+                                    <span
+                                        class="block text-sm font-medium text-[var(--text-primary)]"
+                                        >{{ phpConfiguration.post_max_size }}</span
+                                    >
+                                    <span
+                                        v-if="phpConfiguration.post_max_size_human"
+                                        class="block text-[11px] text-[var(--text-muted)]"
+                                        >{{ phpConfiguration.post_max_size_human }}</span
+                                    >
+                                </div>
+                            </div>
+                            <div
+                                class="flex justify-between items-center p-2 bg-[var(--surface-secondary)] rounded-lg"
+                            >
+                                <span
+                                    class="text-sm text-[var(--text-secondary)]"
+                                    >Effective Upload Cap</span
                                 >
                                 <span
                                     class="text-sm font-medium text-[var(--text-primary)]"
                                     >{{
-                                        phpConfiguration.upload_max_filesize
+                                        phpConfiguration.effective_upload_limit_human ||
+                                        "Unknown"
                                     }}</span
                                 >
                             </div>

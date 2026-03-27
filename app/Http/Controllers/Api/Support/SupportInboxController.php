@@ -52,6 +52,7 @@ class SupportInboxController extends Controller
         return $this->paginatedConversationResponse($paginator, $request, [
             'realtime' => $this->supportRealtimeService->agentRealtimeMeta($request->user()),
             'ui_timers' => $this->supportUiTimerMeta(),
+            'workbench' => $this->supportService->workbenchCapacity($request->user()),
         ]);
     }
 
@@ -376,6 +377,7 @@ class SupportInboxController extends Controller
             'assignee:id,public_id,name,email',
             'endedBy:id,public_id,name,email',
             'skill:id,public_id,name,slug,department',
+            'routingQueueEntry',
             'latestMessage.sender:id,public_id,name,email',
             'latestMessage.media',
             'messages.sender:id,public_id,name,email',
@@ -413,6 +415,7 @@ class SupportInboxController extends Controller
             'assignee:id,public_id,name,email',
             'endedBy:id,public_id,name,email',
             'skill:id,public_id,name,slug,department',
+            'routingQueueEntry',
             'latestMessage.sender:id,public_id,name,email',
             'latestMessage.media',
             'messages.sender:id,public_id,name,email',
@@ -441,6 +444,7 @@ class SupportInboxController extends Controller
             'assignee:id,public_id,name,email',
             'endedBy:id,public_id,name,email',
             'skill:id,public_id,name,slug,department',
+            'routingQueueEntry',
             'latestMessage.sender:id,public_id,name,email',
             'latestMessage.media',
             'messages.sender:id,public_id,name,email',
@@ -612,6 +616,7 @@ class SupportInboxController extends Controller
             'assignee:id,public_id,name,email',
             'endedBy:id,public_id,name,email',
             'skill:id,public_id,name,slug,department',
+            'routingQueueEntry',
             'latestMessage.sender:id,public_id,name,email',
             'latestMessage.media',
             'messages.sender:id,public_id,name,email',
@@ -680,6 +685,7 @@ class SupportInboxController extends Controller
             'assignee:id,public_id,name,email',
             'endedBy:id,public_id,name,email',
             'skill:id,public_id,name,slug,department',
+            'routingQueueEntry',
             'latestPublicMessage.sender:id,public_id,name,email',
             'latestPublicMessage.media',
             'latestMessage.sender:id,public_id,name,email',
