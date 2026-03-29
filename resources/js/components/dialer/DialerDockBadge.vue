@@ -118,7 +118,7 @@ onUnmounted(() => {
 <template>
     <div :class="containerClass">
         <div
-            class="flex items-center gap-2 rounded-xl border border-white/10 bg-black px-2 py-1.5 shadow-xl shadow-black/35"
+            class="flex items-center gap-2 mr-[-1em] rounded-xl border border-white/10 bg-black px-2 py-1.5 shadow-xl shadow-black/35"
         >
             <button
                 type="button"

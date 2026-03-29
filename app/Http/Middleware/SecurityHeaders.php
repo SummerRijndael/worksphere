@@ -23,14 +23,25 @@ class SecurityHeaders
     public function handle(Request $request, Closure $next): Response
     {
         // 1. Host Header Validation (Fixes Red Flag: Cloud Metadata Exposure)
-        // Prevent Host Header Poisoning by ensuring the request matches our APP_URL domain
-        $host = $request->getHost();
-        $allowedHost = parse_url(config('app.url'), PHP_URL_HOST);
+        // Prevent Host Header Poisoning by ensuring the request host is explicitly allowed
+        $host = strtolower((string) $request->getHost());
+        $appUrlHost = parse_url((string) config('app.url'), PHP_URL_HOST);
 
-        // Also allow the actual local IP if scanning via IP
-        $allowedIps = ['127.0.0.1', 'localhost', '192.168.37.128'];
+        $configuredHosts = array_map(
+            static fn ($value) => strtolower((string) $value),
+            (array) config('app.allowed_hosts', [])
+        );
 
-        if ($host !== $allowedHost && ! in_array($host, $allowedIps)) {
+        // Backward-compatible local defaults
+        $defaultHosts = ['127.0.0.1', 'localhost', '192.168.37.128'];
+
+        $allowedHosts = array_values(array_unique(array_filter([
+            $appUrlHost ? strtolower((string) $appUrlHost) : null,
+            ...$configuredHosts,
+            ...$defaultHosts,
+        ])));
+
+        if (! in_array($host, $allowedHosts, true)) {
             // Block requests with malicious or unexpected Host headers
             return response()->json(['message' => 'Invalid Host header.'], 403);
         }

@@ -58,7 +58,7 @@ const handleLogout = async () => {
                     <Search class="h-5 w-5" />
                 </Button>
 
-                <div class="relative hidden sm:block">
+                <div class="ml-[-0.5em] relative hidden sm:block">
                     <Search
                         class="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]"
                     />

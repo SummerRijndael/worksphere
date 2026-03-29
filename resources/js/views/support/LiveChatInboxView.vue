@@ -271,7 +271,7 @@ const activeConversationMessages = computed(() => {
             agentName = 'System';
         } else if (message.sender_type === 'bot') {
             type = 'agent';
-            agentName = 'AI Support Bot';
+            agentName = 'Eden';
         } else if (message.sender_type === 'agent' && message.is_private_note) {
             type = 'note';
         }
@@ -329,7 +329,7 @@ const conversationAttachmentItems = computed(() => {
                 || (message?.sender_type === 'customer'
                     ? (activeConversationDisplay.value?.name || 'Customer')
                     : message?.sender_type === 'bot'
-                        ? 'AI Support Bot'
+                        ? 'Eden'
                         : 'Support Agent');
 
             flattened.push({

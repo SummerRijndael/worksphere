@@ -2,9 +2,11 @@
 
 namespace App\Models;
 
+use App\Support\Text\HtmlToMarkdown;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
 use Spatie\MediaLibrary\HasMedia;
@@ -84,12 +86,12 @@ class FaqArticle extends Model implements HasMedia
         return $this->belongsTo(User::class, 'author_id');
     }
 
-    public function comments(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function comments(): HasMany
     {
         return $this->hasMany(FaqComment::class, 'faq_article_id');
     }
 
-    public function versions(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function versions(): HasMany
     {
         return $this->hasMany(FaqArticleVersion::class, 'faq_article_id')->orderBy('created_at', 'desc');
     }
@@ -125,5 +127,10 @@ class FaqArticle extends Model implements HasMedia
             ->format('webp')
             ->optimize()
             ->performOnCollections('images');
+    }
+
+    public function getContentMarkdownAttribute(): string
+    {
+        return HtmlToMarkdown::convert((string) $this->content);
     }
 }

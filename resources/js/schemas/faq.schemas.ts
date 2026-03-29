@@ -81,6 +81,7 @@ export interface FaqArticle {
   title: string;
   slug: string;
   content: string;
+  content_markdown?: string;
   views: number;
   helpful_count: number;
   unhelpful_count: number;

@@ -40,6 +40,7 @@ const props = defineProps({
         default: false,
     },
 });
+const AI_ASSISTANT_NAME = 'Eden';
 
 const authStore = useAuthStore();
 const chatStore = useSupportChatStore();
@@ -242,7 +243,7 @@ const mappedMessages = computed(() => {
             agentName = 'System';
         } else if (message.sender_type === 'bot') {
             type = 'agent';
-            agentName = 'AI Support Bot';
+            agentName = AI_ASSISTANT_NAME;
         }
 
         return {
@@ -329,14 +330,14 @@ const talkingToLabel = computed(() => {
     const aiEnabled = Boolean(activeConversation.value?.ai_enabled ?? true);
 
     if (status === 'waiting_human') {
-        return 'Talking to: Support Bot (connecting you to an agent)';
+        return `Talking to: ${AI_ASSISTANT_NAME} (connecting you to an agent)`;
     }
 
     if (!aiEnabled) {
         return 'Talking to: Support Team';
     }
 
-    return 'Talking to: Support Bot';
+    return `Talking to: ${AI_ASSISTANT_NAME}`;
 });
 
 const waitingForAgentNotice = computed(() => {
@@ -918,6 +919,68 @@ function removePendingMessage(messageId) {
     pendingOutgoingMessages.value = pendingOutgoingMessages.value.filter((item) => item.id !== messageId);
 }
 
+function normalizeComparableMessageBody(value) {
+    return String(value || '').trim().replace(/\s+/g, ' ');
+}
+
+function likelyRepresentsSameMessage(pending, message) {
+    if (!pending || !message) {
+        return false;
+    }
+
+    if (pending.conversationId !== activeConversation.value?.id) {
+        return false;
+    }
+
+    const pendingBody = normalizeComparableMessageBody(pending.body);
+    const messageBody = normalizeComparableMessageBody(message.body);
+    if (pendingBody !== messageBody) {
+        return false;
+    }
+
+    const pendingAttachmentCount = Array.isArray(pending.fileNames)
+        ? pending.fileNames.length
+        : (Array.isArray(pending.files) ? pending.files.length : 0);
+    const messageAttachmentCount = Array.isArray(message.attachments) ? message.attachments.length : 0;
+    if (pendingAttachmentCount !== messageAttachmentCount) {
+        return false;
+    }
+
+    const pendingTime = Date.parse(String(pending.createdAt || ''));
+    const messageTime = Date.parse(String(message.created_at || ''));
+
+    if (!Number.isNaN(pendingTime) && !Number.isNaN(messageTime)) {
+        // Keep matching tight so repeated "same text" messages minutes apart are not collapsed.
+        return Math.abs(messageTime - pendingTime) <= 180000;
+    }
+
+    return true;
+}
+
+function reconcilePendingFromConfirmedMessage(message) {
+    if (!message || message.sender_type !== 'customer') {
+        return false;
+    }
+
+    const candidateIndex = pendingOutgoingMessages.value.findIndex((pending) => likelyRepresentsSameMessage(pending, message));
+    if (candidateIndex === -1) {
+        return false;
+    }
+
+    pendingOutgoingMessages.value.splice(candidateIndex, 1);
+    return true;
+}
+
+function reconcilePendingFromConversationMessages(messages) {
+    if (!Array.isArray(messages) || messages.length === 0) {
+        return;
+    }
+
+    for (const message of messages) {
+        reconcilePendingFromConfirmedMessage(message);
+    }
+}
+
 async function transmitPendingMessage(messageId, options = {}) {
     const pending = pendingOutgoingMessages.value.find((item) => item.id === messageId);
     if (!pending || !pending.conversationId) {
@@ -1303,6 +1366,10 @@ async function handleRealtimeMessage(event) {
         sender_type: incoming.sender_type,
     });
 
+    // Customer messages are optimistically rendered while sending.
+    // When realtime confirms the persisted message, drop the matching pending bubble.
+    reconcilePendingFromConfirmedMessage(incoming);
+
     const wasNearBottom = isNearBottom();
     const existingIndex = conversationMessages.value.findIndex((message) => message.id === incoming.id);
     const shouldPlayIncomingSound = existingIndex === -1 && ['agent', 'bot'].includes(String(incoming.sender_type || ''));
@@ -1664,6 +1731,9 @@ async function loadConversationMessages(conversationId, token = '', options = {}
         conversationMessages.value = incoming;
         clearUnreadMarker();
     }
+
+    // Also reconcile pending bubbles when message snapshots are refreshed from the API.
+    reconcilePendingFromConversationMessages(incoming);
 
     if (mergeLatest && trackUnread) {
         const previousIds = new Set(previousMessages.map((message) => message.id));

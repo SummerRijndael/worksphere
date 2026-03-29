@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Faq;
 
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\URL;
 
 class FaqArticleResource extends JsonResource
 {
@@ -14,6 +15,7 @@ class FaqArticleResource extends JsonResource
             'title' => $this->title,
             'slug' => $this->slug,
             'content' => $this->content, // Assuming rich text or markdown
+            'content_markdown' => $this->content_markdown,
             'tags' => $this->tags,
             'is_published' => (bool) $this->is_published,
             'is_internal' => (bool) $this->is_internal,
@@ -44,7 +46,7 @@ class FaqArticleResource extends JsonResource
                     'name' => $media->custom_properties['original_filename'] ?? $media->file_name,
                     'mime_type' => $media->mime_type,
                     'size' => $media->size,
-                    'download_url' => \Illuminate\Support\Facades\URL::signedRoute('api.media.secure-download', ['media' => $media->id], now()->addMinutes(60)),
+                    'download_url' => URL::signedRoute('api.media.secure-download', ['media' => $media->id], now()->addMinutes(60)),
                 ];
             }),
         ];

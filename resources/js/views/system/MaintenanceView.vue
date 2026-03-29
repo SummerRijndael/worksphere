@@ -152,6 +152,7 @@ const activeQueueTab = ref("pending"); // 'pending' | 'failed' | 'completed'
 // External Services
 const externalServices = ref(null);
 const isLoadingExternalServices = ref(false);
+const lastSupportAiStatus = ref(null);
 
 // Storage Stats
 const storageStats = ref(null);
@@ -370,6 +371,40 @@ const fetchExternalServices = async () => {
     try {
         const response = await axios.get("/api/maintenance/external-services");
         externalServices.value = response.data.data;
+
+        const nextAiStatus = response.data.data?.support_ai?.status ?? null;
+        if (nextAiStatus) {
+            if (lastSupportAiStatus.value === null) {
+                lastSupportAiStatus.value = nextAiStatus;
+            } else if (nextAiStatus !== lastSupportAiStatus.value) {
+                if (
+                    [
+                        "Error",
+                        "Unreachable",
+                        "Rate Limited",
+                        "Invalid Credentials",
+                        "Insufficient Credits",
+                        "Degraded",
+                    ].includes(nextAiStatus)
+                ) {
+                    toast.warning(`Support AI status changed: ${nextAiStatus}`);
+                } else if (
+                    nextAiStatus === "Operational" &&
+                    [
+                        "Error",
+                        "Unreachable",
+                        "Rate Limited",
+                        "Invalid Credentials",
+                        "Insufficient Credits",
+                        "Degraded",
+                    ].includes(lastSupportAiStatus.value)
+                ) {
+                    toast.success("Support AI recovered");
+                }
+
+                lastSupportAiStatus.value = nextAiStatus;
+            }
+        }
     } catch (error) {
         console.error("Failed to fetch external services:", error);
     } finally {
@@ -2668,6 +2703,98 @@ onUnmounted(() => {
                                     }"
                                 >
                                     {{ externalServices.twilio?.status }}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="h-px bg-[var(--border-default)]"></div>
+
+                        <!-- Support AI -->
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <MessageSquare
+                                    class="w-4 h-4 text-[var(--text-muted)]"
+                                />
+                                <div class="flex flex-col">
+                                    <span
+                                        class="text-sm font-medium text-[var(--text-primary)]"
+                                        >{{
+                                            externalServices.support_ai?.name ||
+                                            "Support AI"
+                                        }}</span
+                                    >
+                                    <span
+                                        class="text-xs text-[var(--text-muted)]"
+                                        >{{
+                                            externalServices.support_ai?.provider &&
+                                            externalServices.support_ai?.model
+                                                ? `${externalServices.support_ai.provider} · ${externalServices.support_ai.model}`
+                                                : externalServices.support_ai
+                                                        ?.provider ||
+                                                  "Provider not set"
+                                        }}</span
+                                    >
+                                    <span
+                                        v-if="externalServices.support_ai?.message"
+                                        class="text-xs"
+                                        :class="
+                                            externalServices.support_ai
+                                                ?.status === 'Rate Limited' ||
+                                            externalServices.support_ai
+                                                ?.status === 'Degraded'
+                                                ? 'text-yellow-600'
+                                                : externalServices.support_ai
+                                                        ?.status ===
+                                                          'Operational'
+                                                  ? 'text-[var(--text-muted)]'
+                                                  : 'text-[var(--color-error)]'
+                                        "
+                                        >{{
+                                            externalServices.support_ai.message
+                                        }}</span
+                                    >
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span
+                                    v-if="externalServices.support_ai?.latency"
+                                    class="text-xs text-[var(--text-muted)]"
+                                    >{{
+                                        externalServices.support_ai.latency
+                                    }}ms</span
+                                >
+                                <span
+                                    class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+                                    :class="{
+                                        'bg-green-500/10 text-green-500':
+                                            externalServices.support_ai
+                                                ?.status === 'Operational',
+                                        'bg-red-500/10 text-red-500':
+                                            externalServices.support_ai
+                                                ?.status === 'Error' ||
+                                            externalServices.support_ai
+                                                ?.status === 'Unreachable' ||
+                                            externalServices.support_ai
+                                                ?.status ===
+                                                'Invalid Credentials' ||
+                                            externalServices.support_ai
+                                                ?.status ===
+                                                'Insufficient Credits',
+                                        'bg-yellow-500/10 text-yellow-500':
+                                            externalServices.support_ai
+                                                ?.status === 'Rate Limited' ||
+                                            externalServices.support_ai
+                                                ?.status === 'Degraded' ||
+                                            externalServices.support_ai
+                                                ?.status === 'Not Configured' ||
+                                            externalServices.support_ai
+                                                ?.status === 'Disabled',
+                                        'bg-gray-500/10 text-gray-500':
+                                            externalServices.support_ai
+                                                ?.status === 'Unknown',
+                                    }"
+                                >
+                                    {{ externalServices.support_ai?.status }}
                                 </span>
                             </div>
                         </div>

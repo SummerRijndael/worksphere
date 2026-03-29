@@ -50,7 +50,7 @@ watch(() => route.params.identifier, () => {
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <!-- Adherence Rate -->
         <Card
-            class="p-4 flex flex-col justify-between h-full bg-gradient-to-br from-[var(--bg-secondary)] to-[var(--bg-primary)] border-[var(--border-color)]"
+            class="p-4 flex flex-col justify-between h-full bg-gradient-to-br from-[var(--bg-secondary)] to-[var(--bg-primary)] border-(--border-subtle) ring-1 ring-black/5 dark:ring-white/5"
         >
             <div class="flex items-start justify-between mb-4">
                 <div>
@@ -83,7 +83,7 @@ watch(() => route.params.identifier, () => {
 
         <!-- Avg Cycle Time -->
         <Card
-            class="p-4 flex flex-col justify-between h-full bg-gradient-to-br from-[var(--bg-secondary)] to-[var(--bg-primary)] border-[var(--border-color)]"
+            class="p-4 flex flex-col justify-between h-full bg-gradient-to-br from-[var(--bg-secondary)] to-[var(--bg-primary)] border-(--border-subtle) ring-1 ring-black/5 dark:ring-white/5"
         >
             <div class="flex items-start justify-between mb-4">
                 <div>
@@ -117,7 +117,7 @@ watch(() => route.params.identifier, () => {
 
         <!-- Due This Week -->
         <Card
-            class="p-4 flex flex-col justify-between h-full bg-gradient-to-br from-[var(--bg-secondary)] to-[var(--bg-primary)] border-[var(--border-color)]"
+            class="p-4 flex flex-col justify-between h-full bg-gradient-to-br from-[var(--bg-secondary)] to-[var(--bg-primary)] border-(--border-subtle) ring-1 ring-black/5 dark:ring-white/5"
         >
             <div class="flex items-start justify-between mb-4">
                 <div>
@@ -151,7 +151,7 @@ watch(() => route.params.identifier, () => {
 
         <!-- Active Projects -->
         <Card
-            class="p-4 flex flex-col justify-between h-full bg-gradient-to-br from-[var(--bg-secondary)] to-[var(--bg-primary)] border-[var(--border-color)]"
+            class="p-4 flex flex-col justify-between h-full bg-gradient-to-br from-[var(--bg-secondary)] to-[var(--bg-primary)] border-(--border-subtle) ring-1 ring-black/5 dark:ring-white/5"
         >
             <div class="flex items-start justify-between mb-4">
                 <div>
@@ -188,7 +188,7 @@ watch(() => route.params.identifier, () => {
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <!-- Operator Efficiency -->
         <Card
-            class="p-5 flex flex-col justify-between h-full bg-gradient-to-br from-[var(--surface-secondary)] to-[var(--surface-primary)] border-[var(--border-color)] relative overflow-hidden group"
+            class="p-5 flex flex-col justify-between h-full bg-gradient-to-br from-[var(--surface-secondary)] to-[var(--surface-primary)] border-(--border-subtle) ring-1 ring-black/5 dark:ring-white/5 relative overflow-hidden group"
         >
             <div
                 class="absolute top-0 right-0 p-8 -mr-4 -mt-4 opacity-[0.03] group-hover:opacity-[0.05] transition-opacity"
@@ -243,7 +243,7 @@ watch(() => route.params.identifier, () => {
 
         <!-- Project Burn Rate -->
         <Card
-            class="p-5 flex flex-col justify-between h-full bg-gradient-to-br from-[var(--surface-secondary)] to-[var(--surface-primary)] border-[var(--border-color)] relative overflow-hidden group"
+            class="p-5 flex flex-col justify-between h-full bg-gradient-to-br from-[var(--surface-secondary)] to-[var(--surface-primary)] border-(--border-subtle) ring-1 ring-black/5 dark:ring-white/5 relative overflow-hidden group"
         >
             <div
                 class="absolute top-0 right-0 p-8 -mr-4 -mt-4 opacity-[0.03] group-hover:opacity-[0.05] transition-opacity"
@@ -303,7 +303,7 @@ watch(() => route.params.identifier, () => {
 
         <!-- PM Approval Rate -->
         <Card
-            class="p-5 flex flex-col justify-between h-full bg-gradient-to-br from-[var(--surface-secondary)] to-[var(--surface-primary)] border-[var(--border-color)] relative overflow-hidden group"
+            class="p-5 flex flex-col justify-between h-full bg-gradient-to-br from-[var(--surface-secondary)] to-[var(--surface-primary)] border-(--border-subtle) ring-1 ring-black/5 dark:ring-white/5 relative overflow-hidden group"
         >
             <div
                 class="absolute top-0 right-0 p-8 -mr-4 -mt-4 opacity-[0.03] group-hover:opacity-[0.05] transition-opacity"

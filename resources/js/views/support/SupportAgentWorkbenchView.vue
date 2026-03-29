@@ -1049,7 +1049,7 @@ function senderLabel(message: SupportMessage): string {
         return customerNameFromMessage(message);
     }
     if (senderType === "bot") {
-        return "AI Support Bot";
+        return "Eden";
     }
     if (senderType === "system") {
         return "System";

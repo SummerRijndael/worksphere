@@ -1,5 +1,7 @@
 <?php
 
+use App\Services\Support\Ai\SimulatedSupportAiAdapter;
+
 return [
     /*
     |--------------------------------------------------------------------------
@@ -7,7 +9,72 @@ return [
     |--------------------------------------------------------------------------
     */
     'ai_enabled' => env('SUPPORT_AI_ENABLED', true),
-    'ai_adapter' => \App\Services\Support\Ai\SimulatedSupportAiAdapter::class,
+    'ai_adapter' => env('SUPPORT_AI_ADAPTER', SimulatedSupportAiAdapter::class),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Laravel AI SDK Adapter Settings
+    |--------------------------------------------------------------------------
+    */
+    'ai' => [
+        'assistant_name' => env('SUPPORT_AI_ASSISTANT_NAME', 'Eden'),
+        'laravel_sdk' => [
+            'enabled' => (bool) env('SUPPORT_AI_LARAVEL_SDK_ENABLED', true),
+            'provider' => env('SUPPORT_AI_LARAVEL_SDK_PROVIDER', 'openai'),
+            'model' => env('SUPPORT_AI_LARAVEL_SDK_MODEL', 'gpt-4.1-mini'),
+            'timeout' => (int) env('SUPPORT_AI_LARAVEL_SDK_TIMEOUT', 20),
+            'history_messages' => (int) env('SUPPORT_AI_LARAVEL_SDK_HISTORY_MESSAGES', 12),
+            'system_prompt' => env('SUPPORT_AI_LARAVEL_SDK_SYSTEM_PROMPT'),
+            'budgets' => [
+                'incoming_message_max_chars' => (int) env('SUPPORT_AI_BUDGET_INCOMING_MESSAGE_MAX_CHARS', 1200),
+                'history_message_max_chars' => (int) env('SUPPORT_AI_BUDGET_HISTORY_MESSAGE_MAX_CHARS', 500),
+                'history_total_max_chars' => (int) env('SUPPORT_AI_BUDGET_HISTORY_TOTAL_MAX_CHARS', 2600),
+                'instructions_max_chars' => (int) env('SUPPORT_AI_BUDGET_INSTRUCTIONS_MAX_CHARS', 9000),
+                'reply_max_chars' => (int) env('SUPPORT_AI_BUDGET_REPLY_MAX_CHARS', 700),
+            ],
+            'tools' => [
+                'account_status' => [
+                    'enabled' => (bool) env('SUPPORT_AI_TOOL_ACCOUNT_STATUS_ENABLED', true),
+                ],
+            ],
+            'handoff' => [
+                'max_bot_turns_before_handoff' => (int) env('SUPPORT_AI_HANDOFF_MAX_BOT_TURNS', 6),
+                'escalate_on_human_request' => (bool) env('SUPPORT_AI_HANDOFF_ON_HUMAN_REQUEST', true),
+                'escalate_on_backoff_request' => (bool) env('SUPPORT_AI_HANDOFF_ON_BACKOFF_REQUEST', true),
+                'escalate_on_low_confidence' => (bool) env('SUPPORT_AI_HANDOFF_ON_LOW_CONFIDENCE', true),
+                'low_confidence_threshold' => (float) env('SUPPORT_AI_HANDOFF_LOW_CONFIDENCE_THRESHOLD', 0.55),
+            ],
+            'policy' => [
+                'block_religion' => (bool) env('SUPPORT_AI_POLICY_BLOCK_RELIGION', true),
+                'block_politics' => (bool) env('SUPPORT_AI_POLICY_BLOCK_POLITICS', true),
+                'block_gossip' => (bool) env('SUPPORT_AI_POLICY_BLOCK_GOSSIP', true),
+                'offtopic_action' => env('SUPPORT_AI_POLICY_OFFTOPIC_ACTION', 'refuse'),
+                'reply_scope_guard_enabled' => (bool) env('SUPPORT_AI_POLICY_REPLY_SCOPE_GUARD_ENABLED', true),
+            ],
+            'gemini_context_cache' => [
+                'enabled' => (bool) env('SUPPORT_AI_GEMINI_CONTEXT_CACHE_ENABLED', false),
+                'model' => env('SUPPORT_AI_GEMINI_CONTEXT_CACHE_MODEL', ''),
+                'ttl_seconds' => (int) env('SUPPORT_AI_GEMINI_CONTEXT_CACHE_TTL_SECONDS', 900),
+                'min_payload_chars' => (int) env('SUPPORT_AI_GEMINI_CONTEXT_CACHE_MIN_PAYLOAD_CHARS', 1800),
+                'max_payload_chars' => (int) env('SUPPORT_AI_GEMINI_CONTEXT_CACHE_MAX_PAYLOAD_CHARS', 64000),
+                'failure_cooldown_seconds' => (int) env('SUPPORT_AI_GEMINI_CONTEXT_CACHE_FAILURE_COOLDOWN_SECONDS', 300),
+            ],
+            'health_check' => [
+                'enabled' => (bool) env('SUPPORT_AI_HEALTH_CHECK_ENABLED', true),
+                'cache_ttl_seconds' => (int) env('SUPPORT_AI_HEALTH_CHECK_CACHE_TTL_SECONDS', 60),
+                'timeout' => (int) env('SUPPORT_AI_HEALTH_CHECK_TIMEOUT', 8),
+                'prompt' => env('SUPPORT_AI_HEALTH_CHECK_PROMPT', 'Reply with OK only.'),
+            ],
+            'faq_context' => [
+                'enabled' => (bool) env('SUPPORT_AI_FAQ_CONTEXT_ENABLED', true),
+                'max_articles' => (int) env('SUPPORT_AI_FAQ_CONTEXT_MAX_ARTICLES', 3),
+                'max_chars_per_article' => (int) env('SUPPORT_AI_FAQ_CONTEXT_MAX_CHARS_PER_ARTICLE', 1800),
+                'max_total_chars' => (int) env('SUPPORT_AI_FAQ_CONTEXT_MAX_TOTAL_CHARS', 2200),
+                'cache_enabled' => (bool) env('SUPPORT_AI_FAQ_CONTEXT_CACHE_ENABLED', true),
+                'cache_ttl_seconds' => (int) env('SUPPORT_AI_FAQ_CONTEXT_CACHE_TTL_SECONDS', 600),
+            ],
+        ],
+    ],
 
     /*
     |--------------------------------------------------------------------------

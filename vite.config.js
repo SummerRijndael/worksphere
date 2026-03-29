@@ -30,6 +30,7 @@ export default defineConfig(({ mode, command }) => ({
     },
     server: {
         host: '0.0.0.0',
+        allowedHosts: true,
         hmr: {
             host: (() => {
                 const interfaces = os.networkInterfaces();
