@@ -46,8 +46,13 @@ class MonitorExternalServices extends Command
                 $configured = $service['configured'] ?? false; // Some services have this key
 
                 // Skip if explicitly "Not Configured" or meant to be ignored
-                if ($status === 'Not Configured' || ($key === 'recaptcha' && ! $configured) || ($key === 'twilio' && ! $configured)) {
-                    $this->line("[$name] Not Configured - Skipped");
+                if (
+                    $status === 'Not Configured'
+                    || ($key === 'support_ai' && $status === 'Disabled')
+                    || ($key === 'recaptcha' && ! $configured)
+                    || ($key === 'twilio' && ! $configured)
+                ) {
+                    $this->line("[$name] {$status} - Skipped");
                     $this->clearServiceFailureState($key);
 
                     continue;

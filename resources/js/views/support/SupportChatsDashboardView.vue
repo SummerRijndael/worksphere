@@ -483,7 +483,7 @@ function getStatusColor(status) {
 function getStatusLabel(status) {
     switch(status) {
         case 'waiting_human': return 'Waiting for Agent';
-        case 'bot_active': return 'AI Assistant';
+        case 'bot_active': return 'Eden';
         case 'open': return 'Active';
         case 'resolved': return 'Resolved';
         case 'closed': return 'Closed';

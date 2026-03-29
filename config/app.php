@@ -58,6 +58,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Allowed Hosts
+    |--------------------------------------------------------------------------
+    |
+    | Comma-separated host allowlist for host header validation.
+    | Example: "localhost,127.0.0.1,192.168.1.10,app.example.com"
+    |
+    */
+    'allowed_hosts' => array_values(array_filter(array_map(
+        static fn ($host) => trim((string) $host),
+        explode(',', (string) env('ALLOWED_HOSTS', ''))
+    ))),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

@@ -280,7 +280,7 @@ onMounted(() => {
 </script>
 
 <template>
-    <div class="relative min-h-screen p-6 space-y-8 font-sans">
+    <div class="relative min-h-screen p-4 space-y-6 font-sans">
         <!-- Background Gradient Orb (Optional aesthetic touch) -->
         <div
             class="fixed top-0 left-0 w-full h-full overflow-hidden pointer-events-none -z-10"
@@ -295,7 +295,7 @@ onMounted(() => {
 
         <!-- Header Section -->
         <div
-            class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 animate-fade-in-down"
+            class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 animate-fade-in-down"
         >
             <div>
                 <h1
@@ -308,10 +308,10 @@ onMounted(() => {
                 </p>
             </div>
 
-            <div class="flex items-center gap-4">
+            <div class="flex items-center gap-3">
                 <!-- View Toggles -->
                 <div
-                    class="flex items-center bg-(--surface-primary)/80 backdrop-blur-sm rounded-xl p-1.5 border border-(--border-default) shadow-sm"
+                    class="flex items-center bg-(--surface-primary)/80 backdrop-blur-sm rounded-xl p-1 border border-(--border-default) shadow-sm"
                 >
                     <button
                         @click="viewMode = 'list'"
@@ -370,32 +370,36 @@ onMounted(() => {
                 :value="stats.total"
                 :icon="UsersIcon"
                 variant="primary"
+                class="!p-4"
             />
             <StatsCard
                 label="Active Teams"
                 :value="stats.active"
                 :icon="Activity"
                 variant="success"
+                class="!p-4"
             />
             <StatsCard
                 label="Total Members"
                 :value="stats.total_members"
                 :icon="UserPlus"
                 variant="info"
+                class="!p-4"
             />
             <StatsCard
                 label="New This Month"
                 :value="stats.new_this_month"
                 :icon="Sparkles"
                 variant="warning"
+                class="!p-4"
             />
         </div>
 
         <!-- Filter Bar -->
         <div
-            class="flex flex-col xl:flex-row gap-4 p-5 bg-(--surface-primary)/70 backdrop-blur-md rounded-2xl border border-(--border-default) shadow-sm sticky top-4 z-20 transition-all duration-300 hover:shadow-md hover:bg-(--surface-primary)/80"
+            class="flex flex-col xl:flex-row gap-3 p-3 bg-(--surface-primary)/70 backdrop-blur-md rounded-2xl border border-(--border-default) shadow-sm sticky top-4 z-20 transition-all duration-300 hover:shadow-md hover:bg-(--surface-primary)/80"
         >
-            <div class="flex-1 flex flex-col sm:flex-row gap-4 items-center">
+            <div class="flex-1 flex flex-col sm:flex-row gap-3 items-center">
                 <SearchInput
                     v-model="searchQuery"
                     placeholder="Search teams..."
@@ -408,21 +412,21 @@ onMounted(() => {
             ></div>
 
             <div
-                class="flex flex-col sm:flex-row gap-4 items-center w-full xl:w-auto"
+                class="flex flex-col sm:flex-row gap-3 items-center w-full xl:w-auto"
             >
                 <div
-                    class="flex flex-wrap items-center justify-center gap-2 bg-(--surface-elevated)/50 rounded-lg p-1 border border-(--border-default)"
+                    class="flex flex-wrap items-center justify-center gap-2 bg-(--surface-elevated)/50 rounded-lg p-0.5 border border-(--border-default)"
                 >
                     <input
                         v-model="dateRange.start"
                         type="date"
-                        class="bg-transparent border-none text-sm text-(--text-primary) focus:ring-0 p-1.5"
+                        class="bg-transparent border-none text-sm text-(--text-primary) focus:ring-0 p-1"
                     />
                     <span class="text-(--text-muted) text-xs">to</span>
                     <input
                         v-model="dateRange.end"
                         type="date"
-                        class="bg-transparent border-none text-sm text-(--text-primary) focus:ring-0 p-1.5"
+                        class="bg-transparent border-none text-sm text-(--text-primary) focus:ring-0 p-1"
                     />
                 </div>
 
@@ -445,7 +449,7 @@ onMounted(() => {
 
         <!-- Content Area -->
         <div
-            class="bg-[var(--surface-primary)]/60 backdrop-blur-xl rounded-2xl border border-[var(--border-default)] shadow-xl overflow-hidden min-h-[500px] flex flex-col relative transition-all duration-500"
+            class="bg-[var(--surface-primary)]/60 backdrop-blur-xl rounded-2xl border border-[var(--border-default)] shadow-xl overflow-hidden min-h-[420px] flex flex-col relative transition-all duration-500"
         >
             <Transition name="fade" mode="out-in">
                 <!-- List View (Table on Desktop, Cards on Mobile) -->
@@ -462,7 +466,7 @@ onMounted(() => {
                             class="bg-[var(--surface-tertiary)]/50 text-[var(--text-secondary)] font-semibold text-xs uppercase tracking-wider backdrop-blur-md sticky top-0 z-10 border-b border-[var(--border-default)]"
                         >
                             <tr>
-                                <th class="w-16 px-6 py-4 text-center">
+                                <th class="w-16 px-4 py-3 text-center">
                                     <input
                                         type="checkbox"
                                         v-model="selectAll"
@@ -470,16 +474,16 @@ onMounted(() => {
                                         class="rounded border-[var(--border-strong)] text-[var(--interactive-primary)] focus:ring-[var(--interactive-primary)] bg-[var(--surface-elevated)] w-4 h-4 cursor-pointer"
                                     />
                                 </th>
-                                <th class="px-6 py-4">Team Info</th>
-                                <th class="px-6 py-4">Owner</th>
-                                <th class="px-6 py-4">Stats</th>
-                                <th class="px-6 py-4">Status</th>
-                                <th class="px-6 py-4 text-right">Actions</th>
+                                <th class="px-4 py-3">Team Info</th>
+                                <th class="px-4 py-3">Owner</th>
+                                <th class="px-4 py-3">Stats</th>
+                                <th class="px-4 py-3">Status</th>
+                                <th class="px-4 py-3 text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody v-if="isLoading" key="loading">
                             <tr>
-                                <td colspan="6" class="px-6 py-20 text-center">
+                                <td colspan="6" class="px-4 py-14 text-center">
                                     <div
                                         class="flex flex-col items-center gap-3"
                                     >
@@ -498,7 +502,7 @@ onMounted(() => {
                             <tr>
                                 <td
                                     colspan="6"
-                                    class="px-6 py-20 text-center bg-[var(--surface-primary)]/20"
+                                    class="px-4 py-14 text-center bg-[var(--surface-primary)]/20"
                                 >
                                     <div
                                         class="flex flex-col items-center gap-4"
@@ -546,7 +550,7 @@ onMounted(() => {
                                 :key="team.public_id"
                                 class="group hover:bg-[var(--surface-secondary)]/60 transition-colors duration-200"
                             >
-                                <td class="px-6 py-4 text-center">
+                                <td class="px-4 py-3 text-center">
                                     <input
                                         type="checkbox"
                                         :value="team.public_id"
@@ -555,8 +559,8 @@ onMounted(() => {
                                         class="rounded border-[var(--border-strong)] text-[var(--interactive-primary)] focus:ring-[var(--interactive-primary)] bg-[var(--surface-elevated)] w-4 h-4 cursor-pointer opacity-50 group-hover:opacity-100 transition-opacity"
                                     />
                                 </td>
-                                <td class="px-6 py-4">
-                                    <div class="flex items-center gap-4">
+                                <td class="px-4 py-3">
+                                    <div class="flex items-center gap-3">
                                         <Avatar
                                             :src="team.avatar_url"
                                             size="md"
@@ -576,7 +580,7 @@ onMounted(() => {
                                         </div>
                                     </div>
                                 </td>
-                                <td class="px-6 py-4">
+                                <td class="px-4 py-3">
                                     <div
                                         v-if="team.owner"
                                         class="flex items-center gap-3"
@@ -592,11 +596,11 @@ onMounted(() => {
                                     </div>
                                 </td>
                                 <td
-                                    class="px-6 py-4 text-sm text-[var(--text-secondary)]"
+                                    class="px-4 py-3 text-sm text-[var(--text-secondary)]"
                                 >
                                     {{ team.member_count }} Members
                                 </td>
-                                <td class="px-6 py-4">
+                                <td class="px-4 py-3">
                                     <div
                                         class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
                                         :class="
@@ -608,7 +612,7 @@ onMounted(() => {
                                         {{ team.status }}
                                     </div>
                                 </td>
-                                <td class="px-6 py-4 text-right">
+                                <td class="px-4 py-3 text-right">
                                     <div
                                         class="flex items-center justify-end gap-2"
                                     >
@@ -648,14 +652,14 @@ onMounted(() => {
                     <div
                         class="md:hidden flex flex-col divide-y divide-[var(--border-default)]"
                     >
-                        <div v-if="isLoading" class="p-10 text-center">
+                        <div v-if="isLoading" class="p-8 text-center">
                             <Loader2
                                 class="w-8 h-8 animate-spin mx-auto text-[var(--interactive-primary)]"
                             />
                         </div>
                         <div
                             v-else-if="teams.length === 0"
-                            class="p-10 text-center text-[var(--text-secondary)]"
+                            class="p-8 text-center text-[var(--text-secondary)]"
                         >
                             No teams found.
                         </div>
@@ -664,7 +668,7 @@ onMounted(() => {
                                 ? [...ownedTeams, ...joinedTeams]
                                 : teams"
                             :key="'mob-' + team.public_id"
-                            class="p-4 space-y-4"
+                            class="p-3 space-y-3"
                         >
                             <div class="flex items-center justify-between">
                                 <div class="flex items-center gap-3">
@@ -721,7 +725,7 @@ onMounted(() => {
                                     {{ team.member_count }} Members
                                 </div>
                             </div>
-                            <div class="flex items-center gap-2 pt-2">
+                            <div class="flex items-center gap-2 pt-1">
                                 <button
                                     @click="
                                         router.push({
@@ -757,10 +761,10 @@ onMounted(() => {
                 </div>
 
                 <!-- Grid View -->
-                <div v-else key="grid" class="flex-1 p-6 overflow-y-auto">
+                <div v-else key="grid" class="flex-1 p-4 overflow-y-auto">
                     <div
                         v-if="isLoading"
-                        class="flex flex-col items-center justify-center p-20 text-[var(--text-muted)] h-full"
+                        class="flex flex-col items-center justify-center p-14 text-[var(--text-muted)] h-full"
                     >
                         <Loader2
                             class="w-10 h-10 animate-spin mb-4 text-[var(--interactive-primary)]"
@@ -769,7 +773,7 @@ onMounted(() => {
                     </div>
                     <div
                         v-else-if="teams.length === 0"
-                        class="flex flex-col items-center justify-center p-20 text-[var(--text-muted)] h-full"
+                        class="flex flex-col items-center justify-center p-14 text-[var(--text-muted)] h-full"
                     >
                         <div
                             class="w-20 h-20 rounded-full bg-[var(--surface-tertiary)] flex items-center justify-center mb-6"
@@ -786,26 +790,26 @@ onMounted(() => {
                             Create Team
                         </button>
                     </div>
-                    <div v-else-if="isPersonalScope" class="space-y-12">
+                    <div v-else-if="isPersonalScope" class="space-y-8">
                         <!-- Owned Teams Grid -->
                         <section v-if="ownedTeams.length > 0">
                             <h2
-                                class="text-lg font-bold text-[var(--text-primary)] mb-6 flex items-center gap-2"
+                                class="text-lg font-bold text-[var(--text-primary)] mb-4 flex items-center gap-2"
                             >
                                 <Sparkles class="w-5 h-5 text-purple-500" />
                                 Owned Teams
                             </h2>
                             <div
-                                class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
+                                class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
                             >
                                 <div
                                     v-for="team in ownedTeams"
                                     :key="'owned-grid-' + team.public_id"
-                                    class="group bg-[var(--surface-elevated)] border border-[var(--border-default)] rounded-2xl p-6 hover:shadow-xl hover:shadow-purple-500/5 hover:-translate-y-1 transition-all duration-300 relative overflow-hidden backdrop-blur-sm"
+                                    class="group bg-[var(--surface-elevated)] border border-[var(--border-default)] rounded-2xl p-4 hover:shadow-xl hover:shadow-purple-500/5 hover:-translate-y-1 transition-all duration-300 relative overflow-hidden backdrop-blur-sm"
                                 >
                                     <!-- Card Content -->
                                     <div
-                                        class="absolute top-4 left-4 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                                        class="absolute top-3 left-3 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
                                     >
                                         <input
                                             type="checkbox"
@@ -816,7 +820,7 @@ onMounted(() => {
                                         />
                                     </div>
                                     <div
-                                        class="flex items-start justify-between mb-6"
+                                        class="flex items-start justify-between mb-4"
                                     >
                                         <div
                                             class="w-14 h-14 rounded-2xl bg-gradient-to-br from-[var(--surface-tertiary)] to-[var(--surface-secondary)] flex items-center justify-center text-[var(--interactive-primary)] text-xl font-bold shadow-inner ring-1 ring-[var(--border-default)] group-hover:rotate-3 transition-transform duration-300"
@@ -842,7 +846,7 @@ onMounted(() => {
                                             </button>
                                         </div>
                                     </div>
-                                    <div class="mb-6">
+                                    <div class="mb-4">
                                         <h3
                                             class="font-bold text-lg text-[var(--text-primary)] mb-1 truncate"
                                         >
@@ -854,7 +858,7 @@ onMounted(() => {
                                             /{{ team.slug }}
                                         </p>
                                     </div>
-                                    <div class="flex flex-wrap gap-2 mb-6">
+                                    <div class="flex flex-wrap gap-2 mb-4">
                                         <div
                                             class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--surface-tertiary)]/50 text-xs font-medium text-[var(--text-secondary)] border border-[var(--border-default)]"
                                         >
@@ -883,7 +887,7 @@ onMounted(() => {
                                         </div>
                                     </div>
                                     <div
-                                        class="pt-4 border-t border-[var(--border-default)] flex justify-between items-center"
+                                        class="pt-3 border-t border-[var(--border-default)] flex justify-between items-center"
                                     >
                                         <span
                                             class="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider"
@@ -916,22 +920,22 @@ onMounted(() => {
                         <!-- Joined Teams Grid -->
                         <section v-if="joinedTeams.length > 0">
                             <h2
-                                class="text-lg font-bold text-[var(--text-primary)] mb-6 flex items-center gap-2"
+                                class="text-lg font-bold text-[var(--text-primary)] mb-4 flex items-center gap-2"
                             >
                                 <UsersIcon class="w-5 h-5 text-blue-500" />
                                 Joined Teams
                             </h2>
                             <div
-                                class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
+                                class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
                             >
                                 <div
                                     v-for="team in joinedTeams"
                                     :key="'joined-grid-' + team.public_id"
-                                    class="group bg-[var(--surface-elevated)] border border-[var(--border-default)] rounded-2xl p-6 hover:shadow-xl hover:shadow-purple-500/5 hover:-translate-y-1 transition-all duration-300 relative overflow-hidden backdrop-blur-sm"
+                                    class="group bg-[var(--surface-elevated)] border border-[var(--border-default)] rounded-2xl p-4 hover:shadow-xl hover:shadow-purple-500/5 hover:-translate-y-1 transition-all duration-300 relative overflow-hidden backdrop-blur-sm"
                                 >
                                     <!-- Card Content -->
                                     <div
-                                        class="absolute top-4 left-4 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                                        class="absolute top-3 left-3 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
                                     >
                                         <input
                                             type="checkbox"
@@ -942,7 +946,7 @@ onMounted(() => {
                                         />
                                     </div>
                                     <div
-                                        class="flex items-start justify-between mb-6"
+                                        class="flex items-start justify-between mb-4"
                                     >
                                         <div
                                             class="w-14 h-14 rounded-2xl bg-gradient-to-br from-[var(--surface-tertiary)] to-[var(--surface-secondary)] flex items-center justify-center text-[var(--interactive-primary)] text-xl font-bold shadow-inner ring-1 ring-[var(--border-default)] group-hover:rotate-3 transition-transform duration-300"
@@ -968,7 +972,7 @@ onMounted(() => {
                                             </button>
                                         </div>
                                     </div>
-                                    <div class="mb-6">
+                                    <div class="mb-4">
                                         <h3
                                             class="font-bold text-lg text-[var(--text-primary)] mb-1 truncate"
                                         >
@@ -980,7 +984,7 @@ onMounted(() => {
                                             /{{ team.slug }}
                                         </p>
                                     </div>
-                                    <div class="flex flex-wrap gap-2 mb-6">
+                                    <div class="flex flex-wrap gap-2 mb-4">
                                         <div
                                             class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--surface-tertiary)]/50 text-xs font-medium text-[var(--text-secondary)] border border-[var(--border-default)]"
                                         >
@@ -1009,7 +1013,7 @@ onMounted(() => {
                                         </div>
                                     </div>
                                     <div
-                                        class="pt-4 border-t border-[var(--border-default)] flex justify-between items-center"
+                                        class="pt-3 border-t border-[var(--border-default)] flex justify-between items-center"
                                     >
                                         <span
                                             class="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider"
@@ -1043,16 +1047,16 @@ onMounted(() => {
                         v-else
                         tag="div"
                         name="list-stagger"
-                        class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
+                        class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
                     >
                         <div
                             v-for="team in teams"
                             :key="team.public_id"
-                            class="group bg-[var(--surface-elevated)] border border-[var(--border-default)] rounded-2xl p-6 hover:shadow-xl hover:shadow-purple-500/5 hover:-translate-y-1 transition-all duration-300 relative overflow-hidden backdrop-blur-sm"
+                            class="group bg-[var(--surface-elevated)] border border-[var(--border-default)] rounded-2xl p-4 hover:shadow-xl hover:shadow-purple-500/5 hover:-translate-y-1 transition-all duration-300 relative overflow-hidden backdrop-blur-sm"
                         >
                             <!-- Selection Overlay on Hover -->
                             <div
-                                class="absolute top-4 left-4 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                                class="absolute top-3 left-3 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
                             >
                                 <input
                                     type="checkbox"
@@ -1064,7 +1068,7 @@ onMounted(() => {
                             </div>
 
                             <!-- Card Header -->
-                            <div class="flex items-start justify-between mb-6">
+                            <div class="flex items-start justify-between mb-4">
                                 <div
                                     class="w-14 h-14 rounded-2xl bg-gradient-to-br from-[var(--surface-tertiary)] to-[var(--surface-secondary)] flex items-center justify-center text-[var(--interactive-primary)] text-xl font-bold shadow-inner ring-1 ring-[var(--border-default)] group-hover:rotate-3 transition-transform duration-300"
                                 >
@@ -1093,7 +1097,7 @@ onMounted(() => {
                             </div>
 
                             <!-- Card Body -->
-                            <div class="mb-6">
+                            <div class="mb-4">
                                 <h3
                                     class="font-bold text-lg text-[var(--text-primary)] mb-1 truncate"
                                 >
@@ -1107,7 +1111,7 @@ onMounted(() => {
                             </div>
 
                             <!-- Stats Badges -->
-                            <div class="flex flex-wrap gap-2 mb-6">
+                            <div class="flex flex-wrap gap-2 mb-4">
                                 <div
                                     class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--surface-tertiary)]/50 text-xs font-medium text-[var(--text-secondary)] border border-[var(--border-default)]"
                                 >
@@ -1137,7 +1141,7 @@ onMounted(() => {
 
                             <!-- Card Footer -->
                             <div
-                                class="pt-4 border-t border-[var(--border-default)] flex justify-between items-center"
+                                class="pt-3 border-t border-[var(--border-default)] flex justify-between items-center"
                             >
                                 <span
                                     class="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider"
@@ -1170,7 +1174,7 @@ onMounted(() => {
 
             <!-- Pagination Grid - Sticky Footer -->
             <div
-                class="px-6 py-4 border-t border-[var(--border-default)] bg-[var(--surface-elevated)]/80 backdrop-blur-md flex items-center justify-between sticky bottom-0 z-10"
+                class="px-4 py-3 border-t border-[var(--border-default)] bg-[var(--surface-elevated)]/80 backdrop-blur-md flex items-center justify-between sticky bottom-0 z-10"
             >
                 <div class="text-sm text-[var(--text-secondary)]">
                     Showing
@@ -1194,7 +1198,7 @@ onMounted(() => {
                     <button
                         @click="fetchTeams(pagination.current_page - 1)"
                         :disabled="pagination.current_page === 1"
-                        class="btn btn-secondary py-2 px-4 text-sm disabled:opacity-50 hover:bg-[var(--surface-tertiary)] transition-colors"
+                        class="btn btn-secondary py-1.5 px-3 text-sm disabled:opacity-50 hover:bg-[var(--surface-tertiary)] transition-colors"
                     >
                         Previous
                     </button>
@@ -1203,7 +1207,7 @@ onMounted(() => {
                         :disabled="
                             pagination.current_page === pagination.last_page
                         "
-                        class="btn btn-secondary py-2 px-4 text-sm disabled:opacity-50 hover:bg-[var(--surface-tertiary)] transition-colors"
+                        class="btn btn-secondary py-1.5 px-3 text-sm disabled:opacity-50 hover:bg-[var(--surface-tertiary)] transition-colors"
                     >
                         Next
                     </button>

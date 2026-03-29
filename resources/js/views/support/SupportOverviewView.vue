@@ -117,7 +117,7 @@ const goTo = (path) => router.push(path);
             <div class="space-y-1">
                 <h3 class="font-semibold text-[var(--text-primary)]">Live Support Pipeline</h3>
                 <p class="text-sm text-[var(--text-secondary)]">
-                    New chats start in AI assist mode and escalate to a human agent when complexity is detected.
+                    New chats start with Eden assist mode and escalate to a human agent when complexity is detected.
                 </p>
             </div>
         </Card>

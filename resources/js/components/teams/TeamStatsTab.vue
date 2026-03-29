@@ -76,7 +76,7 @@ watch(() => route.params.identifier, () => {
             <div class="overflow-x-auto">
                 <table class="w-full text-left text-sm">
                     <thead
-                        class="bg-[var(--bg-secondary)] border-b border-[var(--border-color)]"
+                        class="bg-[var(--bg-secondary)] border-b border-[var(--border-default)]"
                     >
                         <tr>
                             <th
@@ -201,7 +201,7 @@ watch(() => route.params.identifier, () => {
                             </th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-[var(--border-color)]">
+                    <tbody class="divide-y divide-[var(--border-default)]">
                         <tr v-if="loading">
                             <td
                                 colspan="6"

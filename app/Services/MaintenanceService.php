@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Carbon\Carbon;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -13,6 +14,11 @@ use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Laravel\Ai\AnonymousAgent;
+use Laravel\Ai\Exceptions\AiException;
+use Laravel\Ai\Exceptions\InsufficientCreditsException;
+use Laravel\Ai\Exceptions\ProviderOverloadedException;
+use Laravel\Ai\Exceptions\RateLimitedException;
 use Laravel\Horizon\Contracts\JobRepository;
 use Throwable;
 
@@ -2268,7 +2274,10 @@ class MaintenanceService
             $results['twilio']['status'] = 'Not Configured';
         }
 
-        // 3. Cloudflare
+        // 3. Support AI (Laravel AI SDK)
+        $results['support_ai'] = $this->getSupportAiHealthStatus();
+
+        // 4. Cloudflare
         $results['cloudflare'] = [
             'name' => 'Cloudflare',
             'status' => 'Unknown',
@@ -2293,7 +2302,7 @@ class MaintenanceService
             $results['cloudflare']['status'] = 'Unreachable';
         }
 
-        // 4. Cloudflare R2 (S3 API) connectivity
+        // 5. Cloudflare R2 (S3 API) connectivity
         $allDisks = config('filesystems.disks', []);
         $r2Candidates = [];
 
@@ -2421,7 +2430,7 @@ class MaintenanceService
             $results['r2']['message'] = ! empty($checkMessages) ? implode(' | ', $checkMessages) : null;
         }
 
-        // 5. Cloudflare STUN
+        // 6. Cloudflare STUN
         $results['cloudflare_stun'] = [
             'name' => 'Cloudflare STUN',
             'status' => 'Unknown',
@@ -2443,7 +2452,7 @@ class MaintenanceService
             $results['cloudflare_stun']['message'] = $e->getMessage();
         }
 
-        // 6. Cloudflare TURN
+        // 7. Cloudflare TURN
         $results['cloudflare_turn'] = [
             'name' => 'Cloudflare TURN',
             'status' => 'Unknown',
@@ -2465,7 +2474,7 @@ class MaintenanceService
             $results['cloudflare_turn']['message'] = $e->getMessage();
         }
 
-        // 7. Cloudflare SFU (Calls Signaling)
+        // 8. Cloudflare SFU (Calls Signaling)
         $results['cloudflare_sfu'] = [
             'name' => 'Cloudflare SFU',
             'status' => 'Unknown',
@@ -2487,7 +2496,7 @@ class MaintenanceService
             $results['cloudflare_sfu']['message'] = $e->getMessage();
         }
 
-        // 8. Local Reverb Server
+        // 9. Local Reverb Server
         $results['reverb_server'] = [
             'name' => 'Reverb Server',
             'status' => 'Unknown',
@@ -2511,10 +2520,277 @@ class MaintenanceService
             $results['reverb_server']['message'] = $e->getMessage();
         }
 
-        // 9. Laravel Horizon daemon health
+        // 10. Laravel Horizon daemon health
         $results['horizon'] = $this->getHorizonHealthStatus();
 
         return $results;
+    }
+
+    /**
+     * Probe the configured support AI provider/model and classify health signals.
+     */
+    private function getSupportAiHealthStatus(): array
+    {
+        $assistantName = trim((string) config('support_chat.ai.assistant_name', 'Eden'));
+        $provider = trim((string) config('support_chat.ai.laravel_sdk.provider', 'openai'));
+        $model = trim((string) config('support_chat.ai.laravel_sdk.model', ''));
+        $aiEnabled = (bool) config('support_chat.ai_enabled', true);
+        $sdkEnabled = (bool) config('support_chat.ai.laravel_sdk.enabled', true);
+        $healthCheckEnabled = (bool) config('support_chat.ai.laravel_sdk.health_check.enabled', true);
+        $cacheTtlSeconds = max(10, (int) config('support_chat.ai.laravel_sdk.health_check.cache_ttl_seconds', 60));
+        $timeout = max(2, (int) config('support_chat.ai.laravel_sdk.health_check.timeout', 8));
+        $prompt = trim((string) config('support_chat.ai.laravel_sdk.health_check.prompt', 'Reply with OK only.'));
+
+        $result = [
+            'name' => "Support AI ({$assistantName})",
+            'enabled' => $aiEnabled && $sdkEnabled,
+            'configured' => false,
+            'provider' => $provider !== '' ? $provider : null,
+            'model' => $model !== '' ? $model : null,
+            'status' => 'Unknown',
+            'latency' => null,
+            'message' => null,
+            'rate_limited' => false,
+            'retry_after_seconds' => null,
+        ];
+
+        if (! $aiEnabled || ! $sdkEnabled) {
+            $result['status'] = 'Disabled';
+            $result['message'] = 'Support AI is disabled in configuration.';
+
+            return $result;
+        }
+
+        if (! $healthCheckEnabled) {
+            $result['status'] = 'Disabled';
+            $result['message'] = 'Support AI health checks are disabled in configuration.';
+
+            return $result;
+        }
+
+        $configured = $this->supportAiProviderIsConfigured($provider);
+        $result['configured'] = $configured;
+
+        if (! $configured) {
+            $result['status'] = 'Not Configured';
+            $result['message'] = $provider === ''
+                ? 'Support AI provider is not configured.'
+                : "Missing credentials for support AI provider [{$provider}].";
+
+            return $result;
+        }
+
+        $cacheKey = 'maintenance:support_ai:health:v1:'.sha1(implode('|', [
+            $provider,
+            $model,
+            (string) $timeout,
+            $prompt,
+        ]));
+
+        /** @var array{
+         *     status: string,
+         *     latency: int|null,
+         *     message: string|null,
+         *     rate_limited: bool,
+         *     retry_after_seconds: int|null
+         * } $probe
+         */
+        $probe = Cache::remember($cacheKey, now()->addSeconds($cacheTtlSeconds), function () use ($provider, $model, $timeout, $prompt): array {
+            return $this->probeSupportAiProvider($provider, $model, $timeout, $prompt);
+        });
+
+        return array_merge($result, $probe);
+    }
+
+    /**
+     * Execute a minimal AI probe request and classify failures for ops visibility.
+     */
+    private function probeSupportAiProvider(string $provider, string $model, int $timeout, string $prompt): array
+    {
+        $start = microtime(true);
+
+        try {
+            $response = (new AnonymousAgent(
+                instructions: 'You are a health-check bot. Reply with OK only.',
+                messages: [],
+                tools: []
+            ))->prompt(
+                prompt: $prompt !== '' ? $prompt : 'Reply with OK only.',
+                provider: $provider,
+                model: $model !== '' ? $model : null,
+                timeout: $timeout,
+            );
+
+            return [
+                'status' => 'Operational',
+                'latency' => round((microtime(true) - $start) * 1000),
+                'message' => 'Probe completed successfully.',
+                'rate_limited' => false,
+                'retry_after_seconds' => null,
+            ];
+        } catch (RateLimitedException $e) {
+            $retryAfter = $this->extractRetryAfterSeconds($e);
+
+            Log::warning('Support AI health check rate limited.', [
+                'provider' => $provider,
+                'model' => $model !== '' ? $model : null,
+                'retry_after_seconds' => $retryAfter,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'status' => 'Rate Limited',
+                'latency' => round((microtime(true) - $start) * 1000),
+                'message' => $retryAfter !== null
+                    ? "Provider returned 429. Retry after {$retryAfter}s."
+                    : 'Provider returned 429 rate limit.',
+                'rate_limited' => true,
+                'retry_after_seconds' => $retryAfter,
+            ];
+        } catch (InsufficientCreditsException $e) {
+            Log::warning('Support AI health check insufficient credits.', [
+                'provider' => $provider,
+                'model' => $model !== '' ? $model : null,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'status' => 'Insufficient Credits',
+                'latency' => round((microtime(true) - $start) * 1000),
+                'message' => 'AI provider quota or credits are exhausted.',
+                'rate_limited' => false,
+                'retry_after_seconds' => null,
+            ];
+        } catch (ProviderOverloadedException $e) {
+            Log::warning('Support AI health check provider overloaded.', [
+                'provider' => $provider,
+                'model' => $model !== '' ? $model : null,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'status' => 'Degraded',
+                'latency' => round((microtime(true) - $start) * 1000),
+                'message' => 'AI provider is temporarily overloaded.',
+                'rate_limited' => false,
+                'retry_after_seconds' => null,
+            ];
+        } catch (AiException $e) {
+            return $this->mapSupportAiProbeException($e, $provider, $model, $start);
+        } catch (Throwable $e) {
+            return $this->mapSupportAiProbeException($e, $provider, $model, $start);
+        }
+    }
+
+    /**
+     * Normalize AI provider exceptions into stable maintenance statuses.
+     */
+    private function mapSupportAiProbeException(Throwable $e, string $provider, string $model, float $startedAt): array
+    {
+        $status = $this->classifySupportAiExceptionStatus($e);
+
+        Log::warning('Support AI health check failed.', [
+            'provider' => $provider,
+            'model' => $model !== '' ? $model : null,
+            'status' => $status,
+            'error' => $e->getMessage(),
+        ]);
+
+        $message = match ($status) {
+            'Invalid Credentials' => 'Invalid API credentials for the configured AI provider.',
+            'Unreachable' => 'Unable to reach the AI provider endpoint.',
+            default => Str::limit(trim($e->getMessage()), 180, '...'),
+        };
+
+        return [
+            'status' => $status,
+            'latency' => round((microtime(true) - $startedAt) * 1000),
+            'message' => $message,
+            'rate_limited' => false,
+            'retry_after_seconds' => null,
+        ];
+    }
+
+    /**
+     * Decide status label from AI exception text and known HTTP failures.
+     */
+    private function classifySupportAiExceptionStatus(Throwable $e): string
+    {
+        $message = Str::lower($e->getMessage());
+
+        if (str_contains($message, 'invalid api key')
+            || str_contains($message, 'invalid key')
+            || str_contains($message, 'unauthorized')
+            || str_contains($message, 'forbidden')
+            || str_contains($message, '401')
+            || str_contains($message, '403')) {
+            return 'Invalid Credentials';
+        }
+
+        if (str_contains($message, 'could not resolve host')
+            || str_contains($message, 'connection refused')
+            || str_contains($message, 'failed to connect')
+            || str_contains($message, 'timed out')
+            || str_contains($message, 'timeout')
+            || str_contains($message, 'network')
+            || str_contains($message, 'cURL error')
+            || str_contains($message, 'ssl')) {
+            return 'Unreachable';
+        }
+
+        return 'Error';
+    }
+
+    /**
+     * Determine if support AI provider has enough configuration for probe calls.
+     */
+    private function supportAiProviderIsConfigured(string $provider): bool
+    {
+        if ($provider === '') {
+            return false;
+        }
+
+        $providerConfig = config("ai.providers.{$provider}");
+        if (! is_array($providerConfig) || $providerConfig === []) {
+            return false;
+        }
+
+        $driver = strtolower(trim((string) ($providerConfig['driver'] ?? '')));
+        if ($driver === 'ollama') {
+            return trim((string) ($providerConfig['url'] ?? '')) !== '';
+        }
+
+        $key = trim((string) ($providerConfig['key'] ?? ''));
+        if ($key !== '') {
+            return true;
+        }
+
+        if ($driver === 'openai' || strtolower($provider) === 'openai') {
+            return trim((string) config('services.openai.api_key', '')) !== '';
+        }
+
+        return false;
+    }
+
+    /**
+     * Attempt to extract Retry-After from nested HTTP exceptions.
+     */
+    private function extractRetryAfterSeconds(Throwable $e): ?int
+    {
+        $current = $e;
+
+        while ($current instanceof Throwable) {
+            if ($current instanceof RequestException && $current->response !== null) {
+                $retryAfterHeader = $current->response->header('Retry-After');
+                if (is_numeric($retryAfterHeader)) {
+                    return max(0, (int) $retryAfterHeader);
+                }
+            }
+
+            $current = $current->getPrevious();
+        }
+
+        return null;
     }
 
     /**
